@@ -133,3 +133,95 @@
 .no-drag {
   -webkit-app-region: no-drag;
 }
+
+@keyframes beacon-pulse {
+  0%, 100% {
+    opacity: 1;
+    box-shadow: 0 0 0 0 currentColor;
+  }
+  50% {
+    opacity: 0.6;
+    box-shadow: 0 0 0 4px transparent;
+  }
+}
+
+.beacon {
+  animation: beacon-pulse 2s ease-in-out infinite;
+}
+
+.beacon-working {
+  color: oklch(0.7 0.18 55);
+}
+
+.beacon-ready {
+  color: oklch(0.7 0.2 145);
+}
+
+.beacon-compacting {
+  color: oklch(0.75 0.15 330);
+}
+
+/* Card state animations */
+@keyframes card-glow-working {
+  0%, 100% {
+    box-shadow:
+      0 0 0 1px oklch(0.7 0.18 55 / 40%),
+      0 0 8px 0 oklch(0.7 0.18 55 / 20%);
+  }
+  50% {
+    box-shadow:
+      0 0 0 1px oklch(0.7 0.18 55 / 60%),
+      0 0 16px 2px oklch(0.7 0.18 55 / 35%);
+  }
+}
+
+@keyframes card-glow-ready {
+  0%, 100% {
+    box-shadow:
+      0 0 0 1px oklch(0.7 0.2 145 / 40%),
+      0 0 8px 0 oklch(0.7 0.2 145 / 20%);
+  }
+  50% {
+    box-shadow:
+      0 0 0 1px oklch(0.7 0.2 145 / 60%),
+      0 0 16px 2px oklch(0.7 0.2 145 / 35%);
+  }
+}
+
+.card-working {
+  animation: card-glow-working 2s ease-in-out infinite;
+  border-color: oklch(0.7 0.18 55 / 30%);
+}
+
+.card-ready {
+  animation: card-glow-ready 2s ease-in-out infinite;
+  border-color: oklch(0.7 0.2 145 / 40%);
+}
+
+.card-compacting {
+  position: relative;
+  overflow: hidden;
+  border-color: oklch(0.75 0.15 330 / 30%);
+}
+
+.card-compacting::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    oklch(0.75 0.15 330 / 8%) 50%,
+    transparent 100%
+  );
+  animation: shimmer 1.5s ease-in-out infinite;
+}
+
+@keyframes shimmer {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(100%);
+  }
+}

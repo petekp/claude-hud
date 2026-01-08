@@ -2,13 +2,13 @@ import { useState, useEffect, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
-import type { DashboardData, Project, ProjectDetails, Artifact, SuggestedProject, Plugin as PluginType, ProjectStatus } from "./types";
+import type { DashboardData, Project, ProjectDetails, Artifact, SuggestedProject, Plugin as PluginType, ProjectStatus, ProjectSessionState, SessionStatesFile } from "./types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 
-type Tab = "projects" | "global" | "plugins" | "artifacts";
+type Tab = "projects" | "artifacts";
 type ProjectView = "list" | "detail" | "add";
 
 function formatTokenCount(count: number): string {
@@ -70,10 +70,23 @@ function App() {
   const [suggestedProjects, setSuggestedProjects] = useState<SuggestedProject[]>([]);
   const [selectedArtifact, setSelectedArtifact] = useState<Artifact | null>(null);
   const [artifactContent, setArtifactContent] = useState<string | null>(null);
-  const [artifactFilter, setArtifactFilter] = useState<"all" | "skill" | "command" | "agent">("all");
+  const [artifactFilter, setArtifactFilter] = useState<"all" | "skill" | "command" | "agent" | "plugin">("all");
   const [projectStatuses, setProjectStatuses] = useState<Record<string, ProjectStatus>>({});
+  const [sessionStates, setSessionStates] = useState<Record<string, ProjectSessionState>>({});
   const [globalHookInstalled, setGlobalHookInstalled] = useState<boolean | null>(null);
   const [installingHook, setInstallingHook] = useState(false);
+  const [addingProject, setAddingProject] = useState(false);
+
+  const loadSessionStates = useCallback(async (projects: Project[]) => {
+    if (projects.length === 0) return;
+    try {
+      const paths = projects.map((p) => p.path);
+      const states = await invoke<Record<string, ProjectSessionState>>("get_all_session_states", { projectPaths: paths });
+      setSessionStates(states);
+    } catch (err) {
+      console.error("Failed to load session states:", err);
+    }
+  }, []);
 
   const loadProjectStatuses = useCallback(async (projects: Project[]) => {
     const statuses: Record<string, ProjectStatus> = {};
@@ -105,17 +118,19 @@ function App() {
       setArtifacts(artifactsData);
       setGlobalHookInstalled(hookInstalled);
       loadProjectStatuses(dashboardData.projects);
+      loadSessionStates(dashboardData.projects);
 
       const projectPaths = dashboardData.projects.map(p => p.path);
       if (projectPaths.length > 0) {
         invoke("start_status_watcher", { projectPaths }).catch(console.error);
       }
+      invoke("start_session_state_watcher").catch(console.error);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
       setLoading(false);
     }
-  }, [loadProjectStatuses]);
+  }, [loadProjectStatuses, loadSessionStates]);
 
   const handleInstallHook = async () => {
     setInstallingHook(true);
@@ -134,15 +149,46 @@ function App() {
   }, [loadData]);
 
   useEffect(() => {
-    const unlisten = listen<[string, ProjectStatus]>("status-changed", (event) => {
+    const unlistenStatus = listen<[string, ProjectStatus]>("status-changed", (event) => {
       const [projectPath, status] = event.payload;
       setProjectStatuses(prev => ({ ...prev, [projectPath]: status }));
     });
 
+    const unlistenSessionStates = listen<SessionStatesFile>("session-states-changed", (event) => {
+      const states: Record<string, ProjectSessionState> = {};
+      for (const [path, entry] of Object.entries(event.payload.projects)) {
+        states[path] = {
+          state: entry.state as "working" | "ready" | "idle" | "compacting",
+          state_changed_at: entry.state_changed_at,
+          session_id: entry.session_id,
+          working_on: entry.working_on,
+          next_step: entry.next_step,
+          context: entry.context ? {
+            percent_used: entry.context.percent_used,
+            tokens_used: entry.context.tokens_used,
+            context_size: entry.context.context_size,
+            updated_at: entry.context.updated_at,
+          } : null,
+        };
+      }
+      setSessionStates(prev => ({ ...prev, ...states }));
+    });
+
     return () => {
-      unlisten.then(fn => fn());
+      unlistenStatus.then(fn => fn());
+      unlistenSessionStates.then(fn => fn());
     };
   }, []);
+
+  useEffect(() => {
+    if (!dashboard || activeTab !== "projects" || projectView !== "list") return;
+
+    const interval = setInterval(() => {
+      loadSessionStates(dashboard.projects);
+    }, 10000);
+
+    return () => clearInterval(interval);
+  }, [dashboard, activeTab, projectView, loadSessionStates]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -237,11 +283,14 @@ function App() {
 
   const handleAddProject = async (path: string) => {
     try {
+      setAddingProject(true);
       await invoke("add_project", { path });
       await loadData();
       setProjectView("list");
     } catch (err) {
       console.error("Failed to add project:", err);
+    } finally {
+      setAddingProject(false);
     }
   };
 
@@ -268,8 +317,6 @@ function App() {
     if (artifactFilter === "all") return true;
     return a.artifact_type === artifactFilter;
   });
-
-  const enabledPluginCount = dashboard?.plugins.filter((p) => p.enabled).length ?? 0;
 
   if (loading) {
     return (
@@ -307,22 +354,6 @@ function App() {
               Projects
             </SidebarItem>
             <SidebarItem
-              active={activeTab === "global"}
-              onClick={() => setActiveTab("global")}
-              icon="settings"
-            >
-              Global
-            </SidebarItem>
-            <SidebarItem
-              active={activeTab === "plugins"}
-              onClick={() => setActiveTab("plugins")}
-              icon="puzzle"
-              count={enabledPluginCount}
-              total={dashboard?.plugins.length ?? 0}
-            >
-              Plugins
-            </SidebarItem>
-            <SidebarItem
               active={activeTab === "artifacts"}
               onClick={() => setActiveTab("artifacts")}
               icon="lightbulb"
@@ -331,16 +362,6 @@ function App() {
               Artifacts
             </SidebarItem>
           </nav>
-        </div>
-        <div className="mt-auto p-3 border-t border-(--color-border)">
-          <Button
-            variant="ghost"
-            onClick={loadData}
-            className="w-full justify-start gap-2 text-muted-foreground hover:text-foreground"
-          >
-            <Icon name="refresh" />
-            Refresh
-          </Button>
         </div>
       </aside>
 
@@ -369,6 +390,7 @@ function App() {
           <ProjectsPanel
             projects={dashboard.projects}
             projectStatuses={projectStatuses}
+            sessionStates={sessionStates}
             onSelectProject={handleSelectProject}
             onAddProject={handleShowAddProject}
             onLaunchTerminal={handleLaunchTerminal}
@@ -391,34 +413,22 @@ function App() {
             suggestions={suggestedProjects}
             onAdd={handleAddProject}
             onBack={handleBackToProjects}
+            isAdding={addingProject}
           />
         )}
 
-        {activeTab === "global" && dashboard && (
-          <GlobalPanel
-            global={dashboard.global}
-            onOpenEditor={handleOpenEditor}
-            onOpenFolder={handleOpenFolder}
-          />
-        )}
-
-        {activeTab === "plugins" && dashboard && (
-          <PluginsPanel
-            plugins={dashboard.plugins}
-            onToggle={handleTogglePlugin}
-            onOpenFolder={handleOpenFolder}
-          />
-        )}
-
-        {activeTab === "artifacts" && (
+        {activeTab === "artifacts" && dashboard && (
           <ArtifactsPanel
             artifacts={filteredArtifacts}
+            plugins={dashboard.plugins}
             filter={artifactFilter}
             onFilterChange={setArtifactFilter}
             selectedArtifact={selectedArtifact}
             artifactContent={artifactContent}
             onSelectArtifact={handleSelectArtifact}
             onOpenEditor={handleOpenEditor}
+            onTogglePlugin={handleTogglePlugin}
+            onOpenFolder={handleOpenFolder}
             onCloseArtifact={() => {
               setSelectedArtifact(null);
               setArtifactContent(null);
@@ -487,6 +497,8 @@ function Icon({ name, className = "" }: { name: string; className?: string }) {
     trash: "M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16",
     play: "M5 3l14 9-14 9V3z",
     sparkle: "M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 00-2.456 2.456z",
+    chevronDown: "M19 9l-7 7-7-7",
+    chevronRight: "M9 5l7 7-7 7",
   };
 
   return (
@@ -502,113 +514,153 @@ function Icon({ name, className = "" }: { name: string; className?: string }) {
   );
 }
 
-const STATUS_COLORS: Record<string, string> = {
-  in_progress: "bg-blue-500",
-  blocked: "bg-red-500",
-  needs_review: "bg-yellow-500",
-  paused: "bg-gray-400",
-  done: "bg-green-500",
-};
-
-const STATUS_LABELS: Record<string, string> = {
-  in_progress: "In Progress",
-  blocked: "Blocked",
-  needs_review: "Needs Review",
-  paused: "Paused",
-  done: "Done",
-};
-
 function ProjectsPanel({
   projects,
   projectStatuses,
+  sessionStates,
   onSelectProject,
   onAddProject,
   onLaunchTerminal,
 }: {
   projects: Project[];
   projectStatuses: Record<string, ProjectStatus>;
+  sessionStates: Record<string, ProjectSessionState>;
   onSelectProject: (project: Project) => void;
   onAddProject: () => void;
   onLaunchTerminal: (path: string, runClaude: boolean) => void;
 }) {
+  const [searchQuery, setSearchQuery] = useState("");
+
+  const projectsWithData = projects.map((project) => ({
+    project,
+    status: projectStatuses[project.path],
+    sessionState: sessionStates[project.path],
+  }));
+
+  const filteredProjects = projectsWithData.filter(({ project }) => {
+    if (searchQuery && !project.name.toLowerCase().includes(searchQuery.toLowerCase())) return false;
+    return true;
+  });
+
+  const isRecentTimestamp = (timestamp: string | null | undefined, hoursThreshold = 48) => {
+    if (!timestamp) return false;
+    const hoursSince = (Date.now() - new Date(timestamp).getTime()) / 3600000;
+    return hoursSince < hoursThreshold;
+  };
+
+  const isRecentOrActive = (item: typeof projectsWithData[0]) => {
+    const { sessionState, project } = item;
+
+    // Active Claude session (working, ready, compacting) = always show
+    if (sessionState?.state === "working" || sessionState?.state === "ready" || sessionState?.state === "compacting") {
+      return true;
+    }
+
+    // Session state changed recently (including "idle") = show
+    if (sessionState?.state_changed_at && isRecentTimestamp(sessionState.state_changed_at)) {
+      return true;
+    }
+
+    // Project has recent activity = show
+    if (isRecentTimestamp(project.last_active)) {
+      return true;
+    }
+
+    return false;
+  };
+
+  const getMostRecentTimestamp = (item: typeof projectsWithData[0]) => {
+    const times = [
+      item.sessionState?.state_changed_at,
+      item.sessionState?.context?.updated_at,
+      item.project.last_active,
+    ].filter(Boolean).map(t => new Date(t!).getTime());
+    return times.length > 0 ? Math.max(...times) : 0;
+  };
+
+  const sortByPriorityThenRecency = (a: typeof projectsWithData[0], b: typeof projectsWithData[0]) => {
+    // "ready" (waiting for input) comes first - these need user attention NOW
+    const aReady = a.sessionState?.state === "ready" ? 1 : 0;
+    const bReady = b.sessionState?.state === "ready" ? 1 : 0;
+    if (aReady !== bReady) return bReady - aReady;
+
+    // Then by recency
+    return getMostRecentTimestamp(b) - getMostRecentTimestamp(a);
+  };
+
+  const recentProjects = filteredProjects
+    .filter(isRecentOrActive)
+    .sort(sortByPriorityThenRecency);
+
+  const dormantProjects = filteredProjects
+    .filter((item) => !isRecentOrActive(item))
+    .sort((a, b) => getMostRecentTimestamp(b) - getMostRecentTimestamp(a));
+
   return (
     <div>
       <div className="flex items-center justify-between mb-4">
-        <h2 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Projects</h2>
-        <Button variant="secondary" size="sm" onClick={onAddProject}>
+        <div className="flex items-center gap-3">
+          {projects.length > 0 && (
+            <Input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search..."
+              className="h-7 text-xs w-40"
+            />
+          )}
+        </div>
+        <Button variant="secondary" size="sm" onClick={onAddProject} className="h-7 text-xs">
           + Add
         </Button>
       </div>
 
       {projects.length > 0 ? (
-        <div className="space-y-3">
-          {projects.map((project) => {
-            const status = projectStatuses[project.path];
-            const hasStatus = status && (status.working_on || status.next_step);
-
-            return (
-              <div
-                key={project.path}
-                onClick={() => onSelectProject(project)}
-                className="p-4 rounded-lg border bg-(--color-card) hover:bg-(--color-muted)/50 cursor-default transition-colors"
-              >
-                <div className="flex items-start justify-between gap-4">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-1">
-                      <span className="font-medium">{project.name}</span>
-                      {status?.status && (
-                        <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium text-white ${STATUS_COLORS[status.status] || "bg-gray-400"}`}>
-                          {STATUS_LABELS[status.status] || status.status}
-                        </span>
-                      )}
-                    </div>
-
-                    {hasStatus ? (
-                      <div className="space-y-1">
-                        {status.working_on && (
-                          <div className="text-sm text-foreground/80">
-                            {status.working_on}
-                          </div>
-                        )}
-                        {status.next_step && (
-                          <div className="text-xs text-muted-foreground">
-                            Next: {status.next_step}
-                          </div>
-                        )}
-                        {status.blocker && (
-                          <div className="text-xs text-red-400">
-                            Blocked: {status.blocker}
-                          </div>
-                        )}
-                      </div>
-                    ) : (
-                      <div className="text-sm text-muted-foreground/60 italic">
-                        No status yet — enable HUD hook to track
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="flex items-center gap-2 shrink-0">
-                    <span className="text-xs text-muted-foreground">
-                      {project.last_active || "—"}
-                    </span>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onLaunchTerminal(project.path, true);
-                      }}
-                      title="Continue in Claude"
-                      className="h-8 w-8"
-                    >
-                      <Icon name="play" />
-                    </Button>
-                  </div>
-                </div>
+        <div className="space-y-6">
+          {recentProjects.length > 0 && (
+            <div>
+              <h2 className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-2">
+                Recent
+              </h2>
+              <div className="space-y-2">
+                {recentProjects.map(({ project, status, sessionState }) => (
+                  <ProjectCard
+                    key={project.path}
+                    project={project}
+                    status={status}
+                    sessionState={sessionState}
+                    onSelect={() => onSelectProject(project)}
+                    onLaunchTerminal={() => onLaunchTerminal(project.path, true)}
+                  />
+                ))}
               </div>
-            );
-          })}
+            </div>
+          )}
+
+          {dormantProjects.length > 0 && (
+            <div>
+              <h2 className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-2">
+                {recentProjects.length > 0 ? `Dormant (${dormantProjects.length})` : "Projects"}
+              </h2>
+              <div className="grid grid-cols-2 gap-1.5">
+                {dormantProjects.map(({ project, status }) => (
+                  <CompactProjectCard
+                    key={project.path}
+                    project={project}
+                    status={status}
+                    onSelect={() => onSelectProject(project)}
+                    onLaunchTerminal={() => onLaunchTerminal(project.path, true)}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
+
+          {filteredProjects.length === 0 && (
+            <div className="text-muted-foreground text-center py-8 text-xs">
+              No projects match your search
+            </div>
+          )}
         </div>
       ) : (
         <Button
@@ -619,6 +671,214 @@ function ProjectsPanel({
           No projects yet
         </Button>
       )}
+    </div>
+  );
+}
+
+function ProjectCard({
+  project,
+  status,
+  sessionState,
+  onSelect,
+  onLaunchTerminal,
+}: {
+  project: Project;
+  status: ProjectStatus | undefined;
+  sessionState: ProjectSessionState | undefined;
+  onSelect: () => void;
+  onLaunchTerminal: () => void;
+}) {
+  const hasStatus = status && (status.working_on || status.next_step);
+  const stats = project.stats;
+  const totalTokens = stats ? stats.total_input_tokens + stats.total_output_tokens : 0;
+  const cost = stats ? calculateCost(stats) : 0;
+
+  const getBeaconConfig = () => {
+    if (!sessionState) return null;
+    if (sessionState.state === "ready") {
+      return { class: "beacon-ready", pulse: true };
+    }
+    if (sessionState.state === "compacting") {
+      return { class: "beacon-compacting", pulse: true };
+    }
+    if (sessionState.state === "working") {
+      return { class: "beacon-working", pulse: true };
+    }
+    return null;
+  };
+
+  const beaconConfig = getBeaconConfig();
+
+  const getSessionLabelConfig = () => {
+    if (!sessionState) return null;
+    switch (sessionState.state) {
+      case "ready": return { text: "Your turn", color: "text-emerald-400" };
+      case "compacting": return { text: "Compacting...", color: "text-pink-400" };
+      case "working": return { text: "Working...", color: "text-amber-500" };
+      default: return null;
+    }
+  };
+
+  const sessionLabelConfig = getSessionLabelConfig();
+  const contextPercent = sessionState?.context?.percent_used;
+
+  const getCardStateClass = () => {
+    if (!sessionState) return "";
+    switch (sessionState.state) {
+      case "working": return "card-working";
+      case "ready": return "card-ready";
+      case "compacting": return "card-compacting";
+      default: return "";
+    }
+  };
+
+  return (
+    <div
+      onClick={onSelect}
+      className={`p-3 rounded-lg border bg-(--color-card) hover:bg-(--color-muted)/50 cursor-default transition-colors ${getCardStateClass()}`}
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 mb-1">
+            {beaconConfig && (
+              <span
+                className={`w-2 h-2 rounded-full ${beaconConfig.class} ${beaconConfig.pulse ? "beacon" : ""}`}
+                style={{ backgroundColor: 'currentColor' }}
+              />
+            )}
+            <span className="font-semibold text-[15px] leading-none tracking-[-0.01em]">{project.name}</span>
+            {(sessionLabelConfig || (contextPercent !== undefined && contextPercent > 0)) && (
+              <span className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider leading-none">
+                {sessionLabelConfig && (
+                  <span className={sessionLabelConfig.color}>{sessionLabelConfig.text}</span>
+                )}
+                {contextPercent !== undefined && contextPercent > 0 && (
+                  <span className={`tabular-nums ${contextPercent >= 80 ? "text-amber-500" : "text-muted-foreground"}`}>
+                    {contextPercent}%
+                  </span>
+                )}
+              </span>
+            )}
+          </div>
+
+          {(sessionState?.working_on || sessionState?.next_step || hasStatus) ? (
+            <div className="space-y-0.5 mb-1.5">
+              {(sessionState?.working_on || status?.working_on) && (
+                <div className="text-[13px] text-foreground/90 line-clamp-1 leading-snug">
+                  {sessionState?.working_on || status?.working_on}
+                </div>
+              )}
+              {(sessionState?.next_step || status?.next_step) && (
+                <div className="text-xs text-muted-foreground line-clamp-1 leading-snug">
+                  <span className="text-muted-foreground/60">→</span> {sessionState?.next_step || status?.next_step}
+                </div>
+              )}
+              {status?.blocker && (
+                <div className="text-xs text-red-400 line-clamp-1 leading-snug">
+                  <span className="font-medium">Blocked:</span> {status.blocker}
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="text-xs text-muted-foreground/60 italic mb-1.5">
+              No recent activity
+            </div>
+          )}
+
+          <div className="flex items-center gap-2 text-[10px] text-muted-foreground/70 tabular-nums">
+            <span>{project.task_count || 0} sessions</span>
+            {cost > 0 && <span>{formatCost(cost)}</span>}
+            {totalTokens > 0 && <span>{formatTokenCount(totalTokens)}</span>}
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2 shrink-0">
+          <span className="text-[10px] text-muted-foreground">
+            {project.last_active || "—"}
+          </span>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={(e) => {
+              e.stopPropagation();
+              onLaunchTerminal();
+            }}
+            title="Continue in Claude"
+            className="h-7 w-7"
+          >
+            <Icon name="play" className="w-3 h-3" />
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function CompactProjectCard({
+  project,
+  status,
+  onSelect,
+  onLaunchTerminal,
+}: {
+  project: Project;
+  status?: ProjectStatus;
+  sessionState?: ProjectSessionState;
+  onSelect: () => void;
+  onLaunchTerminal: () => void;
+}) {
+  const formatRelativeTime = (dateStr: string | null | undefined) => {
+    if (!dateStr) return "—";
+    const date = new Date(dateStr);
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffMins = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMs / 3600000);
+    const diffDays = Math.floor(diffMs / 86400000);
+    const diffWeeks = Math.floor(diffDays / 7);
+    const diffMonths = Math.floor(diffDays / 30);
+
+    if (diffMins < 1) return "now";
+    if (diffMins < 60) return `${diffMins}m`;
+    if (diffHours < 24) return `${diffHours}h`;
+    if (diffDays < 7) return `${diffDays}d`;
+    if (diffWeeks < 4) return `${diffWeeks}w`;
+    return `${diffMonths}mo`;
+  };
+
+  const context = status?.working_on || status?.next_step;
+
+  return (
+    <div
+      onClick={onSelect}
+      className="p-2.5 rounded-md border bg-(--color-card) hover:bg-(--color-muted)/50 cursor-default transition-colors group"
+    >
+      <div className="flex items-start justify-between gap-2">
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center justify-between gap-2 mb-1">
+            <span className="font-medium text-[12px] leading-none truncate">{project.name}</span>
+            <span className="text-[10px] text-muted-foreground/50 shrink-0">
+              {formatRelativeTime(project.last_active)}
+            </span>
+          </div>
+          {context && (
+            <div className="text-[11px] text-muted-foreground/70 leading-snug line-clamp-1">
+              {context}
+            </div>
+          )}
+        </div>
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={(e) => {
+            e.stopPropagation();
+            onLaunchTerminal();
+          }}
+          title="Continue in Claude"
+          className="h-5 w-5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
+        >
+          <Icon name="play" className="w-2.5 h-2.5" />
+        </Button>
+      </div>
     </div>
   );
 }
@@ -831,10 +1091,12 @@ function AddProjectPanel({
   suggestions,
   onAdd,
   onBack,
+  isAdding,
 }: {
   suggestions: SuggestedProject[];
   onAdd: (path: string) => void;
   onBack: () => void;
+  isAdding: boolean;
 }) {
   const [manualPath, setManualPath] = useState("");
   const [isDragging, setIsDragging] = useState(false);
@@ -887,6 +1149,21 @@ function AddProjectPanel({
       setManualPath(selected);
     }
   };
+
+  if (isAdding) {
+    return (
+      <div className="max-w-3xl">
+        <div className="flex items-center gap-3 mb-6">
+          <div className="h-8 w-8" />
+          <h2 className="text-base font-medium">Add Project</h2>
+        </div>
+        <div className="flex flex-col items-center justify-center py-16 text-muted-foreground">
+          <div className="animate-pulse text-sm">Adding project and computing statistics...</div>
+          <div className="text-xs mt-2">This may take a moment for projects with many sessions</div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-3xl">
@@ -983,157 +1260,38 @@ function AddProjectPanel({
   );
 }
 
-function GlobalPanel({
-  global,
-  onOpenEditor,
-  onOpenFolder,
-}: {
-  global: DashboardData["global"];
-  onOpenEditor: (path: string) => void;
-  onOpenFolder: (path: string) => void;
-}) {
-  return (
-    <div className="space-y-4 max-w-2xl">
-      <ConfigRow
-        label="settings.json"
-        exists={global.settings_exists}
-        path={global.settings_path}
-        onOpen={onOpenEditor}
-      />
-      <ConfigRow
-        label="CLAUDE.md"
-        exists={!!global.instructions_path}
-        path={global.instructions_path}
-        onOpen={onOpenEditor}
-      />
-
-      <div className="pt-4 border-t border-(--color-border)">
-        <h3 className="text-xs font-medium uppercase tracking-wide text-(--color-muted-foreground) mb-3">
-          Directories
-        </h3>
-        <div className="space-y-2">
-          {global.skills_dir && (
-            <DirectoryRow
-              label="Skills"
-              path={global.skills_dir}
-              count={global.skill_count}
-              onOpen={onOpenFolder}
-            />
-          )}
-          {global.commands_dir && (
-            <DirectoryRow
-              label="Commands"
-              path={global.commands_dir}
-              count={global.command_count}
-              onOpen={onOpenFolder}
-            />
-          )}
-          {global.agents_dir && (
-            <DirectoryRow
-              label="Agents"
-              path={global.agents_dir}
-              count={global.agent_count}
-              onOpen={onOpenFolder}
-            />
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function PluginsPanel({
-  plugins,
-  onToggle,
-  onOpenFolder,
-}: {
-  plugins: PluginType[];
-  onToggle: (id: string, enabled: boolean) => void;
-  onOpenFolder: (path: string) => void;
-}) {
-  return (
-    <div className="space-y-2 max-w-2xl">
-      {plugins.map((plugin) => (
-        <div
-          key={plugin.id}
-          className="border border-(--color-border) rounded-(--radius-md) p-3 group"
-        >
-          <div className="flex items-start justify-between">
-            <div className="flex items-center gap-3">
-              <Switch
-                checked={plugin.enabled}
-                onCheckedChange={(checked) => onToggle(plugin.id, checked)}
-              />
-              <div>
-                <div className="font-medium text-sm">{plugin.name}</div>
-                <div className="text-xs text-muted-foreground font-mono">
-                  {plugin.id}
-                </div>
-              </div>
-            </div>
-
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => onOpenFolder(plugin.path)}
-              className="opacity-0 group-hover:opacity-100 h-8 w-8"
-              title="Open folder"
-            >
-              <Icon name="folder" />
-            </Button>
-          </div>
-
-          {plugin.description && (
-            <div className="text-xs text-(--color-muted-foreground) mt-2 ml-12">
-              {plugin.description}
-            </div>
-          )}
-
-          <div className="text-xs text-(--color-muted-foreground) mt-1.5 ml-12 tabular-nums">
-            {[
-              plugin.skill_count && `${plugin.skill_count} skills`,
-              plugin.command_count && `${plugin.command_count} commands`,
-              plugin.agent_count && `${plugin.agent_count} agents`,
-              plugin.hook_count && `${plugin.hook_count} hooks`,
-            ]
-              .filter(Boolean)
-              .join(" · ") || "No artifacts"}
-          </div>
-        </div>
-      ))}
-      {plugins.length === 0 && (
-        <div className="text-(--color-muted-foreground) text-center py-8 text-xs">
-          No plugins installed
-        </div>
-      )}
-    </div>
-  );
-}
-
 function ArtifactsPanel({
   artifacts,
+  plugins,
   filter,
   onFilterChange,
   selectedArtifact,
   artifactContent,
   onSelectArtifact,
   onOpenEditor,
+  onTogglePlugin,
+  onOpenFolder,
   onCloseArtifact,
 }: {
   artifacts: Artifact[];
-  filter: "all" | "skill" | "command" | "agent";
-  onFilterChange: (filter: "all" | "skill" | "command" | "agent") => void;
+  plugins: PluginType[];
+  filter: "all" | "skill" | "command" | "agent" | "plugin";
+  onFilterChange: (filter: "all" | "skill" | "command" | "agent" | "plugin") => void;
   selectedArtifact: Artifact | null;
   artifactContent: string | null;
   onSelectArtifact: (artifact: Artifact) => void;
   onOpenEditor: (path: string) => void;
+  onTogglePlugin: (id: string, enabled: boolean) => void;
+  onOpenFolder: (path: string) => void;
   onCloseArtifact: () => void;
 }) {
+  const isPluginView = filter === "plugin";
+
   return (
     <div className="flex gap-6 h-full">
-      <div className={`${selectedArtifact ? "w-1/2" : "w-full max-w-2xl"} space-y-4`}>
+      <div className={`${selectedArtifact && !isPluginView ? "w-1/2" : "w-full max-w-2xl"} space-y-4`}>
         <div className="flex gap-1.5">
-          {(["all", "skill", "command", "agent"] as const).map((f) => (
+          {(["all", "skill", "command", "agent", "plugin"] as const).map((f) => (
             <Button
               key={f}
               variant={filter === f ? "default" : "secondary"}
@@ -1146,39 +1304,94 @@ function ArtifactsPanel({
           ))}
         </div>
 
-        <div className="space-y-1 overflow-auto">
-          {artifacts.map((artifact) => (
-            <button
-              key={artifact.path}
-              onClick={() => onSelectArtifact(artifact)}
-              className={`w-full text-left p-2.5 rounded-(--radius-md) border transition-colors ${
-                selectedArtifact?.path === artifact.path
-                  ? "border-(--color-accent) bg-(--color-muted)"
-                  : "border-transparent hover:bg-(--color-muted)"
-              }`}
-            >
-              <div className="flex items-center justify-between">
-                <span className="font-medium text-sm">{artifact.name}</span>
-                <Badge variant="secondary" className="text-xs font-mono">
-                  {artifact.source}
-                </Badge>
-              </div>
-              {artifact.description && (
-                <div className="text-xs text-(--color-muted-foreground) mt-1 line-clamp-2">
-                  {artifact.description}
+        {isPluginView ? (
+          <div className="space-y-2">
+            {plugins.map((plugin) => (
+              <div
+                key={plugin.id}
+                className="border border-(--color-border) rounded-(--radius-md) p-3 group"
+              >
+                <div className="flex items-start justify-between">
+                  <div className="flex items-center gap-3">
+                    <Switch
+                      checked={plugin.enabled}
+                      onCheckedChange={(checked) => onTogglePlugin(plugin.id, checked)}
+                    />
+                    <div>
+                      <div className="font-medium text-sm">{plugin.name}</div>
+                      <div className="text-xs text-muted-foreground font-mono">
+                        {plugin.id}
+                      </div>
+                    </div>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => onOpenFolder(plugin.path)}
+                    className="opacity-0 group-hover:opacity-100 h-8 w-8"
+                    title="Open folder"
+                  >
+                    <Icon name="folder" />
+                  </Button>
                 </div>
-              )}
-            </button>
-          ))}
-          {artifacts.length === 0 && (
-            <div className="text-(--color-muted-foreground) text-center py-8 text-xs">
-              No artifacts found
-            </div>
-          )}
-        </div>
+                {plugin.description && (
+                  <div className="text-xs text-(--color-muted-foreground) mt-2 ml-12">
+                    {plugin.description}
+                  </div>
+                )}
+                <div className="text-xs text-(--color-muted-foreground) mt-1.5 ml-12 tabular-nums">
+                  {[
+                    plugin.skill_count && `${plugin.skill_count} skills`,
+                    plugin.command_count && `${plugin.command_count} commands`,
+                    plugin.agent_count && `${plugin.agent_count} agents`,
+                    plugin.hook_count && `${plugin.hook_count} hooks`,
+                  ]
+                    .filter(Boolean)
+                    .join(" · ") || "No artifacts"}
+                </div>
+              </div>
+            ))}
+            {plugins.length === 0 && (
+              <div className="text-(--color-muted-foreground) text-center py-8 text-xs">
+                No plugins installed
+              </div>
+            )}
+          </div>
+        ) : (
+          <div className="space-y-1 overflow-auto">
+            {artifacts.map((artifact) => (
+              <button
+                key={artifact.path}
+                onClick={() => onSelectArtifact(artifact)}
+                className={`w-full text-left p-2.5 rounded-(--radius-md) border transition-colors ${
+                  selectedArtifact?.path === artifact.path
+                    ? "border-(--color-accent) bg-(--color-muted)"
+                    : "border-transparent hover:bg-(--color-muted)"
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <span className="font-medium text-sm">{artifact.name}</span>
+                  <Badge variant="secondary" className="text-xs font-mono">
+                    {artifact.source}
+                  </Badge>
+                </div>
+                {artifact.description && (
+                  <div className="text-xs text-(--color-muted-foreground) mt-1 line-clamp-2">
+                    {artifact.description}
+                  </div>
+                )}
+              </button>
+            ))}
+            {artifacts.length === 0 && (
+              <div className="text-(--color-muted-foreground) text-center py-8 text-xs">
+                No artifacts found
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
-      {selectedArtifact && (
+      {selectedArtifact && !isPluginView && (
         <div className="w-1/2 border-l border-(--color-border) pl-6">
           <div className="flex items-center justify-between mb-3">
             <h3 className="font-semibold text-sm">{selectedArtifact.name}</h3>
@@ -1212,71 +1425,6 @@ function ArtifactsPanel({
           </pre>
         </div>
       )}
-    </div>
-  );
-}
-
-function ConfigRow({
-  label,
-  exists,
-  path,
-  onOpen,
-}: {
-  label: string;
-  exists: boolean;
-  path: string | null;
-  onOpen: (path: string) => void;
-}) {
-  return (
-    <div className="flex items-center justify-between py-2 px-3 bg-(--color-muted) rounded-(--radius-md) group">
-      <div className="flex items-center gap-2">
-        <span className={`text-xs ${exists ? "text-green-500" : "text-(--color-muted-foreground)"}`}>
-          {exists ? "✓" : "○"}
-        </span>
-        <span className={`text-sm ${exists ? "" : "text-(--color-muted-foreground)"}`}>{label}</span>
-      </div>
-      {exists && path && (
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => onOpen(path)}
-          className="opacity-0 group-hover:opacity-100 h-auto py-1 px-2 text-xs text-muted-foreground hover:text-foreground gap-1"
-        >
-          Open
-          <Icon name="external" className="w-3 h-3" />
-        </Button>
-      )}
-    </div>
-  );
-}
-
-function DirectoryRow({
-  label,
-  path,
-  count,
-  onOpen,
-}: {
-  label: string;
-  path: string;
-  count: number;
-  onOpen: (path: string) => void;
-}) {
-  return (
-    <div className="flex items-center justify-between py-2 px-3 bg-(--color-muted) rounded-(--radius-md) group">
-      <div className="flex items-center gap-2">
-        <Icon name="folder" className="text-(--color-muted-foreground) w-3.5 h-3.5" />
-        <span className="text-sm">{label}</span>
-        <span className="text-xs text-(--color-muted-foreground) tabular-nums">({count})</span>
-      </div>
-      <Button
-        variant="ghost"
-        size="sm"
-        onClick={() => onOpen(path)}
-        className="opacity-0 group-hover:opacity-100 h-auto py-1 px-2 text-xs text-muted-foreground hover:text-foreground gap-1"
-      >
-        Open
-        <Icon name="external" className="w-3 h-3" />
-      </Button>
     </div>
   );
 }
