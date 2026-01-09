@@ -2,7 +2,17 @@
 
 Claude HUD is a cross-platform desktop application that serves as a dashboard for Claude Code, displaying project statistics, task tracking, plugin management, and global Claude Code configuration insights. It combines a Rust backend (Tauri) with a TypeScript/React frontend.
 
-> **Development Workflow:** The app should be running during development via `pnpm dev` (terminal 1) and `pnpm tauri dev` (terminal 2). Changes auto-rebuild and hot-reload. Claude should make changes incrementally and verify results in the running app.
+> **Development Workflow:** Run `pnpm tauri dev` to start the app. This automatically starts the frontend dev server and launches the desktop app. Changes auto-rebuild and hot-reload. Claude should make changes incrementally and verify results in the running app.
+
+## Product Vision
+
+**Claude HUD lets you develop and ship more projects in parallel by eliminating the cognitive overhead of context-switching.** Instead of remembering where you left off across a dozen projects, the HUD shows you—automatically, at a glance. Wake up, open the app, pick a project, and resume instantly.
+
+**The core problem:** When you have many Claude Code projects in flight simultaneously, context-switching is expensive. You lose track of what you were working on, what the next step was, and whether you're blocked. Without visibility, projects stall and momentum is lost. The cognitive load of "remembering where everything is at" limits how many projects you can realistically push forward.
+
+**The insight:** Claude already knows what you were doing in each project. The HUD surfaces that context automatically via hooks—so you don't have to maintain a separate system or hold it all in your head.
+
+**Target use case:** You wake up, open Claude HUD, see all your projects with their current status, know exactly where each one stands, pick the one that makes sense to work on, and jump in with full context—in seconds, not minutes.
 
 ## Project Overview
 
@@ -31,21 +41,16 @@ Claude HUD is a cross-platform desktop application that serves as a dashboard fo
 
 **IMPORTANT: The app should be running during development.** When making changes, the app auto-rebuilds and hot-reloads so you can immediately see results.
 
-From the root `claude-hud/` directory, in **two separate terminals**:
+From the root `claude-hud/` directory:
 
-**Terminal 1 - Frontend dev server:**
-```bash
-pnpm dev
-```
-Runs Vite dev server on `http://localhost:5173` with hot reload.
-
-**Terminal 2 - Desktop app:**
 ```bash
 pnpm tauri dev
 ```
-Launches the Tauri app in dev mode, **watches for changes in both frontend and backend, and auto-rebuilds**.
 
-The app automatically connects to the dev server at localhost:5173. Both processes must be running for development.
+This single command:
+- Starts the Vite dev server on `http://localhost:5173` (via `beforeDevCommand`)
+- Launches the Tauri desktop app
+- Watches for changes in both frontend and backend, and auto-rebuilds
 
 ### Auto-Rebuild Behavior
 
@@ -101,7 +106,11 @@ Built apps appear in `src-tauri/target/release/bundle/`.
 claude-hud/
 ├── CLAUDE.md                    # This file
 ├── docs/
-│   └── claude-code-artifacts.md # Claude Code disk artifacts reference
+│   ├── claude-code-artifacts.md # Claude Code disk artifacts reference
+│   ├── tauri-capabilities.md    # Tauri process/terminal capabilities reference
+│   └── cc/                      # Claude Code official documentation (52 files)
+├── scripts/
+│   └── fetch-cc-docs.ts         # Script to update Claude Code docs
 ├── package.json                 # Frontend dependencies
 ├── pnpm-lock.yaml               # Frontend lock file
 ├── tsconfig.json                # TypeScript configuration
@@ -275,6 +284,25 @@ The app reads from `~/.claude/` directory:
 ```
 
 For a comprehensive reference of all Claude Code disk artifacts (file formats, data structures, retention policies), see **[docs/claude-code-artifacts.md](docs/claude-code-artifacts.md)**.
+
+## Claude Code Documentation Reference
+
+**IMPORTANT:** When working on features that integrate with Claude Code (hooks, plugins, settings, MCP, sessions, etc.), always consult the official documentation in `docs/cc/`. This ensures implementations align with current Claude Code behavior and APIs.
+
+**Key documentation files:**
+
+| Topic | File | Use When |
+|-------|------|----------|
+| Hooks | `docs/cc/hooks.md`, `docs/cc/hooks-guide.md` | Implementing hook-based features |
+| Plugins | `docs/cc/plugins.md`, `docs/cc/plugins-reference.md` | Plugin management, discovery |
+| Settings | `docs/cc/settings.md` | Reading/displaying Claude Code config |
+| MCP | `docs/cc/mcp.md` | Model Context Protocol integration |
+| Sessions | `docs/cc/interactive-mode.md` | Session file parsing, history |
+| CLI | `docs/cc/cli-reference.md` | Invoking Claude Code programmatically |
+| Memory | `docs/cc/memory.md` | CLAUDE.md files, project context |
+| Sub-agents | `docs/cc/sub-agents.md` | Task tool, agent spawning |
+
+**Updating docs:** Run `pnpm fetch-cc-docs` to pull the latest documentation from the official sources. The docs are mirrored from [ericbuess/claude-code-docs](https://github.com/ericbuess/claude-code-docs) which syncs every 3 hours.
 
 ## Common Development Scenarios
 

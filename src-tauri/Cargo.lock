@@ -471,6 +471,7 @@ dependencies = [
  "dirs",
  "log",
  "notify",
+ "once_cell",
  "regex",
  "serde",
  "serde_json",

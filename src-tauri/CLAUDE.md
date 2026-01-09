@@ -2,7 +2,7 @@
 
 Claude HUD is a cross-platform desktop application that serves as a dashboard for Claude Code. It displays project statistics, task tracking, plugin management, and global Claude Code configuration. Built with Rust/Tauri backend and React 19/TypeScript frontend.
 
-> **Development Workflow:** The app should be running during development via `pnpm dev` (terminal 1) and `cargo tauri dev` (terminal 2). Changes auto-rebuild and hot-reload. Claude should make changes incrementally and verify results in the running app.
+> **Development Workflow:** Run `pnpm tauri dev` from the project root to start the app. This automatically starts the frontend dev server and launches the desktop app. Changes auto-rebuild and hot-reload. Claude should make changes incrementally and verify results in the running app.
 
 **Quick note:** Backend work happens in `src-tauri/`, frontend work in `src/`. Most instructions assume you're running commands from the **project root** (`claude-hud/`), but this file documents backend-specific details.
 
@@ -23,28 +23,20 @@ cargo check      # Rust syntax check
 pnpm type-check  # TypeScript check
 ```
 
-### Development (Two Terminals Required)
+### Development
 
 **IMPORTANT: The app should be running during development.** When making changes, the app auto-rebuilds and hot-reloads so you can immediately see results.
 
-**Terminal 1 - Frontend (from project root):**
+From the project root:
 ```bash
-pnpm dev
-# Starts Vite dev server on http://localhost:5173 with hot reload
+pnpm tauri dev
 ```
 
-**Terminal 2 - Desktop app (from project root):**
-```bash
-cd src-tauri
-cargo tauri dev
-# Watches frontend + backend, auto-rebuilds on any change
-```
-
-Both terminals must run simultaneously. Changes to either frontend or backend automatically trigger rebuilds.
+This single command starts the Vite dev server (via `beforeDevCommand` in tauri.conf.json) and launches the desktop app. Changes to either frontend or backend automatically trigger rebuilds.
 
 ### Auto-Rebuild Behavior
 
-When the app is running via `cargo tauri dev`:
+When the app is running via `pnpm tauri dev`:
 - **Frontend changes** (`src/*.tsx`, `src/*.css`) → Instant hot reload via Vite
 - **Backend changes** (`src-tauri/src/*.rs`) → Auto-recompiles and restarts app (~5-10 seconds)
 
