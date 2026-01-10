@@ -12,7 +12,14 @@ struct ContentView: View {
             Group {
                 switch appState.activeTab {
                 case .projects:
-                    ProjectsView()
+                    switch appState.projectView {
+                    case .list:
+                        ProjectsView()
+                    case .detail(let project):
+                        ProjectDetailView(project: project)
+                    case .add:
+                        AddProjectView()
+                    }
                 case .artifacts:
                     ArtifactsView()
                 }
