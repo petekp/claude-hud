@@ -416,11 +416,10 @@ function App() {
 
   return (
     <div className="flex flex-col h-screen bg-(--color-background) text-(--color-foreground)">
-      <div
+      <header
         data-tauri-drag-region
-        className="h-7 flex-shrink-0 flex items-center justify-end px-2"
-      />
-      <header className="flex-shrink-0 border-b border-(--color-border) bg-(--color-muted)/30">
+        className="flex-shrink-0 border-b border-(--color-border) bg-(--color-muted)/30 pt-7"
+      >
         <div className="flex items-center">
           <nav className="flex flex-1">
             <TabButton
