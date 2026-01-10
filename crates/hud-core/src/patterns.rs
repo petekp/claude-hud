@@ -1,7 +1,16 @@
+//! Compiled regex patterns for parsing Claude Code files.
+//!
+//! These patterns are compiled once on first use and reused throughout
+//! the application for efficient parsing of JSONL session files and
+//! markdown frontmatter.
+
 use once_cell::sync::Lazy;
 use regex::Regex;
 
-// Stats parsing regexes (compiled once, reused)
+// ═══════════════════════════════════════════════════════════════════════════════
+// Stats Parsing Regexes
+// ═══════════════════════════════════════════════════════════════════════════════
+
 pub static RE_INPUT_TOKENS: Lazy<Regex> =
     Lazy::new(|| Regex::new(r#""input_tokens":(\d+)"#).unwrap());
 pub static RE_OUTPUT_TOKENS: Lazy<Regex> =
@@ -17,7 +26,10 @@ pub static RE_SUMMARY: Lazy<Regex> =
 pub static RE_TIMESTAMP: Lazy<Regex> =
     Lazy::new(|| Regex::new(r#""timestamp":"(\d{4}-\d{2}-\d{2}T[^"]+)""#).unwrap());
 
-// Frontmatter parsing regexes
+// ═══════════════════════════════════════════════════════════════════════════════
+// Frontmatter Parsing Regexes
+// ═══════════════════════════════════════════════════════════════════════════════
+
 pub static RE_FRONTMATTER: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"(?s)^---\s*\n(.*?)\n---").unwrap());
 pub static RE_FRONTMATTER_NAME: Lazy<Regex> =
@@ -25,7 +37,10 @@ pub static RE_FRONTMATTER_NAME: Lazy<Regex> =
 pub static RE_FRONTMATTER_DESC: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"(?m)^description:\s*(.+)$").unwrap());
 
-// Markdown stripping regexes
+// ═══════════════════════════════════════════════════════════════════════════════
+// Markdown Stripping Regexes
+// ═══════════════════════════════════════════════════════════════════════════════
+
 pub static RE_MD_BOLD_ASTERISK: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"\*\*([^*]+)\*\*").unwrap());
 pub static RE_MD_ITALIC_ASTERISK: Lazy<Regex> =

@@ -1,12 +1,13 @@
 [package]
 name = "claude-hud"
-version = "0.1.0"
 description = "Claude HUD - Dashboard for Claude Code"
-authors = ["you"]
-license = "MIT"
 repository = ""
-edition = "2021"
-rust-version = "1.77.2"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+default-run = "claude-hud"
 
 [lib]
 name = "app_lib"
@@ -16,17 +17,27 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2.5.3", features = [] }
 
 [dependencies]
-serde_json = "1.0"
-serde = { version = "1.0", features = ["derive"] }
+# Workspace dependencies
+serde.workspace = true
+serde_json.workspace = true
+regex.workspace = true
+walkdir.workspace = true
+dirs.workspace = true
+once_cell.workspace = true
+chrono.workspace = true
+
+# Local workspace crate
+hud-core = { path = "../crates/hud-core" }
+
+# Tauri-specific dependencies
 log = "0.4"
 tauri = { version = "2.9.5", features = [] }
 tauri-plugin-log = "2"
 tauri-plugin-shell = "2"
 tauri-plugin-dialog = "2"
 tauri-plugin-window-state = "2"
-dirs = "6.0"
-walkdir = "2.5"
-regex = "1.11"
 notify = "6.1"
-chrono = "0.4"
-once_cell = "1.19"
+
+# TUI dependencies (for hud-tui binary)
+ratatui = "0.29.0"
+crossterm = "0.29.0"

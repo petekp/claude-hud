@@ -1,3 +1,8 @@
+//! Statistics parsing and caching for Claude Code sessions.
+//!
+//! Parses token usage and activity data from JSONL session files,
+//! with intelligent mtime-based caching to avoid re-parsing unchanged files.
+
 use crate::patterns::*;
 use crate::types::{CachedFileInfo, CachedProjectStats, ProjectStats, StatsCache};
 use std::collections::HashMap;
@@ -5,6 +10,7 @@ use std::fs;
 use std::path::Path;
 use std::time::SystemTime;
 
+/// Parses statistics from session file content and accumulates into stats.
 pub fn parse_stats_from_content(content: &str, stats: &mut ProjectStats) {
     for cap in RE_INPUT_TOKENS.captures_iter(content) {
         if let Ok(n) = cap[1].parse::<u64>() {
@@ -58,6 +64,10 @@ pub fn parse_stats_from_content(content: &str, stats: &mut ProjectStats) {
     }
 }
 
+/// Computes project statistics with intelligent caching.
+///
+/// Uses file mtime to determine if re-parsing is needed, avoiding
+/// redundant file reads for unchanged session files.
 pub fn compute_project_stats(
     claude_projects_dir: &Path,
     encoded_name: &str,

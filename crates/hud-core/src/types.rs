@@ -1,0 +1,265 @@
+//! Core types shared across all Claude HUD clients.
+//!
+//! These types are the "lingua franca" of the HUD ecosystem. All clients
+//! (TUI, Tauri, mobile) use these exact same types, ensuring consistency.
+//!
+//! **Note:** These types match the existing src-tauri/src/types.rs exactly
+//! to ensure backward compatibility during the migration.
+
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Global Configuration
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/// Global Claude Code configuration and artifact counts.
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct GlobalConfig {
+    pub settings_path: String,
+    pub settings_exists: bool,
+    pub instructions_path: Option<String>,
+    pub skills_dir: Option<String>,
+    pub commands_dir: Option<String>,
+    pub agents_dir: Option<String>,
+    pub skill_count: usize,
+    pub command_count: usize,
+    pub agent_count: usize,
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Plugin Types
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/// An installed Claude Code plugin.
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct Plugin {
+    pub id: String,
+    pub name: String,
+    pub description: String,
+    pub enabled: bool,
+    pub path: String,
+    pub skill_count: usize,
+    pub command_count: usize,
+    pub agent_count: usize,
+    pub hook_count: usize,
+}
+
+/// Plugin manifest from plugin.json.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PluginManifest {
+    pub name: String,
+    pub description: Option<String>,
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Statistics Types
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/// Aggregated token usage statistics for a project.
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
+pub struct ProjectStats {
+    pub total_input_tokens: u64,
+    pub total_output_tokens: u64,
+    pub total_cache_read_tokens: u64,
+    pub total_cache_creation_tokens: u64,
+    pub opus_messages: u32,
+    pub sonnet_messages: u32,
+    pub haiku_messages: u32,
+    pub session_count: u32,
+    pub latest_summary: Option<String>,
+    pub first_activity: Option<String>,
+    pub last_activity: Option<String>,
+}
+
+/// Cached file metadata for cache invalidation.
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
+pub struct CachedFileInfo {
+    pub size: u64,
+    pub mtime: u64,
+}
+
+/// Cached statistics for a single project.
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
+pub struct CachedProjectStats {
+    pub files: HashMap<String, CachedFileInfo>,
+    pub stats: ProjectStats,
+}
+
+/// The full stats cache, persisted to disk.
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
+pub struct StatsCache {
+    pub projects: HashMap<String, CachedProjectStats>,
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Project Types
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/// A pinned project in the HUD.
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct Project {
+    pub name: String,
+    pub path: String,
+    pub display_path: String,
+    pub last_active: Option<String>,
+    pub claude_md_path: Option<String>,
+    pub claude_md_preview: Option<String>,
+    pub has_local_settings: bool,
+    pub task_count: u32,
+    pub stats: Option<ProjectStats>,
+}
+
+/// A task/session from a project (represents Claude Code sessions).
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct Task {
+    pub id: String,
+    pub name: String,
+    pub path: String,
+    pub last_modified: String,
+    pub summary: Option<String>,
+    pub first_message: Option<String>,
+}
+
+/// Detailed project information including tasks and git status.
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ProjectDetails {
+    pub project: Project,
+    pub claude_md_content: Option<String>,
+    pub tasks: Vec<Task>,
+    pub git_branch: Option<String>,
+    pub git_dirty: bool,
+}
+
+/// A project discovered in `~/.claude/projects/` but not yet pinned.
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct SuggestedProject {
+    pub path: String,
+    pub display_path: String,
+    pub name: String,
+    pub task_count: u32,
+    pub has_claude_md: bool,
+    pub has_project_indicators: bool,
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Artifact Types
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/// A skill, command, or agent definition.
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct Artifact {
+    pub artifact_type: String,
+    pub name: String,
+    pub description: String,
+    pub source: String,
+    pub path: String,
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Dashboard Types
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/// Aggregate data for the dashboard view.
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct DashboardData {
+    pub global: GlobalConfig,
+    pub plugins: Vec<Plugin>,
+    pub projects: Vec<Project>,
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Configuration Types
+// ═══════════════════════════════════════════════════════════════════════════════
+
+fn default_terminal_app() -> String {
+    "Ghostty".to_string()
+}
+
+/// HUD configuration (pinned projects, etc.)
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
+pub struct HudConfig {
+    pub pinned_projects: Vec<String>,
+    #[serde(default = "default_terminal_app")]
+    pub terminal_app: String,
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Session State Types
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/// The current state of a Claude Code session.
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum SessionState {
+    Working,
+    Ready,
+    #[default]
+    Idle,
+    Compacting,
+    Waiting,
+}
+
+impl SessionState {
+    /// Whether this state indicates Claude needs attention.
+    pub fn needs_attention(&self) -> bool {
+        matches!(self, Self::Ready | Self::Waiting)
+    }
+
+    /// Whether this state indicates Claude is busy.
+    pub fn is_busy(&self) -> bool {
+        matches!(self, Self::Working | Self::Compacting)
+    }
+}
+
+/// Context window usage information.
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ContextInfo {
+    pub percent_used: u32,
+    pub tokens_used: u64,
+    pub context_size: u64,
+    pub updated_at: Option<String>,
+}
+
+/// Full session state with context information.
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ProjectSessionState {
+    pub state: SessionState,
+    pub state_changed_at: Option<String>,
+    pub session_id: Option<String>,
+    pub working_on: Option<String>,
+    pub next_step: Option<String>,
+    pub context: Option<ContextInfo>,
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Session States File Format (hud-status.json)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/// Context info as stored in the session states file.
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ContextInfoEntry {
+    pub percent_used: Option<u32>,
+    pub tokens_used: Option<u64>,
+    pub context_size: Option<u64>,
+    pub updated_at: Option<String>,
+}
+
+/// A single project's session state entry in the file.
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
+pub struct SessionStateEntry {
+    #[serde(default)]
+    pub state: String,
+    pub state_changed_at: Option<String>,
+    pub session_id: Option<String>,
+    pub working_on: Option<String>,
+    pub next_step: Option<String>,
+    pub context: Option<ContextInfoEntry>,
+}
+
+/// The full session states file format.
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
+pub struct SessionStatesFile {
+    pub version: u32,
+    pub projects: HashMap<String, SessionStateEntry>,
+}
