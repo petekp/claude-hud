@@ -143,14 +143,14 @@ fn extract_session_data(session_path: &std::path::Path) -> SessionExtract {
 
 #[tauri::command]
 fn load_dashboard() -> Result<DashboardData, String> {
-    let engine = HudEngine::new()?;
-    engine.load_dashboard()
+    let engine = HudEngine::new().map_err(|e| e.to_string())?;
+    engine.load_dashboard().map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 fn load_projects() -> Result<Vec<Project>, String> {
-    let engine = HudEngine::new()?;
-    engine.list_projects()
+    let engine = HudEngine::new().map_err(|e| e.to_string())?;
+    engine.list_projects().map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -325,7 +325,7 @@ fn load_project_details(path: String) -> Result<ProjectDetails, String> {
 
 #[tauri::command]
 fn load_artifacts() -> Result<Vec<Artifact>, String> {
-    let engine = HudEngine::new()?;
+    let engine = HudEngine::new().map_err(|e| e.to_string())?;
     Ok(engine.list_artifacts())
 }
 
@@ -1239,34 +1239,34 @@ fn get_cwd_from_tty(tty: &str) -> Option<String> {
 
 #[tauri::command]
 fn add_project(path: String) -> Result<(), String> {
-    let engine = HudEngine::new()?;
-    engine.add_project(&path)
+    let engine = HudEngine::new().map_err(|e| e.to_string())?;
+    engine.add_project(path).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 fn remove_project(path: String) -> Result<(), String> {
-    let engine = HudEngine::new()?;
-    engine.remove_project(&path)
+    let engine = HudEngine::new().map_err(|e| e.to_string())?;
+    engine.remove_project(path).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 fn load_suggested_projects() -> Result<Vec<SuggestedProject>, String> {
-    let engine = HudEngine::new()?;
-    engine.get_suggested_projects()
+    let engine = HudEngine::new().map_err(|e| e.to_string())?;
+    engine.get_suggested_projects().map_err(|e| e.to_string())
 }
 
 pub use hud_core::sessions::ProjectStatus;
 
 #[tauri::command]
 fn get_project_status(project_path: String) -> Result<Option<ProjectStatus>, String> {
-    let engine = HudEngine::new()?;
-    Ok(engine.get_project_status(&project_path))
+    let engine = HudEngine::new().map_err(|e| e.to_string())?;
+    Ok(engine.get_project_status(project_path))
 }
 
 #[tauri::command]
 fn get_session_state(project_path: String) -> Result<ProjectSessionState, String> {
-    let engine = HudEngine::new()?;
-    Ok(engine.get_session_state(&project_path))
+    let engine = HudEngine::new().map_err(|e| e.to_string())?;
+    Ok(engine.get_session_state(project_path))
 }
 
 #[tauri::command]

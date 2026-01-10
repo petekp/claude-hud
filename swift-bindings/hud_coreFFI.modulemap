@@ -1,0 +1,4 @@
+module hud_coreFFI {
+    header "hud_coreFFI.h"
+    export *
+}

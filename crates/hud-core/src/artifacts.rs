@@ -19,12 +19,14 @@ use walkdir::WalkDir;
 ///
 /// For skills: counts directories containing SKILL.md or skill.md
 /// For commands/agents: counts .md files
-pub fn count_artifacts_in_dir(dir: &Path, artifact_type: &str) -> usize {
+///
+/// Returns u32 for FFI compatibility (usize is platform-dependent).
+pub fn count_artifacts_in_dir(dir: &Path, artifact_type: &str) -> u32 {
     if !dir.exists() {
         return 0;
     }
 
-    match artifact_type {
+    let count = match artifact_type {
         "skills" => WalkDir::new(dir)
             .min_depth(1)
             .max_depth(1)
@@ -45,11 +47,14 @@ pub fn count_artifacts_in_dir(dir: &Path, artifact_type: &str) -> usize {
             .filter(|e| e.path().extension().is_some_and(|ext| ext == "md"))
             .count(),
         _ => 0,
-    }
+    };
+    count as u32
 }
 
 /// Counts hooks in a plugin directory.
-pub fn count_hooks_in_dir(dir: &Path) -> usize {
+///
+/// Returns u32 for FFI compatibility.
+pub fn count_hooks_in_dir(dir: &Path) -> u32 {
     let hooks_json = dir.join("hooks").join("hooks.json");
     if hooks_json.exists() {
         1

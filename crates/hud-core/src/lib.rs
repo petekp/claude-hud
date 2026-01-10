@@ -1,7 +1,7 @@
 //! # hud-core
 //!
 //! Core library for Claude HUD, providing shared business logic for all clients
-//! (TUI, Tauri desktop, mobile server).
+//! (TUI, Tauri desktop, mobile server, native Swift).
 //!
 //! ## Design Principles
 //!
@@ -9,6 +9,7 @@
 //! - **Not thread-safe**: Clients provide their own synchronization (`Mutex`, `RwLock`).
 //! - **Graceful degradation**: Missing files return empty/default values, not errors.
 //! - **Single source of truth**: All clients share these types and logic.
+//! - **FFI-ready**: UniFFI annotations enable Swift, Kotlin, Python bindings.
 //!
 //! ## Quick Start
 //!
@@ -19,6 +20,9 @@
 //! let projects = engine.list_projects();
 //! let states = engine.get_session_states();
 //! ```
+
+// UniFFI scaffolding for Swift/Kotlin/Python bindings
+uniffi::setup_scaffolding!();
 
 // Public modules
 pub mod artifacts;
@@ -35,7 +39,7 @@ pub mod types;
 pub use artifacts::*;
 pub use config::*;
 pub use engine::HudEngine;
-pub use error::{HudError, Result};
+pub use error::{HudError, HudFfiError, Result};
 pub use patterns::*;
 pub use projects::*;
 pub use sessions::*;

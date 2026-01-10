@@ -80,7 +80,7 @@ pub fn get_all_session_states(
 }
 
 /// Project status as stored in .claude/hud-status.json within each project.
-#[derive(Debug, serde::Serialize, serde::Deserialize, Clone, Default)]
+#[derive(Debug, serde::Serialize, serde::Deserialize, Clone, Default, uniffi::Record)]
 pub struct ProjectStatus {
     pub working_on: Option<String>,
     pub next_step: Option<String>,

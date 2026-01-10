@@ -24,3 +24,11 @@ dist-ssr
 *.sw?
 .claude/hud-status.json
 recover.md
+
+# Swift build artifacts
+ClaudeHUD/.build/
+ClaudeHUD/ClaudeHUD.app/
+ClaudeHUD/.swiftpm/
+
+# Rust target (should already be ignored but ensure)
+target/

@@ -1,7 +1,9 @@
 //! Core types shared across all Claude HUD clients.
 //!
 //! These types are the "lingua franca" of the HUD ecosystem. All clients
-//! (TUI, Tauri, mobile) use these exact same types, ensuring consistency.
+//! (TUI, Tauri, mobile, native Swift) use these exact same types, ensuring consistency.
+//!
+//! **FFI Support:** All types are annotated with UniFFI macros for Swift/Kotlin/Python bindings.
 //!
 //! **Note:** These types match the existing src-tauri/src/types.rs exactly
 //! to ensure backward compatibility during the migration.
@@ -14,7 +16,7 @@ use std::collections::HashMap;
 // ═══════════════════════════════════════════════════════════════════════════════
 
 /// Global Claude Code configuration and artifact counts.
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, uniffi::Record)]
 pub struct GlobalConfig {
     pub settings_path: String,
     pub settings_exists: bool,
@@ -22,9 +24,9 @@ pub struct GlobalConfig {
     pub skills_dir: Option<String>,
     pub commands_dir: Option<String>,
     pub agents_dir: Option<String>,
-    pub skill_count: usize,
-    pub command_count: usize,
-    pub agent_count: usize,
+    pub skill_count: u32,
+    pub command_count: u32,
+    pub agent_count: u32,
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -32,21 +34,21 @@ pub struct GlobalConfig {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 /// An installed Claude Code plugin.
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, uniffi::Record)]
 pub struct Plugin {
     pub id: String,
     pub name: String,
     pub description: String,
     pub enabled: bool,
     pub path: String,
-    pub skill_count: usize,
-    pub command_count: usize,
-    pub agent_count: usize,
-    pub hook_count: usize,
+    pub skill_count: u32,
+    pub command_count: u32,
+    pub agent_count: u32,
+    pub hook_count: u32,
 }
 
 /// Plugin manifest from plugin.json.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, uniffi::Record)]
 pub struct PluginManifest {
     pub name: String,
     pub description: Option<String>,
@@ -57,7 +59,7 @@ pub struct PluginManifest {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 /// Aggregated token usage statistics for a project.
-#[derive(Debug, Serialize, Deserialize, Clone, Default)]
+#[derive(Debug, Serialize, Deserialize, Clone, Default, uniffi::Record)]
 pub struct ProjectStats {
     pub total_input_tokens: u64,
     pub total_output_tokens: u64,
@@ -73,21 +75,21 @@ pub struct ProjectStats {
 }
 
 /// Cached file metadata for cache invalidation.
-#[derive(Debug, Serialize, Deserialize, Clone, Default)]
+#[derive(Debug, Serialize, Deserialize, Clone, Default, uniffi::Record)]
 pub struct CachedFileInfo {
     pub size: u64,
     pub mtime: u64,
 }
 
 /// Cached statistics for a single project.
-#[derive(Debug, Serialize, Deserialize, Clone, Default)]
+#[derive(Debug, Serialize, Deserialize, Clone, Default, uniffi::Record)]
 pub struct CachedProjectStats {
     pub files: HashMap<String, CachedFileInfo>,
     pub stats: ProjectStats,
 }
 
 /// The full stats cache, persisted to disk.
-#[derive(Debug, Serialize, Deserialize, Clone, Default)]
+#[derive(Debug, Serialize, Deserialize, Clone, Default, uniffi::Record)]
 pub struct StatsCache {
     pub projects: HashMap<String, CachedProjectStats>,
 }
@@ -97,7 +99,7 @@ pub struct StatsCache {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 /// A pinned project in the HUD.
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, uniffi::Record)]
 pub struct Project {
     pub name: String,
     pub path: String,
@@ -111,7 +113,7 @@ pub struct Project {
 }
 
 /// A task/session from a project (represents Claude Code sessions).
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, uniffi::Record)]
 pub struct Task {
     pub id: String,
     pub name: String,
@@ -122,7 +124,7 @@ pub struct Task {
 }
 
 /// Detailed project information including tasks and git status.
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, uniffi::Record)]
 pub struct ProjectDetails {
     pub project: Project,
     pub claude_md_content: Option<String>,
@@ -132,7 +134,7 @@ pub struct ProjectDetails {
 }
 
 /// A project discovered in `~/.claude/projects/` but not yet pinned.
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, uniffi::Record)]
 pub struct SuggestedProject {
     pub path: String,
     pub display_path: String,
@@ -147,7 +149,7 @@ pub struct SuggestedProject {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 /// A skill, command, or agent definition.
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, uniffi::Record)]
 pub struct Artifact {
     pub artifact_type: String,
     pub name: String,
@@ -161,7 +163,7 @@ pub struct Artifact {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 /// Aggregate data for the dashboard view.
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, uniffi::Record)]
 pub struct DashboardData {
     pub global: GlobalConfig,
     pub plugins: Vec<Plugin>,
@@ -177,11 +179,20 @@ fn default_terminal_app() -> String {
 }
 
 /// HUD configuration (pinned projects, etc.)
-#[derive(Debug, Serialize, Deserialize, Clone, Default)]
+#[derive(Debug, Serialize, Deserialize, Clone, uniffi::Record)]
 pub struct HudConfig {
     pub pinned_projects: Vec<String>,
     #[serde(default = "default_terminal_app")]
     pub terminal_app: String,
+}
+
+impl Default for HudConfig {
+    fn default() -> Self {
+        Self {
+            pinned_projects: Vec::new(),
+            terminal_app: default_terminal_app(),
+        }
+    }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -189,7 +200,7 @@ pub struct HudConfig {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 /// The current state of a Claude Code session.
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Default)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Default, uniffi::Enum)]
 #[serde(rename_all = "lowercase")]
 pub enum SessionState {
     Working,
@@ -213,7 +224,7 @@ impl SessionState {
 }
 
 /// Context window usage information.
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, uniffi::Record)]
 pub struct ContextInfo {
     pub percent_used: u32,
     pub tokens_used: u64,
@@ -222,7 +233,7 @@ pub struct ContextInfo {
 }
 
 /// Full session state with context information.
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, uniffi::Record)]
 pub struct ProjectSessionState {
     pub state: SessionState,
     pub state_changed_at: Option<String>,
@@ -237,7 +248,7 @@ pub struct ProjectSessionState {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 /// Context info as stored in the session states file.
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, uniffi::Record)]
 pub struct ContextInfoEntry {
     pub percent_used: Option<u32>,
     pub tokens_used: Option<u64>,
@@ -246,7 +257,7 @@ pub struct ContextInfoEntry {
 }
 
 /// A single project's session state entry in the file.
-#[derive(Debug, Serialize, Deserialize, Clone, Default)]
+#[derive(Debug, Serialize, Deserialize, Clone, Default, uniffi::Record)]
 pub struct SessionStateEntry {
     #[serde(default)]
     pub state: String,
@@ -258,7 +269,7 @@ pub struct SessionStateEntry {
 }
 
 /// The full session states file format.
-#[derive(Debug, Serialize, Deserialize, Clone, Default)]
+#[derive(Debug, Serialize, Deserialize, Clone, Default, uniffi::Record)]
 pub struct SessionStatesFile {
     pub version: u32,
     pub projects: HashMap<String, SessionStateEntry>,

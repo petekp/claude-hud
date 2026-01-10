@@ -20,6 +20,7 @@ use crate::artifacts::{collect_artifacts_from_dir, count_artifacts_in_dir, count
 use crate::config::{
     get_claude_dir, load_hud_config, resolve_symlink, save_hud_config,
 };
+use crate::error::HudFfiError;
 use crate::projects::{has_project_indicators, load_projects};
 use crate::sessions::{detect_session_state, read_project_status, ProjectStatus};
 use crate::types::{
@@ -28,27 +29,31 @@ use crate::types::{
 };
 use std::collections::HashMap;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 /// The main engine for Claude HUD operations.
 ///
 /// Provides a unified API for all HUD functionality, suitable for any client type.
+/// This is the primary FFI interface for Swift/Kotlin/Python clients.
+#[derive(uniffi::Object)]
 pub struct HudEngine {
     claude_dir: PathBuf,
 }
 
+#[uniffi::export]
 impl HudEngine {
     /// Creates a new HudEngine instance.
     ///
     /// Returns an error if the Claude directory (~/.claude) cannot be found.
-    pub fn new() -> Result<Self, String> {
-        let claude_dir = get_claude_dir().ok_or("Could not find Claude directory")?;
+    #[uniffi::constructor]
+    pub fn new() -> Result<Self, HudFfiError> {
+        let claude_dir = get_claude_dir().ok_or_else(|| HudFfiError::from("Could not find Claude directory"))?;
         Ok(Self { claude_dir })
     }
 
-    /// Returns the path to the Claude directory.
-    pub fn claude_dir(&self) -> &Path {
-        &self.claude_dir
+    /// Returns the path to the Claude directory as a string.
+    pub fn claude_dir(&self) -> String {
+        self.claude_dir.to_string_lossy().to_string()
     }
 
     // ─────────────────────────────────────────────────────────────────────────────
@@ -56,8 +61,8 @@ impl HudEngine {
     // ─────────────────────────────────────────────────────────────────────────────
 
     /// Lists all pinned projects, sorted by most recent activity.
-    pub fn list_projects(&self) -> Result<Vec<Project>, String> {
-        load_projects()
+    pub fn list_projects(&self) -> Result<Vec<Project>, HudFfiError> {
+        load_projects().map_err(HudFfiError::from)
     }
 
     /// Gets the HUD configuration (pinned projects, terminal app, etc.)
@@ -66,30 +71,30 @@ impl HudEngine {
     }
 
     /// Adds a project to the pinned projects list.
-    pub fn add_project(&self, path: &str) -> Result<(), String> {
+    pub fn add_project(&self, path: String) -> Result<(), HudFfiError> {
         let mut config = load_hud_config();
 
-        if !Path::new(path).exists() {
-            return Err(format!("Path does not exist: {}", path));
+        if !std::path::Path::new(&path).exists() {
+            return Err(HudFfiError::from(format!("Path does not exist: {}", path)));
         }
 
-        if config.pinned_projects.contains(&path.to_string()) {
-            return Err(format!("Project already pinned: {}", path));
+        if config.pinned_projects.contains(&path) {
+            return Err(HudFfiError::from(format!("Project already pinned: {}", path)));
         }
 
-        config.pinned_projects.push(path.to_string());
-        save_hud_config(&config)
+        config.pinned_projects.push(path);
+        save_hud_config(&config).map_err(HudFfiError::from)
     }
 
     /// Removes a project from the pinned projects list.
-    pub fn remove_project(&self, path: &str) -> Result<(), String> {
+    pub fn remove_project(&self, path: String) -> Result<(), HudFfiError> {
         let mut config = load_hud_config();
-        config.pinned_projects.retain(|p| p != path);
-        save_hud_config(&config)
+        config.pinned_projects.retain(|p| p != &path);
+        save_hud_config(&config).map_err(HudFfiError::from)
     }
 
     /// Discovers suggested projects based on activity in ~/.claude/projects.
-    pub fn get_suggested_projects(&self) -> Result<Vec<SuggestedProject>, String> {
+    pub fn get_suggested_projects(&self) -> Result<Vec<SuggestedProject>, HudFfiError> {
         let projects_dir = self.claude_dir.join("projects");
         if !projects_dir.exists() {
             return Ok(Vec::new());
@@ -168,19 +173,21 @@ impl HudEngine {
     // ─────────────────────────────────────────────────────────────────────────────
 
     /// Gets the session state for a single project.
-    pub fn get_session_state(&self, project_path: &str) -> ProjectSessionState {
-        detect_session_state(project_path)
+    pub fn get_session_state(&self, project_path: String) -> ProjectSessionState {
+        detect_session_state(&project_path)
     }
 
     /// Gets session states for multiple projects.
-    pub fn get_all_session_states(&self, projects: &[Project]) -> HashMap<String, ProjectSessionState> {
+    ///
+    /// Takes a Vec instead of slice for FFI compatibility.
+    pub fn get_all_session_states(&self, projects: Vec<Project>) -> HashMap<String, ProjectSessionState> {
         let paths: Vec<String> = projects.iter().map(|p| p.path.clone()).collect();
         crate::sessions::get_all_session_states(&paths)
     }
 
     /// Gets project status from .claude/hud-status.json.
-    pub fn get_project_status(&self, project_path: &str) -> Option<ProjectStatus> {
-        read_project_status(project_path)
+    pub fn get_project_status(&self, project_path: String) -> Option<ProjectStatus> {
+        read_project_status(&project_path)
     }
 
     // ─────────────────────────────────────────────────────────────────────────────
@@ -243,14 +250,14 @@ impl HudEngine {
     // ─────────────────────────────────────────────────────────────────────────────
 
     /// Lists all installed plugins.
-    pub fn list_plugins(&self) -> Result<Vec<Plugin>, String> {
+    pub fn list_plugins(&self) -> Result<Vec<Plugin>, HudFfiError> {
         let registry_path = self.claude_dir.join("plugins").join("installed_plugins.json");
         if !registry_path.exists() {
             return Ok(Vec::new());
         }
 
         let content = fs::read_to_string(&registry_path)
-            .map_err(|e| format!("Failed to read plugin registry: {}", e))?;
+            .map_err(|e| HudFfiError::from(format!("Failed to read plugin registry: {}", e)))?;
 
         #[derive(serde::Deserialize)]
         struct Registry {
@@ -264,7 +271,7 @@ impl HudEngine {
         }
 
         let registry: Registry = serde_json::from_str(&content)
-            .map_err(|e| format!("Failed to parse plugin registry: {}", e))?;
+            .map_err(|e| HudFfiError::from(format!("Failed to parse plugin registry: {}", e)))?;
 
         // Load settings to check enabled status
         let settings_path = self.claude_dir.join("settings.json");
@@ -329,7 +336,7 @@ impl HudEngine {
     // ─────────────────────────────────────────────────────────────────────────────
 
     /// Loads all dashboard data in one call.
-    pub fn load_dashboard(&self) -> Result<DashboardData, String> {
+    pub fn load_dashboard(&self) -> Result<DashboardData, HudFfiError> {
         let settings_path = self.claude_dir.join("settings.json");
         let instructions_path = self.claude_dir.join("CLAUDE.md");
 
