@@ -21,7 +21,7 @@ let package = Package(
             path: "Sources/ClaudeHUD",
             linkerSettings: [
                 .linkedLibrary("hud_core"),
-                .unsafeFlags(["-L", "../target/release"])
+                .unsafeFlags(["-L", "../../target/release"])
             ]
         )
     ]

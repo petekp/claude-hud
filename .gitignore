@@ -26,9 +26,9 @@ dist-ssr
 recover.md
 
 # Swift build artifacts
-ClaudeHUD/.build/
-ClaudeHUD/ClaudeHUD.app/
-ClaudeHUD/.swiftpm/
+apps/swift/.build/
+apps/swift/.swiftpm/
+apps/swift/*.app
 
 # Rust target (should already be ignored but ensure)
 target/

@@ -1,5 +1,5 @@
 module hud_coreFFI {
-    header "../../../swift-bindings/hud_coreFFI.h"
+    header "../../bindings/hud_coreFFI.h"
     link "hud_core"
     export *
 }

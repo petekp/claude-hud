@@ -1,8 +1,11 @@
 # Claude HUD - Project Development Guide
 
-Claude HUD is a cross-platform desktop application that serves as a dashboard for Claude Code, displaying project statistics, task tracking, plugin management, and global Claude Code configuration insights. It combines a Rust backend (Tauri) with a TypeScript/React frontend.
+Claude HUD is a cross-platform desktop application that serves as a dashboard for Claude Code, displaying project statistics, task tracking, plugin management, and global Claude Code configuration insights. It features multiple frontends sharing a common Rust core:
 
-> **Development Workflow:** Run `pnpm tauri dev` to start the app. This automatically starts the frontend dev server and launches the desktop app. Changes auto-rebuild and hot-reload. Claude should make changes incrementally and verify results in the running app.
+- **Tauri App** (apps/tauri) - Cross-platform desktop app with React frontend
+- **Swift App** (apps/swift) - Native macOS app with SwiftUI, 120Hz animations
+
+> **Development Workflow:** For the Tauri app, run `cd apps/tauri && pnpm tauri dev`. For the Swift app, run `cd apps/swift && swift build`. Changes auto-rebuild and hot-reload.
 
 ## Product Vision
 
@@ -16,186 +19,182 @@ Claude HUD is a cross-platform desktop application that serves as a dashboard fo
 
 ## Project Overview
 
-**Architecture:**
-- **Frontend:** TypeScript with React 19 (located in `src/`)
-  - Built to `dist/` directory for production
-  - Dev server runs on `http://localhost:5173`
-  - Single-file app architecture (`App.tsx`)
-- **Backend:** Rust with Tauri v2.9.5 (located in `src-tauri/`)
-  - Desktop application framework
-  - IPC communication with frontend via Tauri commands
-  - Handles file system access, subprocess execution, native dialogs
-- **Build System:**
-  - Frontend: pnpm + Vite
-  - Backend: Cargo (Rust build system)
-  - Desktop app bundling: Tauri CLI
+**Multi-Platform Architecture:**
 
-**Tech Stack:**
-- Node.js + TypeScript + React 19 + Tailwind CSS 4 + pnpm (Frontend)
-- Rust 1.77.2+ with Tauri 2.9.5 (Backend)
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    Frontend Clients                         │
+│  ┌─────────────────────┐  ┌─────────────────────────────┐  │
+│  │ Tauri (apps/tauri)  │  │ Swift (apps/swift)          │  │
+│  │ React 19 + Tailwind │  │ SwiftUI + 120Hz ProMotion   │  │
+│  └──────────┬──────────┘  └──────────────┬──────────────┘  │
+└─────────────┼────────────────────────────┼──────────────────┘
+              │ Tauri IPC                  │ UniFFI
+              ▼                            ▼
+┌─────────────────────────────────────────────────────────────┐
+│                    hud-core (core/hud-core)                 │
+│  Shared Rust library: projects, sessions, stats, artifacts │
+└─────────────────────────────────────────────────────────────┘
+```
+
+**Tauri App** (`apps/tauri/`):
+- Frontend: React 19 + TypeScript + Tailwind CSS 4 (`src/`)
+- Backend: Rust + Tauri v2.9.5 (`src-tauri/`)
 - Cross-platform: macOS, Windows, Linux
+
+**Swift App** (`apps/swift/`):
+- Native SwiftUI for macOS 14+
+- UniFFI bindings to hud-core
+- 120Hz ProMotion animations
+
+**Shared Core** (`core/hud-core/`):
+- Pure Rust library with all business logic
+- Project scanning, session state, statistics, artifacts
+- Exports via UniFFI for Swift, Tauri IPC for React
 
 ## Development Workflow
 
 ### Quick Start
 
-**IMPORTANT: The app should be running during development.** When making changes, the app auto-rebuilds and hot-reloads so you can immediately see results.
+**IMPORTANT: Keep apps running during development.** Changes auto-rebuild and hot-reload.
 
-From the root `claude-hud/` directory:
-
+#### Tauri App (from `apps/tauri/`)
 ```bash
-pnpm tauri dev
+cd apps/tauri
+pnpm install      # First time only
+pnpm tauri dev    # Launch with hot reload
 ```
 
-This single command:
-- Starts the Vite dev server on `http://localhost:5173` (via `beforeDevCommand`)
-- Launches the Tauri desktop app
-- Watches for changes in both frontend and backend, and auto-rebuilds
-
-### Auto-Rebuild Behavior
-
-When the app is running via `pnpm tauri dev`:
-- **Frontend changes** (`src/*.tsx`, `src/*.css`) → Instant hot reload via Vite
-- **Backend changes** (`src-tauri/src/*.rs`) → Auto-recompiles and restarts app (~5-10 seconds)
-
-**Claude should keep the app running** and make changes incrementally. After each change, the app will automatically rebuild so you can verify the result immediately.
+#### Swift App (from `apps/swift/`)
+```bash
+cargo build -p hud-core --release  # Build Rust library first
+cd apps/swift
+swift build       # Debug build
+swift run         # Run the app
+```
 
 ### Common Commands
 
-All commands run from the root `claude-hud/` directory unless noted otherwise.
+#### Rust Core (from root)
+```bash
+cargo check --workspace    # Check all crates
+cargo build --workspace    # Build all crates
+cargo build -p hud-core --release  # Build core for Swift
+cargo fmt                  # Format code (required before commits)
+cargo clippy -- -D warnings  # Lint
+cargo test                 # Run all tests
+```
 
-#### Frontend & App (pnpm)
+#### Tauri App (from `apps/tauri/`)
 ```bash
 pnpm dev          # Start frontend dev server
 pnpm build        # Build frontend for production
-pnpm tauri dev    # Launch app in dev mode (watches for changes)
+pnpm tauri dev    # Launch app in dev mode
 pnpm tauri build  # Build app for distribution
-pnpm preview      # Preview production build
 pnpm lint         # Run ESLint
-npx tsc --noEmit  # Run TypeScript type checking only
 ```
 
-#### Backend (Cargo) - run from `src-tauri/`
+#### Swift App (from `apps/swift/`)
 ```bash
-cargo check       # Check code without building
-cargo build       # Debug build
-cargo build --release # Release build (optimized)
-cargo fmt         # Format code (required before commits)
-cargo clippy -- -D warnings  # Lint and catch common mistakes
-cargo test        # Run all tests
-cargo test test_name -- --nocapture  # Run specific test with output
+swift build             # Debug build
+swift build -c release  # Release build
+swift run               # Run the app
 ```
 
 ### Building for Distribution
 
+#### Tauri App
 ```bash
-# From root directory
-pnpm tauri build
-
-# Build for specific platform
-pnpm tauri build --target x86_64-apple-darwin  # macOS Intel
-pnpm tauri build --target aarch64-apple-darwin # macOS Apple Silicon
+cd apps/tauri
+pnpm tauri build --target aarch64-apple-darwin  # macOS Apple Silicon
+pnpm tauri build --target x86_64-apple-darwin   # macOS Intel
 pnpm tauri build --target x86_64-pc-windows-msvc # Windows
 ```
+Built apps appear in `apps/tauri/src-tauri/target/release/bundle/`.
 
-Built apps appear in `src-tauri/target/release/bundle/`.
+#### Swift App
+```bash
+cargo build -p hud-core --release
+cd apps/swift
+swift build -c release
+# Create .app bundle manually or use xcodebuild
+```
 
 ## Project Structure
 
-This is a **Cargo workspace** with multiple crates:
+This is a **Cargo workspace** with a shared core and multiple app frontends:
 
 ```
 claude-hud/
 ├── CLAUDE.md                    # This file
 ├── Cargo.toml                   # Workspace manifest
-├── crates/
-│   └── hud-core/                # Shared core library
+├── core/
+│   └── hud-core/                # Shared Rust core library
 │       ├── Cargo.toml
 │       └── src/
-│           ├── lib.rs           # Re-exports
-│           ├── engine.rs        # HudEngine facade (~374 lines)
-│           ├── types.rs         # Shared types (~185 lines)
+│           ├── lib.rs           # Re-exports + UniFFI scaffolding
+│           ├── engine.rs        # HudEngine facade
+│           ├── types.rs         # Shared types (UniFFI exported)
+│           ├── error.rs         # Error types (UniFFI exported)
 │           ├── patterns.rs      # Compiled regex patterns
 │           ├── config.rs        # Config and path utilities
 │           ├── stats.rs         # Statistics parsing and caching
 │           ├── projects.rs      # Project loading and discovery
 │           ├── sessions.rs      # Session state detection
-│           ├── artifacts.rs     # Artifact discovery
-│           └── error.rs         # Error types
+│           └── artifacts.rs     # Artifact discovery
+├── apps/
+│   ├── tauri/                   # Tauri desktop app (cross-platform)
+│   │   ├── package.json         # Frontend dependencies
+│   │   ├── vite.config.ts       # Vite bundler config
+│   │   ├── tsconfig.json        # TypeScript configuration
+│   │   ├── index.html           # HTML entry point
+│   │   ├── src/                 # React frontend
+│   │   │   ├── main.tsx
+│   │   │   ├── App.tsx
+│   │   │   ├── types.ts
+│   │   │   ├── index.css
+│   │   │   ├── components/
+│   │   │   ├── hooks/
+│   │   │   └── utils/
+│   │   └── src-tauri/           # Rust backend
+│   │       ├── Cargo.toml
+│   │       ├── src/lib.rs       # IPC command handlers
+│   │       ├── tauri.conf.json
+│   │       └── icons/
+│   └── swift/                   # Native macOS app
+│       ├── Package.swift        # Swift Package Manager config
+│       ├── Sources/
+│       │   ├── ClaudeHUD/       # SwiftUI app
+│       │   │   ├── App.swift
+│       │   │   ├── ContentView.swift
+│       │   │   ├── Models/
+│       │   │   ├── Views/
+│       │   │   └── Theme/
+│       │   └── HudCoreFFI/      # FFI module wrapper
+│       └── bindings/            # Generated UniFFI bindings
+│           ├── hud_core.swift
+│           └── hud_coreFFI.h
+├── target/                      # Shared Rust build output
 ├── docs/
-│   ├── claude-code-artifacts.md # Claude Code disk artifacts reference
-│   ├── tauri-capabilities.md    # Tauri process/terminal capabilities reference
-│   └── cc/                      # Claude Code official documentation (52 files)
-├── scripts/
-│   └── fetch-cc-docs.ts         # Script to update Claude Code docs
-├── package.json                 # Frontend dependencies
-├── pnpm-lock.yaml               # Frontend lock file
-├── tsconfig.json                # TypeScript configuration
-├── tsconfig.app.json            # App-specific TS config
-├── vite.config.ts               # Vite bundler config
-├── index.html                   # HTML entry point
-├── src/                         # Frontend React source
-│   ├── main.tsx                 # React app entry
-│   ├── App.tsx                  # Root component (~476 lines, state and handlers)
-│   ├── types.ts                 # TypeScript interfaces (must match Rust structs)
-│   ├── index.css                # Tailwind CSS + theme (oklch colors)
-│   ├── lib/
-│   │   └── utils.ts             # Utility functions (cn for class merging)
-│   ├── utils/
-│   │   ├── format.ts            # formatTokenCount, formatCost
-│   │   └── pricing.ts           # PRICING constants, calculateCost
-│   ├── hooks/
-│   │   ├── useWindowPersistence.ts  # Window position save/restore
-│   │   ├── useTheme.ts              # Dark mode detection
-│   │   ├── useFocusOnHover.ts       # Auto-focus on mouse enter
-│   │   └── useNotificationSound.ts  # Ready notification sound
-│   ├── components/
-│   │   ├── Icon.tsx             # SVG icon component
-│   │   ├── TabButton.tsx        # Header tab button
-│   │   ├── ProjectCard.tsx      # Full project card
-│   │   ├── CompactProjectCard.tsx  # Compact project card
-│   │   ├── ui/                  # shadcn/ui components
-│   │   │   ├── button.tsx
-│   │   │   ├── badge.tsx
-│   │   │   ├── card.tsx
-│   │   │   ├── input.tsx
-│   │   │   ├── switch.tsx
-│   │   │   ├── table.tsx
-│   │   │   ├── scroll-area.tsx
-│   │   │   └── separator.tsx
-│   │   └── panels/
-│   │       ├── ProjectsPanel.tsx     # Project list view
-│   │       ├── ProjectDetailPanel.tsx # Project details view
-│   │       ├── AddProjectPanel.tsx    # Add project form
-│   │       └── ArtifactsPanel.tsx     # Artifacts and plugins
-│   └── assets/                  # Static assets
-├── dist/                        # Built frontend (generated by pnpm build)
-└── src-tauri/                   # Rust backend (Tauri app)
-    ├── src/
-    │   ├── main.rs              # App entry point (6 lines)
-    │   ├── lib.rs               # IPC commands (~1,620 lines, thin wrappers over hud-core)
-    │   └── bin/
-    │       └── hud-tui.rs       # Terminal UI (~500 lines)
-    ├── Cargo.toml               # Rust dependencies
-    ├── tauri.conf.json          # Tauri app configuration
-    ├── capabilities/            # Security capabilities
-    └── icons/                   # App icons
+│   ├── claude-code-artifacts.md
+│   └── cc/                      # Claude Code documentation
+└── scripts/
 ```
 
 ## Frontend Architecture (React 19)
 
-The frontend is a **modular React application** with state management in `App.tsx` (~476 lines) and UI components extracted into separate files. It communicates with the backend exclusively through Tauri IPC.
+The Tauri frontend is a **modular React application** in `apps/tauri/src/`. It communicates with the Rust backend exclusively through Tauri IPC.
 
 ### Key Files
 
 | File | Purpose |
 |------|---------|
-| `src/App.tsx` | State, event handlers, top-level layout |
-| `src/types.ts` | TypeScript interfaces (must match Rust structs) |
-| `src/index.css` | Tailwind CSS theme with oklch colors |
-| `src/hooks/*.ts` | Custom hooks for window, theme, focus, audio |
-| `src/utils/*.ts` | Formatting and pricing utilities |
-| `src/components/panels/*.tsx` | Panel components (Projects, Details, Add, Artifacts) |
+| `apps/tauri/src/App.tsx` | State, event handlers, top-level layout |
+| `apps/tauri/src/types.ts` | TypeScript interfaces (must match Rust structs) |
+| `apps/tauri/src/index.css` | Tailwind CSS theme with oklch colors |
+| `apps/tauri/src/hooks/*.ts` | Custom hooks for window, theme, focus, audio |
+| `apps/tauri/src/utils/*.ts` | Formatting and pricing utilities |
+| `apps/tauri/src/components/panels/*.tsx` | Panel components (Projects, Details, Add, Artifacts) |
 
 ### Architecture
 
@@ -247,12 +246,13 @@ pub struct ProjectStats {
 
 The backend uses a **two-layer architecture**:
 
-1. **`hud-core`** - Shared core library with all business logic (in `crates/hud-core/`)
-2. **Tauri app** - Thin IPC wrappers that delegate to hud-core (in `src-tauri/`)
+1. **`hud-core`** - Shared core library with all business logic (in `core/hud-core/`)
+2. **Tauri app** - Thin IPC wrappers that delegate to hud-core (in `apps/tauri/src-tauri/`)
+3. **Swift app** - UniFFI bindings to hud-core (in `apps/swift/`)
 
-This design enables multiple clients (Tauri desktop, TUI, future mobile) to share the same business logic.
+This design enables multiple clients (Tauri desktop, Swift native, TUI) to share the same business logic.
 
-### hud-core Modules (in `crates/hud-core/src/`)
+### hud-core Modules (in `core/hud-core/src/`)
 
 | Module | Purpose |
 |--------|---------|
@@ -266,12 +266,21 @@ This design enables multiple clients (Tauri desktop, TUI, future mobile) to shar
 | `artifacts.rs` | Artifact discovery and frontmatter parsing |
 | `error.rs` | Error types and Result alias |
 
-### Tauri App (in `src-tauri/src/`)
+### Tauri App (in `apps/tauri/src-tauri/src/`)
 
 | File | Purpose |
 |------|---------|
 | `lib.rs` | IPC command handlers (~1,620 lines) - thin wrappers over `HudEngine` |
 | `bin/hud-tui.rs` | Terminal UI (~500 lines) - uses `hud-core` directly |
+
+### Swift App (in `apps/swift/`)
+
+| File | Purpose |
+|------|---------|
+| `Sources/ClaudeHUD/App.swift` | SwiftUI app entry point |
+| `Sources/ClaudeHUD/Models/AppState.swift` | State management with HudEngine bridge |
+| `Sources/ClaudeHUD/Views/` | SwiftUI views (Projects, Artifacts, etc.) |
+| `bindings/hud_core.swift` | Generated UniFFI Swift bindings |
 
 ### Data Structures (in `hud-core/types.rs`)
 - **GlobalConfig:** Claude Code global settings (skills, commands, agents directories)
@@ -380,29 +389,40 @@ For a comprehensive reference of all Claude Code disk artifacts (file formats, d
 
 ## Common Development Scenarios
 
-### Adding a New Dashboard Tab
+### Adding a New Dashboard Tab (Tauri)
 
-1. **Backend:** Add `#[tauri::command]` function in `src-tauri/src/lib.rs`
-2. **Backend:** Register in `invoke_handler` (line ~1887)
-3. **Frontend:** Add to `Tab` type union in `App.tsx`
-4. **Frontend:** Add `SidebarItem` in navigation
-5. **Frontend:** Create panel component and add conditional render in `<main>`
-6. **Types:** Ensure TypeScript types in `types.ts` match backend structs
+1. **Backend:** Add `#[tauri::command]` function in `apps/tauri/src-tauri/src/lib.rs`
+2. **Backend:** Register in `invoke_handler`
+3. **Frontend:** Add to `Tab` type union in `apps/tauri/src/App.tsx`
+4. **Frontend:** Create panel component in `apps/tauri/src/components/panels/`
+5. **Types:** Ensure TypeScript types in `apps/tauri/src/types.ts` match Rust structs
+
+### Adding a New View (Swift)
+
+1. **Create view:** Add SwiftUI view in `apps/swift/Sources/ClaudeHUD/Views/`
+2. **Update state:** Add published properties to `AppState.swift` if needed
+3. **Wire up:** Add navigation in `ContentView.swift`
 
 ### Modifying Statistics Parsing
-- Update regex patterns in `parse_stats_from_content()` (`crates/hud-core/src/stats.rs`)
-- Update `ProjectStats` struct in `hud-core/types.rs` and `src/types.ts`
+- Update regex patterns in `parse_stats_from_content()` (`core/hud-core/src/stats.rs`)
+- Update `ProjectStats` struct in `core/hud-core/src/types.rs` and `apps/tauri/src/types.ts`
 - Delete `~/.claude/hud-stats-cache.json` to force recomputation
 
 ### Adding Project Type Detection
-- Modify `has_project_indicators()` (`crates/hud-core/src/projects.rs`)
+- Modify `has_project_indicators()` (`core/hud-core/src/projects.rs`)
 - Add file/directory checks for new project type
+
+### Regenerating Swift Bindings
+```bash
+cd core/hud-core
+cargo run --bin uniffi-bindgen generate src/lib.rs --language swift --out-dir ../../apps/swift/bindings/
+```
 
 ### Running the TUI
 ```bash
 cargo run --bin hud-tui
 ```
-The TUI provides a terminal-based interface using the same `hud-core` library as the Tauri app.
+The TUI provides a terminal-based interface using the same `hud-core` library.
 
 ## Code Style & Conventions
 
@@ -455,13 +475,13 @@ echo '{"input_tokens":1234}' | rg 'input_tokens":(\d+)'
 
 ## Important Notes
 
-- **Workspace Structure:** This is a Cargo workspace with `hud-core` (shared library) and `src-tauri` (Tauri app). Use `cargo build --workspace` to build all crates.
+- **Workspace Structure:** This is a Cargo workspace with `core/hud-core` (shared library), `apps/tauri/src-tauri` (Tauri app). Use `cargo build --workspace` to build all crates.
+- **Multi-Client Architecture:** Tauri desktop, Swift native, and TUI all use `hud-core` for shared business logic
+- **UniFFI Bindings:** Swift app uses UniFFI-generated bindings in `apps/swift/bindings/`
 - **Path Encoding:** Project paths use `/` → `-` replacement (e.g., `/Users/peter/Code` → `-Users-peter-Code`)
-- **IPC Communication:** Frontend must always go through Tauri commands; never access file system directly
-- **Frontend Build:** `pnpm tauri build` automatically runs `pnpm build` first via `beforeBuildCommand`
+- **IPC Communication:** Tauri frontend must go through Tauri commands; Swift uses UniFFI directly
 - **Caching Strategy:** Mtime-based invalidation; old cache entries are harmless
-- **Platform Support:** Code handles Windows, macOS (Intel/ARM), and Linux
+- **Platform Support:** Tauri handles Windows, macOS (Intel/ARM), and Linux; Swift is macOS-only
 - **Claude CLI Path:** Summary generation uses `/opt/homebrew/bin/claude` (macOS Homebrew)
-- **Multi-Client Architecture:** Both Tauri desktop and TUI use `hud-core` for shared business logic
 
-For detailed backend documentation, refer to `src-tauri/CLAUDE.md`.
+For detailed Tauri backend documentation, refer to `apps/tauri/src-tauri/CLAUDE.md`.

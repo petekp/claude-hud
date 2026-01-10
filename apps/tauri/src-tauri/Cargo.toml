@@ -27,7 +27,7 @@ once_cell.workspace = true
 chrono.workspace = true
 
 # Local workspace crate
-hud-core = { path = "../crates/hud-core" }
+hud-core = { path = "../../../core/hud-core" }
 
 # Tauri-specific dependencies
 log = "0.4"
