@@ -1,50 +1,38 @@
-# Claude HUD Backend - Development Guide
+# Claude HUD Tauri App - Development Guide
 
-Claude HUD is a cross-platform desktop application that serves as a dashboard for Claude Code. It displays project statistics, task tracking, plugin management, and global Claude Code configuration. Built with Rust/Tauri backend and React 19/TypeScript frontend.
+> **⚠️ Note:** This is a Tauri-specific guide. For the full project overview including the Swift app and shared core library, see the root [CLAUDE.md](../../../CLAUDE.md).
 
-> **Development Workflow:** Run `pnpm tauri dev` from the project root to start the app. This automatically starts the frontend dev server and launches the desktop app. Changes auto-rebuild and hot-reload. Claude should make changes incrementally and verify results in the running app.
+## Directory Context
 
-**Quick note:** Backend work happens in `src-tauri/`, frontend work in `src/`. Most instructions assume you're running commands from the **project root** (`claude-hud/`), but this file documents backend-specific details.
+This file is located at `apps/tauri/src-tauri/CLAUDE.md`. The Tauri app lives in `apps/tauri/` within the monorepo:
+
+```
+claude-hud/                    # Monorepo root
+├── core/hud-core/             # Shared Rust library
+├── apps/
+│   ├── tauri/                 # ← You are here
+│   │   ├── src/               # React frontend
+│   │   ├── src-tauri/         # Rust backend (this dir)
+│   │   └── package.json
+│   └── swift/                 # Native macOS app
+```
 
 ## Quick Start
 
-### Prerequisites
-- **Node.js** 18+ and **pnpm** (frontend build)
-- **Rust** 1.77.2+ and **Cargo** (backend)
-- **Tauri CLI** (usually pre-installed)
-
-### Initial Setup
+**From `apps/tauri/` directory:**
 ```bash
-# From project root - install frontend dependencies
-pnpm install
-
-# Quick verification
-cargo check      # Rust syntax check
-pnpm type-check  # TypeScript check
+pnpm install      # Install frontend dependencies
+pnpm tauri dev    # Launch with hot reload
 ```
 
-### Development
-
-**IMPORTANT: The app should be running during development.** When making changes, the app auto-rebuilds and hot-reloads so you can immediately see results.
-
-From the project root:
-```bash
-pnpm tauri dev
-```
-
-This single command starts the Vite dev server (via `beforeDevCommand` in tauri.conf.json) and launches the desktop app. Changes to either frontend or backend automatically trigger rebuilds.
-
-### Auto-Rebuild Behavior
-
-When the app is running via `pnpm tauri dev`:
-- **Frontend changes** (`src/*.tsx`, `src/*.css`) → Instant hot reload via Vite
-- **Backend changes** (`src-tauri/src/*.rs`) → Auto-recompiles and restarts app (~5-10 seconds)
-
-**Claude should keep the app running** and make changes incrementally. After each change, the app will automatically rebuild so you can verify the result immediately.
+**Auto-rebuild watches:**
+- `apps/tauri/src/` - React frontend (instant hot reload)
+- `apps/tauri/src-tauri/src/` - Tauri backend (~5-10s rebuild)
+- `core/hud-core/src/` - Shared library (~5-10s rebuild)
 
 ## Commands Reference
 
-### Frontend (from project root)
+### Frontend (from `apps/tauri/`)
 ```bash
 pnpm dev              # Start dev server with hot reload (localhost:5173)
 pnpm build            # Build for production to dist/ (includes type check)
@@ -53,7 +41,7 @@ pnpm lint             # Run ESLint (run before commits)
 npx tsc --noEmit      # TypeScript type checking only
 ```
 
-### Backend (from src-tauri/)
+### Backend (from `apps/tauri/src-tauri/`)
 ```bash
 # Development
 cargo tauri dev              # Start with hot reload (watches both frontend & backend)
@@ -80,14 +68,14 @@ cargo tauri build --target x86_64-pc-windows-msvc # Windows
 
 ### Pre-Commit Checklist
 
-**From src-tauri/:**
+**From `apps/tauri/src-tauri/`:**
 ```bash
 cargo fmt                    # Format code (required)
 cargo clippy -- -D warnings  # Fix all lint warnings (required)
 cargo test                   # All tests must pass (required)
 ```
 
-**From project root:**
+**From `apps/tauri/`:**
 ```bash
 pnpm lint                   # ESLint must pass
 npx tsc --noEmit            # TypeScript must pass
@@ -127,28 +115,39 @@ React component re-renders with data
 
 ### File Structure (What You Edit)
 
-**Most changes go in one of these two places:**
+**Most changes go in one of these places:**
 
-| If you're modifying... | File | Key Functions |
-|------------------------|------|---|
-| Statistics parsing and caching | `src-tauri/src/stats.rs` | `parse_stats_from_content()`, `compute_project_stats()` |
-| Project discovery, artifact counting, IPC handlers | `src-tauri/src/lib.rs` | `has_project_indicators()`, `count_artifacts_in_dir()`, all `#[tauri::command]` functions |
-| UI, dashboard layout, forms | `src/App.tsx` + `src/components/` | React components (modular structure) |
-| Type definitions | `src/types.ts` | TypeScript interfaces (must match Rust structs) |
+| If you're modifying... | File | Location |
+|------------------------|------|----------|
+| Statistics parsing and caching | `stats.rs` | `core/hud-core/src/` |
+| Project discovery, artifacts | `projects.rs`, `artifacts.rs` | `core/hud-core/src/` |
+| HudEngine API | `engine.rs` | `core/hud-core/src/` |
+| IPC command handlers | `lib.rs` | `apps/tauri/src-tauri/src/` |
+| UI, dashboard layout, forms | `App.tsx` + `components/` | `apps/tauri/src/` |
+| Type definitions | `types.ts` | `apps/tauri/src/` |
 
-### Backend Organization (modular)
+### Backend Organization
 
-The backend is organized into modules under `src-tauri/src/`:
+The Tauri backend is a thin IPC wrapper over the shared `hud-core` library:
 
+**Tauri app (`apps/tauri/src-tauri/src/`):**
+| File | Purpose |
+|------|---------|
+| `lib.rs` | IPC command handlers - thin wrappers calling `HudEngine` |
+| `main.rs` | App entry point |
+
+**Shared core (`core/hud-core/src/`):**
 | Module | Purpose |
 |--------|---------|
-| `lib.rs` (~2376 lines) | IPC command handlers and business logic |
-| `types.rs` (~183 lines) | Public structs: Project, Task, Artifact, Plugin, etc. |
-| `patterns.rs` (~39 lines) | Pre-compiled regex patterns for JSONL parsing |
-| `config.rs` (~51 lines) | Path resolution and config file operations |
-| `stats.rs` (~143 lines) | Token usage parsing and mtime-based caching |
+| `engine.rs` | `HudEngine` facade - unified API for all clients |
+| `types.rs` | Shared types: Project, Task, Artifact, Plugin, etc. |
+| `stats.rs` | Token usage parsing and mtime-based caching |
+| `projects.rs` | Project discovery and loading |
+| `sessions.rs` | Session state detection |
+| `artifacts.rs` | Skill/command/agent discovery |
+| `config.rs` | Path resolution and config file operations |
 
-**Key insight:** When frontend calls `invoke('load_projects')`, it triggers the corresponding `#[tauri::command]` function in lib.rs, which uses functions from the other modules.
+**Key insight:** Frontend calls `invoke('load_projects')` → Tauri IPC → `HudEngine::list_projects()` in hud-core.
 
 ### The 14 IPC Commands
 
@@ -174,7 +173,7 @@ The backend is organized into modules under `src-tauri/src/`:
 
 ### Add a New IPC Command
 
-1. Add a `#[tauri::command]` function in `src-tauri/src/lib.rs` (around line 1720+):
+1. Add a `#[tauri::command]` function in `apps/tauri/src-tauri/src/lib.rs`:
 
 ```rust
 #[tauri::command]
@@ -184,7 +183,7 @@ fn my_new_command(project_id: String) -> Result<Vec<String>, String> {
 }
 ```
 
-2. Register it in the Tauri builder (around line 1887):
+2. Register it in the Tauri builder:
 ```rust
 .invoke_handler(tauri::generate_handler![
     // ... existing commands ...
@@ -199,7 +198,7 @@ const result = await invoke<string[]>('my_new_command', { projectId: 'test' });
 
 ### Modify Stats Parsing (Token Extraction)
 
-Edit `parse_stats_from_content()` in `src-tauri/src/lib.rs`:
+Edit `parse_stats_from_content()` in `core/hud-core/src/stats.rs`:
 
 **Current patterns:**
 ```rust
@@ -224,7 +223,7 @@ cargo tauri dev
 
 ### Add Project Type Detection
 
-Edit `has_project_indicators()` in `src-tauri/src/lib.rs`:
+Edit `has_project_indicators()` in `core/hud-core/src/projects.rs`:
 
 ```rust
 // Current: checks for .git, package.json, Cargo.toml, etc.
@@ -238,7 +237,7 @@ if path.join("gradle.build").exists() {
 
 When modifying `Project`, `Task`, `ProjectStats`:
 
-1. **Backend:** Update struct in `src-tauri/src/types.rs`
+1. **Backend:** Update struct in `core/hud-core/src/types.rs`
    ```rust
    pub struct ProjectStats {
        pub new_field: String,  // Add this
@@ -246,7 +245,7 @@ When modifying `Project`, `Task`, `ProjectStats`:
    }
    ```
 
-2. **Frontend:** Update TypeScript interface in `src/types.ts`
+2. **Frontend:** Update TypeScript interface in `apps/tauri/src/types.ts`
    ```typescript
    export interface ProjectStats {
        new_field: string;  // Match the field name
