@@ -59,7 +59,7 @@ interface HudState {
   // Per-project state
   projects: {
     [projectPath: string]: {
-      state: 'working' | 'ready' | 'idle' | 'compacting' | 'waiting';
+      state: "working" | "ready" | "idle" | "compacting" | "waiting";
       workingOn?: string;
       nextStep?: string;
       devServerPort?: number;
@@ -78,7 +78,7 @@ interface HudState {
 
 ```typescript
 interface EncryptedMessage {
-  nonce: string;      // 24 bytes, base64
+  nonce: string; // 24 bytes, base64
   ciphertext: string; // encrypted HudState, base64
 }
 ```
@@ -88,6 +88,7 @@ interface EncryptedMessage {
 ### Pairing Flow
 
 1. Desktop generates keypair, displays QR code containing:
+
    - Relay URL
    - Device ID (random UUID)
    - Public key
@@ -155,6 +156,7 @@ npx wrangler deploy
 ## Cost Estimate
 
 At Cloudflare's pricing (as of 2025):
+
 - **Workers**: 10M requests/month free, then $0.30/million
 - **Durable Objects**:
   - Requests: $0.15/million after 1M free
@@ -162,6 +164,7 @@ At Cloudflare's pricing (as of 2025):
   - Storage: $0.20/GB after 1GB free
 
 For a single user with ~1000 state updates/day:
+
 - ~30K requests/month → **Free tier**
 - Minimal storage (latest state only) → **Free tier**
 

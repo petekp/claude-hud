@@ -3,52 +3,46 @@ import SwiftUI
 struct ProjectsView: View {
     @EnvironmentObject var appState: AppState
     @Environment(\.floatingMode) private var floatingMode
-    @State private var searchText = ""
     @State private var draggingProject: Project?
+    @State private var pausedCollapsed = true
 
     private var orderedProjects: [Project] {
         appState.orderedProjects(appState.projects)
     }
 
-    private var filteredProjects: [Project] {
-        guard !searchText.isEmpty else { return orderedProjects }
-        return orderedProjects.filter {
-            $0.name.localizedCaseInsensitiveContains(searchText)
+    private var needsInputProjects: [Project] {
+        orderedProjects.filter { project in
+            guard !appState.isManuallyDormant(project) else { return false }
+            let state = appState.getSessionState(for: project)
+            return state?.state == .ready
         }
     }
 
-    private var recentProjects: [Project] {
-        filteredProjects.filter { project in
-            if appState.isManuallyDormant(project) {
-                return false
-            }
+    private var inProgressProjects: [Project] {
+        orderedProjects.filter { project in
+            guard !appState.isManuallyDormant(project) else { return false }
             let state = appState.getSessionState(for: project)
-            if let s = state?.state {
-                switch s {
-                case .working, .ready, .compacting, .waiting:
-                    return true
-                case .idle:
-                    break
-                }
-            }
-            if let stateChangedAt = state?.stateChangedAt,
-               let date = ISO8601DateFormatter().date(from: stateChangedAt),
-               Date().timeIntervalSince(date) < 86400 {
-                return true
-            }
-            if let lastActive = project.lastActive,
-               let date = ISO8601DateFormatter().date(from: lastActive),
-               Date().timeIntervalSince(date) < 86400 {
-                return true
-            }
+            guard let s = state?.state else { return false }
+            return s == .working || s == .compacting || s == .waiting
+        }
+    }
+
+    private var pausedProjects: [Project] {
+        orderedProjects.filter { project in
+            let isNeedsInput = needsInputProjects.contains { $0.path == project.path }
+            let isInProgress = inProgressProjects.contains { $0.path == project.path }
+            return !isNeedsInput && !isInProgress
+        }
+    }
+
+    private func isStale(_ project: Project) -> Bool {
+        guard let state = appState.getSessionState(for: project),
+              state.state == .ready,
+              let stateChangedAt = state.stateChangedAt,
+              let date = ISO8601DateFormatter().date(from: stateChangedAt) else {
             return false
         }
-    }
-
-    private var dormantProjects: [Project] {
-        filteredProjects.filter { project in
-            !recentProjects.contains { $0.path == project.path }
-        }
+        return Date().timeIntervalSince(date) > 86400
     }
 
     var body: some View {
@@ -64,29 +58,26 @@ struct ProjectsView: View {
                 } else if appState.projects.isEmpty {
                     EmptyProjectsView()
                 } else {
-                    if appState.projects.count > 3 {
-                        SearchField(text: $searchText)
-                            .padding(.bottom, 4)
-                    }
+                    SummaryBar(
+                        needsInput: needsInputProjects.count,
+                        inProgress: inProgressProjects.count,
+                        paused: pausedProjects.count
+                    )
+                    .padding(.top, 4)
 
-                    if !searchText.isEmpty && recentProjects.isEmpty && dormantProjects.isEmpty {
-                        Text("No projects match \"\(searchText)\"")
-                            .font(.system(size: 13))
-                            .foregroundColor(.white.opacity(0.4))
-                            .padding(.top, 20)
-                    }
-                    if !recentProjects.isEmpty {
-                        SectionHeader(title: "RECENT")
-                            .padding(.top, 4)
+                    if !needsInputProjects.isEmpty {
+                        SectionHeader(title: "NEEDS INPUT")
+                            .padding(.top, 8)
                             .transition(.opacity)
 
-                        ForEach(Array(recentProjects.enumerated()), id: \.element.path) { index, project in
+                        ForEach(Array(needsInputProjects.enumerated()), id: \.element.path) { index, project in
                             ProjectCardView(
                                 project: project,
                                 sessionState: appState.getSessionState(for: project),
                                 projectStatus: appState.getProjectStatus(for: project),
                                 flashState: appState.isFlashing(project),
                                 devServerPort: appState.getDevServerPort(for: project),
+                                isStale: isStale(project),
                                 onTap: {
                                     appState.launchTerminal(for: project)
                                 },
@@ -102,65 +93,80 @@ struct ProjectsView: View {
                                     appState.openInBrowser(project)
                                 }
                             )
-                            .opacity(draggingProject?.path == project.path ? 0.5 : 1)
-                            .draggable(project.path) {
-                                ProjectCardDragPreview(project: project)
-                            }
-                            .dropDestination(for: String.self) { items, _ in
-                                guard let droppedPath = items.first,
-                                      let fromIndex = recentProjects.firstIndex(where: { $0.path == droppedPath }),
-                                      let toIndex = recentProjects.firstIndex(where: { $0.path == project.path }) else {
-                                    return false
-                                }
-                                withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
-                                    appState.moveProject(from: IndexSet(integer: fromIndex), to: toIndex > fromIndex ? toIndex + 1 : toIndex, in: recentProjects)
-                                }
-                                return true
-                            }
                             .transition(.asymmetric(
-                                insertion: .opacity.combined(with: .move(edge: .top)),
-                                removal: .opacity
+                                insertion: .opacity.combined(with: .scale(scale: 0.95)).combined(with: .move(edge: .top)),
+                                removal: .opacity.combined(with: .scale(scale: 0.9))
                             ))
-                            .animation(
-                                .spring(response: 0.4, dampingFraction: 0.8)
-                                .delay(Double(index) * 0.03),
-                                value: recentProjects.count
-                            )
                         }
                     }
 
-                    if !dormantProjects.isEmpty {
-                        SectionHeader(title: recentProjects.isEmpty ? "PROJECTS" : "DORMANT (\(dormantProjects.count))")
-                            .padding(.top, recentProjects.isEmpty ? 4 : 12)
+                    if !inProgressProjects.isEmpty {
+                        SectionHeader(title: "IN PROGRESS")
+                            .padding(.top, needsInputProjects.isEmpty ? 8 : 12)
                             .transition(.opacity)
 
-                        ForEach(Array(dormantProjects.enumerated()), id: \.element.path) { index, project in
-                            CompactProjectCardView(
+                        ForEach(Array(inProgressProjects.enumerated()), id: \.element.path) { index, project in
+                            ProjectCardView(
                                 project: project,
                                 sessionState: appState.getSessionState(for: project),
                                 projectStatus: appState.getProjectStatus(for: project),
-                                isManuallyDormant: appState.isManuallyDormant(project),
+                                flashState: appState.isFlashing(project),
+                                devServerPort: appState.getDevServerPort(for: project),
+                                isStale: false,
                                 onTap: {
                                     appState.launchTerminal(for: project)
                                 },
                                 onInfoTap: {
                                     appState.showProjectDetail(project)
                                 },
-                                onMoveToRecent: {
+                                onMoveToDormant: {
                                     withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                                        appState.moveToRecent(project)
+                                        appState.moveToDormant(project)
                                     }
+                                },
+                                onOpenBrowser: {
+                                    appState.openInBrowser(project)
                                 }
                             )
                             .transition(.asymmetric(
-                                insertion: .opacity.combined(with: .move(edge: .top)),
-                                removal: .opacity
+                                insertion: .opacity.combined(with: .scale(scale: 0.95)).combined(with: .move(edge: .top)),
+                                removal: .opacity.combined(with: .scale(scale: 0.9))
                             ))
-                            .animation(
-                                .spring(response: 0.4, dampingFraction: 0.8)
-                                .delay(Double(recentProjects.count + index) * 0.03),
-                                value: dormantProjects.count
-                            )
+                        }
+                    }
+
+                    if !pausedProjects.isEmpty {
+                        PausedSectionHeader(
+                            count: pausedProjects.count,
+                            isCollapsed: $pausedCollapsed
+                        )
+                        .padding(.top, (needsInputProjects.isEmpty && inProgressProjects.isEmpty) ? 8 : 12)
+                        .transition(.opacity)
+
+                        if !pausedCollapsed {
+                            ForEach(Array(pausedProjects.enumerated()), id: \.element.path) { index, project in
+                                CompactProjectCardView(
+                                    project: project,
+                                    sessionState: appState.getSessionState(for: project),
+                                    projectStatus: appState.getProjectStatus(for: project),
+                                    isManuallyDormant: appState.isManuallyDormant(project),
+                                    onTap: {
+                                        appState.launchTerminal(for: project)
+                                    },
+                                    onInfoTap: {
+                                        appState.showProjectDetail(project)
+                                    },
+                                    onMoveToRecent: {
+                                        withAnimation(.spring(response: 0.4, dampingFraction: 0.75)) {
+                                            appState.moveToRecent(project)
+                                        }
+                                    }
+                                )
+                                .transition(.asymmetric(
+                                    insertion: .opacity.combined(with: .scale(scale: 0.95)),
+                                    removal: .opacity.combined(with: .scale(scale: 0.9))
+                                ))
+                            }
                         }
                     }
                 }
@@ -174,35 +180,86 @@ struct ProjectsView: View {
 
 struct SectionHeader: View {
     let title: String
-    @State private var appeared = false
 
     var body: some View {
-        HStack(spacing: 8) {
-            Circle()
-                .fill(Color.sectionAccent)
-                .frame(width: 5, height: 5)
-                .shadow(color: Color.sectionAccent.opacity(0.5), radius: 3)
-                .scaleEffect(appeared ? 1.0 : 0.0)
+        Text(title)
+            .font(.system(size: 11, weight: .medium))
+            .tracking(0.5)
+            .foregroundColor(.white.opacity(0.4))
+    }
+}
 
-            Text(title)
-                .font(.system(size: 10, weight: .bold))
-                .tracking(2)
-                .foregroundColor(.white.opacity(0.5))
+struct SummaryBar: View {
+    let needsInput: Int
+    let inProgress: Int
+    let paused: Int
 
-            Rectangle()
-                .fill(
-                    LinearGradient(
-                        colors: [Color.sectionAccent.opacity(0.4), Color.clear],
-                        startPoint: .leading,
-                        endPoint: .trailing
-                    )
-                )
-                .frame(height: 1)
-                .scaleEffect(x: appeared ? 1.0 : 0.0, anchor: .leading)
+    var body: some View {
+        HStack(spacing: 12) {
+            if needsInput > 0 {
+                SummaryItem(count: needsInput, label: "need input", color: .statusReady)
+            }
+            if inProgress > 0 {
+                SummaryItem(count: inProgress, label: "working", color: .statusWorking)
+            }
+            if paused > 0 {
+                SummaryItem(count: paused, label: "paused", color: .white.opacity(0.4))
+            }
         }
-        .onAppear {
-            withAnimation(.spring(response: 0.5, dampingFraction: 0.7).delay(0.1)) {
-                appeared = true
+        .font(.system(size: 11))
+    }
+}
+
+struct SummaryItem: View {
+    let count: Int
+    let label: String
+    let color: Color
+
+    var body: some View {
+        HStack(spacing: 4) {
+            Text("\(count)")
+                .fontWeight(.semibold)
+                .foregroundColor(color)
+            Text(label)
+                .foregroundColor(.white.opacity(0.5))
+        }
+    }
+}
+
+struct PausedSectionHeader: View {
+    let count: Int
+    @Binding var isCollapsed: Bool
+    @State private var isHovered = false
+
+    var body: some View {
+        Button(action: {
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                isCollapsed.toggle()
+            }
+        }) {
+            HStack(spacing: 6) {
+                Text("PAUSED")
+                    .font(.system(size: 11, weight: .medium))
+                    .tracking(0.5)
+                    .foregroundColor(.white.opacity(0.4))
+
+                Text("(\(count))")
+                    .font(.system(size: 10, weight: .regular))
+                    .foregroundColor(.white.opacity(0.3))
+
+                Spacer()
+
+                Image(systemName: isCollapsed ? "chevron.right" : "chevron.down")
+                    .font(.system(size: 9, weight: .medium))
+                    .foregroundColor(.white.opacity(isHovered ? 0.5 : 0.3))
+            }
+            .padding(.vertical, 4)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .onHover { hovering in
+            withAnimation(.easeOut(duration: 0.15)) {
+                isHovered = hovering
             }
         }
     }
@@ -292,61 +349,6 @@ struct EmptyProjectsView: View {
                 appeared = true
             }
         }
-    }
-}
-
-struct SearchField: View {
-    @Binding var text: String
-    @FocusState private var isFocused: Bool
-    @State private var isClearHovered = false
-
-    var body: some View {
-        HStack(spacing: 8) {
-            Image(systemName: "magnifyingglass")
-                .font(.system(size: 12))
-                .foregroundColor(.white.opacity(isFocused ? 0.6 : 0.4))
-                .scaleEffect(isFocused ? 1.05 : 1.0)
-
-            TextField("Search projects...", text: $text)
-                .textFieldStyle(.plain)
-                .font(.system(size: 12))
-                .foregroundColor(.white)
-                .focused($isFocused)
-
-            if !text.isEmpty {
-                Button(action: { text = "" }) {
-                    Image(systemName: "xmark.circle.fill")
-                        .font(.system(size: 12))
-                        .foregroundColor(.white.opacity(isClearHovered ? 0.7 : 0.4))
-                        .scaleEffect(isClearHovered ? 1.1 : 1.0)
-                }
-                .buttonStyle(.plain)
-                .onHover { hovering in
-                    withAnimation(.spring(response: 0.2)) {
-                        isClearHovered = hovering
-                    }
-                }
-                .transition(.scale.combined(with: .opacity))
-            }
-        }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 7)
-        .background(
-            RoundedRectangle(cornerRadius: 8)
-                .fill(Color.white.opacity(isFocused ? 0.08 : 0.05))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 8)
-                .strokeBorder(
-                    isFocused
-                        ? Color.hudAccent.opacity(0.5)
-                        : Color.white.opacity(0.08),
-                    lineWidth: isFocused ? 1 : 0.5
-                )
-        )
-        .shadow(color: isFocused ? Color.hudAccent.opacity(0.15) : .clear, radius: 6, y: 0)
-        .animation(.easeOut(duration: 0.15), value: isFocused)
-        .animation(.easeOut(duration: 0.15), value: text.isEmpty)
     }
 }
 

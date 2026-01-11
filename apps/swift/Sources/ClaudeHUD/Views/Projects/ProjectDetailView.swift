@@ -36,7 +36,7 @@ struct ProjectDetailView: View {
                         VStack(alignment: .leading, spacing: 10) {
                             DetailSectionLabel(title: "STATUS")
 
-                            StatusPillView(state: sessionState.state)
+                            StatusIndicatorView(state: sessionState.state)
 
                             if let workingOn = sessionState.workingOn {
                                 Text(workingOn)
@@ -81,6 +81,36 @@ struct ProjectDetailView: View {
                 }
                 .opacity(appeared ? 1 : 0)
                 .offset(y: appeared ? 0 : 16)
+
+                let todos = appState.todosManager.getTodos(for: project.path)
+
+                if !todos.isEmpty {
+                    DetailCard {
+                        TodosSection(todos: todos)
+                    }
+                    .opacity(appeared ? 1 : 0)
+                    .offset(y: appeared ? 0 : 20)
+                }
+
+                let plans = appState.plansManager.allPlans
+
+                if !plans.isEmpty {
+                    DetailCard {
+                        PlansSection(plans: plans)
+                    }
+                    .opacity(appeared ? 1 : 0)
+                    .offset(y: appeared ? 0 : 24)
+                }
+
+                let healthResult = ClaudeMdHealthScorer.score(content: project.claudeMdPreview)
+
+                if healthResult.grade != .none && !healthResult.details.filter({ !$0.passed }).isEmpty {
+                    DetailCard {
+                        HealthCoachingSection(healthResult: healthResult)
+                    }
+                    .opacity(appeared ? 1 : 0)
+                    .offset(y: appeared ? 0 : 28)
+                }
 
                 Spacer()
             }

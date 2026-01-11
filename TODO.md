@@ -8,22 +8,131 @@
 
 ## High Priority
 
-(none currently)
+(All items completed — see Completed section below)
 
 ## Medium Priority
 
-### Platform Features
-- [ ] Explore: surface Claude's plan files (make visible and editable from HUD)
-- [ ] Brainstorm: first-class todos feature — allow users to see and edit todos per project
-- [ ] Brainstorm: potential uses for Claude Agent SDK — start by digesting official docs and popular tutorials
+### Platform Features (Researched - Ready for Implementation)
+
+#### Plan Files Integration
+**Research complete.** Plan files are stored in `~/.claude/plans/{adjective-animal}.md` (e.g., `zesty-frolicking-yeti.md`). They're permanent Markdown documents created via Plan Mode (`--permission-mode plan` or `Shift+Tab`).
+
+**Implementation options:**
+- [ ] Add "Plans" section to Artifacts tab (alongside Skills, Commands, Agents)
+- [ ] Show project-associated plans in Project Detail view
+- [ ] Add plan search/filter by name, date, or content
+- [ ] Enable in-app plan viewing with Markdown rendering
+- [ ] Optional: status tracking (implemented/in-progress/archived)
+
+#### Todos Feature
+**Research complete.** Two todo systems exist:
+1. **Session-scoped**: TodoWrite tool (not persisted after session)
+2. **Persistent**: `~/.claude/todos/{uuid}-agent-{uuid}.json` files
+
+**Implementation options:**
+- [ ] Parse and display `~/.claude/todos/*.json` files per project
+- [ ] Add "Todos" section to Project Detail view
+- [ ] Show todo completion status on project cards (e.g., "3/7 tasks")
+- [ ] Optional: Allow marking todos complete from HUD
+- [ ] Optional: Create new todos from HUD (writes to project's todos.json)
+
+#### Agent SDK
+**Research complete.** Already have custom SDK implementation in `apps/daemon/` based on `--output-format stream-json`. Reserved for mobile/remote client integration.
+
+**Architecture decision:** Local sessions use hooks (preserves TUI), remote/mobile will use daemon with SDK.
+
+**Future implementation:**
+- [ ] Complete relay WebSocket server for mobile client sync
+- [ ] Build mobile companion app that connects to relay
+- [ ] Consider background agent spawning for parallel tasks
 
 ## Research / Exploration
 
-### Strategic (Larger Explorations)
-- [ ] Exploratory session: rethink the IA of the main Projects view to best achieve the goal of managing many Claude Code projects in parallel. Leverage all relevant skills (design, UX, interaction design, etc.). Nothing off limits — platform choice is open too, though desktop presence likely needed
-- [ ] Design "Claude Code Coach" capability: optimize users' Claude Code experience by detecting suboptimal setups and guiding improvements. Key areas: CLAUDE.md quality (goals, architecture, commands), plugin recommendations, hooks setup, usage pattern insights. Surface via health scores on project cards, onboarding wizard for new projects, and inline suggestions. Position HUD as an active enhancer, not just a viewer.
+### Strategic Explorations (Researched - Ready for Design/Implementation)
+
+#### Projects View IA Redesign
+**Analysis complete.** Current Recent/Dormant split optimizes for recency but users need urgency.
+
+**Key insight:** A project "Ready" for 18h is more urgent than one "Working" for 5m.
+
+**Recommended IA:**
+```
+Summary Bar: "3 need input • 2 working • 15 paused"
+├── NEEDS YOUR INPUT (Ready state) — full cards, prominent
+├── IN PROGRESS (Working/Compacting) — full cards
+├── BLOCKED (has blocker text) — full cards with warning
+└── PAUSED (idle >24h or manual) — compact rows, collapsed
+```
+
+**Key changes:**
+- [x] Add summary bar with action-required counts
+- [x] Group by urgency (Ready > Blocked > Working > Paused) not recency
+- [x] Make "working on" text primary, project name secondary
+- [x] Add "stale" indicator for Ready >24h
+- [x] Rename "Dormant" to "Paused" with context preservation
+- [ ] Consider alternative views: Kanban, Agenda, Focus Mode
+
+#### Claude Code Coach
+**Design complete.** Transform HUD from passive viewer to active enhancer.
+
+**Four pillars:**
+
+1. **CLAUDE.md Health Score** (A/B/C/D/F badge on cards)
+   - Checks: description, commands, architecture, style rules, freshness
+   - [x] Implement health scoring algorithm
+   - [x] Add badge to project cards
+   - [ ] Create improvement suggestions with templates
+
+2. **Hooks Setup Wizard**
+   - Detects current hook configuration
+   - [ ] One-click "Install HUD Hooks" button
+   - [ ] Show setup status (None/Basic/Complete/Custom)
+   - [ ] Diff preview before applying changes
+
+3. **Plugin Recommendations**
+   - Analyzes project files for tech stack
+   - [ ] Detect project type from files (package.json, Cargo.toml, etc.)
+   - [ ] Cross-reference with plugin registry
+   - [ ] Show contextual "Recommended Plugins" section
+
+4. **Usage Insights**
+   - Parse session JSONL for metrics
+   - [ ] Weekly digest: sessions, tokens, estimated cost
+   - [ ] Trend sparklines and anomaly alerts
+   - [ ] Coaching tips based on patterns
+
+**Implementation phases:** Health Score → Hooks Wizard → Plugins → Insights
 
 ## Completed
+
+- [x] CLAUDE.md Health Score (January 2026):
+  - Health scoring algorithm analyzes CLAUDE.md content for: project description, workflow/commands, architecture info, style rules, sufficient detail
+  - Grades: A (90+), B (75-89), C (60-74), D (40-59), F (<40), None (no CLAUDE.md)
+  - Color-coded circular badge on project cards (green=A, yellow=C, red=F)
+  - Hover tooltip shows score breakdown
+
+- [x] Projects View IA Redesign (January 2026):
+  - Urgency-based grouping: "Needs Input" (Ready) → "In Progress" (Working/Waiting/Compacting) → "Paused" (everything else)
+  - Summary bar shows counts: "3 need input • 2 working • 15 paused"
+  - Stale indicator for Ready state >24h (subtle "stale" pill badge)
+  - Paused section collapsed by default with expand/collapse toggle
+  - Renamed "Dormant" to "Paused" throughout
+  - Typography: "working on" text now primary (13pt semibold), project name secondary (11pt regular 55% opacity)
+  - Removed drag-and-drop reordering (projects now auto-sorted by urgency)
+
+- [x] Dark UI polish pass (January 2026):
+  - Border glow made thinner (0.75/1.25 lineWidth vs previous 1.5/2.5)
+  - Added 7 tunable parameters in GlassTuningPanel for border glow (inner/outer width, blur, base opacity, pulse intensity, rotation multiplier)
+  - Removed blur from breathing dot (configurable shadow radius, default 0)
+  - Breathing dot scaling speed already controlled via rippleSpeed parameter
+  - Tabs moved to bottom iOS-style with folder.fill and sparkles icons
+  - Section headers simplified: removed orange dot/line, font 11 medium with 0.5 tracking
+  - Search bar removed from Projects view
+  - Dormant projects redesigned: minimal text rows, click anywhere to activate, smooth scale+opacity transitions
+  - Info icon: hover effect simplified to opacity-only, moved next to title
+  - Refactored SwiftUI: removed HoverButtonStyle, NavigationDirection, ViewTransition.swift, sectionLine gradient
+  - tmux integration improved: detects attached clients, switches sessions or launches new terminal with `tmux new-session -A`
+  - Added Ghostty terminal support, proper fallback order for terminal apps
 
 - [x] Focused project detection: highlights the project card matching the currently focused terminal window
   - Backend polls frontmost app via AppleScript

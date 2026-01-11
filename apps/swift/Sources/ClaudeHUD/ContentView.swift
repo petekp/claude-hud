@@ -4,18 +4,13 @@ struct ContentView: View {
     @EnvironmentObject var appState: AppState
     @Environment(\.floatingMode) private var floatingMode
 
+    #if DEBUG
+    @ObservedObject private var glassConfig = GlassConfig.shared
+    #endif
+
     var body: some View {
         VStack(spacing: 0) {
             HeaderView()
-                .background {
-                    if floatingMode {
-                        FloatingPanelBackground()
-                    }
-                }
-
-            if !floatingMode {
-                Divider()
-            }
 
             ZStack {
                 switch appState.activeTab {
@@ -26,78 +21,114 @@ struct ContentView: View {
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+            BottomTabBar()
         }
-        .background(floatingMode ? Color.clear : Color.hudBackground)
+        .background {
+            if floatingMode {
+                #if DEBUG
+                DarkFrostedGlass()
+                    .id(glassConfig.panelConfigHash)
+                #else
+                DarkFrostedGlass()
+                #endif
+            } else {
+                Color.hudBackground
+            }
+        }
         .preferredColorScheme(.dark)
     }
 }
 
-struct FloatingPanelBackground: View {
+struct BottomTabBar: View {
+    @EnvironmentObject var appState: AppState
+    @Environment(\.floatingMode) private var floatingMode
+
     var body: some View {
-        ZStack {
-            RoundedRectangle(cornerRadius: 14)
-                .fill(.ultraThinMaterial)
-
-            RoundedRectangle(cornerRadius: 14)
-                .fill(
-                    LinearGradient(
-                        colors: [
-                            .white.opacity(0.12),
-                            .white.opacity(0.04),
-                            .clear
-                        ],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
-
-            VStack(spacing: 0) {
-                LinearGradient(
-                    colors: [.white.opacity(0.2), .clear],
-                    startPoint: .top,
-                    endPoint: .bottom
-                )
-                .frame(height: 1)
-                Spacer()
+        HStack(spacing: 0) {
+            BottomTab(
+                icon: "folder.fill",
+                title: "Projects",
+                count: appState.projects.count,
+                isActive: appState.activeTab == .projects
+            ) {
+                withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) {
+                    appState.activeTab = .projects
+                }
             }
-            .clipShape(RoundedRectangle(cornerRadius: 14))
 
-            RoundedRectangle(cornerRadius: 14)
-                .strokeBorder(
-                    LinearGradient(
-                        colors: [
-                            .white.opacity(0.25),
-                            .white.opacity(0.1),
-                            .white.opacity(0.05)
-                        ],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    ),
-                    lineWidth: 0.5
-                )
-
-            NoiseOverlay()
-                .clipShape(RoundedRectangle(cornerRadius: 14))
+            BottomTab(
+                icon: "sparkles",
+                title: "Artifacts",
+                count: appState.artifacts.count,
+                isActive: appState.activeTab == .artifacts
+            ) {
+                withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) {
+                    appState.activeTab = .artifacts
+                }
+            }
         }
-        .shadow(color: .black.opacity(0.15), radius: 1, y: 1)
-        .shadow(color: .black.opacity(0.2), radius: 15, y: 8)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 8)
+        .padding(.bottom, floatingMode ? 8 : 0)
+        .background {
+            if !floatingMode {
+                Rectangle()
+                    .fill(Color.hudBackground)
+                    .overlay(alignment: .top) {
+                        Rectangle()
+                            .fill(Color.white.opacity(0.06))
+                            .frame(height: 0.5)
+                    }
+            }
+        }
     }
 }
 
-struct NoiseOverlay: View {
+struct BottomTab: View {
+    let icon: String
+    let title: String
+    let count: Int
+    let isActive: Bool
+    let action: () -> Void
+
+    @State private var isHovered = false
+
     var body: some View {
-        Canvas { context, size in
-            for _ in 0..<Int(size.width * size.height * 0.01) {
-                let x = CGFloat.random(in: 0..<size.width)
-                let y = CGFloat.random(in: 0..<size.height)
-                let opacity = Double.random(in: 0.01...0.03)
-                context.fill(
-                    Path(ellipseIn: CGRect(x: x, y: y, width: 1, height: 1)),
-                    with: .color(.white.opacity(opacity))
-                )
+        Button(action: action) {
+            VStack(spacing: 4) {
+                ZStack {
+                    Image(systemName: icon)
+                        .font(.system(size: 20))
+                        .foregroundColor(isActive ? .white : .white.opacity(isHovered ? 0.6 : 0.4))
+
+                    if count > 0 {
+                        Text("\(count)")
+                            .font(.system(size: 9, weight: .bold, design: .rounded))
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 4)
+                            .padding(.vertical, 1)
+                            .background(
+                                Capsule()
+                                    .fill(isActive ? Color.hudAccent : Color.white.opacity(0.3))
+                            )
+                            .offset(x: 12, y: -8)
+                    }
+                }
+
+                Text(title)
+                    .font(.system(size: 10, weight: isActive ? .semibold : .medium))
+                    .foregroundColor(isActive ? .white : .white.opacity(isHovered ? 0.6 : 0.4))
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 4)
+        }
+        .buttonStyle(.plain)
+        .onHover { hovering in
+            withAnimation(.easeOut(duration: 0.15)) {
+                isHovered = hovering
             }
         }
-        .blendMode(.overlay)
     }
 }
 

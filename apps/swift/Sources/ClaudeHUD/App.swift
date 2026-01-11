@@ -22,10 +22,38 @@ struct ClaudeHUDApp: App {
             CommandGroup(after: .appSettings) {
                 Toggle("Floating Mode", isOn: $floatingMode)
                     .keyboardShortcut("T", modifiers: [.command, .shift])
+
+                #if DEBUG
+                Divider()
+                TuningPanelMenuButton()
+                #endif
             }
         }
+
+        #if DEBUG
+        Window("Glass Tuning", id: "tuning-panel") {
+            GlassTuningPanel(isPresented: .constant(true))
+                .preferredColorScheme(.dark)
+        }
+        .windowStyle(.hiddenTitleBar)
+        .windowResizability(.contentSize)
+        .defaultPosition(.topTrailing)
+        #endif
     }
 }
+
+#if DEBUG
+struct TuningPanelMenuButton: View {
+    @Environment(\.openWindow) private var openWindow
+
+    var body: some View {
+        Button("Glass Tuning Panel") {
+            openWindow(id: "tuning-panel")
+        }
+        .keyboardShortcut("D", modifiers: [.command, .shift])
+    }
+}
+#endif
 
 class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {

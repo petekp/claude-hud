@@ -4,34 +4,9 @@ struct HeaderView: View {
     @EnvironmentObject var appState: AppState
     @Environment(\.floatingMode) private var floatingMode
     @State private var showingSettings = false
-    @Namespace private var tabAnimation
 
     var body: some View {
         HStack(spacing: 16) {
-            HStack(spacing: 0) {
-                TabButton(
-                    title: "Projects",
-                    count: appState.projects.count,
-                    isActive: appState.activeTab == .projects,
-                    namespace: tabAnimation
-                ) {
-                    withAnimation(.spring(response: 0.3, dampingFraction: 0.75)) {
-                        appState.activeTab = .projects
-                    }
-                }
-
-                TabButton(
-                    title: "Artifacts",
-                    count: appState.artifacts.count,
-                    isActive: appState.activeTab == .artifacts,
-                    namespace: tabAnimation
-                ) {
-                    withAnimation(.spring(response: 0.3, dampingFraction: 0.75)) {
-                        appState.activeTab = .artifacts
-                    }
-                }
-            }
-
             Spacer()
 
             RelayStatusIndicator()
@@ -45,7 +20,7 @@ struct HeaderView: View {
                 }
         }
         .padding(.horizontal, 16)
-        .padding(.vertical, 12)
+        .padding(.vertical, 8)
         .padding(.top, floatingMode ? 8 : 0)
         .background(floatingMode ? Color.clear : Color.hudBackground)
     }
@@ -120,79 +95,3 @@ struct RelayStatusIndicator: View {
     }
 }
 
-struct TabButton: View {
-    let title: String
-    let count: Int
-    let isActive: Bool
-    let namespace: Namespace.ID
-    let action: () -> Void
-
-    @State private var isHovered = false
-
-    var body: some View {
-        Button(action: action) {
-            VStack(spacing: 6) {
-                HStack(spacing: 6) {
-                    Text(title)
-                        .font(.system(size: 13, weight: isActive ? .semibold : .medium))
-
-                    Text("\(count)")
-                        .font(.system(size: 10, weight: .semibold, design: .rounded))
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 2)
-                        .background(
-                            Capsule()
-                                .fill(
-                                    isActive
-                                        ? LinearGradient(
-                                            colors: [Color.hudAccent.opacity(0.35), Color.hudAccent.opacity(0.2)],
-                                            startPoint: .top,
-                                            endPoint: .bottom
-                                          )
-                                        : LinearGradient(
-                                            colors: [Color.white.opacity(0.12), Color.white.opacity(0.08)],
-                                            startPoint: .top,
-                                            endPoint: .bottom
-                                          )
-                                )
-                        )
-                        .overlay(
-                            Capsule()
-                                .strokeBorder(
-                                    isActive ? Color.hudAccent.opacity(0.3) : Color.white.opacity(0.08),
-                                    lineWidth: 0.5
-                                )
-                        )
-                }
-                .foregroundColor(isActive ? .white : .white.opacity(isHovered ? 0.75 : 0.55))
-
-                ZStack {
-                    Rectangle()
-                        .fill(Color.clear)
-                        .frame(height: 2)
-
-                    if isActive {
-                        RoundedRectangle(cornerRadius: 1)
-                            .fill(
-                                LinearGradient(
-                                    colors: [Color.hudAccent, Color.hudAccent.opacity(0.7)],
-                                    startPoint: .leading,
-                                    endPoint: .trailing
-                                )
-                            )
-                            .frame(width: 20, height: 2)
-                            .shadow(color: Color.hudAccent.opacity(0.5), radius: 4, y: 0)
-                            .matchedGeometryEffect(id: "tabIndicator", in: namespace)
-                    }
-                }
-            }
-            .padding(.horizontal, 8)
-        }
-        .buttonStyle(.plain)
-        .onHover { hovering in
-            withAnimation(.easeOut(duration: 0.15)) {
-                isHovered = hovering
-            }
-        }
-    }
-}

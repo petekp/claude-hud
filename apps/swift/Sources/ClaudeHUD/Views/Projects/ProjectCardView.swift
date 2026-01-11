@@ -6,39 +6,80 @@ struct ProjectCardView: View {
     let projectStatus: ProjectStatus?
     let flashState: SessionState?
     let devServerPort: UInt16?
+    let isStale: Bool
     let onTap: () -> Void
     let onInfoTap: () -> Void
     let onMoveToDormant: () -> Void
     let onOpenBrowser: () -> Void
 
     @Environment(\.floatingMode) private var floatingMode
+    #if DEBUG
+    @ObservedObject private var glassConfig = GlassConfig.shared
+    #endif
     @State private var isHovered = false
     @State private var isPressed = false
     @State private var flashOpacity: Double = 0
     @State private var isInfoHovered = false
     @State private var isBrowserHovered = false
 
-    @State private var readyGlowIntensity: Double = 0
-    @State private var colorWashProgress: Double = -0.3
-    @State private var isColorWashActive = false
     @State private var previousState: SessionState?
-    @State private var lastReadyAnimationTime: Date?
+    @State private var lastChimeTime: Date?
 
-    private let readyAnimationCooldown: TimeInterval = 3.0
+    private let chimeCooldown: TimeInterval = 3.0
+
+    #if DEBUG
+    private var displayState: SessionState? {
+        switch glassConfig.previewState {
+        case .none:
+            return sessionState?.state
+        case .ready:
+            return .ready
+        case .working:
+            return .working
+        case .waiting:
+            return .waiting
+        case .compacting:
+            return .compacting
+        case .idle:
+            return .idle
+        }
+    }
+    #endif
 
     var body: some View {
         Button(action: onTap) {
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: 6) {
                 HStack {
                     Text(project.name)
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundColor(.white)
+                        .font(.system(size: 11, weight: .regular))
+                        .foregroundColor(.white.opacity(0.55))
+
+                    if isStale {
+                        Text("stale")
+                            .font(.system(size: 9, weight: .medium))
+                            .foregroundColor(.white.opacity(0.5))
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 2)
+                            .background(Color.white.opacity(0.08))
+                            .clipShape(Capsule())
+                    }
+
+                    HealthBadge(project: project)
+
+                    Button(action: onInfoTap) {
+                        Image(systemName: "info.circle")
+                            .font(.system(size: 13))
+                            .foregroundColor(.white.opacity(isInfoHovered ? 0.7 : (isHovered ? 0.35 : 0.2)))
+                    }
+                    .buttonStyle(.plain)
+                    .onHover { hovering in
+                        withAnimation(.easeOut(duration: 0.15)) {
+                            isInfoHovered = hovering
+                        }
+                    }
+                    .help("View details")
 
                     Spacer()
-
-                    if let state = sessionState {
-                        StatusPillView(state: state.state)
-                    }
 
                     if let port = devServerPort {
                         Button(action: onOpenBrowser) {
@@ -70,26 +111,21 @@ struct ProjectCardView: View {
                         .help("Open localhost:\(port) in browser")
                     }
 
-                    Button(action: onInfoTap) {
-                        Image(systemName: "info.circle")
-                            .font(.system(size: 14))
-                            .foregroundColor(.white.opacity(isInfoHovered ? 0.8 : (isHovered ? 0.45 : 0.25)))
-                            .rotationEffect(.degrees(isInfoHovered ? 15 : 0))
-                            .scaleEffect(isInfoHovered ? 1.15 : 1.0)
+                    #if DEBUG
+                    if let state = displayState {
+                        StatusIndicatorView(state: state)
                     }
-                    .buttonStyle(.plain)
-                    .onHover { hovering in
-                        withAnimation(.spring(response: 0.25, dampingFraction: 0.6)) {
-                            isInfoHovered = hovering
-                        }
+                    #else
+                    if let state = sessionState {
+                        StatusIndicatorView(state: state.state)
                     }
-                    .help("View details")
+                    #endif
                 }
 
                 if let workingOn = sessionState?.workingOn, !workingOn.isEmpty {
                     Text(workingOn)
-                        .font(.system(size: 12))
-                        .foregroundColor(.white.opacity(0.6))
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundColor(.white)
                         .lineLimit(2)
                 }
 
@@ -108,6 +144,9 @@ struct ProjectCardView: View {
             .background {
                 if floatingMode {
                     floatingCardBackground
+                        #if DEBUG
+                        .id(glassConfig.cardConfigHash)
+                        #endif
                 } else {
                     solidCardBackground
                 }
@@ -119,29 +158,36 @@ struct ProjectCardView: View {
                     .opacity(flashOpacity)
             )
             .overlay {
-                if isColorWashActive {
-                    ColorWashOverlay(progress: colorWashProgress)
+                #if DEBUG
+                let isReady = displayState == .ready
+                #else
+                let isReady = sessionState?.state == .ready
+                #endif
+
+                if isReady {
+                    ReadyAmbientGlow()
                         .clipShape(RoundedRectangle(cornerRadius: 12))
                 }
             }
+            .overlay {
+                #if DEBUG
+                let isReady = displayState == .ready
+                #else
+                let isReady = sessionState?.state == .ready
+                #endif
+
+                if isReady {
+                    ReadyBorderGlow()
+                }
+            }
             .shadow(
-                color: readyGlowIntensity > 0
-                    ? Color.statusReady.opacity(0.4 * readyGlowIntensity)
-                    : (floatingMode ? .black.opacity(0.25) : (isHovered ? .black.opacity(0.2) : .black.opacity(0.08))),
-                radius: readyGlowIntensity > 0
-                    ? 20 * readyGlowIntensity
-                    : (floatingMode ? 8 : (isHovered ? 12 : 4)),
-                y: readyGlowIntensity > 0 ? 0 : (floatingMode ? 3 : (isHovered ? 4 : 2))
-            )
-            .shadow(
-                color: readyGlowIntensity > 0 ? Color.statusReady.opacity(0.25 * readyGlowIntensity) : .clear,
-                radius: 35 * readyGlowIntensity,
-                y: 0
+                color: floatingMode ? .black.opacity(0.25) : (isHovered ? .black.opacity(0.2) : .black.opacity(0.08)),
+                radius: floatingMode ? 8 : (isHovered ? 12 : 4),
+                y: floatingMode ? 3 : (isHovered ? 4 : 2)
             )
             .scaleEffect(isPressed ? 0.98 : 1.0)
             .animation(.snappy(duration: 0.15), value: isPressed)
             .animation(.easeOut(duration: 0.2), value: isHovered)
-            .animation(.easeOut(duration: 0.3), value: readyGlowIntensity)
         }
         .buttonStyle(PressableButtonStyle(isPressed: $isPressed))
         .onHover { hovering in
@@ -160,16 +206,26 @@ struct ProjectCardView: View {
             }
         }
         .onChange(of: sessionState?.state) { oldValue, newValue in
+            #if DEBUG
+            if glassConfig.previewState != .none { return }
+            #endif
             if newValue == .ready && oldValue != .ready && oldValue != nil {
                 let now = Date()
-                let shouldAnimate = lastReadyAnimationTime.map { now.timeIntervalSince($0) >= readyAnimationCooldown } ?? true
-                if shouldAnimate {
-                    lastReadyAnimationTime = now
-                    triggerReadyAnimation()
+                let shouldPlayChime = lastChimeTime.map { now.timeIntervalSince($0) >= chimeCooldown } ?? true
+                if shouldPlayChime {
+                    lastChimeTime = now
+                    ReadyChime.shared.play()
                 }
             }
             previousState = newValue
         }
+        #if DEBUG
+        .onChange(of: glassConfig.previewState) { oldValue, newValue in
+            if newValue == .ready && oldValue != .ready {
+                ReadyChime.shared.play()
+            }
+        }
+        #endif
         .onAppear {
             previousState = sessionState?.state
         }
@@ -187,52 +243,17 @@ struct ProjectCardView: View {
             }
             Divider()
             Button(action: onMoveToDormant) {
-                Label("Move to Dormant", systemImage: "moon.zzz")
+                Label("Move to Paused", systemImage: "moon.zzz")
             }
         }
     }
 
     private var floatingCardBackground: some View {
-        ZStack {
-            RoundedRectangle(cornerRadius: 12)
-                .fill(.ultraThinMaterial)
-
-            RoundedRectangle(cornerRadius: 12)
-                .fill(
-                    LinearGradient(
-                        colors: [
-                            .white.opacity(isHovered ? 0.22 : 0.12),
-                            .white.opacity(isHovered ? 0.08 : 0.03)
-                        ],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
-
-            VStack(spacing: 0) {
-                LinearGradient(
-                    colors: [.white.opacity(isHovered ? 0.25 : 0.15), .clear],
-                    startPoint: .top,
-                    endPoint: .bottom
-                )
-                .frame(height: 1)
-                Spacer()
-            }
-            .clipShape(RoundedRectangle(cornerRadius: 12))
-
-            RoundedRectangle(cornerRadius: 12)
-                .strokeBorder(
-                    LinearGradient(
-                        colors: [
-                            .white.opacity(isHovered ? 0.4 : 0.25),
-                            .white.opacity(isHovered ? 0.15 : 0.08)
-                        ],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    ),
-                    lineWidth: 0.5
-                )
-        }
+        #if DEBUG
+        DarkFrostedCard(isHovered: isHovered, config: glassConfig)
+        #else
+        DarkFrostedCard(isHovered: isHovered)
+        #endif
     }
 
     private var solidCardBackground: some View {
@@ -266,61 +287,306 @@ struct ProjectCardView: View {
         }
     }
 
-    private func triggerReadyAnimation() {
-        ReadyChime.shared.play()
-
-        colorWashProgress = -0.3
-        isColorWashActive = true
-
-        withAnimation(.easeOut(duration: 0.15)) {
-            readyGlowIntensity = 1.0
-        }
-
-        withAnimation(.easeInOut(duration: 0.7)) {
-            colorWashProgress = 1.3
-        }
-
-        withAnimation(.easeOut(duration: 1.2).delay(0.3)) {
-            readyGlowIntensity = 0
-        }
-
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
-            isColorWashActive = false
-            colorWashProgress = -0.3
-        }
-    }
 }
 
-struct ColorWashOverlay: View {
-    let progress: Double
+struct ReadyAmbientGlow: View {
+    #if DEBUG
+    @ObservedObject private var config = GlassConfig.shared
+    #endif
 
     var body: some View {
-        GeometryReader { geometry in
-            let washWidth: CGFloat = geometry.size.width * 0.4
-            let position = geometry.size.width * progress
+        TimelineView(.animation) { timeline in
+            #if DEBUG
+            let speed = config.rippleSpeed
+            let count = config.rippleCount
+            let maxOpacity = config.rippleMaxOpacity
+            let lineWidth = config.rippleLineWidth
+            let blurAmount = config.rippleBlurAmount
+            let originXPercent = config.rippleOriginX
+            let originYPercent = config.rippleOriginY
+            let fadeInZone = config.rippleFadeInZone
+            let fadeOutPower = config.rippleFadeOutPower
+            #else
+            let speed: Double = 4.0
+            let count: Int = 3
+            let maxOpacity: Double = 0.35
+            let lineWidth: Double = 2.0
+            let blurAmount: Double = 8.0
+            let originXPercent: Double = 0.85
+            let originYPercent: Double = 0.35
+            let fadeInZone: Double = 0.15
+            let fadeOutPower: Double = 1.5
+            #endif
 
-            LinearGradient(
-                stops: [
-                    .init(color: .clear, location: 0),
-                    .init(color: Color.statusReady.opacity(0.12), location: 0.3),
-                    .init(color: Color.statusReady.opacity(0.18), location: 0.5),
-                    .init(color: Color.statusReady.opacity(0.12), location: 0.7),
-                    .init(color: .clear, location: 1)
-                ],
-                startPoint: .leading,
-                endPoint: .trailing
-            )
-            .frame(width: washWidth)
-            .offset(x: position - washWidth / 2)
-            .blendMode(.plusLighter)
+            let phase = timeline.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: speed) / speed
+
+            GeometryReader { geometry in
+                let originX = geometry.size.width * originXPercent
+                let originY = geometry.size.height * originYPercent
+                let maxRadius = max(geometry.size.width, geometry.size.height) * 1.8
+
+                Canvas { context, size in
+                    for i in 0..<count {
+                        let stagger = Double(i) / Double(count)
+                        let ringPhase = (phase + stagger).truncatingRemainder(dividingBy: 1.0)
+                        let radius = maxRadius * ringPhase
+
+                        let fadeIn: Double
+                        if fadeInZone > 0 {
+                            let rawFadeIn = min(ringPhase / fadeInZone, 1.0)
+                            fadeIn = smoothstep(rawFadeIn)
+                        } else {
+                            fadeIn = 1.0
+                        }
+
+                        let fadeOut = pow(1.0 - ringPhase, fadeOutPower)
+                        let opacity = maxOpacity * fadeIn * fadeOut
+
+                        let lineWidthFadeIn = fadeInZone > 0 ? min(ringPhase / fadeInZone, 1.0) : 1.0
+                        let effectiveLineWidth = lineWidth * smoothstep(lineWidthFadeIn)
+
+                        if radius > 0 && opacity > 0.005 && effectiveLineWidth > 0.1 {
+                            let rect = CGRect(
+                                x: originX - radius,
+                                y: originY - radius,
+                                width: radius * 2,
+                                height: radius * 2
+                            )
+                            let path = Circle().path(in: rect)
+
+                            context.stroke(
+                                path,
+                                with: .color(Color.statusReady.opacity(opacity)),
+                                lineWidth: effectiveLineWidth
+                            )
+                        }
+                    }
+                }
+                .blur(radius: blurAmount)
+            }
         }
+        .allowsHitTesting(false)
+    }
+
+    private func smoothstep(_ t: Double) -> Double {
+        let clamped = max(0, min(1, t))
+        return clamped * clamped * (3 - 2 * clamped)
     }
 }
 
-struct StatusPillView: View {
+struct ReadyBorderGlow: View {
+    #if DEBUG
+    @ObservedObject private var config = GlassConfig.shared
+    #endif
+
+    var body: some View {
+        #if DEBUG
+        TimelineView(.animation) { timeline in
+            ReadyBorderGlowContent(date: timeline.date, config: config)
+        }
+        .allowsHitTesting(false)
+        #else
+        TimelineView(.animation) { timeline in
+            ReadyBorderGlowContent(date: timeline.date)
+        }
+        .allowsHitTesting(false)
+        #endif
+    }
+}
+
+#if DEBUG
+private struct ReadyBorderGlowContent: View {
+    let date: Date
+    let config: GlassConfig
+
+    var body: some View {
+        let speed = config.rippleSpeed
+        let count = config.rippleCount
+        let fadeInZone = config.rippleFadeInZone
+        let fadeOutPower = config.rippleFadeOutPower
+        let rotationMult = config.borderGlowRotationMultiplier
+        let baseOp = config.borderGlowBaseOpacity
+        let pulseIntensity = config.borderGlowPulseIntensity
+        let innerWidth = config.borderGlowInnerWidth
+        let outerWidth = config.borderGlowOuterWidth
+        let innerBlur = config.borderGlowInnerBlur
+        let outerBlur = config.borderGlowOuterBlur
+
+        let time = date.timeIntervalSinceReferenceDate
+        let phase = time.truncatingRemainder(dividingBy: speed) / speed
+        let rotationPeriod = speed / rotationMult
+        let rotationAngle = Angle(degrees: time.truncatingRemainder(dividingBy: rotationPeriod) / rotationPeriod * 360)
+
+        let combinedIntensity = computeIntensity(phase: phase, count: count, fadeInZone: fadeInZone, fadeOutPower: fadeOutPower)
+        let baseOpacity = baseOp + combinedIntensity * pulseIntensity
+
+        borderGlowStack(
+            baseOpacity: baseOpacity,
+            rotationAngle: rotationAngle,
+            innerWidth: innerWidth,
+            outerWidth: outerWidth,
+            innerBlur: innerBlur,
+            outerBlur: outerBlur
+        )
+    }
+
+    private func computeIntensity(phase: Double, count: Int, fadeInZone: Double, fadeOutPower: Double) -> Double {
+        var maxIntensity: Double = 0
+        for i in 0..<count {
+            let stagger = Double(i) / Double(count)
+            let ringPhase = (phase + stagger).truncatingRemainder(dividingBy: 1.0)
+            let fadeIn: Double = fadeInZone > 0 ? min(ringPhase / fadeInZone, 1.0) : 1.0
+            let fadeOut = pow(1.0 - ringPhase, fadeOutPower)
+            maxIntensity = max(maxIntensity, fadeIn * fadeOut)
+        }
+        return maxIntensity
+    }
+
+    private func borderGlowStack(baseOpacity: Double, rotationAngle: Angle, innerWidth: Double, outerWidth: Double, innerBlur: Double, outerBlur: Double) -> some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 12)
+                .strokeBorder(
+                    AngularGradient(
+                        gradient: Gradient(stops: [
+                            .init(color: Color.statusReady.opacity(baseOpacity * 0.3), location: 0.0),
+                            .init(color: Color.statusReady.opacity(baseOpacity), location: 0.15),
+                            .init(color: Color.statusReady.opacity(baseOpacity * 0.5), location: 0.25),
+                            .init(color: Color.statusReady.opacity(baseOpacity * 0.2), location: 0.4),
+                            .init(color: Color.statusReady.opacity(baseOpacity * 0.1), location: 0.5),
+                            .init(color: Color.statusReady.opacity(baseOpacity * 0.2), location: 0.6),
+                            .init(color: Color.statusReady.opacity(baseOpacity * 0.5), location: 0.75),
+                            .init(color: Color.statusReady.opacity(baseOpacity), location: 0.85),
+                            .init(color: Color.statusReady.opacity(baseOpacity * 0.3), location: 1.0)
+                        ]),
+                        center: .center,
+                        angle: rotationAngle
+                    ),
+                    lineWidth: innerWidth
+                )
+                .blur(radius: innerBlur)
+
+            RoundedRectangle(cornerRadius: 12)
+                .strokeBorder(
+                    AngularGradient(
+                        gradient: Gradient(stops: [
+                            .init(color: Color.statusReady.opacity(baseOpacity * 0.2), location: 0.0),
+                            .init(color: Color.statusReady.opacity(baseOpacity * 0.8), location: 0.15),
+                            .init(color: Color.statusReady.opacity(baseOpacity * 0.3), location: 0.25),
+                            .init(color: Color.statusReady.opacity(baseOpacity * 0.1), location: 0.5),
+                            .init(color: Color.statusReady.opacity(baseOpacity * 0.3), location: 0.75),
+                            .init(color: Color.statusReady.opacity(baseOpacity * 0.8), location: 0.85),
+                            .init(color: Color.statusReady.opacity(baseOpacity * 0.2), location: 1.0)
+                        ]),
+                        center: .center,
+                        angle: rotationAngle + Angle(degrees: 180)
+                    ),
+                    lineWidth: outerWidth
+                )
+                .blur(radius: outerBlur)
+        }
+        .blendMode(.plusLighter)
+    }
+}
+#else
+private struct ReadyBorderGlowContent: View {
+    let date: Date
+
+    var body: some View {
+        let speed: Double = 8.6
+        let count: Int = 5
+        let fadeInZone: Double = 0.04
+        let fadeOutPower: Double = 0.9
+        let rotationMult: Double = 0.5
+        let baseOp: Double = 0.3
+        let pulseIntensity: Double = 0.5
+        let innerWidth: Double = 0.75
+        let outerWidth: Double = 1.25
+        let innerBlur: Double = 0.5
+        let outerBlur: Double = 2.0
+
+        let time = date.timeIntervalSinceReferenceDate
+        let phase = time.truncatingRemainder(dividingBy: speed) / speed
+        let rotationPeriod = speed / rotationMult
+        let rotationAngle = Angle(degrees: time.truncatingRemainder(dividingBy: rotationPeriod) / rotationPeriod * 360)
+
+        let combinedIntensity = computeIntensity(phase: phase, count: count, fadeInZone: fadeInZone, fadeOutPower: fadeOutPower)
+        let baseOpacity = baseOp + combinedIntensity * pulseIntensity
+
+        borderGlowStack(
+            baseOpacity: baseOpacity,
+            rotationAngle: rotationAngle,
+            innerWidth: innerWidth,
+            outerWidth: outerWidth,
+            innerBlur: innerBlur,
+            outerBlur: outerBlur
+        )
+    }
+
+    private func computeIntensity(phase: Double, count: Int, fadeInZone: Double, fadeOutPower: Double) -> Double {
+        var maxIntensity: Double = 0
+        for i in 0..<count {
+            let stagger = Double(i) / Double(count)
+            let ringPhase = (phase + stagger).truncatingRemainder(dividingBy: 1.0)
+            let fadeIn: Double = fadeInZone > 0 ? min(ringPhase / fadeInZone, 1.0) : 1.0
+            let fadeOut = pow(1.0 - ringPhase, fadeOutPower)
+            maxIntensity = max(maxIntensity, fadeIn * fadeOut)
+        }
+        return maxIntensity
+    }
+
+    private func borderGlowStack(baseOpacity: Double, rotationAngle: Angle, innerWidth: Double, outerWidth: Double, innerBlur: Double, outerBlur: Double) -> some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 12)
+                .strokeBorder(
+                    AngularGradient(
+                        gradient: Gradient(stops: [
+                            .init(color: Color.statusReady.opacity(baseOpacity * 0.3), location: 0.0),
+                            .init(color: Color.statusReady.opacity(baseOpacity), location: 0.15),
+                            .init(color: Color.statusReady.opacity(baseOpacity * 0.5), location: 0.25),
+                            .init(color: Color.statusReady.opacity(baseOpacity * 0.2), location: 0.4),
+                            .init(color: Color.statusReady.opacity(baseOpacity * 0.1), location: 0.5),
+                            .init(color: Color.statusReady.opacity(baseOpacity * 0.2), location: 0.6),
+                            .init(color: Color.statusReady.opacity(baseOpacity * 0.5), location: 0.75),
+                            .init(color: Color.statusReady.opacity(baseOpacity), location: 0.85),
+                            .init(color: Color.statusReady.opacity(baseOpacity * 0.3), location: 1.0)
+                        ]),
+                        center: .center,
+                        angle: rotationAngle
+                    ),
+                    lineWidth: innerWidth
+                )
+                .blur(radius: innerBlur)
+
+            RoundedRectangle(cornerRadius: 12)
+                .strokeBorder(
+                    AngularGradient(
+                        gradient: Gradient(stops: [
+                            .init(color: Color.statusReady.opacity(baseOpacity * 0.2), location: 0.0),
+                            .init(color: Color.statusReady.opacity(baseOpacity * 0.8), location: 0.15),
+                            .init(color: Color.statusReady.opacity(baseOpacity * 0.3), location: 0.25),
+                            .init(color: Color.statusReady.opacity(baseOpacity * 0.1), location: 0.5),
+                            .init(color: Color.statusReady.opacity(baseOpacity * 0.3), location: 0.75),
+                            .init(color: Color.statusReady.opacity(baseOpacity * 0.8), location: 0.85),
+                            .init(color: Color.statusReady.opacity(baseOpacity * 0.2), location: 1.0)
+                        ]),
+                        center: .center,
+                        angle: rotationAngle + Angle(degrees: 180)
+                    ),
+                    lineWidth: outerWidth
+                )
+                .blur(radius: outerBlur)
+        }
+        .blendMode(.plusLighter)
+    }
+}
+#endif
+
+struct StatusIndicatorView: View {
     let state: SessionState
-    @Environment(\.floatingMode) private var floatingMode
-    @State private var glowAnimation = false
+
+    #if DEBUG
+    @ObservedObject private var config = GlassConfig.shared
+    #endif
 
     var statusColor: Color {
         Color.statusColor(for: state)
@@ -337,125 +603,35 @@ struct StatusPillView: View {
     }
 
     var isActive: Bool {
-        switch state {
-        case .ready, .working, .waiting, .compacting: return true
-        case .idle: return false
-        }
+        state != .idle
+    }
+
+    var isReady: Bool {
+        state == .ready
     }
 
     var body: some View {
-        ZStack {
-            if isActive {
-                Capsule()
-                    .fill(statusColor.opacity(0.35))
-                    .blur(radius: 10)
-                    .scaleEffect(glowAnimation ? 1.15 : 0.95)
-                    .opacity(glowAnimation ? 0.6 : 0.3)
-            }
+        #if DEBUG
+        let textSize = config.statusTextSize
+        let fontWeight = config.fontWeight
+        let spacing = config.statusTextSpacing
+        let idleOpacity = config.statusIdleTextOpacity
+        #else
+        let textSize: Double = 12
+        let fontWeight: Font.Weight = .medium
+        let spacing: Double = 4
+        let idleOpacity: Double = 0.55
+        #endif
 
-            if floatingMode && isActive {
-                vibrantPill
-            } else {
-                solidPill
-            }
-        }
-        .onAppear {
-            if isActive {
-                withAnimation(
-                    .easeInOut(duration: 2.0)
-                    .repeatForever(autoreverses: true)
-                ) {
-                    glowAnimation = true
-                }
-            }
-        }
-    }
-
-    private var pillContent: some View {
-        HStack(spacing: 5) {
-            BreathingDot(color: statusColor, showGlow: false)
+        HStack(spacing: spacing) {
+            BreathingDot(color: statusColor, showGlow: false, syncWithRipple: isReady)
 
             Text(statusText)
-                .font(.system(size: 9, weight: .semibold))
-                .foregroundStyle(
-                    isActive
-                        ? AnyShapeStyle(LinearGradient(
-                            colors: [statusColor, statusColor.opacity(0.85)],
-                            startPoint: .top,
-                            endPoint: .bottom
-                          ))
-                        : AnyShapeStyle(statusColor)
-                )
+                .font(.system(size: textSize, weight: fontWeight))
+                .foregroundColor(isActive ? statusColor : statusColor.opacity(idleOpacity))
+                .contentTransition(.numericText())
         }
-        .padding(.horizontal, 9)
-        .padding(.vertical, 5)
-    }
-
-    private var vibrantPill: some View {
-        ZStack {
-            Capsule()
-                .fill(statusColor)
-                .shadow(color: statusColor.opacity(0.5), radius: 6, y: 0)
-
-            Capsule()
-                .fill(
-                    LinearGradient(
-                        colors: [.white.opacity(0.25), .clear],
-                        startPoint: .top,
-                        endPoint: .center
-                    )
-                )
-
-            HStack(spacing: 5) {
-                Circle()
-                    .fill(Color.white.opacity(0.95))
-                    .frame(width: 6, height: 6)
-                    .shadow(color: .white.opacity(0.5), radius: 2)
-
-                Text(statusText)
-                    .font(.system(size: 9, weight: .bold))
-                    .foregroundColor(.white)
-                    .shadow(color: .black.opacity(0.3), radius: 1, y: 1)
-            }
-            .padding(.horizontal, 9)
-            .padding(.vertical, 5)
-        }
-        .fixedSize()
-    }
-
-    private var solidPill: some View {
-        pillContent
-            .background {
-                ZStack {
-                    Capsule()
-                        .fill(
-                            LinearGradient(
-                                colors: [
-                                    statusColor.opacity(isActive ? 0.25 : 0.12),
-                                    statusColor.opacity(isActive ? 0.15 : 0.08)
-                                ],
-                                startPoint: .top,
-                                endPoint: .bottom
-                            )
-                        )
-
-                    if isActive {
-                        Capsule()
-                            .strokeBorder(
-                                LinearGradient(
-                                    colors: [
-                                        statusColor.opacity(0.5),
-                                        statusColor.opacity(0.2)
-                                    ],
-                                    startPoint: .top,
-                                    endPoint: .bottom
-                                ),
-                                lineWidth: 0.5
-                            )
-                    }
-                }
-            }
-            .shadow(color: isActive ? statusColor.opacity(0.35) : .clear, radius: 6, y: 0)
+        .animation(.smooth(duration: 0.3), value: state)
     }
 }
 
@@ -467,5 +643,40 @@ struct PressableButtonStyle: ButtonStyle {
             .onChange(of: configuration.isPressed) { _, newValue in
                 isPressed = newValue
             }
+    }
+}
+
+struct HealthBadge: View {
+    let project: Project
+
+    private var healthResult: HealthScoreResult {
+        ClaudeMdHealthScorer.score(content: project.claudeMdPreview)
+    }
+
+    private var badgeColor: Color {
+        switch healthResult.grade {
+        case .a: return Color(hue: 0.35, saturation: 0.7, brightness: 0.75)
+        case .b: return Color(hue: 0.28, saturation: 0.6, brightness: 0.8)
+        case .c: return Color(hue: 0.12, saturation: 0.6, brightness: 0.85)
+        case .d: return Color(hue: 0.06, saturation: 0.6, brightness: 0.85)
+        case .f: return Color(hue: 0.0, saturation: 0.6, brightness: 0.75)
+        case .none: return Color.white.opacity(0.3)
+        }
+    }
+
+    var body: some View {
+        if project.claudeMdPath != nil {
+            Text(healthResult.grade.rawValue)
+                .font(.system(size: 8, weight: .bold, design: .rounded))
+                .foregroundColor(badgeColor)
+                .frame(width: 14, height: 14)
+                .background(badgeColor.opacity(0.15))
+                .clipShape(Circle())
+                .overlay(
+                    Circle()
+                        .strokeBorder(badgeColor.opacity(0.3), lineWidth: 0.5)
+                )
+                .help("CLAUDE.md health: \(healthResult.grade.rawValue) (\(healthResult.score)/100)")
+        }
     }
 }

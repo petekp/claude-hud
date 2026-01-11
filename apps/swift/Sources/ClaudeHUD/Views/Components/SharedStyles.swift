@@ -1,16 +1,5 @@
 import SwiftUI
 
-struct HoverButtonStyle: ButtonStyle {
-    @Binding var isHovered: Bool
-    var cornerRadius: CGFloat = 6
-
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .scaleEffect(configuration.isPressed ? 0.96 : 1.0)
-            .animation(.spring(response: 0.2, dampingFraction: 0.7), value: configuration.isPressed)
-    }
-}
-
 struct BackButton: View {
     let title: String
     let action: () -> Void
@@ -188,43 +177,19 @@ struct CardBackground: View {
     let isHovered: Bool
     @Environment(\.floatingMode) private var floatingMode
 
+    #if DEBUG
+    @ObservedObject private var config = GlassConfig.shared
+    #endif
+
     var body: some View {
         if floatingMode {
-            floatingBackground
+            #if DEBUG
+            DarkFrostedCard(isHovered: isHovered, config: config)
+            #else
+            DarkFrostedCard(isHovered: isHovered)
+            #endif
         } else {
             solidBackground
-        }
-    }
-
-    private var floatingBackground: some View {
-        ZStack {
-            RoundedRectangle(cornerRadius: 12)
-                .fill(.ultraThinMaterial)
-
-            RoundedRectangle(cornerRadius: 12)
-                .fill(
-                    LinearGradient(
-                        colors: [
-                            .white.opacity(isHovered ? 0.22 : 0.12),
-                            .white.opacity(isHovered ? 0.08 : 0.03)
-                        ],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
-
-            RoundedRectangle(cornerRadius: 12)
-                .strokeBorder(
-                    LinearGradient(
-                        colors: [
-                            .white.opacity(isHovered ? 0.4 : 0.25),
-                            .white.opacity(isHovered ? 0.15 : 0.08)
-                        ],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    ),
-                    lineWidth: 0.5
-                )
         }
     }
 
@@ -330,9 +295,7 @@ struct SkeletonCard: View {
         .padding(12)
         .background {
             if floatingMode {
-                RoundedRectangle(cornerRadius: 12)
-                    .fill(.ultraThinMaterial)
-                    .opacity(0.5)
+                DarkFrostedCard(tintOpacity: 0.15)
             } else {
                 RoundedRectangle(cornerRadius: 12)
                     .fill(Color.hudCard)

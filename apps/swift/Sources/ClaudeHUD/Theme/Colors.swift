@@ -7,33 +7,79 @@ extension Color {
     static let hudCardElevated = Color(hue: 260/360, saturation: 0.06, brightness: 0.17)
     static let hudBorder = Color.white.opacity(0.10)
 
-    // Status colors
-    static let statusReady = Color(hue: 145/360, saturation: 0.75, brightness: 0.70)
-    static let statusWorking = Color(hue: 45/360, saturation: 0.65, brightness: 0.75)
-    static let statusWaiting = Color(hue: 85/360, saturation: 0.70, brightness: 0.80)
-    static let statusCompacting = Color(hue: 55/360, saturation: 0.55, brightness: 0.70)
-    static let statusIdle = Color.white.opacity(0.4)
+    // Default status colors (used in RELEASE mode)
+    private static let defaultStatusReady = Color(hue: 0.294, saturation: 1.00, brightness: 0.90)
+    private static let defaultStatusWorking = Color(hue: 0.103, saturation: 1.00, brightness: 1.00)
+    private static let defaultStatusWaiting = Color(hue: 0.026, saturation: 0.58, brightness: 1.00)
+    private static let defaultStatusCompacting = Color(hue: 0.670, saturation: 0.50, brightness: 1.00)
+    private static let defaultStatusIdle = Color.white.opacity(0.40)
+
+    // Status colors - tunable in DEBUG mode
+    static var statusReady: Color {
+        #if DEBUG
+        let config = GlassConfig.shared
+        return Color(hue: config.statusReadyHue, saturation: config.statusReadySaturation, brightness: config.statusReadyBrightness)
+        #else
+        return defaultStatusReady
+        #endif
+    }
+
+    static var statusWorking: Color {
+        #if DEBUG
+        let config = GlassConfig.shared
+        return Color(hue: config.statusWorkingHue, saturation: config.statusWorkingSaturation, brightness: config.statusWorkingBrightness)
+        #else
+        return defaultStatusWorking
+        #endif
+    }
+
+    static var statusWaiting: Color {
+        #if DEBUG
+        let config = GlassConfig.shared
+        return Color(hue: config.statusWaitingHue, saturation: config.statusWaitingSaturation, brightness: config.statusWaitingBrightness)
+        #else
+        return defaultStatusWaiting
+        #endif
+    }
+
+    static var statusCompacting: Color {
+        #if DEBUG
+        let config = GlassConfig.shared
+        return Color(hue: config.statusCompactingHue, saturation: config.statusCompactingSaturation, brightness: config.statusCompactingBrightness)
+        #else
+        return defaultStatusCompacting
+        #endif
+    }
+
+    static var statusIdle: Color {
+        #if DEBUG
+        let config = GlassConfig.shared
+        return Color.white.opacity(config.statusIdleOpacity)
+        #else
+        return defaultStatusIdle
+        #endif
+    }
 
     // Flash colors (for state change animations)
-    static let flashReady = Color(hue: 145/360, saturation: 0.75, brightness: 0.70).opacity(0.25)
-    static let flashWaiting = Color(hue: 85/360, saturation: 0.70, brightness: 0.80).opacity(0.25)
-    static let flashCompacting = Color(hue: 55/360, saturation: 0.55, brightness: 0.70).opacity(0.20)
+    static var flashReady: Color { statusReady.opacity(0.25) }
+    static var flashWaiting: Color { statusWaiting.opacity(0.25) }
+    static var flashCompacting: Color { statusCompacting.opacity(0.20) }
 
     // Accent
     static let hudAccent = Color(hue: 24/360, saturation: 0.85, brightness: 0.95)
     static let hudAccentDark = Color(hue: 24/360, saturation: 0.90, brightness: 0.75)
 
-    // Section header accent
+    // Detail view section accent
     static let sectionAccent = Color(hue: 24/360, saturation: 0.70, brightness: 0.85)
 
     static func flashColor(for state: SessionState) -> Color {
         switch state {
         case .ready:
-            return .statusReady
+            return statusReady
         case .waiting:
-            return .statusWaiting
+            return statusWaiting
         case .compacting:
-            return .statusCompacting
+            return statusCompacting
         default:
             return .clear
         }
@@ -41,11 +87,11 @@ extension Color {
 
     static func statusColor(for state: SessionState) -> Color {
         switch state {
-        case .ready: return .statusReady
-        case .working: return .statusWorking
-        case .waiting: return .statusWaiting
-        case .compacting: return .statusCompacting
-        case .idle: return .statusIdle
+        case .ready: return statusReady
+        case .working: return statusWorking
+        case .waiting: return statusWaiting
+        case .compacting: return statusCompacting
+        case .idle: return statusIdle
         }
     }
 }
@@ -67,12 +113,6 @@ struct HudGradients {
         colors: [Color.white.opacity(0.15), Color.white.opacity(0.05)],
         startPoint: .topLeading,
         endPoint: .bottomTrailing
-    )
-
-    static let sectionLine = LinearGradient(
-        colors: [Color.sectionAccent.opacity(0.6), Color.clear],
-        startPoint: .leading,
-        endPoint: .trailing
     )
 
     static func glowGradient(for color: Color) -> RadialGradient {

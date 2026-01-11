@@ -30,7 +30,6 @@ class AppState: ObservableObject {
     @Published var activeTab: Tab = .projects
     @Published var projectView: ProjectView = .list
     @Published var selectedProject: Project?
-    @Published var navigationDirection: NavigationDirection = .push
 
     // Data
     @Published var dashboard: DashboardData?
@@ -75,9 +74,17 @@ class AppState: ObservableObject {
     @Published var relayClient = RelayClient()
     @Published var isRemoteMode = false
 
+    // Todos manager
+    @Published var todosManager = TodosManager()
+
+    // Plans manager
+    @Published var plansManager = PlansManager()
+
     init() {
         loadDormantOverrides()
         loadProjectOrder()
+        todosManager.loadTodos()
+        plansManager.loadPlans()
         do {
             engine = try HudEngine()
             loadDashboard()
@@ -411,47 +418,74 @@ class AppState: ObservableObject {
         process.executableURL = URL(fileURLWithPath: "/bin/bash")
         process.arguments = ["-c", """
             SESSION="\(project.name)"
+            PROJECT_PATH="\(project.path)"
 
-            # Check if session already exists
-            if tmux has-session -t "$SESSION" 2>/dev/null; then
-                # Session exists - just switch to it
-                tmux switch-client -t "$SESSION" 2>/dev/null || true
+            # Check if any tmux client is attached (i.e., a terminal is running tmux)
+            HAS_ATTACHED_CLIENT=$(tmux list-clients 2>/dev/null | head -1)
+
+            if [ -n "$HAS_ATTACHED_CLIENT" ]; then
+                # A tmux client exists - we can switch sessions
+                if tmux has-session -t "$SESSION" 2>/dev/null; then
+                    # Session exists, switch to it
+                    tmux switch-client -t "$SESSION" 2>/dev/null
+                else
+                    # Create session and switch
+                    tmux new-session -d -s "$SESSION" -c "$PROJECT_PATH"
+                    tmux switch-client -t "$SESSION" 2>/dev/null
+                fi
+
+                # Activate the terminal that has tmux
+                if pgrep -xq "Ghostty"; then
+                    osascript -e 'tell application "Ghostty" to activate'
+                elif pgrep -xq "iTerm2"; then
+                    osascript -e 'tell application "iTerm" to activate'
+                elif pgrep -xq "WarpTerminal"; then
+                    osascript -e 'tell application "Warp" to activate'
+                elif pgrep -xq "Alacritty"; then
+                    osascript -e 'tell application "Alacritty" to activate'
+                elif pgrep -xq "kitty"; then
+                    osascript -e 'tell application "kitty" to activate'
+                elif pgrep -xq "Terminal"; then
+                    osascript -e 'tell application "Terminal" to activate'
+                fi
             else
-                # Create new session
-                tmux new-session -d -s "$SESSION" -c "\(project.path)"
-                tmux switch-client -t "$SESSION" 2>/dev/null || true
-            fi
+                # No tmux client attached - need to launch a new terminal
+                # Use tmux new-session -A which attaches if exists, creates if not
+                TMUX_CMD="tmux new-session -A -s '$SESSION' -c '$PROJECT_PATH'"
 
-            # Activate whichever terminal app is running tmux
-            # Check common terminal apps in order of likelihood
-            if pgrep -xq "iTerm2"; then
-                osascript -e 'tell application "iTerm" to activate'
-            elif pgrep -xq "WarpTerminal"; then
-                osascript -e 'tell application "Warp" to activate'
-            elif pgrep -xq "Alacritty"; then
-                osascript -e 'tell application "Alacritty" to activate'
-            elif pgrep -xq "kitty"; then
-                osascript -e 'tell application "kitty" to activate'
-            elif pgrep -xq "Terminal"; then
-                osascript -e 'tell application "Terminal" to activate'
+                # Try to launch with preferred terminal (in order of preference)
+                if [ -d "/Applications/Ghostty.app" ]; then
+                    open -na "Ghostty.app" --args -e sh -c "$TMUX_CMD"
+                elif [ -d "/Applications/iTerm.app" ]; then
+                    osascript -e "tell application \\"iTerm\\" to create window with default profile command \\"$TMUX_CMD\\""
+                    osascript -e 'tell application "iTerm" to activate'
+                elif [ -d "/Applications/Alacritty.app" ]; then
+                    open -na "Alacritty.app" --args -e sh -c "$TMUX_CMD"
+                elif command -v kitty &>/dev/null; then
+                    kitty sh -c "$TMUX_CMD" &
+                elif [ -d "/Applications/Warp.app" ]; then
+                    # Warp has limited tmux support, just open directory
+                    open -a "Warp" "$PROJECT_PATH"
+                else
+                    # Fallback to Terminal.app
+                    osascript -e "tell application \\"Terminal\\" to do script \\"$TMUX_CMD\\""
+                    osascript -e 'tell application "Terminal" to activate'
+                fi
             fi
         """]
         try? process.run()
     }
 
     func showProjectDetail(_ project: Project) {
-        navigationDirection = .push
         selectedProject = project
         projectView = .detail(project)
     }
 
     func showAddProject() {
-        navigationDirection = .push
         projectView = .add
     }
 
     func showProjectList() {
-        navigationDirection = .pop
         selectedProject = nil
         projectView = .list
     }
