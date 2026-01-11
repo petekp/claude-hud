@@ -11,20 +11,14 @@ struct DevEnvironment {
     }
 
     static func findDevServerPort(for projectPath: String) async -> UInt16? {
-        let expectedPort = getExpectedPort(for: projectPath)
-
-        if let port = expectedPort {
-            if await isPortResponding(port: port) {
-                return port
-            }
+        guard let expectedPort = getExpectedPort(for: projectPath) else {
+            return nil
         }
 
-        for port in devServerPorts {
-            if port == expectedPort { continue }
-            if await isPortResponding(port: port) {
-                return port
-            }
+        if await isPortResponding(port: expectedPort) {
+            return expectedPort
         }
+
         return nil
     }
 
