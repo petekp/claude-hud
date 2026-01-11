@@ -1824,16 +1824,27 @@ public struct ProjectSessionState {
     public var workingOn: String?
     public var nextStep: String?
     public var context: ContextInfo?
+    /**
+     * Whether Claude is currently "thinking" (API call in flight).
+     * This provides real-time status when using the fetch-intercepting launcher.
+     */
+    public var thinking: Bool?
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
-    public init(state: SessionState, stateChangedAt: String?, sessionId: String?, workingOn: String?, nextStep: String?, context: ContextInfo?) {
+    public init(state: SessionState, stateChangedAt: String?, sessionId: String?, workingOn: String?, nextStep: String?, context: ContextInfo?,
+                /**
+                    * Whether Claude is currently "thinking" (API call in flight).
+                    * This provides real-time status when using the fetch-intercepting launcher.
+                    */ thinking: Bool?)
+    {
         self.state = state
         self.stateChangedAt = stateChangedAt
         self.sessionId = sessionId
         self.workingOn = workingOn
         self.nextStep = nextStep
         self.context = context
+        self.thinking = thinking
     }
 }
 
@@ -1857,6 +1868,9 @@ extension ProjectSessionState: Equatable, Hashable {
         if lhs.context != rhs.context {
             return false
         }
+        if lhs.thinking != rhs.thinking {
+            return false
+        }
         return true
     }
 
@@ -1867,6 +1881,7 @@ extension ProjectSessionState: Equatable, Hashable {
         hasher.combine(workingOn)
         hasher.combine(nextStep)
         hasher.combine(context)
+        hasher.combine(thinking)
     }
 }
 
@@ -1882,7 +1897,8 @@ public struct FfiConverterTypeProjectSessionState: FfiConverterRustBuffer {
                 sessionId: FfiConverterOptionString.read(from: &buf),
                 workingOn: FfiConverterOptionString.read(from: &buf),
                 nextStep: FfiConverterOptionString.read(from: &buf),
-                context: FfiConverterOptionTypeContextInfo.read(from: &buf)
+                context: FfiConverterOptionTypeContextInfo.read(from: &buf),
+                thinking: FfiConverterOptionBool.read(from: &buf)
             )
     }
 
@@ -1893,6 +1909,7 @@ public struct FfiConverterTypeProjectSessionState: FfiConverterRustBuffer {
         FfiConverterOptionString.write(value.workingOn, into: &buf)
         FfiConverterOptionString.write(value.nextStep, into: &buf)
         FfiConverterOptionTypeContextInfo.write(value.context, into: &buf)
+        FfiConverterOptionBool.write(value.thinking, into: &buf)
     }
 }
 
@@ -2144,16 +2161,29 @@ public struct SessionStateEntry {
     public var workingOn: String?
     public var nextStep: String?
     public var context: ContextInfoEntry?
+    /**
+     * Whether Claude is currently "thinking" (API call in flight).
+     * This is set by the fetch-intercepting launcher for real-time status.
+     */
+    public var thinking: Bool?
+    public var thinkingUpdatedAt: String?
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
-    public init(state: String, stateChangedAt: String?, sessionId: String?, workingOn: String?, nextStep: String?, context: ContextInfoEntry?) {
+    public init(state: String, stateChangedAt: String?, sessionId: String?, workingOn: String?, nextStep: String?, context: ContextInfoEntry?,
+                /**
+                    * Whether Claude is currently "thinking" (API call in flight).
+                    * This is set by the fetch-intercepting launcher for real-time status.
+                    */ thinking: Bool?, thinkingUpdatedAt: String?)
+    {
         self.state = state
         self.stateChangedAt = stateChangedAt
         self.sessionId = sessionId
         self.workingOn = workingOn
         self.nextStep = nextStep
         self.context = context
+        self.thinking = thinking
+        self.thinkingUpdatedAt = thinkingUpdatedAt
     }
 }
 
@@ -2177,6 +2207,12 @@ extension SessionStateEntry: Equatable, Hashable {
         if lhs.context != rhs.context {
             return false
         }
+        if lhs.thinking != rhs.thinking {
+            return false
+        }
+        if lhs.thinkingUpdatedAt != rhs.thinkingUpdatedAt {
+            return false
+        }
         return true
     }
 
@@ -2187,6 +2223,8 @@ extension SessionStateEntry: Equatable, Hashable {
         hasher.combine(workingOn)
         hasher.combine(nextStep)
         hasher.combine(context)
+        hasher.combine(thinking)
+        hasher.combine(thinkingUpdatedAt)
     }
 }
 
@@ -2202,7 +2240,9 @@ public struct FfiConverterTypeSessionStateEntry: FfiConverterRustBuffer {
                 sessionId: FfiConverterOptionString.read(from: &buf),
                 workingOn: FfiConverterOptionString.read(from: &buf),
                 nextStep: FfiConverterOptionString.read(from: &buf),
-                context: FfiConverterOptionTypeContextInfoEntry.read(from: &buf)
+                context: FfiConverterOptionTypeContextInfoEntry.read(from: &buf),
+                thinking: FfiConverterOptionBool.read(from: &buf),
+                thinkingUpdatedAt: FfiConverterOptionString.read(from: &buf)
             )
     }
 
@@ -2213,6 +2253,8 @@ public struct FfiConverterTypeSessionStateEntry: FfiConverterRustBuffer {
         FfiConverterOptionString.write(value.workingOn, into: &buf)
         FfiConverterOptionString.write(value.nextStep, into: &buf)
         FfiConverterOptionTypeContextInfoEntry.write(value.context, into: &buf)
+        FfiConverterOptionBool.write(value.thinking, into: &buf)
+        FfiConverterOptionString.write(value.thinkingUpdatedAt, into: &buf)
     }
 }
 
@@ -2703,6 +2745,30 @@ private struct FfiConverterOptionUInt64: FfiConverterRustBuffer {
         switch try readInt(&buf) as Int8 {
         case 0: return nil
         case 1: return try FfiConverterUInt64.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+private struct FfiConverterOptionBool: FfiConverterRustBuffer {
+    typealias SwiftType = Bool?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterBool.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterBool.read(from: &buf)
         default: throw UniffiInternalError.unexpectedOptionalTag
         }
     }

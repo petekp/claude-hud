@@ -2,6 +2,7 @@ import SwiftUI
 
 struct ArtifactsView: View {
     @EnvironmentObject var appState: AppState
+    @Environment(\.floatingMode) private var floatingMode
 
     var body: some View {
         ScrollView {
@@ -17,6 +18,6 @@ struct ArtifactsView: View {
             }
             .padding()
         }
-        .background(Color.hudBackground)
+        .background(floatingMode ? Color.clear : Color.hudBackground)
     }
 }

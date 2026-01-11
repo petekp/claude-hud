@@ -90,10 +90,10 @@ class AppState: ObservableObject {
     }
 
     private func setupStalenessTimer() {
-        // Check every second for responsive staleness detection
+        // Poll every second for real-time "thinking" state updates
         stalenessTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
             DispatchQueue.main.async {
-                self?.objectWillChange.send()
+                self?.refreshSessionStates()
             }
         }
     }
@@ -145,7 +145,8 @@ class AppState: ObservableObject {
                 sessionId: nil,
                 workingOn: projectState.workingOn,
                 nextStep: projectState.nextStep,
-                context: nil
+                context: nil,
+                thinking: nil
             )
 
             if let previous = previousSessionStates[path], previous != sessionState {
@@ -307,8 +308,40 @@ class AppState: ObservableObject {
             return nil
         }
 
+        // If we have real-time "thinking" state from the fetch-intercepting launcher,
+        // use it directly - it's the most accurate source of truth
+        if let thinking = state.thinking {
+            if thinking {
+                // Claude is actively making API calls - definitely working
+                return ProjectSessionState(
+                    state: .working,
+                    stateChangedAt: state.stateChangedAt,
+                    sessionId: state.sessionId,
+                    workingOn: state.workingOn,
+                    nextStep: state.nextStep,
+                    context: state.context,
+                    thinking: true
+                )
+            } else if state.state == .working {
+                // thinking=false but state=working means API call finished
+                // but hooks haven't updated state yet - show as ready
+                return ProjectSessionState(
+                    state: .ready,
+                    stateChangedAt: state.stateChangedAt,
+                    sessionId: state.sessionId,
+                    workingOn: state.workingOn,
+                    nextStep: state.nextStep,
+                    context: state.context,
+                    thinking: false
+                )
+            }
+        }
+
+        // Fallback to staleness-based detection when thinking state isn't available
         if state.state == .working {
-            let stalenessThreshold: TimeInterval = 5
+            // 30 seconds allows for tool-free responses (just text) to complete
+            // without falsely showing "Waiting" status
+            let stalenessThreshold: TimeInterval = 30
 
             if isRemoteMode {
                 // Find the most recent heartbeat from any subdirectory of this project
@@ -327,7 +360,8 @@ class AppState: ObservableObject {
                             sessionId: state.sessionId,
                             workingOn: state.workingOn,
                             nextStep: state.nextStep,
-                            context: state.context
+                            context: state.context,
+                            thinking: state.thinking
                         )
                     }
                 } else if let connectedAt = relayClient.connectedAt,
@@ -340,7 +374,8 @@ class AppState: ObservableObject {
                         sessionId: state.sessionId,
                         workingOn: state.workingOn,
                         nextStep: state.nextStep,
-                        context: state.context
+                        context: state.context,
+                        thinking: state.thinking
                     )
                 }
             } else {
@@ -361,7 +396,8 @@ class AppState: ObservableObject {
                         sessionId: state.sessionId,
                         workingOn: state.workingOn,
                         nextStep: state.nextStep,
-                        context: state.context
+                        context: state.context,
+                        thinking: state.thinking
                     )
                 }
             }

@@ -2,12 +2,12 @@ import SwiftUI
 
 struct ProjectDetailView: View {
     @EnvironmentObject var appState: AppState
+    @Environment(\.floatingMode) private var floatingMode
     let project: Project
 
-    @State private var isBackHovered = false
     @State private var isLaunchHovered = false
-    @State private var isBrowserHovered = false
-    @State private var isTerminalHovered = false
+    @State private var isLaunchPressed = false
+    @State private var appeared = false
 
     private var devServerPort: UInt16? {
         appState.getDevServerPort(for: project)
@@ -17,24 +17,8 @@ struct ProjectDetailView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 HStack {
-                    Button(action: { appState.showProjectList() }) {
-                        HStack(spacing: 6) {
-                            Image(systemName: "chevron.left")
-                                .font(.system(size: 11, weight: .semibold))
-                            Text("Projects")
-                                .font(.system(size: 12, weight: .medium))
-                        }
-                        .foregroundColor(.white.opacity(isBackHovered ? 0.9 : 0.5))
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 6)
-                        .background(Color.white.opacity(isBackHovered ? 0.08 : 0))
-                        .clipShape(RoundedRectangle(cornerRadius: 6))
-                    }
-                    .buttonStyle(.plain)
-                    .onHover { hovering in
-                        withAnimation(.easeInOut(duration: 0.15)) {
-                            isBackHovered = hovering
-                        }
+                    BackButton(title: "Projects") {
+                        appState.showProjectList()
                     }
                     .keyboardShortcut("[", modifiers: .command)
 
@@ -42,143 +26,161 @@ struct ProjectDetailView: View {
                 }
 
                 Text(project.name)
-                    .font(.system(size: 20, weight: .bold))
+                    .font(.system(size: 22, weight: .bold))
                     .foregroundColor(.white)
+                    .opacity(appeared ? 1 : 0)
+                    .offset(y: appeared ? 0 : 8)
 
                 if let sessionState = appState.getSessionState(for: project) {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("STATUS")
-                            .font(.system(size: 10, weight: .semibold))
-                            .tracking(1.5)
-                            .foregroundColor(.white.opacity(0.4))
+                    DetailCard {
+                        VStack(alignment: .leading, spacing: 10) {
+                            DetailSectionLabel(title: "STATUS")
 
-                        StatusPillView(state: sessionState.state)
+                            StatusPillView(state: sessionState.state)
 
-                        if let workingOn = sessionState.workingOn {
-                            Text(workingOn)
-                                .font(.system(size: 13))
-                                .foregroundColor(.white.opacity(0.7))
+                            if let workingOn = sessionState.workingOn {
+                                Text(workingOn)
+                                    .font(.system(size: 13))
+                                    .foregroundColor(.white.opacity(0.7))
+                                    .lineLimit(3)
+                            }
                         }
                     }
-                    .padding()
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(Color.hudCard)
-                    .clipShape(RoundedRectangle(cornerRadius: 10))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 10)
-                            .stroke(Color.hudBorder, lineWidth: 1)
-                    )
+                    .opacity(appeared ? 1 : 0)
+                    .offset(y: appeared ? 0 : 12)
                 }
 
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("QUICK ACTIONS")
-                        .font(.system(size: 10, weight: .semibold))
-                        .tracking(1.5)
-                        .foregroundColor(.white.opacity(0.4))
+                DetailCard {
+                    VStack(alignment: .leading, spacing: 12) {
+                        DetailSectionLabel(title: "QUICK ACTIONS")
 
-                    HStack(spacing: 8) {
-                        Button(action: { appState.launchTerminal(for: project) }) {
-                            HStack(spacing: 6) {
-                                Image(systemName: "terminal")
-                                    .font(.system(size: 12))
-                                Text("Terminal")
-                                    .font(.system(size: 12, weight: .medium))
+                        HStack(spacing: 8) {
+                            ActionButton(icon: "terminal", title: "Terminal") {
+                                appState.launchTerminal(for: project)
                             }
-                            .foregroundColor(.white.opacity(isTerminalHovered ? 0.9 : 0.7))
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 8)
-                            .background(Color.white.opacity(isTerminalHovered ? 0.12 : 0.06))
-                            .clipShape(RoundedRectangle(cornerRadius: 6))
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 6)
-                                    .stroke(Color.white.opacity(isTerminalHovered ? 0.2 : 0.1), lineWidth: 1)
-                            )
-                        }
-                        .buttonStyle(.plain)
-                        .onHover { hovering in
-                            withAnimation(.easeInOut(duration: 0.15)) {
-                                isTerminalHovered = hovering
-                            }
-                        }
 
-                        if let port = devServerPort {
-                            Button(action: { appState.openInBrowser(project) }) {
-                                HStack(spacing: 6) {
-                                    Image(systemName: "globe")
-                                        .font(.system(size: 12))
-                                    Text(":\(port)")
-                                        .font(.system(size: 12, weight: .medium, design: .monospaced))
-                                }
-                                .foregroundColor(.white.opacity(isBrowserHovered ? 0.9 : 0.7))
-                                .padding(.horizontal, 12)
-                                .padding(.vertical, 8)
-                                .background(Color.white.opacity(isBrowserHovered ? 0.12 : 0.06))
-                                .clipShape(RoundedRectangle(cornerRadius: 6))
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: 6)
-                                        .stroke(Color.white.opacity(isBrowserHovered ? 0.2 : 0.1), lineWidth: 1)
-                                )
-                            }
-                            .buttonStyle(.plain)
-                            .onHover { hovering in
-                                withAnimation(.easeInOut(duration: 0.15)) {
-                                    isBrowserHovered = hovering
+                            if let port = devServerPort {
+                                ActionButton(icon: "globe", title: ":\(port)") {
+                                    appState.openInBrowser(project)
                                 }
                             }
                         }
-                    }
 
-                    if devServerPort != nil {
-                        Button(action: { appState.launchFullEnvironment(for: project) }) {
-                            HStack(spacing: 8) {
-                                Image(systemName: "play.fill")
-                                    .font(.system(size: 11))
-                                Text("Launch Full Environment")
-                                    .font(.system(size: 12, weight: .semibold))
+                        if devServerPort != nil {
+                            ActionButton(
+                                icon: "play.fill",
+                                title: "Launch Full Environment",
+                                isAccent: true,
+                                fullWidth: true
+                            ) {
+                                appState.launchFullEnvironment(for: project)
                             }
-                            .foregroundColor(isLaunchHovered ? .white : .white.opacity(0.9))
-                            .padding(.horizontal, 14)
-                            .padding(.vertical, 10)
-                            .frame(maxWidth: .infinity)
-                            .background(
-                                LinearGradient(
-                                    colors: [
-                                        Color.hudAccent.opacity(isLaunchHovered ? 0.9 : 0.7),
-                                        Color.hudAccent.opacity(isLaunchHovered ? 0.7 : 0.5)
-                                    ],
-                                    startPoint: .top,
-                                    endPoint: .bottom
-                                )
-                            )
-                            .clipShape(RoundedRectangle(cornerRadius: 8))
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 8)
-                                    .stroke(Color.hudAccent.opacity(isLaunchHovered ? 0.8 : 0.5), lineWidth: 1)
-                            )
-                            .shadow(color: Color.hudAccent.opacity(isLaunchHovered ? 0.3 : 0), radius: 8, y: 2)
+                            .help("Opens terminal and browser together")
                         }
-                        .buttonStyle(.plain)
-                        .onHover { hovering in
-                            withAnimation(.easeInOut(duration: 0.15)) {
-                                isLaunchHovered = hovering
-                            }
-                        }
-                        .help("Opens terminal and browser together")
                     }
                 }
-                .padding()
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(Color.hudCard)
-                .clipShape(RoundedRectangle(cornerRadius: 10))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 10)
-                        .stroke(Color.hudBorder, lineWidth: 1)
-                )
+                .opacity(appeared ? 1 : 0)
+                .offset(y: appeared ? 0 : 16)
 
                 Spacer()
             }
             .padding(16)
         }
-        .background(Color.hudBackground)
+        .background(floatingMode ? Color.clear : Color.hudBackground)
+        .onAppear {
+            withAnimation(.spring(response: 0.5, dampingFraction: 0.8).delay(0.1)) {
+                appeared = true
+            }
+        }
+    }
+}
+
+struct DetailCard<Content: View>: View {
+    @Environment(\.floatingMode) private var floatingMode
+    @ViewBuilder let content: Content
+
+    var body: some View {
+        content
+            .padding(14)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background {
+                if floatingMode {
+                    floatingBackground
+                } else {
+                    solidBackground
+                }
+            }
+            .clipShape(RoundedRectangle(cornerRadius: 12))
+    }
+
+    private var floatingBackground: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 12)
+                .fill(.ultraThinMaterial)
+
+            RoundedRectangle(cornerRadius: 12)
+                .fill(
+                    LinearGradient(
+                        colors: [.white.opacity(0.1), .white.opacity(0.03)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+
+            RoundedRectangle(cornerRadius: 12)
+                .strokeBorder(
+                    LinearGradient(
+                        colors: [.white.opacity(0.2), .white.opacity(0.08)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    ),
+                    lineWidth: 0.5
+                )
+        }
+    }
+
+    private var solidBackground: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 12)
+                .fill(Color.hudCard)
+
+            VStack(spacing: 0) {
+                LinearGradient(
+                    colors: [.white.opacity(0.05), .clear],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+                .frame(height: 1)
+                Spacer()
+            }
+            .clipShape(RoundedRectangle(cornerRadius: 12))
+
+            RoundedRectangle(cornerRadius: 12)
+                .strokeBorder(
+                    LinearGradient(
+                        colors: [.white.opacity(0.12), .white.opacity(0.05)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    ),
+                    lineWidth: 0.5
+                )
+        }
+    }
+}
+
+struct DetailSectionLabel: View {
+    let title: String
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Circle()
+                .fill(Color.sectionAccent.opacity(0.8))
+                .frame(width: 4, height: 4)
+
+            Text(title)
+                .font(.system(size: 10, weight: .bold))
+                .tracking(2)
+                .foregroundColor(.white.opacity(0.45))
+        }
     }
 }

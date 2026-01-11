@@ -241,6 +241,9 @@ pub struct ProjectSessionState {
     pub working_on: Option<String>,
     pub next_step: Option<String>,
     pub context: Option<ContextInfo>,
+    /// Whether Claude is currently "thinking" (API call in flight).
+    /// This provides real-time status when using the fetch-intercepting launcher.
+    pub thinking: Option<bool>,
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -266,6 +269,11 @@ pub struct SessionStateEntry {
     pub working_on: Option<String>,
     pub next_step: Option<String>,
     pub context: Option<ContextInfoEntry>,
+    /// Whether Claude is currently "thinking" (API call in flight).
+    /// This is set by the fetch-intercepting launcher for real-time status.
+    #[serde(default)]
+    pub thinking: Option<bool>,
+    pub thinking_updated_at: Option<String>,
 }
 
 /// The full session states file format.

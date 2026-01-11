@@ -229,5 +229,5 @@ echo '{}' | ~/.claude/hooks/publish-state.sh
 
 ---
 
-*Last updated: January 2025*
-*Related: [Claude Code Hooks docs](../docs/cc/hooks.md)*
+*Last updated: January 2026*
+*Related: [Claude Code Hooks docs](../../docs/cc/hooks.md)*

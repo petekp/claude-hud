@@ -4,7 +4,7 @@ Reference documentation for making Tauri apps feel native on macOS.
 
 ---
 
-## Current State (January 2025)
+## Current State (January 2026)
 
 ### Known Issues
 
@@ -402,4 +402,4 @@ From [awesome-tauri](https://github.com/tauri-apps/awesome-tauri):
 
 ---
 
-*Last updated: January 2025*
+*Last updated: January 2026*

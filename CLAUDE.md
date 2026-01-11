@@ -7,6 +7,14 @@ Claude HUD is a cross-platform desktop application that serves as a dashboard fo
 
 > **Development Workflow:** For the Tauri app, run `cd apps/tauri && pnpm tauri dev`. For the Swift app, run `cd apps/swift && swift build`. Changes auto-rebuild and hot-reload.
 
+## Session Startup Checklist
+
+When starting a development session on this project:
+
+1. **Run the Swift HUD in background:** `cd apps/swift && swift run &`
+2. **Rebuild after Swift changes:** If you modify Swift code or regenerate UniFFI bindings, rebuild with `cd apps/swift && swift build` then restart with `swift run &`
+3. **State tracking is automatic:** Hooks in `~/.claude/settings.json` track thinking state. Just run `claude` normally.
+
 ## Product Vision
 
 **Claude HUD lets you develop and ship more projects in parallel by eliminating the cognitive overhead of context-switching.** Instead of remembering where you left off across a dozen projects, the HUD shows you—automatically, at a glance. Wake up, open the app, pick a project, and resume instantly.
@@ -161,19 +169,26 @@ claude-hud/
 │   │       ├── src/lib.rs       # IPC command handlers
 │   │       ├── tauri.conf.json
 │   │       └── icons/
-│   └── swift/                   # Native macOS app
-│       ├── Package.swift        # Swift Package Manager config
-│       ├── Sources/
-│       │   ├── ClaudeHUD/       # SwiftUI app
-│       │   │   ├── App.swift
-│       │   │   ├── ContentView.swift
-│       │   │   ├── Models/
-│       │   │   ├── Views/
-│       │   │   └── Theme/
-│       │   └── HudCoreFFI/      # FFI module wrapper
-│       └── bindings/            # Generated UniFFI bindings
-│           ├── hud_core.swift
-│           └── hud_coreFFI.h
+│   ├── swift/                   # Native macOS app
+│   │   ├── Package.swift        # Swift Package Manager config
+│   │   ├── Sources/
+│   │   │   ├── ClaudeHUD/       # SwiftUI app
+│   │   │   │   ├── App.swift
+│   │   │   │   ├── ContentView.swift
+│   │   │   │   ├── Models/
+│   │   │   │   ├── Views/
+│   │   │   │   └── Theme/
+│   │   │   └── HudCoreFFI/      # FFI module wrapper
+│   │   └── bindings/            # Generated UniFFI bindings
+│   │       ├── hud_core.swift
+│   │       └── hud_coreFFI.h
+│   └── daemon/                  # HUD daemon (TypeScript)
+│       ├── package.json
+│       ├── tsconfig.json
+│       └── src/
+│           ├── sdk/             # Claude Code SDK (stream-json)
+│           ├── daemon/          # State tracking & relay
+│           └── cli/             # hud-claude entry point
 ├── target/                      # Shared Rust build output
 ├── docs/
 │   ├── claude-code-artifacts.md
@@ -308,7 +323,7 @@ This design enables multiple clients (Tauri desktop, Swift native, TUI) to share
 
 **Session State (`sessions.rs`):**
 - `detect_session_state()` - Determines current state (working, ready, idle, etc.)
-- `read_project_status()` - Reads status from `.claude/hud-status.json`
+- `read_project_status()` - Reads status from `~/.claude/hud-session-states.json`
 
 **HudEngine Facade (`engine.rs`):**
 - `HudEngine::new()` - Creates engine instance
@@ -350,6 +365,51 @@ This design enables multiple clients (Tauri desktop, Swift native, TUI) to share
 **Threading:**
 - `std::thread::spawn()` for background tasks
 - `app_handle.emit()` sends events back to frontend
+
+## State Tracking Architecture
+
+**Current approach:** Hooks for local TUI sessions, daemon reserved for future remote/mobile use.
+
+See [ADR-001: State Tracking Approach](docs/architecture-decisions/001-state-tracking-approach.md) for the full decision rationale.
+
+### Local Sessions (Current)
+
+For interactive TUI sessions, we use Claude Code hooks:
+
+```
+User runs claude → Hooks fire → State file updated → Swift HUD reads
+```
+
+**Hooks configured:**
+- `UserPromptSubmit` → thinking: true, state: working
+- `PostToolUse` → heartbeat (maintains thinking: true)
+- `Stop` → thinking: false, state: ready
+- `Notification` (idle_prompt) → thinking: false, state: ready
+
+**State file:** `~/.claude/hud-session-states.json`
+
+**Hook script:** `~/.claude/scripts/hud-state-tracker.sh`
+
+### HUD Daemon (Future Remote Use)
+
+The daemon in `apps/daemon/` provides **precise state tracking** via `--output-format stream-json`. It's reserved for future mobile/remote client integration.
+
+**Why not use daemon for local?** Claude's `--output-format stream-json` replaces the TUI with JSON output. You can't have both Claude's interactive TUI and structured JSON from the same process.
+
+**When to use daemon:**
+- Building mobile client relay integration
+- Programmatic/scripted Claude interactions
+- Testing state tracking precision
+
+```bash
+# Build daemon (if needed)
+cd apps/daemon && npm install && npm run build
+
+# Run daemon (JSON output, no TUI)
+hud-claude-daemon -p "explain this code"
+```
+
+For detailed daemon design, see `docs/hud-daemon-design.md`.
 
 ## Runtime Configuration
 

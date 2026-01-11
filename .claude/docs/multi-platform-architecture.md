@@ -34,46 +34,60 @@ A shared core library (`hud-core`) enables this omnipresence without feature dri
 
 ```
 claude-hud/
-├── src-tauri/
-│   ├── src/
-│   │   ├── lib.rs          # 2,376 lines - IPC handlers + business logic (mixed)
-│   │   ├── types.rs        #   183 lines - Shared type definitions
-│   │   ├── patterns.rs     #    39 lines - Regex patterns
-│   │   ├── config.rs       #    51 lines - Path/config utilities
-│   │   ├── stats.rs        #   143 lines - Stats parsing
-│   │   └── bin/
-│   │       └── hud-tui.rs  #   567 lines - Standalone TUI (duplicates logic)
-│   └── Cargo.toml
-├── src/                    # React frontend
-│   ├── App.tsx             #   476 lines
-│   ├── types.ts            #    90 lines - Must mirror Rust types
-│   └── components/
+├── core/
+│   └── hud-core/           # Shared Rust core library
+│       └── src/
+│           ├── lib.rs      # Re-exports + UniFFI scaffolding
+│           ├── engine.rs   # HudEngine facade
+│           ├── types.rs    # Shared types (UniFFI exported)
+│           ├── error.rs    # Error types
+│           ├── patterns.rs # Compiled regex patterns
+│           ├── config.rs   # Config and path utilities
+│           ├── stats.rs    # Statistics parsing and caching
+│           ├── projects.rs # Project loading and discovery
+│           ├── sessions.rs # Session state detection
+│           └── artifacts.rs# Artifact discovery
+├── apps/
+│   ├── tauri/              # Tauri desktop app
+│   │   ├── src/            # React frontend
+│   │   │   ├── App.tsx
+│   │   │   ├── types.ts    # Must mirror Rust types
+│   │   │   └── components/
+│   │   └── src-tauri/      # Rust backend
+│   │       └── src/
+│   │           ├── lib.rs  # IPC command handlers (thin wrappers)
+│   │           └── bin/
+│   │               └── hud-tui.rs  # Terminal UI
+│   ├── swift/              # Native macOS app
+│   │   └── Sources/ClaudeHUD/
+│   └── daemon/             # HUD daemon (TypeScript)
 └── package.json
 ```
 
-### 1.2 Problems Identified
+### 1.2 Problems Identified (Historical)
 
-| Problem | Impact | Evidence |
-|---------|--------|----------|
-| **Code Duplication** | Bugs fixed in one place remain in other | TUI implements `load_projects()`, `SessionState`, `get_claude_dir()` independently |
-| **Tight Coupling** | Cannot test business logic in isolation | `lib.rs` mixes file I/O, business logic, IPC, and platform code |
-| **Type Divergence** | Runtime deserialization failures | TUI's `SessionState` has different casing than types.rs |
-| **Platform Lock-in** | Cannot reuse for mobile/web | Logic embedded in `#[tauri::command]` handlers |
-| **Implicit Dependencies** | Hard to reason about data flow | Functions reach into `~/.claude/` without explicit path injection |
+> **Note:** These problems have been resolved by the migration to `hud-core`. This section is preserved for historical context.
 
-### 1.3 Duplication Inventory
+| Problem | Impact | Resolution |
+|---------|--------|------------|
+| **Code Duplication** | Bugs fixed in one place remain in other | ✅ Resolved: All logic now in `hud-core` |
+| **Tight Coupling** | Cannot test business logic in isolation | ✅ Resolved: `HudEngine` facade separates concerns |
+| **Type Divergence** | Runtime deserialization failures | ✅ Resolved: Single type definitions in `hud-core/types.rs` |
+| **Platform Lock-in** | Cannot reuse for mobile/web | ✅ Resolved: Tauri, Swift, and TUI all use `hud-core` |
+| **Implicit Dependencies** | Hard to reason about data flow | ✅ Resolved: `HudEngine::with_claude_dir()` for explicit paths |
 
-Functions implemented in both `lib.rs` and `hud-tui.rs`:
+### 1.3 Current Architecture Benefits
 
-| Function | lib.rs | hud-tui.rs | Semantic Difference |
-|----------|--------|------------|---------------------|
-| `get_claude_dir()` | Uses `dirs::home_dir()` | Uses `dirs::home_dir()` | None |
-| `load_projects()` | Returns `Vec<Project>` | Returns `Vec<ProjectDisplay>` | Different types |
-| `SessionState` enum | 5 variants, PascalCase | 5 variants, lowercase serde | Serialization incompatible |
-| `load_session_states()` | Reads `hud-status.json` | Reads `hud-status.json` | None |
-| Path encoding | `try_resolve_encoded_path()` | Inline in `load_projects()` | Same logic, duplicated |
+The migration to `hud-core` achieved:
 
-**Risk:** If Claude Code changes the `hud-status.json` format, both implementations must be updated independently.
+| Benefit | Evidence |
+|---------|----------|
+| **Single source of truth** | All types in `core/hud-core/src/types.rs` |
+| **Multi-platform support** | Tauri (React), Swift (SwiftUI), TUI all share same core |
+| **Testable business logic** | `HudEngine` can be tested in isolation |
+| **Consistent state file handling** | `hud-session-states.json` read by single implementation |
+
+**Current state file:** `~/.claude/hud-session-states.json` (updated via hooks)
 
 ---
 
@@ -120,52 +134,60 @@ Functions implemented in both `lib.rs` and `hud-tui.rs`:
 
 **Constraint:** `hud-core` cannot depend on `tauri`, `ratatui`, `axum`, or `tokio`. This ensures it remains portable.
 
-### 2.2 Workspace Structure
+### 2.2 Workspace Structure (Current Implementation)
 
 ```
 claude-hud/
 ├── Cargo.toml                    # Workspace root
-├── crates/
-│   ├── hud-core/                 # Shared library
-│   │   ├── Cargo.toml
-│   │   └── src/
-│   │       ├── lib.rs            # Public API + re-exports
-│   │       ├── engine.rs         # HudEngine facade
-│   │       ├── error.rs          # Error types
-│   │       ├── types/
-│   │       │   ├── mod.rs        # Type re-exports
-│   │       │   ├── project.rs    # Project, ProjectDetails
-│   │       │   ├── session.rs    # SessionState, SessionStateInfo
-│   │       │   ├── stats.rs      # ProjectStats, StatsCache
-│   │       │   ├── artifact.rs   # Artifact, ArtifactKind
-│   │       │   └── plugin.rs     # Plugin, PluginManifest
-│   │       ├── config.rs         # HudConfig, path resolution
-│   │       ├── projects.rs       # Project discovery & loading
-│   │       ├── sessions.rs       # Session state management
-│   │       ├── stats.rs          # Statistics parsing & caching
-│   │       ├── artifacts.rs      # Skills/commands/agents discovery
-│   │       ├── plugins.rs        # Plugin management
-│   │       ├── patterns.rs       # Compiled regex patterns
-│   │       └── actions.rs        # Platform actions (tmux, editor)
-│   │
-│   └── hud-tui/                  # Terminal client
+├── core/
+│   └── hud-core/                 # Shared library
 │       ├── Cargo.toml
 │       └── src/
-│           ├── main.rs           # Entry point
-│           ├── app.rs            # Application state
-│           ├── ui.rs             # Rendering
-│           └── input.rs          # Event handling
+│           ├── lib.rs            # Public API + re-exports + UniFFI scaffolding
+│           ├── engine.rs         # HudEngine facade
+│           ├── error.rs          # Error types (UniFFI exported)
+│           ├── types.rs          # All shared types (UniFFI exported)
+│           ├── config.rs         # HudConfig, path resolution
+│           ├── projects.rs       # Project discovery & loading
+│           ├── sessions.rs       # Session state management
+│           ├── stats.rs          # Statistics parsing & caching
+│           ├── artifacts.rs      # Skills/commands/agents discovery
+│           └── patterns.rs       # Compiled regex patterns
 │
-├── src-tauri/                    # Desktop client
-│   ├── Cargo.toml                # Depends on hud-core
-│   └── src/
-│       ├── main.rs               # Entry point
-│       ├── lib.rs                # IPC wrappers
-│       └── events.rs             # Event emission
+├── apps/
+│   ├── tauri/                    # Tauri desktop app (cross-platform)
+│   │   ├── package.json          # Frontend dependencies
+│   │   ├── src/                  # React frontend
+│   │   │   ├── App.tsx
+│   │   │   ├── types.ts          # TypeScript types (must mirror Rust)
+│   │   │   └── components/
+│   │   └── src-tauri/            # Rust backend
+│   │       ├── Cargo.toml        # Depends on hud-core
+│   │       └── src/
+│   │           ├── lib.rs        # IPC command handlers (thin wrappers)
+│   │           └── bin/
+│   │               └── hud-tui.rs # Terminal UI
+│   │
+│   ├── swift/                    # Native macOS app
+│   │   ├── Package.swift         # Swift Package Manager config
+│   │   ├── Sources/
+│   │   │   ├── ClaudeHUD/        # SwiftUI app
+│   │   │   └── HudCoreFFI/       # FFI module wrapper
+│   │   └── bindings/             # Generated UniFFI bindings
+│   │       ├── hud_core.swift
+│   │       └── hud_coreFFI.h
+│   │
+│   └── daemon/                   # HUD daemon (TypeScript)
+│       ├── package.json
+│       └── src/
+│           ├── sdk/              # Claude Code SDK (stream-json)
+│           ├── daemon/           # State tracking & relay
+│           └── cli/              # hud-claude-daemon entry point
 │
-├── src/                          # React frontend (unchanged)
-├── package.json
-└── tauri.conf.json
+├── docs/                         # Documentation
+│   ├── architecture-decisions/   # ADRs
+│   └── cc/                       # Claude Code documentation
+└── target/                       # Shared Rust build output
 ```
 
 ---
@@ -311,7 +333,7 @@ impl HudEngine {
     /// Projects without active sessions are not included.
     ///
     /// # File System Access
-    /// - Reads: `~/.claude/hud-status.json`
+    /// - Reads: `~/.claude/hud-session-states.json`
     ///
     /// # Consistency
     /// This reads a file that Claude Code writes. The file may be:
@@ -417,12 +439,12 @@ impl HudEngine {
 
 ```rust
 // ═══════════════════════════════════════════════════════════════════════════
-// Session State (matches Claude Code's hud-status.json format)
+// Session State (matches Claude Code's hud-session-states.json format)
 // ═══════════════════════════════════════════════════════════════════════════
 
 /// The current state of a Claude Code session.
 ///
-/// These states match the values written by Claude Code to `hud-status.json`.
+/// These states match the values written by Claude Code to `hud-session-states.json`.
 /// The serde rename ensures compatibility with the lowercase JSON format.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -693,7 +715,7 @@ async fn add_project(State(engine): State<SharedEngine>, path: String) -> Result
 
 | File | Claude Code | HUD | Strategy |
 |------|-------------|-----|----------|
-| `hud-status.json` | Writes | Reads | HUD only reads; tolerates stale data |
+| `hud-session-states.json` | Writes | Reads | HUD only reads; tolerates stale data |
 | `hud.json` | Never | Read/Write | HUD owns this file exclusively |
 | `settings.json` | Read/Write | Read/Write | Read-modify-write with atomic rename |
 | `projects/*.jsonl` | Writes | Reads | HUD only reads; tolerates partial files |
@@ -786,9 +808,17 @@ struct CachedFileInfo {
 ```
 ~/.claude/                          # MUST exist
 ├── hud.json                        # Created by HUD if missing
-├── hud-status.json                 # Created by Claude Code (may not exist)
+├── hud-session-states.json         # Created by hooks (tracks thinking state)
 ├── hud-stats-cache.json            # Created by HUD if missing
-├── settings.json                   # Created by Claude Code (may not exist)
+├── hud-summaries.json              # Session summaries cache
+├── hud-project-summaries.json      # Project overview bullets
+├── settings.json                   # Claude Code config (includes hooks)
+├── scripts/
+│   ├── hud-state-tracker.sh        # Hook script for state tracking
+│   ├── hud-claude                  # Wrapper for normal Claude TUI
+│   └── hud-claude-daemon           # Wrapper for daemon mode
+├── hooks/
+│   └── publish-state.sh            # Debounced relay publishing
 ├── projects/                       # Created by Claude Code (may not exist)
 │   └── {encoded-path}/
 │       └── {session-id}.jsonl
@@ -804,7 +834,7 @@ struct CachedFileInfo {
 |------------------------|----------|
 | `~/.claude/` | Return `HudError::ClaudeDirNotFound` |
 | `hud.json` | Return empty project list |
-| `hud-status.json` | Return empty session states |
+| `hud-session-states.json` | Return empty session states |
 | `settings.json` | Use default settings |
 | `projects/` | Return empty stats |
 | `plugins/` | Return empty plugin list |
@@ -915,89 +945,51 @@ proptest! {
 
 ---
 
-## 8. Migration Strategy
+## 8. Migration Status
 
-### Phase 1: Workspace Setup
-**Goal:** Establish workspace structure without breaking existing build.
+> **Status: COMPLETE** — The migration to `hud-core` has been successfully completed.
 
-1. Create `Cargo.toml` at project root with workspace definition
-2. Create `crates/hud-core/` with minimal `Cargo.toml` and empty `lib.rs`
-3. Update `src-tauri/Cargo.toml` to be workspace member
-4. **Verification:** `cargo build --workspace` succeeds
+### Completed Phases
 
-### Phase 2: Extract Types
-**Goal:** Single source of truth for all data types.
+| Phase | Goal | Status |
+|-------|------|--------|
+| 1. Workspace Setup | Establish workspace structure | ✅ Complete |
+| 2. Extract Types | Single source of truth for data types | ✅ Complete |
+| 3. Extract Utilities | Move pure functions | ✅ Complete |
+| 4. Extract Business Logic | Move to core library | ✅ Complete |
+| 5. Create HudEngine Facade | Unified API surface | ✅ Complete |
+| 6. Refactor Tauri Client | Thin IPC wrappers | ✅ Complete |
+| 7. Add Swift Client | UniFFI bindings for SwiftUI | ✅ Complete |
+| 8. Add Daemon | TypeScript daemon for remote use | ✅ Complete |
 
-1. Copy `src-tauri/src/types.rs` to `crates/hud-core/src/types/`
-2. Split into submodules: `project.rs`, `session.rs`, `stats.rs`, `artifact.rs`, `plugin.rs`
-3. Add `SessionState` enum (currently only in TUI)
-4. Update `src-tauri` to depend on `hud-core` and use its types
-5. Delete `src-tauri/src/types.rs`
-6. **Verification:** `cargo build --workspace` succeeds; `pnpm tauri dev` works
+### Current Architecture
 
-### Phase 3: Extract Utilities
-**Goal:** Move pure functions with no state.
+All clients now use the shared `hud-core` library:
 
-1. Move `patterns.rs` → `hud-core/src/patterns.rs`
-2. Move `config.rs` → `hud-core/src/config.rs`
-3. Move `stats.rs` → `hud-core/src/stats.rs`
-4. Update imports in `src-tauri/src/lib.rs`
-5. **Verification:** All tests pass
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    Frontend Clients                         │
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────┐ │
+│  │ Tauri App   │  │ Swift App   │  │ TUI (hud-tui.rs)    │ │
+│  │ (React IPC) │  │ (UniFFI)    │  │ (direct Rust calls) │ │
+│  └──────┬──────┘  └──────┬──────┘  └──────────┬──────────┘ │
+└─────────┼────────────────┼────────────────────┼─────────────┘
+          │                │                    │
+          └────────────────┼────────────────────┘
+                           ▼
+                 ┌───────────────────┐
+                 │     hud-core      │
+                 │  (HudEngine API)  │
+                 └───────────────────┘
+```
 
-### Phase 4: Extract Business Logic
-**Goal:** Move remaining logic, leaving only IPC handlers in Tauri.
+### Future Work
 
-1. Create `hud-core/src/projects.rs`:
-   - `has_project_indicators()`
-   - `build_project_from_path()`
-   - `encode_path()` / `decode_path()`
-2. Create `hud-core/src/artifacts.rs`:
-   - `count_artifacts_in_dir()`
-   - `parse_frontmatter()`
-   - `collect_artifacts_from_dir()`
-3. Create `hud-core/src/sessions.rs`:
-   - Session state loading
-   - Summary extraction
-4. Create `hud-core/src/plugins.rs`:
-   - Plugin loading and management
-5. Create `hud-core/src/actions.rs`:
-   - Platform-specific operations (tmux, editor, file manager)
-6. **Verification:** Functionality unchanged
+If additional clients are needed:
 
-### Phase 5: Create HudEngine Facade
-**Goal:** Unified API surface for all operations.
-
-1. Implement `HudEngine` struct with all methods
-2. Make internal modules private, expose only through engine
-3. Add `HudError` enum
-4. Write unit tests for engine
-5. **Verification:** All engine methods work correctly
-
-### Phase 6: Refactor Tauri Client
-**Goal:** Thin IPC wrappers around HudEngine.
-
-1. Replace direct function calls with `HudEngine` methods
-2. Store `HudEngine` in Tauri managed state
-3. Simplify all command handlers to ~3-5 lines each
-4. Remove dead code from `lib.rs`
-5. **Verification:** Frontend works identically
-
-### Phase 7: Refactor TUI Client
-**Goal:** Remove all duplicated code from TUI.
-
-1. Move `src-tauri/src/bin/hud-tui.rs` to `crates/hud-tui/src/main.rs`
-2. Replace all data loading with `HudEngine` calls
-3. Remove duplicated types and functions
-4. **Verification:** TUI works correctly with real data
-
-### Phase 8: Documentation & Cleanup
-**Goal:** Production-ready codebase.
-
-1. Update `CLAUDE.md` files with new structure
-2. Add rustdoc comments to all public APIs
-3. Run `cargo clippy` and fix all warnings
-4. Run `cargo fmt` on all crates
-5. **Verification:** `cargo doc --open` produces good documentation
+1. **Web Client:** Use `hud-core` via WebAssembly (wasm-bindgen)
+2. **Mobile Remote:** Connect via WebSocket relay to daemon
+3. **Additional TUIs:** Import `hud-core` as dependency
 
 ---
 
@@ -1075,12 +1067,14 @@ proptest! {
 
 | Date | Decision | Rationale |
 |------|----------|-----------|
-| 2025-01-09 | Use sync core, not async | Simplicity; file I/O is fast; bridges trivially |
-| 2025-01-09 | Facade pattern via HudEngine | Single entry point; easy to test; stable API |
-| 2025-01-09 | Client-side synchronization | Each client knows its threading model best |
-| 2025-01-09 | Read-mostly file pattern | Claude Code owns most files; we read and tolerate staleness |
-| 2025-01-09 | Mtime-based cache invalidation | Simple; good enough for file-per-session granularity |
-| 2025-01-09 | Workspace with crates/ directory | Clean separation; standard Rust project layout |
+| 2026-01-09 | Use sync core, not async | Simplicity; file I/O is fast; bridges trivially |
+| 2026-01-09 | Facade pattern via HudEngine | Single entry point; easy to test; stable API |
+| 2026-01-09 | Client-side synchronization | Each client knows its threading model best |
+| 2026-01-09 | Read-mostly file pattern | Claude Code owns most files; we read and tolerate staleness |
+| 2026-01-09 | Mtime-based cache invalidation | Simple; good enough for file-per-session granularity |
+| 2026-01-09 | Workspace with core/ directory | Clean separation; `core/hud-core/` for shared library |
+| 2026-01-10 | Add Swift client via UniFFI | Native macOS performance; 120Hz ProMotion animations |
+| 2026-01-11 | Hooks for local, daemon for remote | Hooks preserve TUI; daemon for future mobile relay |
 
 ---
 
@@ -1102,22 +1096,37 @@ proptest! {
 }
 ```
 
-### hud-status.json (written by Claude Code)
+### hud-session-states.json (written by hooks)
 ```json
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "type": "object",
-  "additionalProperties": {
-    "type": "object",
-    "properties": {
-      "state": { "enum": ["working", "ready", "idle", "compacting", "waiting"] },
-      "context_percent": { "type": "integer", "minimum": 0, "maximum": 100 },
-      "working_on": { "type": "string" },
-      "next_step": { "type": "string" },
-      "updated_at": { "type": "string", "format": "date-time" }
-    },
-    "required": ["state"]
-  }
+  "properties": {
+    "version": { "type": "integer", "const": 1 },
+    "projects": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "state": { "enum": ["working", "ready", "idle", "compacting"] },
+          "state_changed_at": { "type": "string", "format": "date-time" },
+          "session_id": { "type": ["string", "null"] },
+          "thinking": { "type": "boolean" },
+          "thinking_updated_at": { "type": "string", "format": "date-time" },
+          "working_on": { "type": ["string", "null"] },
+          "next_step": { "type": ["string", "null"] },
+          "context": {
+            "type": "object",
+            "properties": {
+              "updated_at": { "type": "string", "format": "date-time" }
+            }
+          }
+        },
+        "required": ["state", "thinking"]
+      }
+    }
+  },
+  "required": ["version", "projects"]
 }
 ```
 
@@ -1211,7 +1220,7 @@ proptest! {
 
 ```
 ┌─────────┐          ┌───────────┐          ┌─────────────────┐
-│   TUI   │          │ HudEngine │          │ hud-status.json │
+│   TUI   │          │ HudEngine │          │ hud-session-states.json │
 └────┬────┘          └─────┬─────┘          └────────┬────────┘
      │                     │                         │
      │  [every 2 seconds]  │                         │

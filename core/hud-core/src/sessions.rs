@@ -31,6 +31,7 @@ pub fn detect_session_state(project_path: &str) -> ProjectSessionState {
         working_on: None,
         next_step: None,
         context: None,
+        thinking: None,
     };
 
     if let Some(states_file) = load_session_states_file() {
@@ -59,6 +60,7 @@ pub fn detect_session_state(project_path: &str) -> ProjectSessionState {
                 working_on: entry.working_on.clone(),
                 next_step: entry.next_step.clone(),
                 context,
+                thinking: entry.thinking,
             };
         }
     }

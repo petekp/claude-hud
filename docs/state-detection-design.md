@@ -1,12 +1,15 @@
 # State Detection Design
 
+> **Note:** This document has been superseded by [Status Sync System Architecture](../.claude/docs/status-sync-architecture.md) which provides more comprehensive and current documentation of the state tracking system.
+
 ## Problem Statement
 
 Claude HUD needs to reliably detect whether Claude is:
 - **IDLE** — No active session
-- **WORKING** — Claude is processing/generating
-- **READY** — Claude finished, waiting for user input
-- **STALE** — No activity in N days
+- **WORKING** — Claude is processing/generating (thinking=true)
+- **READY** — Claude finished, waiting for user input (thinking=false)
+- **COMPACTING** — Auto-compacting context
+- **WAITING** — Stale "working" state (synthesized client-side)
 
 Current approach (polling + JSONL parsing) is unreliable and laggy.
 
@@ -15,30 +18,30 @@ Current approach (polling + JSONL parsing) is unreliable and laggy.
 Use Claude Code's hook system to get authoritative state changes:
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                     STATE MACHINE                               │
-├─────────────────────────────────────────────────────────────────┤
-│                                                                 │
-│  ┌─────────┐   SessionStart    ┌─────────────────┐              │
-│  │  IDLE   │ ─────────────────►│     READY       │              │
-│  └────┬────┘                   └────────┬────────┘              │
-│       │                                 │                       │
-│       │                                 │ UserPromptSubmit      │
-│       │                                 ▼                       │
-│       │                        ┌─────────────────┐              │
-│       │                        │    WORKING      │              │
-│       │                        └────────┬────────┘              │
-│       │                                 │                       │
-│       │        SessionEnd               │ Stop                  │
-│       │◄────────────────────────────────┤                       │
-│       │                                 ▼                       │
-│       │                           back to READY                 │
-│       │                                                         │
-│  ┌────▼────┐                                                    │
-│  │  STALE  │ (no activity for N days)                           │
-│  └─────────┘                                                    │
-│                                                                 │
-└─────────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────┐
+│                        STATE MACHINE                                 │
+├─────────────────────────────────────────────────────────────────────┤
+│                                                                     │
+│  ┌─────────┐   SessionStart    ┌─────────────────┐                  │
+│  │  IDLE   │ ─────────────────►│     READY       │◄─────────────┐   │
+│  └─────────┘                   └────────┬────────┘              │   │
+│                                         │                       │   │
+│                                         │ UserPromptSubmit      │   │
+│                                         ▼                       │   │
+│                                ┌─────────────────┐              │   │
+│                         ┌─────►│    WORKING      │──────────────┤   │
+│                         │      └────────┬────────┘    Stop      │   │
+│                         │               │                       │   │
+│                         │               │ PreCompact (auto)     │   │
+│      PostToolUse        │               ▼                       │   │
+│  (after compacting)     │      ┌─────────────────┐              │   │
+│                         └──────│   COMPACTING    │              │   │
+│                                └─────────────────┘              │   │
+│                                                                     │
+│  WAITING is synthesized client-side when "working" has no           │
+│  heartbeat for 5+ seconds (indicates user interrupt)                │
+│                                                                     │
+└─────────────────────────────────────────────────────────────────────┘
 ```
 
 ## Implementation
@@ -52,12 +55,16 @@ Location: `~/.claude/hud-session-states.json`
   "version": 1,
   "projects": {
     "/Users/pete/Code/claude-hud": {
-      "session_id": "2c8d1604-5b0f-47d6-a68d-7c0c0c2335b0",
       "state": "ready",
       "state_changed_at": "2026-01-08T04:46:00.000Z",
-      "session_started_at": "2026-01-08T04:23:05.000Z",
+      "session_id": "2c8d1604-5b0f-47d6-a68d-7c0c0c2335b0",
+      "thinking": false,
+      "thinking_updated_at": "2026-01-08T04:46:00.000Z",
       "working_on": "Visual state indicators for project cards",
-      "next_step": "Implement animation CSS"
+      "next_step": "Implement animation CSS",
+      "context": {
+        "updated_at": "2026-01-08T04:46:00.000Z"
+      }
     }
   }
 }
@@ -73,40 +80,65 @@ Add to `~/.claude/settings.json`:
     "SessionStart": [
       {
         "hooks": [
-          {
-            "type": "command",
-            "command": "~/.claude/scripts/hud-state-tracker.sh"
-          }
+          { "type": "command", "command": "~/.claude/scripts/hud-state-tracker.sh" },
+          { "type": "command", "command": "~/.claude/hooks/publish-state.sh" }
         ]
       }
     ],
     "UserPromptSubmit": [
       {
         "hooks": [
-          {
-            "type": "command",
-            "command": "~/.claude/scripts/hud-state-tracker.sh"
-          }
+          { "type": "command", "command": "~/.claude/scripts/hud-state-tracker.sh" },
+          { "type": "command", "command": "~/.claude/hooks/publish-state.sh" }
+        ]
+      }
+    ],
+    "PermissionRequest": [
+      {
+        "matcher": "*",
+        "hooks": [
+          { "type": "command", "command": "~/.claude/scripts/hud-state-tracker.sh" }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "*",
+        "hooks": [
+          { "type": "command", "command": "~/.claude/scripts/hud-state-tracker.sh" }
+        ]
+      }
+    ],
+    "PreCompact": [
+      {
+        "matcher": "auto",
+        "hooks": [
+          { "type": "command", "command": "~/.claude/scripts/hud-state-tracker.sh" },
+          { "type": "command", "command": "~/.claude/hooks/publish-state.sh" }
         ]
       }
     ],
     "Stop": [
       {
         "hooks": [
-          {
-            "type": "command",
-            "command": "~/.claude/scripts/hud-state-tracker.sh"
-          }
+          { "type": "command", "command": "~/.claude/scripts/hud-state-tracker.sh" },
+          { "type": "command", "command": "~/.claude/hooks/publish-state.sh" }
         ]
       }
     ],
     "SessionEnd": [
       {
         "hooks": [
-          {
-            "type": "command",
-            "command": "~/.claude/scripts/hud-state-tracker.sh"
-          }
+          { "type": "command", "command": "~/.claude/scripts/hud-state-tracker.sh" }
+        ]
+      }
+    ],
+    "Notification": [
+      {
+        "matcher": "idle_prompt",
+        "hooks": [
+          { "type": "command", "command": "~/.claude/scripts/hud-state-tracker.sh" },
+          { "type": "command", "command": "~/.claude/hooks/publish-state.sh" }
         ]
       }
     ]
@@ -114,107 +146,76 @@ Add to `~/.claude/settings.json`:
 }
 ```
 
+**Note:** The `publish-state.sh` script handles debounced relay publishing for remote clients.
+
 ### 3. Hook Script
 
 `~/.claude/scripts/hud-state-tracker.sh`:
 
+> **Note:** The full implementation is at `~/.claude/scripts/hud-state-tracker.sh`. Below is a simplified version showing the key logic:
+
 ```bash
 #!/bin/bash
-# HUD State Tracker - Updates centralized session state
+# Claude HUD State Tracker - Full implementation handles all hook events
+
+# Skip summary generation subprocesses to prevent recursive hooks
+if [ "$HUD_SUMMARY_GEN" = "1" ]; then
+  cat > /dev/null && exit 0
+fi
 
 STATE_FILE="$HOME/.claude/hud-session-states.json"
 input=$(cat)
 
-# Extract fields from hook input
 event=$(echo "$input" | jq -r '.hook_event_name // empty')
 cwd=$(echo "$input" | jq -r '.cwd // empty')
 session_id=$(echo "$input" | jq -r '.session_id // empty')
-transcript_path=$(echo "$input" | jq -r '.transcript_path // empty')
-stop_hook_active=$(echo "$input" | jq -r '.stop_hook_active // false')
+trigger=$(echo "$input" | jq -r '.trigger // empty')
 
-# Skip if stop hook is re-running (prevents loops)
-if [ "$event" = "Stop" ] && [ "$stop_hook_active" = "true" ]; then
-  exit 0
-fi
-
-# Skip if missing required fields
-if [ -z "$cwd" ] || [ -z "$event" ]; then
-  exit 0
-fi
-
-# Initialize state file if needed
-if [ ! -f "$STATE_FILE" ]; then
-  echo '{"version":1,"projects":{}}' > "$STATE_FILE"
-fi
-
-# Determine new state based on event
+# Determine state and thinking based on event
 case "$event" in
   "SessionStart")
-    new_state="ready"
-    ;;
+    new_state="ready"; thinking="false" ;;
   "UserPromptSubmit")
-    new_state="working"
-    ;;
+    new_state="working"; thinking="true" ;;
+  "PermissionRequest")
+    exit 0 ;;  # No state change during permissions
+  "PostToolUse")
+    # Transition from compacting→working, or update heartbeat
+    current_state=$(jq -r --arg cwd "$cwd" '.projects[$cwd].state // "idle"' "$STATE_FILE")
+    if [ "$current_state" = "compacting" ]; then
+      new_state="working"; thinking="true"
+    else
+      # Just update heartbeat timestamp
+      exit 0
+    fi ;;
+  "PreCompact")
+    [ "$trigger" = "auto" ] && { new_state="compacting"; thinking="true"; } || exit 0 ;;
   "Stop")
-    new_state="ready"
-    ;;
+    new_state="ready"; thinking="false" ;;
   "SessionEnd")
-    new_state="idle"
-    ;;
+    exit 0 ;;  # Don't overwrite "ready" with "idle"
+  "Notification")
+    notification_type=$(echo "$input" | jq -r '.notification_type // empty')
+    [ "$notification_type" = "idle_prompt" ] && { new_state="ready"; thinking="false"; } || exit 0 ;;
   *)
-    exit 0
-    ;;
+    exit 0 ;;
 esac
 
-timestamp=$(date -u +"%Y-%m-%dT%H:%M:%S.000Z")
-
 # Update state file atomically
+timestamp=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 tmp_file=$(mktemp)
-jq --arg cwd "$cwd" \
-   --arg state "$new_state" \
-   --arg session "$session_id" \
-   --arg ts "$timestamp" \
-   '.projects[$cwd] = (.projects[$cwd] // {}) + {
-     state: $state,
-     state_changed_at: $ts,
-     session_id: $session
-   }' "$STATE_FILE" > "$tmp_file" && mv "$tmp_file" "$STATE_FILE"
+jq --arg cwd "$cwd" --arg state "$new_state" --arg session "$session_id" \
+   --arg ts "$timestamp" --argjson thinking "$thinking" \
+   '.projects[$cwd] = ((.projects[$cwd] // {}) + {
+     state: $state, thinking: $thinking, session_id: $session,
+     state_changed_at: $ts, thinking_updated_at: $ts
+   })' "$STATE_FILE" > "$tmp_file" && mv "$tmp_file" "$STATE_FILE"
 
-# For Stop events, also generate status summary (async)
-if [ "$event" = "Stop" ] && [ -n "$transcript_path" ] && [ -f "$transcript_path" ]; then
-  (
-    context=$(tail -100 "$transcript_path" | grep -E '"type":"(user|assistant)"' | tail -20)
-    if [ -z "$context" ]; then
-      exit 0
-    fi
-
-    claude_cmd=$(command -v claude || echo "/opt/homebrew/bin/claude")
-    response=$("$claude_cmd" -p \
-      --no-session-persistence \
-      --output-format json \
-      --model haiku \
-      "Summarize what's being worked on. Return JSON: {working_on: string, next_step: string}. Context: $context" 2>/dev/null)
-
-    if ! echo "$response" | jq -e . >/dev/null 2>&1; then
-      exit 0
-    fi
-
-    result=$(echo "$response" | jq -r '.result // empty')
-    working_on=$(echo "$result" | jq -r '.working_on // empty' 2>/dev/null)
-    next_step=$(echo "$result" | jq -r '.next_step // empty' 2>/dev/null)
-
-    if [ -n "$working_on" ]; then
-      jq --arg cwd "$cwd" \
-         --arg working_on "$working_on" \
-         --arg next_step "$next_step" \
-         '.projects[$cwd].working_on = $working_on | .projects[$cwd].next_step = $next_step' \
-         "$STATE_FILE" > "$tmp_file" && mv "$tmp_file" "$STATE_FILE"
-    fi
-  ) &>/dev/null &
-  disown 2>/dev/null
+# Generate summary on Stop events (async, with HUD_SUMMARY_GEN=1 to prevent recursion)
+if [ "$event" = "Stop" ]; then
+  ( HUD_SUMMARY_GEN=1 /opt/homebrew/bin/claude -p --no-session-persistence --output-format json --model haiku \
+    "Extract: {working_on, next_step}" 2>/dev/null | ... ) &
 fi
-
-exit 0
 ```
 
 ### 4. HUD Backend Changes
@@ -307,8 +308,10 @@ fn watch_session_states(app_handle: tauri::AppHandle) {
 |------------------|--------|-------------|---------|
 | IDLE → READY | SessionStart hook | ✅ Very High | <100ms |
 | READY → WORKING | UserPromptSubmit hook | ✅ Very High | <100ms |
+| WORKING → COMPACTING | PreCompact hook (auto) | ✅ Very High | <100ms |
+| COMPACTING → WORKING | PostToolUse hook | ✅ Very High | <100ms |
 | WORKING → READY | Stop hook | ✅ Very High | <100ms |
-| READY → IDLE | SessionEnd hook | ✅ Very High | <100ms |
+| WORKING → WAITING | Client-side synthesis | ✅ High | ~5 seconds |
 | * → STALE | Computed from timestamps | ✅ High | On load |
 
 **Why this is reliable:**
@@ -316,6 +319,7 @@ fn watch_session_states(app_handle: tauri::AppHandle) {
 2. Hooks are synchronous — they fire before Claude continues
 3. State is written to a single file — no distributed scanning
 4. File watching enables real-time UI updates
+5. "Waiting" state is synthesized client-side when heartbeats stop (handles Ctrl+C interrupts)
 
 ## Fallback: Process Detection
 
