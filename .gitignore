@@ -35,3 +35,4 @@ apps/swift/*.app
 
 # Rust target (should already be ignored but ensure)
 target/
+*.local.md
