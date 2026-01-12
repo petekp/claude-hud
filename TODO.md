@@ -10,6 +10,25 @@
 
 (All items completed — see Completed section below)
 
+## Current Sprint: Projects View Simplification (Completed)
+
+### High Priority (Core UX - Scannability)
+- [x] Consolidate sections: remove old "In Progress", rename "Needs Input" to "In Progress" (all non-paused projects go here)
+- [x] Remove summary bar (need input/working/paused counts) from top of main view
+- [x] Left-align section headers with counts inline (e.g., "In Progress (3)")
+- [x] Make project titles more prominent in cards (14pt semibold, 0.9 opacity)
+- [x] Remove animated dots from status indicator; just show text
+
+### Medium Priority (Polish)
+- [x] Remove comma from port numbers (show "3000" not "3,000")
+- [x] Add separators between project names in Paused section
+- [x] Remove minus-sign icon from Paused section rows
+
+### Interactions
+- [x] Drag-and-drop sorting with persistent order; remember position when moving between sections
+- [x] Show "Revive" button on hover for paused projects (moves to In Progress)
+- [x] Style transitions: card → row when moving to Paused, row → card when moving to In Progress
+
 ## Medium Priority
 
 ### Platform Features (Researched - Ready for Implementation)
@@ -36,15 +55,90 @@
 - [x] Optional: Allow marking todos complete from HUD
 - [x] Optional: Create new todos from HUD (writes to project's todos.json)
 
-#### Agent SDK
-**Research complete.** Already have custom SDK implementation in `apps/daemon/` based on `--output-format stream-json`. Reserved for mobile/remote client integration.
+#### Agent SDK Integration (NEW - January 2026)
+**Comprehensive research complete.** The official Anthropic Agent SDK (formerly "Claude Code SDK") provides programmatic access to Claude Code's agentic capabilities via Python/TypeScript.
 
-**Architecture decision:** Local sessions use hooks (preserves TUI), remote/mobile will use daemon with SDK.
+**Reference document:** `.claude/docs/agent-sdk-migration-guide.md`
 
-**Future implementation:**
-- [ ] Complete relay WebSocket server for mobile client sync
-- [ ] Build mobile companion app that connects to relay
-- [ ] Consider background agent spawning for parallel tasks
+**Key insight:** SDK solves HUD's "daemon dilemma"—get structured streaming without replacing user's TUI. This enables HUD to become an orchestrator, not just an observer.
+
+**SDK capabilities:**
+- Built-in tools (Read, Edit, Bash, Glob, Grep, WebSearch, etc.)
+- Session management (create, resume, fork sessions)
+- Lifecycle hooks (PreToolUse, PostToolUse, Stop, Notification, etc.)
+- Subagent orchestration
+- Permission control modes
+
+**Migration opportunities (prioritized):**
+
+**Phase 1: Foundation + Summaries (High Priority)**
+- [ ] Create `apps/sdk-bridge/` TypeScript project
+- [ ] Implement IPC communication (Unix socket) with hud-core
+- [ ] Replace `generate_session_summary_sync()` subprocess with SDK query
+- [ ] Add model selection (use Haiku for cheaper summaries)
+
+**Phase 2: Session Management (High Priority)**
+- [ ] Add `sessionId` field to Project/ProjectSession data model
+- [ ] Capture session IDs from SDK init messages
+- [ ] Store sessions in `~/.claude/hud-sessions.json`
+- [ ] Add "Resume Last Session" button in ProjectDetailView
+- [ ] Implement session resumption via `resume: sessionId`
+
+**Phase 3: Embedded Agent Panel (Medium Priority)**
+- [ ] Design activity panel UI component (Swift + Tauri)
+- [ ] Implement real-time message streaming from SDK
+- [ ] Add "Work On This" button to launch agents from HUD
+- [ ] Display tool calls, thinking, and results in activity panel
+- [ ] Handle permission prompts in HUD UI
+
+**Phase 4: Quick Actions (Medium Priority)**
+- [ ] Define HUD agent presets (project-status, quick-fix, update-deps)
+- [ ] Add quick action dropdown/buttons to Project Detail view
+- [ ] Implement agent invocation with predefined agents
+
+**Phase 5: "Idea → V1" Launcher (High Impact)** ⭐ *Recommended flagship feature*
+**Spec:** `.claude/docs/feature-idea-to-v1-launcher.md`
+
+Enables users to go from project idea to working v1 with minimal friction:
+- [ ] **5a: Core Infrastructure** (3-4 days)
+  - Create `apps/sdk-bridge/` TypeScript project with IPC
+  - Implement `createProjectDirectory()` with validation
+  - Implement `generateClaudeMd()` for project context
+  - Implement `buildCreationPrompt()` for SDK query
+  - Basic SDK query wrapper with hooks
+- [ ] **5b: Progress Tracking** (2-3 days)
+  - Implement progress parsing from SDK messages
+  - Implement session ID capture
+  - Implement `CreationStateManager` with persistence
+  - Wire progress hooks to state updates
+- [ ] **5c: HUD Integration** (3-4 days)
+  - Create `NewIdeaModal` component (Swift + Tauri)
+  - Create `ActivityPanel` for real-time progress
+  - Add "New Idea" button to main navigation
+  - Show in-progress creations in project list
+- [ ] **5d: Polish & Edge Cases** (2-3 days)
+  - Implement cancellation and cleanup
+  - Implement session resumption
+  - Error handling and user feedback
+  - "Run It" button for completed projects
+  - Parallel creation support
+
+**TDD approach:** 8 test suites defined in spec (unit, integration, e2e). Write tests first.
+
+**Phase 6: Advanced Features (Lower Priority)**
+- [ ] Activity timeline with hook-based logging
+- [ ] Session forking ("try different approach" button)
+- [ ] Idea queue (batch multiple ideas, run overnight)
+
+**⚠️ NOT Recommended: State Tracking Migration**
+Analysis complete: SDK hooks cannot replace shell hooks for CLI sessions (SDK isn't running during CLI usage). A hybrid approach is technically possible but adds ~7-8 days of effort for marginal benefit. The current shell-based system (~246 lines of bash) works reliably. See `.claude/docs/agent-sdk-migration-guide.md` § "State Tracking Migration: Why Not to Do It" for full analysis.
+
+**Architecture:**
+```
+Swift/Tauri UI → hud-core (Rust) → SDK Bridge (TypeScript) → Agent SDK
+```
+
+**Legacy daemon approach:** The existing `apps/daemon/` implementation is deprecated in favor of official SDK. Keep for reference but don't invest further.
 
 ## Research / Exploration
 
@@ -104,6 +198,26 @@ Summary Bar: "3 need input • 2 working • 15 paused"
 **Implementation phases:** Health Score → Hooks Wizard → Plugins → Insights
 
 ## Completed
+
+- [x] Projects View Polish Pass (January 2026):
+  - Session summary text changed to normal weight (was semibold)
+  - Section counts hidden when only 1 item (show "In Progress" not "In Progress (1)")
+  - Paused items polish: fixed height (no vertical growth on hover), balanced spacing, Revive button hover state
+  - Health badge moved from project cards to Project Details view (next to project title)
+  - Card→Paused transitions: auto-expand Paused section when project added; distinct view IDs ensure proper style switching
+  - Paused→Card transitions: distinct IDs ("active-{path}" vs "paused-{path}") for clean view replacement
+
+- [x] Projects View Simplification (January 2026):
+  - Consolidated three sections (Needs Input, In Progress, Paused) into two (In Progress, Paused)
+  - Removed summary bar from top of main view
+  - Left-aligned section headers with inline counts (e.g., "In Progress (3)")
+  - Made project titles more prominent (14pt semibold, 0.9 opacity)
+  - Removed animated dots from status indicator; just show text
+  - Removed comma from port numbers (show "3000" not "3,000")
+  - Added separators between project names in Paused section
+  - Removed time display from Paused rows; added "Revive" button on hover
+  - Re-implemented drag-and-drop sorting with persistent order
+  - Style transitions: card → row when moving to Paused, row → card when moving to In Progress
 
 - [x] Artifacts Browser: Skills, Commands, Agents (January 2026):
   - Skills tab shows all skills from ~/.claude/skills/ directories
