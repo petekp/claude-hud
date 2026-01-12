@@ -219,10 +219,40 @@ pub fn build_project_from_path(
         has_local_settings,
         task_count,
         stats: Some(stats),
+        is_missing: false,
     })
 }
 
+/// Builds a minimal Project for a path that no longer exists on disk.
+fn build_missing_project(path: &str) -> Project {
+    let display_path = if path.starts_with("/Users/") {
+        format!(
+            "~/{}",
+            path.split('/').skip(3).collect::<Vec<_>>().join("/")
+        )
+    } else {
+        path.to_string()
+    };
+
+    let project_name = path.split('/').next_back().unwrap_or(path).to_string();
+
+    Project {
+        name: project_name,
+        path: path.to_string(),
+        display_path,
+        last_active: None,
+        claude_md_path: None,
+        claude_md_preview: None,
+        has_local_settings: false,
+        task_count: 0,
+        stats: None,
+        is_missing: true,
+    }
+}
+
 /// Loads all pinned projects, sorted by most recent activity.
+/// Missing projects (where the directory no longer exists) are included
+/// with is_missing=true so they can be displayed with a warning indicator.
 pub fn load_projects() -> Result<Vec<Project>, String> {
     let claude_dir = get_claude_dir().ok_or("Could not find home directory")?;
     let config = load_hud_config();
@@ -232,16 +262,21 @@ pub fn load_projects() -> Result<Vec<Project>, String> {
     let mut projects: Vec<(Project, SystemTime)> = Vec::new();
 
     for path in &config.pinned_projects {
-        if let Some(project) = build_project_from_path(path, &claude_dir, &mut stats_cache) {
-            let encoded_name = encode_project_path(path);
-            let claude_project_dir = projects_dir.join(&encoded_name);
-            let sort_time = claude_project_dir
-                .metadata()
-                .ok()
-                .and_then(|m| m.modified().ok())
-                .unwrap_or(SystemTime::UNIX_EPOCH);
-            projects.push((project, sort_time));
-        }
+        let project = if let Some(p) = build_project_from_path(path, &claude_dir, &mut stats_cache)
+        {
+            p
+        } else {
+            build_missing_project(path)
+        };
+
+        let encoded_name = encode_project_path(path);
+        let claude_project_dir = projects_dir.join(&encoded_name);
+        let sort_time = claude_project_dir
+            .metadata()
+            .ok()
+            .and_then(|m| m.modified().ok())
+            .unwrap_or(SystemTime::UNIX_EPOCH);
+        projects.push((project, sort_time));
     }
 
     let _ = save_stats_cache(&stats_cache);

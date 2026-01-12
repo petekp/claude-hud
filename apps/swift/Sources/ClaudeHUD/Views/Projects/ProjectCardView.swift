@@ -12,6 +12,7 @@ struct ProjectCardView: View {
     let onInfoTap: () -> Void
     let onMoveToDormant: () -> Void
     let onOpenBrowser: () -> Void
+    var onRemove: (() -> Void)?
 
     @Environment(\.floatingMode) private var floatingMode
     #if DEBUG
@@ -27,6 +28,10 @@ struct ProjectCardView: View {
     @State private var lastChimeTime: Date?
 
     private let chimeCooldown: TimeInterval = 3.0
+
+    private var nameColor: Color {
+        project.isMissing ? .white.opacity(0.5) : .white.opacity(0.9)
+    }
 
     #if DEBUG
     private var displayState: SessionState? {
@@ -51,9 +56,16 @@ struct ProjectCardView: View {
         Button(action: onTap) {
             VStack(alignment: .leading, spacing: 6) {
                 HStack {
+                    if project.isMissing {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .font(.system(size: 12))
+                            .foregroundColor(.orange)
+                    }
+
                     Text(project.name)
-                        .font(.system(size: 11, weight: .regular))
-                        .foregroundColor(.white.opacity(0.55))
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundColor(nameColor)
+                        .strikethrough(project.isMissing, color: .white.opacity(0.3))
 
                     if isStale {
                         Text("stale")
@@ -64,8 +76,6 @@ struct ProjectCardView: View {
                             .background(Color.white.opacity(0.08))
                             .clipShape(Capsule())
                     }
-
-                    HealthBadge(project: project)
 
                     if let status = todoStatus, status.total > 0 {
                         TodoBadge(completed: status.completed, total: status.total)
@@ -91,7 +101,7 @@ struct ProjectCardView: View {
                             HStack(spacing: 4) {
                                 Image(systemName: "globe")
                                     .font(.system(size: 11))
-                                Text(":\(port)")
+                                Text(":\(String(port))")
                                     .font(.system(size: 10, weight: .medium, design: .monospaced))
                             }
                             .foregroundColor(.white.opacity(isBrowserHovered ? 0.85 : (isHovered ? 0.55 : 0.35)))
@@ -129,7 +139,7 @@ struct ProjectCardView: View {
 
                 if let workingOn = sessionState?.workingOn, !workingOn.isEmpty {
                     Text(workingOn)
-                        .font(.system(size: 13, weight: .semibold))
+                        .font(.system(size: 13, weight: .regular))
                         .foregroundColor(.white)
                         .lineLimit(2)
                 }
@@ -234,7 +244,22 @@ struct ProjectCardView: View {
         .onAppear {
             previousState = sessionState?.state
         }
-        .contextMenu {
+        .contextMenu { cardContextMenu }
+    }
+
+    @ViewBuilder
+    private var cardContextMenu: some View {
+        if project.isMissing {
+            Button(action: onInfoTap) {
+                Label("View Details", systemImage: "info.circle")
+            }
+            Divider()
+            if let onRemove = onRemove {
+                Button(role: .destructive, action: onRemove) {
+                    Label("Remove Missing Project", systemImage: "trash")
+                }
+            }
+        } else {
             Button(action: onTap) {
                 Label("Open in Terminal", systemImage: "terminal")
             }
@@ -589,10 +614,6 @@ private struct ReadyBorderGlowContent: View {
 struct StatusIndicatorView: View {
     let state: SessionState
 
-    #if DEBUG
-    @ObservedObject private var config = GlassConfig.shared
-    #endif
-
     var statusColor: Color {
         Color.statusColor(for: state)
     }
@@ -611,32 +632,12 @@ struct StatusIndicatorView: View {
         state != .idle
     }
 
-    var isReady: Bool {
-        state == .ready
-    }
-
     var body: some View {
-        #if DEBUG
-        let textSize = config.statusTextSize
-        let fontWeight = config.fontWeight
-        let spacing = config.statusTextSpacing
-        let idleOpacity = config.statusIdleTextOpacity
-        #else
-        let textSize: Double = 12
-        let fontWeight: Font.Weight = .medium
-        let spacing: Double = 4
-        let idleOpacity: Double = 0.55
-        #endif
-
-        HStack(spacing: spacing) {
-            BreathingDot(color: statusColor, showGlow: false, syncWithRipple: isReady)
-
-            Text(statusText)
-                .font(.system(size: textSize, weight: fontWeight))
-                .foregroundColor(isActive ? statusColor : statusColor.opacity(idleOpacity))
-                .contentTransition(.numericText())
-        }
-        .animation(.smooth(duration: 0.3), value: state)
+        Text(statusText)
+            .font(.system(size: 12, weight: .medium))
+            .foregroundColor(isActive ? statusColor : statusColor.opacity(0.55))
+            .contentTransition(.numericText())
+            .animation(.smooth(duration: 0.3), value: state)
     }
 }
 

@@ -1619,10 +1619,18 @@ public struct Project {
     public var hasLocalSettings: Bool
     public var taskCount: UInt32
     public var stats: ProjectStats?
+    /**
+     * True if the project directory no longer exists on disk.
+     */
+    public var isMissing: Bool
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
-    public init(name: String, path: String, displayPath: String, lastActive: String?, claudeMdPath: String?, claudeMdPreview: String?, hasLocalSettings: Bool, taskCount: UInt32, stats: ProjectStats?) {
+    public init(name: String, path: String, displayPath: String, lastActive: String?, claudeMdPath: String?, claudeMdPreview: String?, hasLocalSettings: Bool, taskCount: UInt32, stats: ProjectStats?,
+                /**
+                    * True if the project directory no longer exists on disk.
+                    */ isMissing: Bool)
+    {
         self.name = name
         self.path = path
         self.displayPath = displayPath
@@ -1632,6 +1640,7 @@ public struct Project {
         self.hasLocalSettings = hasLocalSettings
         self.taskCount = taskCount
         self.stats = stats
+        self.isMissing = isMissing
     }
 }
 
@@ -1664,6 +1673,9 @@ extension Project: Equatable, Hashable {
         if lhs.stats != rhs.stats {
             return false
         }
+        if lhs.isMissing != rhs.isMissing {
+            return false
+        }
         return true
     }
 
@@ -1677,6 +1689,7 @@ extension Project: Equatable, Hashable {
         hasher.combine(hasLocalSettings)
         hasher.combine(taskCount)
         hasher.combine(stats)
+        hasher.combine(isMissing)
     }
 }
 
@@ -1695,7 +1708,8 @@ public struct FfiConverterTypeProject: FfiConverterRustBuffer {
                 claudeMdPreview: FfiConverterOptionString.read(from: &buf),
                 hasLocalSettings: FfiConverterBool.read(from: &buf),
                 taskCount: FfiConverterUInt32.read(from: &buf),
-                stats: FfiConverterOptionTypeProjectStats.read(from: &buf)
+                stats: FfiConverterOptionTypeProjectStats.read(from: &buf),
+                isMissing: FfiConverterBool.read(from: &buf)
             )
     }
 
@@ -1709,6 +1723,7 @@ public struct FfiConverterTypeProject: FfiConverterRustBuffer {
         FfiConverterBool.write(value.hasLocalSettings, into: &buf)
         FfiConverterUInt32.write(value.taskCount, into: &buf)
         FfiConverterOptionTypeProjectStats.write(value.stats, into: &buf)
+        FfiConverterBool.write(value.isMissing, into: &buf)
     }
 }
 
@@ -1829,6 +1844,11 @@ public struct ProjectSessionState {
      * This provides real-time status when using the fetch-intercepting launcher.
      */
     public var thinking: Bool?
+    /**
+     * Whether a lock file is held for this project (indicates Claude is running).
+     * This is checked via advisory file locks and is more reliable than state file alone.
+     */
+    public var isLocked: Bool
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
@@ -1836,7 +1856,11 @@ public struct ProjectSessionState {
                 /**
                     * Whether Claude is currently "thinking" (API call in flight).
                     * This provides real-time status when using the fetch-intercepting launcher.
-                    */ thinking: Bool?)
+                    */ thinking: Bool?,
+                /**
+                    * Whether a lock file is held for this project (indicates Claude is running).
+                    * This is checked via advisory file locks and is more reliable than state file alone.
+                    */ isLocked: Bool)
     {
         self.state = state
         self.stateChangedAt = stateChangedAt
@@ -1845,6 +1869,7 @@ public struct ProjectSessionState {
         self.nextStep = nextStep
         self.context = context
         self.thinking = thinking
+        self.isLocked = isLocked
     }
 }
 
@@ -1871,6 +1896,9 @@ extension ProjectSessionState: Equatable, Hashable {
         if lhs.thinking != rhs.thinking {
             return false
         }
+        if lhs.isLocked != rhs.isLocked {
+            return false
+        }
         return true
     }
 
@@ -1882,6 +1910,7 @@ extension ProjectSessionState: Equatable, Hashable {
         hasher.combine(nextStep)
         hasher.combine(context)
         hasher.combine(thinking)
+        hasher.combine(isLocked)
     }
 }
 
@@ -1898,7 +1927,8 @@ public struct FfiConverterTypeProjectSessionState: FfiConverterRustBuffer {
                 workingOn: FfiConverterOptionString.read(from: &buf),
                 nextStep: FfiConverterOptionString.read(from: &buf),
                 context: FfiConverterOptionTypeContextInfo.read(from: &buf),
-                thinking: FfiConverterOptionBool.read(from: &buf)
+                thinking: FfiConverterOptionBool.read(from: &buf),
+                isLocked: FfiConverterBool.read(from: &buf)
             )
     }
 
@@ -1910,6 +1940,7 @@ public struct FfiConverterTypeProjectSessionState: FfiConverterRustBuffer {
         FfiConverterOptionString.write(value.nextStep, into: &buf)
         FfiConverterOptionTypeContextInfo.write(value.context, into: &buf)
         FfiConverterOptionBool.write(value.thinking, into: &buf)
+        FfiConverterBool.write(value.isLocked, into: &buf)
     }
 }
 

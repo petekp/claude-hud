@@ -110,6 +110,9 @@ pub struct Project {
     pub has_local_settings: bool,
     pub task_count: u32,
     pub stats: Option<ProjectStats>,
+    /// True if the project directory no longer exists on disk.
+    #[serde(default)]
+    pub is_missing: bool,
 }
 
 /// A task/session from a project (represents Claude Code sessions).
@@ -244,6 +247,10 @@ pub struct ProjectSessionState {
     /// Whether Claude is currently "thinking" (API call in flight).
     /// This provides real-time status when using the fetch-intercepting launcher.
     pub thinking: Option<bool>,
+    /// Whether a lock file is held for this project (indicates Claude is running).
+    /// This is checked via advisory file locks and is more reliable than state file alone.
+    #[serde(default)]
+    pub is_locked: bool,
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════

@@ -153,7 +153,8 @@ class AppState: ObservableObject {
                 workingOn: projectState.workingOn,
                 nextStep: projectState.nextStep,
                 context: nil,
-                thinking: nil
+                thinking: nil,
+                isLocked: false
             )
 
             if let previous = previousSessionStates[path], previous != sessionState {
@@ -252,7 +253,26 @@ class AppState: ObservableObject {
 
     func refreshSessionStates() {
         guard let engine = engine else { return }
-        sessionStates = engine.getAllSessionStates(projects: projects)
+        var states = engine.getAllSessionStates(projects: projects)
+
+        // Cross-check: if state is "working" or "ready" but lock isn't held, Claude isn't running
+        // This detects stale state from crashed/terminated sessions
+        for (path, state) in states {
+            if (state.state == .working || state.state == .ready) && !state.isLocked {
+                states[path] = ProjectSessionState(
+                    state: .idle,
+                    stateChangedAt: state.stateChangedAt,
+                    sessionId: state.sessionId,
+                    workingOn: state.workingOn,
+                    nextStep: state.nextStep,
+                    context: state.context,
+                    thinking: false,
+                    isLocked: false
+                )
+            }
+        }
+
+        sessionStates = states
         checkForStateChanges()
     }
 
@@ -328,7 +348,8 @@ class AppState: ObservableObject {
                     workingOn: state.workingOn,
                     nextStep: state.nextStep,
                     context: state.context,
-                    thinking: true
+                    thinking: true,
+                    isLocked: state.isLocked
                 )
             } else if state.state == .working {
                 // thinking=false but state=working means API call finished
@@ -340,7 +361,8 @@ class AppState: ObservableObject {
                     workingOn: state.workingOn,
                     nextStep: state.nextStep,
                     context: state.context,
-                    thinking: false
+                    thinking: false,
+                    isLocked: state.isLocked
                 )
             }
         }
@@ -369,7 +391,8 @@ class AppState: ObservableObject {
                             workingOn: state.workingOn,
                             nextStep: state.nextStep,
                             context: state.context,
-                            thinking: state.thinking
+                            thinking: state.thinking,
+                            isLocked: state.isLocked
                         )
                     }
                 } else if let connectedAt = relayClient.connectedAt,
@@ -383,7 +406,8 @@ class AppState: ObservableObject {
                         workingOn: state.workingOn,
                         nextStep: state.nextStep,
                         context: state.context,
-                        thinking: state.thinking
+                        thinking: state.thinking,
+                        isLocked: state.isLocked
                     )
                 }
             } else {
@@ -405,7 +429,8 @@ class AppState: ObservableObject {
                         workingOn: state.workingOn,
                         nextStep: state.nextStep,
                         context: state.context,
-                        thinking: state.thinking
+                        thinking: state.thinking,
+                        isLocked: state.isLocked
                     )
                 }
             }
@@ -421,6 +446,28 @@ class AppState: ObservableObject {
             SESSION="\(project.name)"
             PROJECT_PATH="\(project.path)"
 
+            # Check if tmux is installed
+            if ! command -v tmux &> /dev/null; then
+                # NO TMUX: Open terminal directly in project directory
+                if [ -d "/Applications/Ghostty.app" ]; then
+                    open -na "Ghostty.app" --args --working-directory="$PROJECT_PATH"
+                elif [ -d "/Applications/iTerm.app" ]; then
+                    osascript -e "tell application \\"iTerm\\" to create window with default profile command \\"cd '$PROJECT_PATH' && exec $SHELL\\""
+                    osascript -e 'tell application "iTerm" to activate'
+                elif [ -d "/Applications/Alacritty.app" ]; then
+                    open -na "Alacritty.app" --args --working-directory "$PROJECT_PATH"
+                elif command -v kitty &>/dev/null; then
+                    kitty --directory "$PROJECT_PATH" &
+                elif [ -d "/Applications/Warp.app" ]; then
+                    open -a "Warp" "$PROJECT_PATH"
+                else
+                    osascript -e "tell application \\"Terminal\\" to do script \\"cd '$PROJECT_PATH'\\""
+                    osascript -e 'tell application "Terminal" to activate'
+                fi
+                exit 0
+            fi
+
+            # TMUX AVAILABLE: Use session management
             # Check if any tmux client is attached (i.e., a terminal is running tmux)
             HAS_ATTACHED_CLIENT=$(tmux list-clients 2>/dev/null | head -1)
 

@@ -21,6 +21,8 @@ once_cell.workspace = true
 chrono.workspace = true
 thiserror.workspace = true
 uniffi = { version = "0.28", features = ["cli"] }
+libc = "0.2"
+md5 = "0.7"
 
 [build-dependencies]
 uniffi = { version = "0.28", features = ["build"] }
