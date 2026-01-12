@@ -190,10 +190,16 @@ claude-hud/
 │           ├── daemon/          # State tracking & relay
 │           └── cli/             # hud-claude entry point
 ├── target/                      # Shared Rust build output
+├── .claude/
+│   └── docs/                    # Project architecture documentation
 ├── docs/
-│   ├── claude-code-artifacts.md
-│   └── cc/                      # Claude Code documentation
+│   ├── claude-code-artifacts.md # Claude Code disk artifacts reference
+│   ├── claude-code/             # Claude Code CLI documentation
+│   ├── agent-sdk/               # Claude Agent SDK documentation
+│   └── architecture-decisions/  # ADRs
 └── scripts/
+    ├── fetch-cc-docs.ts         # Fetch Claude Code docs from GitHub
+    └── fetch-agent-sdk-docs.ts  # Fetch Agent SDK docs (requires Playwright)
 ```
 
 ## Frontend Architecture (React 19)
@@ -428,24 +434,99 @@ The app reads from `~/.claude/` directory:
 
 For a comprehensive reference of all Claude Code disk artifacts (file formats, data structures, retention policies), see **[docs/claude-code-artifacts.md](docs/claude-code-artifacts.md)**.
 
-## Claude Code Documentation Reference
+## Documentation
 
-**IMPORTANT:** When working on features that integrate with Claude Code (hooks, plugins, settings, MCP, sessions, etc.), always consult the official documentation in `docs/cc/`. This ensures implementations align with current Claude Code behavior and APIs.
+This project has comprehensive documentation organized by purpose. Use this guide to find the right docs for your task.
 
-**Key documentation files:**
+### Quick Reference: Where to Look
+
+| If you need to... | Look in |
+|-------------------|---------|
+| Implement hooks, plugins, MCP, or settings | `docs/claude-code/` |
+| Build programmatic SDK integrations | `docs/agent-sdk/` |
+| Understand HUD architecture decisions | `.claude/docs/` |
+| Review ADRs (Architecture Decision Records) | `docs/architecture-decisions/` |
+| Understand Claude Code disk artifacts | `docs/claude-code-artifacts.md` |
+
+### Claude Code CLI Documentation (`docs/claude-code/`)
+
+Official Claude Code documentation for integrating with hooks, plugins, settings, MCP, and sessions.
 
 | Topic | File | Use When |
 |-------|------|----------|
-| Hooks | `docs/cc/hooks.md`, `docs/cc/hooks-guide.md` | Implementing hook-based features |
-| Plugins | `docs/cc/plugins.md`, `docs/cc/plugins-reference.md` | Plugin management, discovery |
-| Settings | `docs/cc/settings.md` | Reading/displaying Claude Code config |
-| MCP | `docs/cc/mcp.md` | Model Context Protocol integration |
-| Sessions | `docs/cc/interactive-mode.md` | Session file parsing, history |
-| CLI | `docs/cc/cli-reference.md` | Invoking Claude Code programmatically |
-| Memory | `docs/cc/memory.md` | CLAUDE.md files, project context |
-| Sub-agents | `docs/cc/sub-agents.md` | Task tool, agent spawning |
+| Hooks | `hooks.md` | Implementing hook-based features |
+| Plugins | `plugins.md` | Plugin management, discovery |
+| Settings | `settings.md` | Reading/displaying Claude Code config |
+| MCP | `mcp.md` | Model Context Protocol integration |
+| Sessions | `interactive-mode.md` | Session file parsing, history |
+| CLI | `cli-reference.md` | Invoking Claude Code programmatically |
+| Memory | `memory.md` | CLAUDE.md files, project context |
+| Sub-agents | `sub-agents.md` | Task tool, agent spawning |
 
-**Updating docs:** Run `pnpm fetch-cc-docs` to pull the latest documentation from the official sources. The docs are mirrored from [ericbuess/claude-code-docs](https://github.com/ericbuess/claude-code-docs) which syncs every 3 hours.
+**Update:** `npx tsx scripts/fetch-cc-docs.ts` (sources: anthropics/claude-code, ericbuess/claude-code-docs)
+
+### Agent SDK Documentation (`docs/agent-sdk/`)
+
+TypeScript/Python SDK for programmatic Claude Code integration. Use this for building automated tools, custom clients, or SDK-based features.
+
+| Topic | File | Use When |
+|-------|------|----------|
+| Overview | `overview.md` | Understanding SDK capabilities |
+| Sessions | `sessions.md` | Session management, resumption, forking |
+| Hooks | `hooks.md` | SDK hooks (PreToolUse, PostToolUse, etc.) |
+| Subagents | `subagents.md` | Creating and invoking subagents |
+| Permissions | `permissions.md` | Permission modes, tool access control |
+| Custom Tools | `custom-tools.md` | Creating custom MCP tools |
+| TypeScript | `typescript.md` | Full TypeScript API reference |
+| Python | `python.md` | Full Python API reference |
+| Migration | `migration-guide.md` | Migrating from CLI to SDK |
+
+**Update:** `npx tsx scripts/fetch-agent-sdk-docs.ts` (requires Playwright)
+
+### Project Architecture (`.claude/docs/`)
+
+HUD-specific architecture documents, design decisions, and feature specs.
+
+| Document | Purpose |
+|----------|---------|
+| `status-sync-architecture.md` | Real-time status sync between Claude sessions and HUD clients |
+| `multi-platform-architecture.md` | Tauri/Swift/TUI sharing hud-core |
+| `agent-sdk-migration-guide.md` | Migration strategy from CLI to Agent SDK |
+| `feature-idea-to-v1-launcher.md` | TDD feature spec for "Idea → V1 Launcher" |
+
+### ADRs (`docs/architecture-decisions/`)
+
+Architecture Decision Records documenting key technical decisions.
+
+| ADR | Decision |
+|-----|----------|
+| `001-state-tracking-approach.md` | Hooks for local sessions, daemon for remote/mobile |
+
+### Maintaining Documentation
+
+When working on this project, follow this organizational scheme:
+
+| Content Type | Location | When to Use |
+|--------------|----------|-------------|
+| Task list (what to do) | `TODO.md` | Adding/completing tasks |
+| Completed work | `DONE.md` | Archiving finished work |
+| Feature specs | `.claude/docs/feature-*.md` | Planning complex features |
+| Architecture docs | `.claude/docs/*-architecture.md` | Documenting system design |
+| Sprint plans | `.claude/plans/` | Planning milestones |
+| Decision records | `docs/architecture-decisions/` | Recording key decisions |
+
+**Rules for TODO.md:**
+- Keep it scannable (< 100 lines of active work)
+- Only unchecked `[ ]` items belong here
+- Move completed items to `DONE.md` promptly
+- Link to detailed specs rather than embedding them
+- Use sections: 🎯 Active → 📋 Next → 💡 Backlog
+
+**Rules for .claude/docs/:**
+- Feature specs: `feature-{name}.md`
+- Architecture: `{system}-architecture.md`
+- Guides: `{topic}-guide.md`
+- Keep updated when implementation diverges from spec
 
 ## Common Development Scenarios
 

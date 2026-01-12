@@ -2,7 +2,7 @@
 import { writeFileSync, mkdirSync, existsSync } from "fs";
 import { join } from "path";
 
-const DOCS_DIR = join(process.cwd(), "docs/cc");
+const DOCS_DIR = join(process.cwd(), "docs/claude-code");
 
 const OFFICIAL_GITHUB_RAW =
   "https://raw.githubusercontent.com/anthropics/claude-code/main";

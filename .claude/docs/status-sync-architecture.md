@@ -230,4 +230,4 @@ echo '{}' | ~/.claude/hooks/publish-state.sh
 ---
 
 *Last updated: January 2026*
-*Related: [Claude Code Hooks docs](../../docs/cc/hooks.md)*
+*Related: [Claude Code Hooks docs](../../docs/claude-code/hooks.md)*

@@ -9,7 +9,7 @@
 import { writeFileSync, mkdirSync, existsSync } from "fs";
 import { join } from "path";
 
-const DOCS_DIR = join(process.cwd(), "docs/full-agent-sdk-docs");
+const DOCS_DIR = join(process.cwd(), "docs/agent-sdk");
 const BASE_URL = "https://platform.claude.com/docs/en/agent-sdk";
 
 const SDK_DOCS = [
