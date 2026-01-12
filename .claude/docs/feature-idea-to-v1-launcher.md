@@ -2,8 +2,9 @@
 
 > **Purpose:** Enable users to go from project idea to working v1 with minimal friction
 > **Created:** 2025-01-11
-> **Status:** Design complete, ready for TDD implementation
+> **Status:** Phase 1 & 2 complete (Core Infrastructure + Progress Tracking)
 > **Depends on:** SDK Bridge (Phase 1 of SDK migration)
+> **Last Updated:** 2025-01-11
 
 ## Table of Contents
 
@@ -11,11 +12,12 @@
 2. [User Stories](#user-stories)
 3. [Acceptance Criteria](#acceptance-criteria)
 4. [Test-Driven Development Plan](#test-driven-development-plan)
-5. [Architecture](#architecture)
-6. [Implementation Phases](#implementation-phases)
-7. [API Contracts](#api-contracts)
-8. [Error Handling](#error-handling)
-9. [Future Extensions](#future-extensions)
+5. [Implementation Progress](#implementation-progress) ← **NEW**
+6. [Architecture](#architecture)
+7. [Implementation Phases](#implementation-phases)
+8. [API Contracts](#api-contracts)
+9. [Error Handling](#error-handling)
+10. [Future Extensions](#future-extensions)
 
 ---
 
@@ -1134,6 +1136,144 @@ describe.skipIf(SKIP_E2E)('E2E: Create Simple Project', () => {
 
 ---
 
+## Implementation Progress
+
+### Current Status: Phases 1 & 2 Complete ✅
+
+Implementation using TDD approach completed on 2025-01-11.
+
+### Test Results
+
+```
+Test Files:  8 passed (8)
+Tests:       63 passed | 7 skipped (70)
+Duration:    218ms
+```
+
+**Skipped tests:** Integration and E2E tests that require external SDK bridge server.
+
+### Implemented Modules
+
+| Module | File | Tests | Status |
+|--------|------|-------|--------|
+| `createProjectDirectory` | `src/project-creator/create-project-directory.ts` | 7 | ✅ Complete |
+| `generateClaudeMd` | `src/project-creator/generate-claude-md.ts` | 8 | ✅ Complete |
+| `buildCreationPrompt` | `src/project-creator/build-prompt.ts` | 9 | ✅ Complete |
+| `parseProgressFromMessage` | `src/project-creator/parse-progress.ts` | 14 | ✅ Complete |
+| `SessionCapture` | `src/sdk-bridge/session-capture.ts` | 9 | ✅ Complete |
+| `CreationStateManager` | `src/state-management/creation-state.ts` | 12 | ✅ Complete |
+| `createProjectFromIdea` | `src/project-creator/create-project-from-idea.ts` | 4 | ✅ Complete |
+| `SdkBridge` | `src/sdk-bridge/sdk-bridge.ts` | - | 🔲 Stub only |
+
+### File Structure Created
+
+```
+apps/sdk-bridge/
+├── package.json
+├── tsconfig.json
+├── vitest.config.ts
+├── src/
+│   ├── index.ts                    # Main exports
+│   ├── types.ts                    # Shared type definitions
+│   ├── project-creator/
+│   │   ├── index.ts
+│   │   ├── create-project-directory.ts
+│   │   ├── generate-claude-md.ts
+│   │   ├── build-prompt.ts
+│   │   ├── parse-progress.ts
+│   │   └── create-project-from-idea.ts
+│   ├── sdk-bridge/
+│   │   ├── index.ts
+│   │   ├── session-capture.ts
+│   │   └── sdk-bridge.ts           # Stub for SDK integration
+│   └── state-management/
+│       ├── index.ts
+│       └── creation-state.ts
+└── tests/
+    ├── unit/
+    │   ├── project-creator/
+    │   │   ├── create-project-directory.test.ts
+    │   │   ├── generate-claude-md.test.ts
+    │   │   ├── build-prompt.test.ts
+    │   │   └── parse-progress.test.ts
+    │   ├── sdk-bridge/
+    │   │   └── session-capture.test.ts
+    │   └── state-management/
+    │       └── creation-state.test.ts
+    ├── integration/
+    │   └── sdk-bridge.integration.test.ts
+    └── e2e/
+        └── create-simple-project.e2e.test.ts
+```
+
+### Key Features Implemented
+
+1. **Project Directory Creation**
+   - Sanitizes project names for filesystem safety
+   - Expands `~` paths to absolute paths
+   - Creates nested directories automatically
+   - Prevents overwriting existing directories
+
+2. **CLAUDE.md Generation**
+   - Includes project name as title
+   - Documents description in overview section
+   - Records language/framework preferences in Tech Stack
+   - Marks project as v1 bootstrap in Status section
+
+3. **Creation Prompt Builder**
+   - Generates v1-focused prompts for Claude
+   - Emphasizes working code over perfection
+   - Requests README with usage instructions
+   - Includes language/framework constraints when specified
+
+4. **Progress Parsing**
+   - Identifies phases: Setup, Dependencies, Building, Testing, Thinking
+   - Extracts file paths from Write tool calls
+   - Parses package names from npm/pip install commands
+   - Calculates completion percentage estimates
+
+5. **Session Capture**
+   - Captures session ID from SDK init messages
+   - Supports event listeners for capture notification
+   - Only captures first session ID (prevents duplicates)
+   - Supports reset for reuse
+
+6. **Creation State Management**
+   - Full state machine: Pending → InProgress → Completed/Failed
+   - Tracks session ID for resumption
+   - Persists state to disk (`~/.claude/hud-creations.json`)
+   - Lists active (non-completed) creations
+
+### Remaining Work
+
+#### Phase 3: HUD Integration
+- [ ] Create `NewIdeaModal` component (Swift + React)
+- [ ] Create `ActivityPanel` component for progress display
+- [ ] Wire up to `hud-core` via IPC
+- [ ] Add "New Idea" button to main navigation
+- [ ] Show in-progress creations in project list
+
+#### Phase 4: Polish & Edge Cases
+- [ ] Full SDK integration (requires SDK bridge server)
+- [ ] Implement cancellation
+- [ ] Implement resumption from session ID
+- [ ] Error handling and user feedback
+- [ ] "Run It" button for completed projects
+- [ ] Parallel creation support
+
+### Running the Tests
+
+```bash
+cd apps/sdk-bridge
+npm install
+npm test                    # Run all tests
+npm run test:unit           # Unit tests only
+npm run test:integration    # Integration tests (requires SDK_BRIDGE_URL)
+npm run test:e2e            # E2E tests (requires RUN_E2E=true)
+```
+
+---
+
 ## Architecture
 
 ### Component Diagram
@@ -1542,3 +1682,4 @@ interface IdeaSuggestion {
 | Date | Change |
 |------|--------|
 | 2025-01-11 | Initial specification with TDD test suites |
+| 2025-01-11 | **Phase 1 & 2 Complete:** Implemented all core infrastructure and progress tracking modules using TDD. 63 tests passing. Created `apps/sdk-bridge/` TypeScript project with full test coverage for project creation, CLAUDE.md generation, prompt building, progress parsing, session capture, and state management. |
