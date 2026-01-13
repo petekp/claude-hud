@@ -59,6 +59,10 @@ pub struct SessionRecord {
     pub state: ClaudeState,
     pub cwd: String,
     pub updated_at: DateTime<Utc>,
+    #[serde(default)]
+    pub working_on: Option<String>,
+    #[serde(default)]
+    pub next_step: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

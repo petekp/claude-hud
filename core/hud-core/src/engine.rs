@@ -22,7 +22,7 @@ use crate::config::{
 };
 use crate::error::HudFfiError;
 use crate::projects::{has_project_indicators, load_projects};
-use crate::sessions::{detect_session_state_v2, get_all_session_states_v2, read_project_status, ProjectStatus};
+use crate::sessions::{detect_session_state, get_all_session_states, read_project_status, ProjectStatus};
 use crate::types::{
     Artifact, DashboardData, GlobalConfig, HudConfig, Plugin, PluginManifest, Project,
     ProjectSessionState, SuggestedProject,
@@ -173,18 +173,18 @@ impl HudEngine {
     // ─────────────────────────────────────────────────────────────────────────────
 
     /// Gets the session state for a single project.
-    /// Uses the new v2 state resolution with session-ID keyed state and lock detection.
+    /// Uses session-ID keyed state and lock detection for reliable state.
     pub fn get_session_state(&self, project_path: String) -> ProjectSessionState {
-        detect_session_state_v2(&project_path)
+        detect_session_state(&project_path)
     }
 
     /// Gets session states for multiple projects.
-    /// Uses v2 state resolution with session-ID keyed state and lock detection.
+    /// Uses session-ID keyed state and lock detection for reliable state.
     ///
     /// Takes a Vec instead of slice for FFI compatibility.
     pub fn get_all_session_states(&self, projects: Vec<Project>) -> HashMap<String, ProjectSessionState> {
         let paths: Vec<String> = projects.iter().map(|p| p.path.clone()).collect();
-        get_all_session_states_v2(&paths)
+        get_all_session_states(&paths)
     }
 
     /// Gets project status from .claude/hud-status.json.

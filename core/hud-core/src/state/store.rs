@@ -77,6 +77,11 @@ impl StateStore {
     }
 
     pub fn update(&mut self, session_id: &str, state: ClaudeState, cwd: &str) {
+        let existing = self.sessions.get(session_id);
+        let (working_on, next_step) = existing
+            .map(|r| (r.working_on.clone(), r.next_step.clone()))
+            .unwrap_or((None, None));
+
         self.sessions.insert(
             session_id.to_string(),
             SessionRecord {
@@ -84,6 +89,8 @@ impl StateStore {
                 state,
                 cwd: cwd.to_string(),
                 updated_at: Utc::now(),
+                working_on,
+                next_step,
             },
         );
     }

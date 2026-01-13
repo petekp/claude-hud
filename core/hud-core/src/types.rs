@@ -253,43 +253,6 @@ pub struct ProjectSessionState {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// Session States File Format (hud-status.json)
-// ═══════════════════════════════════════════════════════════════════════════════
-
-/// Context info as stored in the session states file.
-#[derive(Debug, Serialize, Deserialize, Clone, uniffi::Record)]
-pub struct ContextInfoEntry {
-    pub percent_used: Option<u32>,
-    pub tokens_used: Option<u64>,
-    pub context_size: Option<u64>,
-    pub updated_at: Option<String>,
-}
-
-/// A single project's session state entry in the file.
-#[derive(Debug, Serialize, Deserialize, Clone, Default, uniffi::Record)]
-pub struct SessionStateEntry {
-    #[serde(default)]
-    pub state: String,
-    pub state_changed_at: Option<String>,
-    pub session_id: Option<String>,
-    pub working_on: Option<String>,
-    pub next_step: Option<String>,
-    pub context: Option<ContextInfoEntry>,
-    /// Whether Claude is currently "thinking" (API call in flight).
-    /// This is set by the fetch-intercepting launcher for real-time status.
-    #[serde(default)]
-    pub thinking: Option<bool>,
-    pub thinking_updated_at: Option<String>,
-}
-
-/// The full session states file format.
-#[derive(Debug, Serialize, Deserialize, Clone, Default, uniffi::Record)]
-pub struct SessionStatesFile {
-    pub version: u32,
-    pub projects: HashMap<String, SessionStateEntry>,
-}
-
-// ═══════════════════════════════════════════════════════════════════════════════
 // Project Creation Types (Idea → V1 Launcher)
 // ═══════════════════════════════════════════════════════════════════════════════
 

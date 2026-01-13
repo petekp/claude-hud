@@ -1,81 +1,17 @@
 //! Session state management for Claude Code sessions.
 //!
-//! Handles reading session states from the HUD status file and
+//! Handles reading session states from the v2 state store and
 //! detecting the current state of Claude Code sessions.
 
 use crate::config::get_claude_dir;
 use crate::state::{resolve_state_with_details, ClaudeState, StateStore};
-use crate::types::{ContextInfo, ProjectSessionState, SessionState, SessionStatesFile};
+use crate::types::{ProjectSessionState, SessionState};
 use std::fs;
 use std::path::Path;
 
-/// Loads the session states file from ~/.claude/hud-session-states.json
-pub fn load_session_states_file() -> Option<SessionStatesFile> {
-    let claude_dir = get_claude_dir()?;
-    let state_file = claude_dir.join("hud-session-states.json");
-
-    if !state_file.exists() {
-        return None;
-    }
-
-    fs::read_to_string(&state_file)
-        .ok()
-        .and_then(|content| serde_json::from_str(&content).ok())
-}
-
-/// Detects the session state for a given project path.
-pub fn detect_session_state(project_path: &str) -> ProjectSessionState {
-    let is_locked = is_session_active(project_path);
-
-    let idle_state = ProjectSessionState {
-        state: SessionState::Idle,
-        state_changed_at: None,
-        session_id: None,
-        working_on: None,
-        next_step: None,
-        context: None,
-        thinking: None,
-        is_locked,
-    };
-
-    if let Some(states_file) = load_session_states_file() {
-        if let Some(entry) = states_file.projects.get(project_path) {
-            let state = match entry.state.as_str() {
-                "working" => SessionState::Working,
-                "ready" => SessionState::Ready,
-                "compacting" => SessionState::Compacting,
-                "waiting" => SessionState::Waiting,
-                _ => SessionState::Idle,
-            };
-
-            let context = entry.context.as_ref().and_then(|ctx| {
-                Some(ContextInfo {
-                    percent_used: ctx.percent_used?,
-                    tokens_used: ctx.tokens_used?,
-                    context_size: ctx.context_size?,
-                    updated_at: ctx.updated_at.clone(),
-                })
-            });
-
-            return ProjectSessionState {
-                state,
-                state_changed_at: entry.state_changed_at.clone(),
-                session_id: entry.session_id.clone(),
-                working_on: entry.working_on.clone(),
-                next_step: entry.next_step.clone(),
-                context,
-                thinking: entry.thinking,
-                is_locked,
-            };
-        }
-    }
-
-    idle_state
-}
-
-/// Detects session state using the new v2 state module.
+/// Detects session state using the v2 state module.
 /// Uses session-ID keyed state file and lock detection for reliable state.
-pub fn detect_session_state_v2(project_path: &str) -> ProjectSessionState {
+pub fn detect_session_state(project_path: &str) -> ProjectSessionState {
     let Some(claude_dir) = get_claude_dir() else {
         return ProjectSessionState {
             state: SessionState::Idle,
@@ -106,10 +42,12 @@ pub fn detect_session_state_v2(project_path: &str) -> ProjectSessionState {
                 ClaudeState::Blocked => SessionState::Waiting, // Map Blocked → Waiting
             };
 
-            // Try to get working_on/next_step from v1 file (summaries are still there)
-            let (working_on, next_step) = load_session_states_file()
-                .and_then(|f| f.projects.get(project_path).cloned())
-                .map(|e| (e.working_on, e.next_step))
+            // Get working_on/next_step from v2 store
+            let (working_on, next_step) = details
+                .session_id
+                .as_ref()
+                .and_then(|sid| store.get_by_session_id(sid))
+                .map(|r| (r.working_on.clone(), r.next_step.clone()))
                 .unwrap_or((None, None));
 
             ProjectSessionState {
@@ -136,80 +74,16 @@ pub fn detect_session_state_v2(project_path: &str) -> ProjectSessionState {
     }
 }
 
-/// Gets all session states for given project paths.
-/// Also includes any child paths (subdirectories) found in the state file,
-/// since hooks write to the cwd which may differ from the pinned project path.
+/// Gets all session states using v2 state resolution.
+/// Uses session-ID keyed state file and lock detection for reliable state.
+/// Parent/child inheritance is handled by the resolver.
 pub fn get_all_session_states(
     project_paths: &[String],
 ) -> std::collections::HashMap<String, ProjectSessionState> {
     let mut states = std::collections::HashMap::new();
 
-    // First, get states for the exact pinned paths
     for path in project_paths {
         states.insert(path.clone(), detect_session_state(path));
-    }
-
-    // Then, scan for child paths in the state file
-    // Hooks write to cwd, which may be a subdirectory of the pinned project
-    if let Some(states_file) = load_session_states_file() {
-        for (state_path, entry) in &states_file.projects {
-            // Check if this state_path is a child of any pinned project
-            for pinned_path in project_paths {
-                if state_path.starts_with(pinned_path) && state_path != pinned_path {
-                    // It's a child path - include it if not already present
-                    if !states.contains_key(state_path) {
-                        let is_locked = is_session_active(state_path);
-
-                        let state = match entry.state.as_str() {
-                            "working" => SessionState::Working,
-                            "ready" => SessionState::Ready,
-                            "compacting" => SessionState::Compacting,
-                            "waiting" => SessionState::Waiting,
-                            _ => SessionState::Idle,
-                        };
-
-                        let context = entry.context.as_ref().and_then(|ctx| {
-                            Some(ContextInfo {
-                                percent_used: ctx.percent_used?,
-                                tokens_used: ctx.tokens_used?,
-                                context_size: ctx.context_size?,
-                                updated_at: ctx.updated_at.clone(),
-                            })
-                        });
-
-                        states.insert(
-                            state_path.clone(),
-                            ProjectSessionState {
-                                state,
-                                state_changed_at: entry.state_changed_at.clone(),
-                                session_id: entry.session_id.clone(),
-                                working_on: entry.working_on.clone(),
-                                next_step: entry.next_step.clone(),
-                                context,
-                                thinking: entry.thinking,
-                                is_locked,
-                            },
-                        );
-                    }
-                    break; // Found a matching parent, no need to check others
-                }
-            }
-        }
-    }
-
-    states
-}
-
-/// Gets all session states using v2 state resolution.
-/// Uses session-ID keyed state file and lock detection for reliable state.
-/// Parent/child inheritance is handled by the resolver.
-pub fn get_all_session_states_v2(
-    project_paths: &[String],
-) -> std::collections::HashMap<String, ProjectSessionState> {
-    let mut states = std::collections::HashMap::new();
-
-    for path in project_paths {
-        states.insert(path.clone(), detect_session_state_v2(path));
     }
 
     states
@@ -362,29 +236,6 @@ mod tests {
             pid, project_path
         );
         fs::write(lock_dir.join("meta.json"), meta).unwrap();
-    }
-
-    /// Helper to create a test state file
-    fn create_test_state_file(claude_dir: &Path, entries: &[(&str, &str, bool)]) {
-        let mut projects = std::collections::HashMap::new();
-        for (path, state, thinking) in entries {
-            let mut entry = std::collections::HashMap::new();
-            entry.insert("state".to_string(), serde_json::json!(state));
-            entry.insert("thinking".to_string(), serde_json::json!(thinking));
-            entry.insert(
-                "context".to_string(),
-                serde_json::json!({"updated_at": "2024-01-01T00:00:00Z"}),
-            );
-            projects.insert(path.to_string(), entry);
-        }
-
-        let state_file = serde_json::json!({
-            "version": 1,
-            "projects": projects
-        });
-
-        let state_path = claude_dir.join("hud-session-states.json");
-        fs::write(state_path, serde_json::to_string_pretty(&state_file).unwrap()).unwrap();
     }
 
     /// Helper to clean up a test lock
