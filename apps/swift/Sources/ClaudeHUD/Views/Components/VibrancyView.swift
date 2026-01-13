@@ -152,11 +152,11 @@ struct DarkFrostedGlass: View {
         let isEmphasized = config.useEmphasizedMaterial
         let material = selectedMaterial
         #else
-        let cornerRadius: CGFloat = 20
+        let cornerRadius: CGFloat = 22
         let tintOpacity: Double = 0.33
-        let borderOpacity: Double = 0.20
-        let highlightOpacity: Double = 0.09
-        let topHighlightOpacity: Double = 0.23
+        let borderOpacity: Double = 0.36
+        let highlightOpacity: Double = 0.07
+        let topHighlightOpacity: Double = 0.14
         let shadowOpacity: Double = 0.00
         let shadowRadius: CGFloat = 0
         let shadowY: CGFloat = 0
@@ -243,9 +243,9 @@ struct DarkFrostedCard: View {
         let highlightOpacity = isHovered ? effectiveConfig.cardHoverHighlightOpacity : effectiveConfig.cardHighlightOpacity
         #else
         let cornerRadius: CGFloat = 13
-        let baseTintOpacity = tintOpacity ?? 0.00
-        let borderOpacity = isHovered ? 0.37 : 0.23
-        let highlightOpacity = isHovered ? 0.20 : 0.14
+        let baseTintOpacity = tintOpacity ?? 0.58
+        let borderOpacity = isHovered ? 0.37 : 0.28
+        let highlightOpacity = isHovered ? 0.16 : 0.14
         #endif
 
         let effectiveTintOpacity = isHovered ? baseTintOpacity * 0.8 : baseTintOpacity

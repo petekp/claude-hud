@@ -337,15 +337,15 @@ struct ReadyAmbientGlow: View {
             let fadeInZone = config.rippleFadeInZone
             let fadeOutPower = config.rippleFadeOutPower
             #else
-            let speed: Double = 4.0
-            let count: Int = 3
-            let maxOpacity: Double = 0.35
-            let lineWidth: Double = 2.0
-            let blurAmount: Double = 8.0
-            let originXPercent: Double = 0.85
-            let originYPercent: Double = 0.35
-            let fadeInZone: Double = 0.15
-            let fadeOutPower: Double = 1.5
+            let speed: Double = 4.8
+            let count: Int = 4
+            let maxOpacity: Double = 1.00
+            let lineWidth: Double = 30.0
+            let blurAmount: Double = 44.0
+            let originXPercent: Double = 0.82
+            let originYPercent: Double = 0.00
+            let fadeInZone: Double = 0.09
+            let fadeOutPower: Double = 1.6
             #endif
 
             let phase = timeline.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: speed) / speed
@@ -522,10 +522,10 @@ private struct ReadyBorderGlowContent: View {
     let date: Date
 
     var body: some View {
-        let speed: Double = 8.6
-        let count: Int = 5
-        let fadeInZone: Double = 0.04
-        let fadeOutPower: Double = 0.9
+        let speed: Double = 4.8
+        let count: Int = 4
+        let fadeInZone: Double = 0.09
+        let fadeOutPower: Double = 1.6
         let rotationMult: Double = 0.5
         let baseOp: Double = 0.3
         let pulseIntensity: Double = 0.5

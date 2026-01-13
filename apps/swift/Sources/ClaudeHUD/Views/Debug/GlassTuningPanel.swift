@@ -78,21 +78,21 @@ class GlassConfig: ObservableObject {
 
     // Panel background
     @Published var panelTintOpacity: Double = 0.33
-    @Published var panelCornerRadius: Double = 20
-    @Published var panelBorderOpacity: Double = 0.20
-    @Published var panelHighlightOpacity: Double = 0.09
-    @Published var panelTopHighlightOpacity: Double = 0.23
+    @Published var panelCornerRadius: Double = 22
+    @Published var panelBorderOpacity: Double = 0.36
+    @Published var panelHighlightOpacity: Double = 0.07
+    @Published var panelTopHighlightOpacity: Double = 0.14
     @Published var panelShadowOpacity: Double = 0.00
     @Published var panelShadowRadius: Double = 0
     @Published var panelShadowY: Double = 0
 
     // Card background
-    @Published var cardTintOpacity: Double = 0.00
+    @Published var cardTintOpacity: Double = 0.58
     @Published var cardCornerRadius: Double = 13
-    @Published var cardBorderOpacity: Double = 0.23
+    @Published var cardBorderOpacity: Double = 0.28
     @Published var cardHighlightOpacity: Double = 0.14
     @Published var cardHoverBorderOpacity: Double = 0.37
-    @Published var cardHoverHighlightOpacity: Double = 0.20
+    @Published var cardHoverHighlightOpacity: Double = 0.16
 
     // Material settings
     @Published var useEmphasizedMaterial: Bool = true
@@ -122,15 +122,15 @@ class GlassConfig: ObservableObject {
     @Published var statusIdleOpacity: Double = 0.40
 
     // Ready ripple effect (continuous)
-    @Published var rippleSpeed: Double = 8.6
-    @Published var rippleCount: Int = 5
-    @Published var rippleMaxOpacity: Double = 0.71
-    @Published var rippleLineWidth: Double = 21.9
-    @Published var rippleBlurAmount: Double = 44.3
-    @Published var rippleOriginX: Double = 0.80
-    @Published var rippleOriginY: Double = 0.33
-    @Published var rippleFadeInZone: Double = 0.04
-    @Published var rippleFadeOutPower: Double = 0.9
+    @Published var rippleSpeed: Double = 4.8
+    @Published var rippleCount: Int = 4
+    @Published var rippleMaxOpacity: Double = 1.00
+    @Published var rippleLineWidth: Double = 30.0
+    @Published var rippleBlurAmount: Double = 44.0
+    @Published var rippleOriginX: Double = 0.82
+    @Published var rippleOriginY: Double = 0.00
+    @Published var rippleFadeInZone: Double = 0.09
+    @Published var rippleFadeOutPower: Double = 1.6
 
     // Ready border glow effect
     @Published var borderGlowInnerWidth: Double = 0.75
@@ -205,20 +205,20 @@ class GlassConfig: ObservableObject {
 
     func reset() {
         panelTintOpacity = 0.33
-        panelCornerRadius = 20
-        panelBorderOpacity = 0.20
-        panelHighlightOpacity = 0.09
-        panelTopHighlightOpacity = 0.23
+        panelCornerRadius = 22
+        panelBorderOpacity = 0.36
+        panelHighlightOpacity = 0.07
+        panelTopHighlightOpacity = 0.14
         panelShadowOpacity = 0.00
         panelShadowRadius = 0
         panelShadowY = 0
 
-        cardTintOpacity = 0.00
+        cardTintOpacity = 0.58
         cardCornerRadius = 13
-        cardBorderOpacity = 0.23
+        cardBorderOpacity = 0.28
         cardHighlightOpacity = 0.14
         cardHoverBorderOpacity = 0.37
-        cardHoverHighlightOpacity = 0.20
+        cardHoverHighlightOpacity = 0.16
 
         useEmphasizedMaterial = true
         materialType = 0
@@ -241,15 +241,15 @@ class GlassConfig: ObservableObject {
 
         statusIdleOpacity = 0.40
 
-        rippleSpeed = 8.6
-        rippleCount = 5
-        rippleMaxOpacity = 0.71
-        rippleLineWidth = 21.9
-        rippleBlurAmount = 44.3
-        rippleOriginX = 0.80
-        rippleOriginY = 0.33
-        rippleFadeInZone = 0.04
-        rippleFadeOutPower = 0.9
+        rippleSpeed = 4.8
+        rippleCount = 4
+        rippleMaxOpacity = 1.00
+        rippleLineWidth = 30.0
+        rippleBlurAmount = 44.0
+        rippleOriginX = 0.82
+        rippleOriginY = 0.00
+        rippleFadeInZone = 0.09
+        rippleFadeOutPower = 1.6
 
         borderGlowInnerWidth = 0.75
         borderGlowOuterWidth = 1.25
