@@ -11,9 +11,16 @@ Claude HUD is a native macOS desktop application that serves as a dashboard for 
 
 When starting a development session on this project:
 
-1. **Run the Swift HUD in background:** `cd apps/swift && swift run &`
-2. **Rebuild after Swift changes:** If you modify Swift code or regenerate UniFFI bindings, rebuild with `cd apps/swift && swift build` then restart with `swift run &`
-3. **State tracking is automatic:** Hooks in `~/.claude/settings.json` track thinking state. Just run `claude` normally.
+1. **Install the state tracking hook (first time only):**
+   ```bash
+   mkdir -p ~/.claude/scripts
+   ln -sf ~/Code/claude-hud/scripts/hud-state-tracker.sh ~/.claude/scripts/hud-state-tracker.sh
+   ```
+   The hook is configured in `~/.claude/settings.json` and tracks session state automatically.
+
+2. **Run the Swift HUD in background:** `cd apps/swift && swift run &`
+3. **Rebuild after Swift changes:** If you modify Swift code or regenerate UniFFI bindings, rebuild with `cd apps/swift && swift build` then restart with `swift run &`
+4. **State tracking is automatic:** The hook script tracks all Claude sessions. Just run `claude` normally.
 
 ## Product Vision
 
