@@ -9,7 +9,6 @@ struct RelayConfig: Codable {
 struct RelayProjectState: Codable {
     let state: String
     let workingOn: String?
-    let nextStep: String?
     let devServerPort: Int?
     let contextPercent: Double?
     let lastUpdated: String

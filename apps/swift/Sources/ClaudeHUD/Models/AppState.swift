@@ -158,7 +158,6 @@ class AppState: ObservableObject {
                 stateChangedAt: projectState.lastUpdated,
                 sessionId: nil,
                 workingOn: projectState.workingOn,
-                nextStep: projectState.nextStep,
                 context: nil,
                 thinking: nil,
                 isLocked: false
@@ -426,8 +425,7 @@ class AppState: ObservableObject {
                         stateChangedAt: nil,
                         sessionId: state.sessionId,
                         workingOn: state.workingOn,
-                        nextStep: state.nextStep,
-                        context: state.context,
+                                context: state.context,
                         thinking: nil,
                         isLocked: true
                     )
@@ -443,8 +441,7 @@ class AppState: ObservableObject {
                         stateChangedAt: state.stateChangedAt,
                         sessionId: state.sessionId,
                         workingOn: state.workingOn,
-                        nextStep: state.nextStep,
-                        context: state.context,
+                                context: state.context,
                         thinking: false,
                         isLocked: false
                     )
@@ -459,8 +456,7 @@ class AppState: ObservableObject {
                             stateChangedAt: state.stateChangedAt,
                             sessionId: state.sessionId,
                             workingOn: state.workingOn,
-                            nextStep: state.nextStep,
-                            context: state.context,
+                                        context: state.context,
                             thinking: false,
                             isLocked: false
                         )
@@ -592,8 +588,7 @@ class AppState: ObservableObject {
                     stateChangedAt: state.stateChangedAt,
                     sessionId: state.sessionId,
                     workingOn: state.workingOn,
-                    nextStep: state.nextStep,
-                    context: state.context,
+                        context: state.context,
                     thinking: state.thinking,
                     isLocked: true  // Inherit lock from parent
                 )
@@ -627,8 +622,7 @@ class AppState: ObservableObject {
                     stateChangedAt: state.stateChangedAt,
                     sessionId: state.sessionId,
                     workingOn: state.workingOn,
-                    nextStep: state.nextStep,
-                    context: state.context,
+                        context: state.context,
                     thinking: true,
                     isLocked: state.isLocked
                 )
@@ -640,8 +634,7 @@ class AppState: ObservableObject {
                     stateChangedAt: state.stateChangedAt,
                     sessionId: state.sessionId,
                     workingOn: state.workingOn,
-                    nextStep: state.nextStep,
-                    context: state.context,
+                        context: state.context,
                     thinking: false,
                     isLocked: false
                 )
@@ -672,8 +665,7 @@ class AppState: ObservableObject {
                         stateChangedAt: state.stateChangedAt,
                         sessionId: state.sessionId,
                         workingOn: state.workingOn,
-                        nextStep: state.nextStep,
-                        context: state.context,
+                                context: state.context,
                         thinking: state.thinking,
                         isLocked: state.isLocked
                     )
@@ -687,8 +679,7 @@ class AppState: ObservableObject {
                     stateChangedAt: state.stateChangedAt,
                     sessionId: state.sessionId,
                     workingOn: state.workingOn,
-                    nextStep: state.nextStep,
-                    context: state.context,
+                        context: state.context,
                     thinking: state.thinking,
                     isLocked: state.isLocked
                 )
