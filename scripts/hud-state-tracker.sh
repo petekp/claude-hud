@@ -301,7 +301,14 @@ if [ "$should_publish" = "true" ]; then
   disown 2>/dev/null
 fi
 
-if [ "$event" = "Stop" ] && [ -n "$transcript_path" ] && [ -f "$transcript_path" ]; then
+# Generate real-time description for UserPromptSubmit and Stop events
+# This provides live context updates so users can glance at HUD to recall what's happening
+generate_description=false
+if [ "$event" = "Stop" ] || [ "$event" = "UserPromptSubmit" ]; then
+  generate_description=true
+fi
+
+if [ "$generate_description" = "true" ] && [ -n "$transcript_path" ] && [ -f "$transcript_path" ]; then
   (
     context=$(tail -100 "$transcript_path" | grep -E '"type":"(user|assistant)"' | tail -20)
 
