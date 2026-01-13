@@ -26,6 +26,9 @@ stop_hook_active=$(echo "$input" | jq -r '.stop_hook_active // false')
 source=$(echo "$input" | jq -r '.source // empty')
 trigger=$(echo "$input" | jq -r '.trigger // empty')
 
+# Expand tilde in transcript_path (bash doesn't expand ~ in variables)
+transcript_path="${transcript_path/#\~/$HOME}"
+
 if [ "$event" = "Stop" ] && [ "$stop_hook_active" = "true" ]; then
   exit 0
 fi
@@ -314,7 +317,7 @@ if [ "$event" = "Stop" ] && [ -n "$transcript_path" ] && [ -f "$transcript_path"
       --no-session-persistence \
       --output-format json \
       --model haiku \
-      "Extract from this coding session context. Return ONLY valid JSON, no markdown: {\"working_on\": \"brief description\", \"next_step\": \"what to do next\"}. Context: $context" 2>/dev/null)
+      "Extract from this coding session context what the user is currently working on. Return ONLY valid JSON, no markdown: {\"working_on\": \"brief description\"}. Context: $context" 2>/dev/null)
 
     if ! echo "$response" | jq -e . >/dev/null 2>&1; then
       exit 0
@@ -323,19 +326,16 @@ if [ "$event" = "Stop" ] && [ -n "$transcript_path" ] && [ -f "$transcript_path"
     result=$(echo "$response" | jq -r '.result // empty')
 
     working_on=$(echo "$result" | jq -r '.working_on // empty' 2>/dev/null)
-    next_step=$(echo "$result" | jq -r '.next_step // empty' 2>/dev/null)
 
     if [ -z "$working_on" ]; then
       working_on=$(echo "$result" | sed -n 's/.*"working_on"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -1)
-      next_step=$(echo "$result" | sed -n 's/.*"next_step"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -1)
     fi
 
     if [ -n "$working_on" ] && [ -n "$session_id" ]; then
       tmp_file=$(mktemp)
       jq --arg sid "$session_id" \
          --arg working_on "$working_on" \
-         --arg next_step "${next_step:-}" \
-         '.sessions[$sid].working_on = $working_on | .sessions[$sid].next_step = $next_step' \
+         '.sessions[$sid].working_on = $working_on' \
          "$STATE_FILE" > "$tmp_file" && mv "$tmp_file" "$STATE_FILE"
     fi
   ) &>/dev/null &

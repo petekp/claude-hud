@@ -527,7 +527,7 @@ public protocol HudEngineProtocol: AnyObject {
 
     /**
      * Gets session states for multiple projects.
-     * Uses v2 state resolution with session-ID keyed state and lock detection.
+     * Uses session-ID keyed state and lock detection for reliable state.
      *
      * Takes a Vec instead of slice for FFI compatibility.
      */
@@ -545,7 +545,7 @@ public protocol HudEngineProtocol: AnyObject {
 
     /**
      * Gets the session state for a single project.
-     * Uses the new v2 state resolution with session-ID keyed state and lock detection.
+     * Uses session-ID keyed state and lock detection for reliable state.
      */
     func getSessionState(projectPath: String) -> ProjectSessionState
 
@@ -667,7 +667,7 @@ open class HudEngine:
 
     /**
      * Gets session states for multiple projects.
-     * Uses v2 state resolution with session-ID keyed state and lock detection.
+     * Uses session-ID keyed state and lock detection for reliable state.
      *
      * Takes a Vec instead of slice for FFI compatibility.
      */
@@ -699,7 +699,7 @@ open class HudEngine:
 
     /**
      * Gets the session state for a single project.
-     * Uses the new v2 state resolution with session-ID keyed state and lock detection.
+     * Uses session-ID keyed state and lock detection for reliable state.
      */
     open func getSessionState(projectPath: String) -> ProjectSessionState {
         return try! FfiConverterTypeProjectSessionState.lift(try! rustCall {
@@ -1104,86 +1104,6 @@ public func FfiConverterTypeContextInfo_lift(_ buf: RustBuffer) throws -> Contex
 #endif
 public func FfiConverterTypeContextInfo_lower(_ value: ContextInfo) -> RustBuffer {
     return FfiConverterTypeContextInfo.lower(value)
-}
-
-/**
- * Context info as stored in the session states file.
- */
-public struct ContextInfoEntry {
-    public var percentUsed: UInt32?
-    public var tokensUsed: UInt64?
-    public var contextSize: UInt64?
-    public var updatedAt: String?
-
-    // Default memberwise initializers are never public by default, so we
-    // declare one manually.
-    public init(percentUsed: UInt32?, tokensUsed: UInt64?, contextSize: UInt64?, updatedAt: String?) {
-        self.percentUsed = percentUsed
-        self.tokensUsed = tokensUsed
-        self.contextSize = contextSize
-        self.updatedAt = updatedAt
-    }
-}
-
-extension ContextInfoEntry: Equatable, Hashable {
-    public static func == (lhs: ContextInfoEntry, rhs: ContextInfoEntry) -> Bool {
-        if lhs.percentUsed != rhs.percentUsed {
-            return false
-        }
-        if lhs.tokensUsed != rhs.tokensUsed {
-            return false
-        }
-        if lhs.contextSize != rhs.contextSize {
-            return false
-        }
-        if lhs.updatedAt != rhs.updatedAt {
-            return false
-        }
-        return true
-    }
-
-    public func hash(into hasher: inout Hasher) {
-        hasher.combine(percentUsed)
-        hasher.combine(tokensUsed)
-        hasher.combine(contextSize)
-        hasher.combine(updatedAt)
-    }
-}
-
-#if swift(>=5.8)
-    @_documentation(visibility: private)
-#endif
-public struct FfiConverterTypeContextInfoEntry: FfiConverterRustBuffer {
-    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ContextInfoEntry {
-        return
-            try ContextInfoEntry(
-                percentUsed: FfiConverterOptionUInt32.read(from: &buf),
-                tokensUsed: FfiConverterOptionUInt64.read(from: &buf),
-                contextSize: FfiConverterOptionUInt64.read(from: &buf),
-                updatedAt: FfiConverterOptionString.read(from: &buf)
-            )
-    }
-
-    public static func write(_ value: ContextInfoEntry, into buf: inout [UInt8]) {
-        FfiConverterOptionUInt32.write(value.percentUsed, into: &buf)
-        FfiConverterOptionUInt64.write(value.tokensUsed, into: &buf)
-        FfiConverterOptionUInt64.write(value.contextSize, into: &buf)
-        FfiConverterOptionString.write(value.updatedAt, into: &buf)
-    }
-}
-
-#if swift(>=5.8)
-    @_documentation(visibility: private)
-#endif
-public func FfiConverterTypeContextInfoEntry_lift(_ buf: RustBuffer) throws -> ContextInfoEntry {
-    return try FfiConverterTypeContextInfoEntry.lift(buf)
-}
-
-#if swift(>=5.8)
-    @_documentation(visibility: private)
-#endif
-public func FfiConverterTypeContextInfoEntry_lower(_ value: ContextInfoEntry) -> RustBuffer {
-    return FfiConverterTypeContextInfoEntry.lower(value)
 }
 
 /**
@@ -2225,7 +2145,6 @@ public struct ProjectSessionState {
     public var stateChangedAt: String?
     public var sessionId: String?
     public var workingOn: String?
-    public var nextStep: String?
     public var context: ContextInfo?
     /**
      * Whether Claude is currently "thinking" (API call in flight).
@@ -2240,7 +2159,7 @@ public struct ProjectSessionState {
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
-    public init(state: SessionState, stateChangedAt: String?, sessionId: String?, workingOn: String?, nextStep: String?, context: ContextInfo?,
+    public init(state: SessionState, stateChangedAt: String?, sessionId: String?, workingOn: String?, context: ContextInfo?,
                 /**
                     * Whether Claude is currently "thinking" (API call in flight).
                     * This provides real-time status when using the fetch-intercepting launcher.
@@ -2254,7 +2173,6 @@ public struct ProjectSessionState {
         self.stateChangedAt = stateChangedAt
         self.sessionId = sessionId
         self.workingOn = workingOn
-        self.nextStep = nextStep
         self.context = context
         self.thinking = thinking
         self.isLocked = isLocked
@@ -2275,9 +2193,6 @@ extension ProjectSessionState: Equatable, Hashable {
         if lhs.workingOn != rhs.workingOn {
             return false
         }
-        if lhs.nextStep != rhs.nextStep {
-            return false
-        }
         if lhs.context != rhs.context {
             return false
         }
@@ -2295,7 +2210,6 @@ extension ProjectSessionState: Equatable, Hashable {
         hasher.combine(stateChangedAt)
         hasher.combine(sessionId)
         hasher.combine(workingOn)
-        hasher.combine(nextStep)
         hasher.combine(context)
         hasher.combine(thinking)
         hasher.combine(isLocked)
@@ -2313,7 +2227,6 @@ public struct FfiConverterTypeProjectSessionState: FfiConverterRustBuffer {
                 stateChangedAt: FfiConverterOptionString.read(from: &buf),
                 sessionId: FfiConverterOptionString.read(from: &buf),
                 workingOn: FfiConverterOptionString.read(from: &buf),
-                nextStep: FfiConverterOptionString.read(from: &buf),
                 context: FfiConverterOptionTypeContextInfo.read(from: &buf),
                 thinking: FfiConverterOptionBool.read(from: &buf),
                 isLocked: FfiConverterBool.read(from: &buf)
@@ -2325,7 +2238,6 @@ public struct FfiConverterTypeProjectSessionState: FfiConverterRustBuffer {
         FfiConverterOptionString.write(value.stateChangedAt, into: &buf)
         FfiConverterOptionString.write(value.sessionId, into: &buf)
         FfiConverterOptionString.write(value.workingOn, into: &buf)
-        FfiConverterOptionString.write(value.nextStep, into: &buf)
         FfiConverterOptionTypeContextInfo.write(value.context, into: &buf)
         FfiConverterOptionBool.write(value.thinking, into: &buf)
         FfiConverterBool.write(value.isLocked, into: &buf)
@@ -2568,191 +2480,6 @@ public func FfiConverterTypeProjectStatus_lift(_ buf: RustBuffer) throws -> Proj
 #endif
 public func FfiConverterTypeProjectStatus_lower(_ value: ProjectStatus) -> RustBuffer {
     return FfiConverterTypeProjectStatus.lower(value)
-}
-
-/**
- * A single project's session state entry in the file.
- */
-public struct SessionStateEntry {
-    public var state: String
-    public var stateChangedAt: String?
-    public var sessionId: String?
-    public var workingOn: String?
-    public var nextStep: String?
-    public var context: ContextInfoEntry?
-    /**
-     * Whether Claude is currently "thinking" (API call in flight).
-     * This is set by the fetch-intercepting launcher for real-time status.
-     */
-    public var thinking: Bool?
-    public var thinkingUpdatedAt: String?
-
-    // Default memberwise initializers are never public by default, so we
-    // declare one manually.
-    public init(state: String, stateChangedAt: String?, sessionId: String?, workingOn: String?, nextStep: String?, context: ContextInfoEntry?,
-                /**
-                    * Whether Claude is currently "thinking" (API call in flight).
-                    * This is set by the fetch-intercepting launcher for real-time status.
-                    */ thinking: Bool?, thinkingUpdatedAt: String?)
-    {
-        self.state = state
-        self.stateChangedAt = stateChangedAt
-        self.sessionId = sessionId
-        self.workingOn = workingOn
-        self.nextStep = nextStep
-        self.context = context
-        self.thinking = thinking
-        self.thinkingUpdatedAt = thinkingUpdatedAt
-    }
-}
-
-extension SessionStateEntry: Equatable, Hashable {
-    public static func == (lhs: SessionStateEntry, rhs: SessionStateEntry) -> Bool {
-        if lhs.state != rhs.state {
-            return false
-        }
-        if lhs.stateChangedAt != rhs.stateChangedAt {
-            return false
-        }
-        if lhs.sessionId != rhs.sessionId {
-            return false
-        }
-        if lhs.workingOn != rhs.workingOn {
-            return false
-        }
-        if lhs.nextStep != rhs.nextStep {
-            return false
-        }
-        if lhs.context != rhs.context {
-            return false
-        }
-        if lhs.thinking != rhs.thinking {
-            return false
-        }
-        if lhs.thinkingUpdatedAt != rhs.thinkingUpdatedAt {
-            return false
-        }
-        return true
-    }
-
-    public func hash(into hasher: inout Hasher) {
-        hasher.combine(state)
-        hasher.combine(stateChangedAt)
-        hasher.combine(sessionId)
-        hasher.combine(workingOn)
-        hasher.combine(nextStep)
-        hasher.combine(context)
-        hasher.combine(thinking)
-        hasher.combine(thinkingUpdatedAt)
-    }
-}
-
-#if swift(>=5.8)
-    @_documentation(visibility: private)
-#endif
-public struct FfiConverterTypeSessionStateEntry: FfiConverterRustBuffer {
-    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SessionStateEntry {
-        return
-            try SessionStateEntry(
-                state: FfiConverterString.read(from: &buf),
-                stateChangedAt: FfiConverterOptionString.read(from: &buf),
-                sessionId: FfiConverterOptionString.read(from: &buf),
-                workingOn: FfiConverterOptionString.read(from: &buf),
-                nextStep: FfiConverterOptionString.read(from: &buf),
-                context: FfiConverterOptionTypeContextInfoEntry.read(from: &buf),
-                thinking: FfiConverterOptionBool.read(from: &buf),
-                thinkingUpdatedAt: FfiConverterOptionString.read(from: &buf)
-            )
-    }
-
-    public static func write(_ value: SessionStateEntry, into buf: inout [UInt8]) {
-        FfiConverterString.write(value.state, into: &buf)
-        FfiConverterOptionString.write(value.stateChangedAt, into: &buf)
-        FfiConverterOptionString.write(value.sessionId, into: &buf)
-        FfiConverterOptionString.write(value.workingOn, into: &buf)
-        FfiConverterOptionString.write(value.nextStep, into: &buf)
-        FfiConverterOptionTypeContextInfoEntry.write(value.context, into: &buf)
-        FfiConverterOptionBool.write(value.thinking, into: &buf)
-        FfiConverterOptionString.write(value.thinkingUpdatedAt, into: &buf)
-    }
-}
-
-#if swift(>=5.8)
-    @_documentation(visibility: private)
-#endif
-public func FfiConverterTypeSessionStateEntry_lift(_ buf: RustBuffer) throws -> SessionStateEntry {
-    return try FfiConverterTypeSessionStateEntry.lift(buf)
-}
-
-#if swift(>=5.8)
-    @_documentation(visibility: private)
-#endif
-public func FfiConverterTypeSessionStateEntry_lower(_ value: SessionStateEntry) -> RustBuffer {
-    return FfiConverterTypeSessionStateEntry.lower(value)
-}
-
-/**
- * The full session states file format.
- */
-public struct SessionStatesFile {
-    public var version: UInt32
-    public var projects: [String: SessionStateEntry]
-
-    // Default memberwise initializers are never public by default, so we
-    // declare one manually.
-    public init(version: UInt32, projects: [String: SessionStateEntry]) {
-        self.version = version
-        self.projects = projects
-    }
-}
-
-extension SessionStatesFile: Equatable, Hashable {
-    public static func == (lhs: SessionStatesFile, rhs: SessionStatesFile) -> Bool {
-        if lhs.version != rhs.version {
-            return false
-        }
-        if lhs.projects != rhs.projects {
-            return false
-        }
-        return true
-    }
-
-    public func hash(into hasher: inout Hasher) {
-        hasher.combine(version)
-        hasher.combine(projects)
-    }
-}
-
-#if swift(>=5.8)
-    @_documentation(visibility: private)
-#endif
-public struct FfiConverterTypeSessionStatesFile: FfiConverterRustBuffer {
-    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SessionStatesFile {
-        return
-            try SessionStatesFile(
-                version: FfiConverterUInt32.read(from: &buf),
-                projects: FfiConverterDictionaryStringTypeSessionStateEntry.read(from: &buf)
-            )
-    }
-
-    public static func write(_ value: SessionStatesFile, into buf: inout [UInt8]) {
-        FfiConverterUInt32.write(value.version, into: &buf)
-        FfiConverterDictionaryStringTypeSessionStateEntry.write(value.projects, into: &buf)
-    }
-}
-
-#if swift(>=5.8)
-    @_documentation(visibility: private)
-#endif
-public func FfiConverterTypeSessionStatesFile_lift(_ buf: RustBuffer) throws -> SessionStatesFile {
-    return try FfiConverterTypeSessionStatesFile.lift(buf)
-}
-
-#if swift(>=5.8)
-    @_documentation(visibility: private)
-#endif
-public func FfiConverterTypeSessionStatesFile_lower(_ value: SessionStatesFile) -> RustBuffer {
-    return FfiConverterTypeSessionStatesFile.lower(value)
 }
 
 /**
@@ -3221,54 +2948,6 @@ private struct FfiConverterOptionUInt8: FfiConverterRustBuffer {
 #if swift(>=5.8)
     @_documentation(visibility: private)
 #endif
-private struct FfiConverterOptionUInt32: FfiConverterRustBuffer {
-    typealias SwiftType = UInt32?
-
-    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
-        guard let value = value else {
-            writeInt(&buf, Int8(0))
-            return
-        }
-        writeInt(&buf, Int8(1))
-        FfiConverterUInt32.write(value, into: &buf)
-    }
-
-    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
-        switch try readInt(&buf) as Int8 {
-        case 0: return nil
-        case 1: return try FfiConverterUInt32.read(from: &buf)
-        default: throw UniffiInternalError.unexpectedOptionalTag
-        }
-    }
-}
-
-#if swift(>=5.8)
-    @_documentation(visibility: private)
-#endif
-private struct FfiConverterOptionUInt64: FfiConverterRustBuffer {
-    typealias SwiftType = UInt64?
-
-    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
-        guard let value = value else {
-            writeInt(&buf, Int8(0))
-            return
-        }
-        writeInt(&buf, Int8(1))
-        FfiConverterUInt64.write(value, into: &buf)
-    }
-
-    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
-        switch try readInt(&buf) as Int8 {
-        case 0: return nil
-        case 1: return try FfiConverterUInt64.read(from: &buf)
-        default: throw UniffiInternalError.unexpectedOptionalTag
-        }
-    }
-}
-
-#if swift(>=5.8)
-    @_documentation(visibility: private)
-#endif
 private struct FfiConverterOptionBool: FfiConverterRustBuffer {
     typealias SwiftType = Bool?
 
@@ -3333,30 +3012,6 @@ private struct FfiConverterOptionTypeContextInfo: FfiConverterRustBuffer {
         switch try readInt(&buf) as Int8 {
         case 0: return nil
         case 1: return try FfiConverterTypeContextInfo.read(from: &buf)
-        default: throw UniffiInternalError.unexpectedOptionalTag
-        }
-    }
-}
-
-#if swift(>=5.8)
-    @_documentation(visibility: private)
-#endif
-private struct FfiConverterOptionTypeContextInfoEntry: FfiConverterRustBuffer {
-    typealias SwiftType = ContextInfoEntry?
-
-    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
-        guard let value = value else {
-            writeInt(&buf, Int8(0))
-            return
-        }
-        writeInt(&buf, Int8(1))
-        FfiConverterTypeContextInfoEntry.write(value, into: &buf)
-    }
-
-    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
-        switch try readInt(&buf) as Int8 {
-        case 0: return nil
-        case 1: return try FfiConverterTypeContextInfoEntry.read(from: &buf)
         default: throw UniffiInternalError.unexpectedOptionalTag
         }
     }
@@ -3662,32 +3317,6 @@ private struct FfiConverterDictionaryStringTypeProjectSessionState: FfiConverter
     }
 }
 
-#if swift(>=5.8)
-    @_documentation(visibility: private)
-#endif
-private struct FfiConverterDictionaryStringTypeSessionStateEntry: FfiConverterRustBuffer {
-    public static func write(_ value: [String: SessionStateEntry], into buf: inout [UInt8]) {
-        let len = Int32(value.count)
-        writeInt(&buf, len)
-        for (key, value) in value {
-            FfiConverterString.write(key, into: &buf)
-            FfiConverterTypeSessionStateEntry.write(value, into: &buf)
-        }
-    }
-
-    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [String: SessionStateEntry] {
-        let len: Int32 = try readInt(&buf)
-        var dict = [String: SessionStateEntry]()
-        dict.reserveCapacity(Int(len))
-        for _ in 0 ..< len {
-            let key = try FfiConverterString.read(from: &buf)
-            let value = try FfiConverterTypeSessionStateEntry.read(from: &buf)
-            dict[key] = value
-        }
-        return dict
-    }
-}
-
 private enum InitializationResult {
     case ok
     case contractVersionMismatch
@@ -3710,7 +3339,7 @@ private var initializationResult: InitializationResult = {
     if uniffi_hud_core_checksum_method_hudengine_claude_dir() != 21224 {
         return InitializationResult.apiChecksumMismatch
     }
-    if uniffi_hud_core_checksum_method_hudengine_get_all_session_states() != 27905 {
+    if uniffi_hud_core_checksum_method_hudengine_get_all_session_states() != 34670 {
         return InitializationResult.apiChecksumMismatch
     }
     if uniffi_hud_core_checksum_method_hudengine_get_config() != 46018 {
@@ -3719,7 +3348,7 @@ private var initializationResult: InitializationResult = {
     if uniffi_hud_core_checksum_method_hudengine_get_project_status() != 14524 {
         return InitializationResult.apiChecksumMismatch
     }
-    if uniffi_hud_core_checksum_method_hudengine_get_session_state() != 27061 {
+    if uniffi_hud_core_checksum_method_hudengine_get_session_state() != 25344 {
         return InitializationResult.apiChecksumMismatch
     }
     if uniffi_hud_core_checksum_method_hudengine_get_suggested_projects() != 38527 {

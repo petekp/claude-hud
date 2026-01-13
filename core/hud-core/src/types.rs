@@ -241,7 +241,6 @@ pub struct ProjectSessionState {
     pub state_changed_at: Option<String>,
     pub session_id: Option<String>,
     pub working_on: Option<String>,
-    pub next_step: Option<String>,
     pub context: Option<ContextInfo>,
     /// Whether Claude is currently "thinking" (API call in flight).
     /// This provides real-time status when using the fetch-intercepting launcher.

@@ -18,7 +18,6 @@ pub fn detect_session_state(project_path: &str) -> ProjectSessionState {
             state_changed_at: None,
             session_id: None,
             working_on: None,
-            next_step: None,
             context: None,
             thinking: None,
             is_locked: false,
@@ -42,20 +41,18 @@ pub fn detect_session_state(project_path: &str) -> ProjectSessionState {
                 ClaudeState::Blocked => SessionState::Waiting, // Map Blocked → Waiting
             };
 
-            // Get working_on/next_step from v2 store
-            let (working_on, next_step) = details
+            // Get working_on from v2 store
+            let working_on = details
                 .session_id
                 .as_ref()
                 .and_then(|sid| store.get_by_session_id(sid))
-                .map(|r| (r.working_on.clone(), r.next_step.clone()))
-                .unwrap_or((None, None));
+                .and_then(|r| r.working_on.clone());
 
             ProjectSessionState {
                 state,
                 state_changed_at: None,
                 session_id: details.session_id,
                 working_on,
-                next_step,
                 context: None,
                 thinking: Some(is_working),
                 is_locked: true,
@@ -66,7 +63,6 @@ pub fn detect_session_state(project_path: &str) -> ProjectSessionState {
             state_changed_at: None,
             session_id: None,
             working_on: None,
-            next_step: None,
             context: None,
             thinking: None,
             is_locked: false,
