@@ -4,6 +4,7 @@ struct ProjectsView: View {
     @EnvironmentObject var appState: AppState
     @Environment(\.floatingMode) private var floatingMode
     @State private var pausedCollapsed = true
+    @State private var draggedProject: Project?
 
     private var orderedProjects: [Project] {
         appState.orderedProjects(appState.projects)
@@ -57,8 +58,6 @@ struct ProjectsView: View {
                             .transition(.opacity)
 
                         ForEach(activeProjects, id: \.path) { project in
-                            let index = activeProjects.firstIndex(where: { $0.path == project.path }) ?? 0
-
                             ProjectCardView(
                                 project: project,
                                 sessionState: appState.getSessionState(for: project),
@@ -85,26 +84,22 @@ struct ProjectsView: View {
                                     withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
                                         appState.removeProject(project.path)
                                     }
+                                },
+                                onDragStarted: {
+                                    draggedProject = project
+                                    return NSItemProvider(object: project.path as NSString)
                                 }
                             )
                             .id("active-\(project.path)")
-                            .draggable(project.path) {
-                                ProjectCardDragPreview(project: project)
-                            }
-                            .dropDestination(for: String.self) { items, location in
-                                guard let droppedPath = items.first,
-                                      let fromIndex = activeProjects.firstIndex(where: { $0.path == droppedPath }),
-                                      fromIndex != index else { return false }
-
-                                withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                                    appState.moveProject(
-                                        from: IndexSet(integer: fromIndex),
-                                        to: fromIndex < index ? index + 1 : index,
-                                        in: activeProjects
-                                    )
-                                }
-                                return true
-                            }
+                            .onDrop(
+                                of: [.text],
+                                delegate: ProjectDropDelegate(
+                                    project: project,
+                                    activeProjects: activeProjects,
+                                    draggedProject: $draggedProject,
+                                    appState: appState
+                                )
+                            )
                             .transition(.asymmetric(
                                 insertion: .opacity.combined(with: .scale(scale: 0.95)).combined(with: .move(edge: .top)),
                                 removal: .opacity.combined(with: .scale(scale: 0.9))
@@ -362,5 +357,58 @@ struct ProjectCardDragPreview: View {
                 .stroke(Color.hudAccent.opacity(0.5), lineWidth: 1)
         )
         .shadow(color: .black.opacity(0.3), radius: 8, y: 4)
+    }
+}
+
+struct WindowDragDisabled<Content: View>: NSViewRepresentable {
+    let content: Content
+
+    init(@ViewBuilder content: () -> Content) {
+        self.content = content()
+    }
+
+    func makeNSView(context: Context) -> NSHostingView<Content> {
+        let hostingView = NonDraggableHostingView(rootView: content)
+        return hostingView
+    }
+
+    func updateNSView(_ nsView: NSHostingView<Content>, context: Context) {
+        nsView.rootView = content
+    }
+}
+
+private class NonDraggableHostingView<Content: View>: NSHostingView<Content> {
+    override var mouseDownCanMoveWindow: Bool { false }
+}
+
+struct ProjectDropDelegate: DropDelegate {
+    let project: Project
+    let activeProjects: [Project]
+    @Binding var draggedProject: Project?
+    let appState: AppState
+
+    func dropEntered(info: DropInfo) {
+        guard let draggedProject = draggedProject,
+              draggedProject.path != project.path,
+              let fromIndex = activeProjects.firstIndex(where: { $0.path == draggedProject.path }),
+              let toIndex = activeProjects.firstIndex(where: { $0.path == project.path })
+        else { return }
+
+        withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+            appState.moveProject(
+                from: IndexSet(integer: fromIndex),
+                to: toIndex > fromIndex ? toIndex + 1 : toIndex,
+                in: activeProjects
+            )
+        }
+    }
+
+    func dropUpdated(info: DropInfo) -> DropProposal? {
+        DropProposal(operation: .move)
+    }
+
+    func performDrop(info: DropInfo) -> Bool {
+        draggedProject = nil
+        return true
     }
 }

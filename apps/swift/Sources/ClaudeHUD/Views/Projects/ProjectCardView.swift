@@ -13,13 +13,13 @@ struct ProjectCardView: View {
     let onMoveToDormant: () -> Void
     let onOpenBrowser: () -> Void
     var onRemove: (() -> Void)?
+    var onDragStarted: (() -> NSItemProvider)?
 
     @Environment(\.floatingMode) private var floatingMode
     #if DEBUG
     @ObservedObject private var glassConfig = GlassConfig.shared
     #endif
     @State private var isHovered = false
-    @State private var isPressed = false
     @State private var flashOpacity: Double = 0
     @State private var isInfoHovered = false
     @State private var isBrowserHovered = false
@@ -53,16 +53,16 @@ struct ProjectCardView: View {
     #endif
 
     var body: some View {
-        Button(action: onTap) {
+        WindowDragDisabled {
             VStack(alignment: .leading, spacing: 6) {
-                HStack {
-                    if project.isMissing {
-                        Image(systemName: "exclamationmark.triangle.fill")
-                            .font(.system(size: 12))
-                            .foregroundColor(.orange)
-                    }
+            HStack {
+                if project.isMissing {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .font(.system(size: 12))
+                        .foregroundColor(.orange)
+                }
 
-                    Text(project.name)
+                Text(project.name)
                         .font(.system(size: 14, weight: .medium, design: .monospaced))
                         .foregroundColor(nameColor)
                         .strikethrough(project.isMissing, color: .white.opacity(0.3))
@@ -203,11 +203,12 @@ struct ProjectCardView: View {
                 radius: floatingMode ? 8 : (isHovered ? 12 : 4),
                 y: floatingMode ? 3 : (isHovered ? 4 : 2)
             )
-            .scaleEffect(isPressed ? 0.98 : 1.0)
-            .animation(.snappy(duration: 0.15), value: isPressed)
-            .animation(.easeOut(duration: 0.2), value: isHovered)
+        .scaleEffect(isHovered ? 0.99 : 1.0)
+        .animation(.easeOut(duration: 0.2), value: isHovered)
+        .contentShape(Rectangle())
+        .onTapGesture {
+            onTap()
         }
-        .buttonStyle(PressableButtonStyle(isPressed: $isPressed))
         .onHover { hovering in
             withAnimation(.easeOut(duration: 0.2)) {
                 isHovered = hovering
@@ -247,7 +248,14 @@ struct ProjectCardView: View {
         .onAppear {
             previousState = sessionState?.state
         }
+        .onDrag {
+            _ = onDragStarted?()
+            return NSItemProvider(object: project.path as NSString)
+        } preview: {
+            Color.clear.frame(width: 1, height: 1)
+        }
         .contextMenu { cardContextMenu }
+        }
     }
 
     @ViewBuilder
