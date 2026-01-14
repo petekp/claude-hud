@@ -1,5 +1,7 @@
 import SwiftUI
 
+// MARK: - Main Card View
+
 struct ProjectCardView: View {
     let project: Project
     let sessionState: ProjectSessionState?
@@ -19,244 +21,101 @@ struct ProjectCardView: View {
     #if DEBUG
     @ObservedObject private var glassConfig = GlassConfig.shared
     #endif
+
     @State private var isHovered = false
     @State private var flashOpacity: Double = 0
     @State private var isInfoHovered = false
     @State private var isBrowserHovered = false
-
     @State private var previousState: SessionState?
     @State private var lastChimeTime: Date?
 
     private let chimeCooldown: TimeInterval = 3.0
 
+    // MARK: - Computed Properties
+
+    private var currentState: SessionState? {
+        #if DEBUG
+        switch glassConfig.previewState {
+        case .none: return sessionState?.state
+        case .ready: return .ready
+        case .working: return .working
+        case .waiting: return .waiting
+        case .compacting: return .compacting
+        case .idle: return .idle
+        }
+        #else
+        return sessionState?.state
+        #endif
+    }
+
+    private var isReady: Bool {
+        currentState == .ready
+    }
+
     private var nameColor: Color {
         project.isMissing ? .white.opacity(0.5) : .white.opacity(0.9)
     }
 
-    #if DEBUG
-    private var displayState: SessionState? {
-        switch glassConfig.previewState {
-        case .none:
-            return sessionState?.state
-        case .ready:
-            return .ready
-        case .working:
-            return .working
-        case .waiting:
-            return .waiting
-        case .compacting:
-            return .compacting
-        case .idle:
-            return .idle
-        }
-    }
-    #endif
+    // MARK: - Body
 
     var body: some View {
         WindowDragDisabled {
-            VStack(alignment: .leading, spacing: 6) {
-            HStack {
-                if project.isMissing {
-                    Image(systemName: "exclamationmark.triangle.fill")
-                        .font(.system(size: 12))
-                        .foregroundColor(.orange)
-                }
-
-                Text(project.name)
-                        .font(.system(size: 14, weight: .medium, design: .monospaced))
-                        .foregroundColor(nameColor)
-                        .strikethrough(project.isMissing, color: .white.opacity(0.3))
-
-                    if isStale {
-                        Text("stale")
-                            .font(.system(size: 9, weight: .medium))
-                            .foregroundColor(.white.opacity(0.5))
-                            .padding(.horizontal, 5)
-                            .padding(.vertical, 2)
-                            .background(Color.white.opacity(0.08))
-                            .clipShape(Capsule())
-                    }
-
-                    if let status = todoStatus, status.total > 0 {
-                        TodoBadge(completed: status.completed, total: status.total)
-                    }
-
-                    Button(action: onInfoTap) {
-                        Image(systemName: "info.circle")
-                            .font(.system(size: 13))
-                            .foregroundColor(.white.opacity(isInfoHovered ? 0.7 : (isHovered ? 0.35 : 0.2)))
-                    }
-                    .buttonStyle(.plain)
-                    .onHover { hovering in
-                        withAnimation(.easeOut(duration: 0.15)) {
-                            isInfoHovered = hovering
-                        }
-                    }
-                    .help("View details")
-
-                    Spacer()
-
-                    if let port = devServerPort {
-                        Button(action: onOpenBrowser) {
-                            HStack(spacing: 4) {
-                                Image(systemName: "globe")
-                                    .font(.system(size: 11))
-                                Text(":\(String(port))")
-                                    .font(.system(size: 10, weight: .medium, design: .monospaced))
-                            }
-                            .foregroundColor(.white.opacity(isBrowserHovered ? 0.85 : (isHovered ? 0.55 : 0.35)))
-                            .padding(.horizontal, 7)
-                            .padding(.vertical, 4)
-                            .background(
-                                Capsule()
-                                    .fill(Color.white.opacity(isBrowserHovered ? 0.12 : (isHovered ? 0.06 : 0.03)))
-                            )
-                            .overlay(
-                                Capsule()
-                                    .strokeBorder(Color.white.opacity(isBrowserHovered ? 0.15 : 0), lineWidth: 0.5)
-                            )
-                            .scaleEffect(isBrowserHovered ? 1.02 : 1.0)
-                        }
-                        .buttonStyle(.plain)
-                        .onHover { hovering in
-                            withAnimation(.spring(response: 0.2, dampingFraction: 0.7)) {
-                                isBrowserHovered = hovering
-                            }
-                        }
-                        .help("Open localhost:\(port) in browser")
-                    }
-
-                    #if DEBUG
-                    if let state = displayState {
-                        StatusIndicatorView(state: state)
-                    }
-                    #else
-                    if let state = sessionState {
-                        StatusIndicatorView(state: state.state)
-                    }
-                    #endif
-                }
-
-                if let workingOn = sessionState?.workingOn, !workingOn.isEmpty {
-                    Text(workingOn)
-                        .font(.system(size: 12, weight: .regular))
-                        .foregroundColor(.white.opacity(0.6))
-                        .lineLimit(2)
-                }
-
-                if let blocker = projectStatus?.blocker, !blocker.isEmpty {
-                    HStack(spacing: 4) {
-                        Image(systemName: "exclamationmark.triangle.fill")
-                            .font(.system(size: 9))
-                        Text(blocker)
-                            .font(.system(size: 10))
-                            .lineLimit(1)
-                    }
-                    .foregroundColor(Color(hue: 0, saturation: 0.7, brightness: 0.85))
-                }
-            }
-            .padding(12)
-            .background {
-                if floatingMode {
-                    floatingCardBackground
-                        #if DEBUG
-                        .id(glassConfig.cardConfigHash)
-                        #endif
-                } else {
-                    solidCardBackground
-                }
-            }
-            .clipShape(RoundedRectangle(cornerRadius: 12))
-            .overlay(
-                RoundedRectangle(cornerRadius: 12)
-                    .stroke(flashState.map { Color.flashColor(for: $0) } ?? .clear, lineWidth: 2)
-                    .opacity(flashOpacity)
-            )
-            .overlay {
-                #if DEBUG
-                let isReady = displayState == .ready
-                #else
-                let isReady = sessionState?.state == .ready
-                #endif
-
-                if isReady {
-                    ReadyAmbientGlow()
-                        .clipShape(RoundedRectangle(cornerRadius: 12))
-                        .transition(.opacity.animation(.easeInOut(duration: 0.4)))
-                }
-            }
-            .overlay {
-                #if DEBUG
-                let isReady = displayState == .ready
-                #else
-                let isReady = sessionState?.state == .ready
-                #endif
-
-                if isReady {
-                    ReadyBorderGlow()
-                        .transition(.opacity.animation(.easeInOut(duration: 0.4)))
-                }
-            }
-            .animation(.easeInOut(duration: 0.4), value: sessionState?.state)
-            .shadow(
-                color: floatingMode ? .black.opacity(0.25) : (isHovered ? .black.opacity(0.2) : .black.opacity(0.08)),
-                radius: floatingMode ? 8 : (isHovered ? 12 : 4),
-                y: floatingMode ? 3 : (isHovered ? 4 : 2)
-            )
-        .scaleEffect(isHovered ? 0.99 : 1.0)
-        .animation(.easeOut(duration: 0.2), value: isHovered)
-        .contentShape(Rectangle())
-        .onTapGesture {
-            onTap()
-        }
-        .onHover { hovering in
-            withAnimation(.easeOut(duration: 0.2)) {
-                isHovered = hovering
-            }
-        }
-        .onChange(of: flashState) { oldValue, newValue in
-            if newValue != nil {
-                withAnimation(.easeOut(duration: 0.1)) {
-                    flashOpacity = 1.0
-                }
-                withAnimation(.easeOut(duration: 1.3).delay(0.1)) {
-                    flashOpacity = 0
-                }
-            }
-        }
-        .onChange(of: sessionState?.state) { oldValue, newValue in
-            #if DEBUG
-            if glassConfig.previewState != .none { return }
-            #endif
-            if newValue == .ready && oldValue != .ready && oldValue != nil {
-                let now = Date()
-                let shouldPlayChime = lastChimeTime.map { now.timeIntervalSince($0) >= chimeCooldown } ?? true
-                if shouldPlayChime {
-                    lastChimeTime = now
-                    ReadyChime.shared.play()
-                }
-            }
-            previousState = newValue
-        }
-        #if DEBUG
-        .onChange(of: glassConfig.previewState) { oldValue, newValue in
-            if newValue == .ready && oldValue != .ready {
-                ReadyChime.shared.play()
-            }
-        }
-        #endif
-        .onAppear {
-            previousState = sessionState?.state
-        }
-        .onDrag {
-            _ = onDragStarted?()
-            return NSItemProvider(object: project.path as NSString)
-        } preview: {
-            Color.clear.frame(width: 1, height: 1)
-        }
-        .contextMenu { cardContextMenu }
+            cardContent
+                .cardStyling(
+                    isHovered: isHovered,
+                    isReady: isReady,
+                    flashState: flashState,
+                    flashOpacity: flashOpacity,
+                    floatingMode: floatingMode,
+                    floatingCardBackground: floatingCardBackground,
+                    solidCardBackground: solidCardBackground
+                )
+                .cardInteractions(
+                    isHovered: $isHovered,
+                    onTap: onTap,
+                    onDragStarted: onDragStarted
+                )
+                .cardLifecycleHandlers(
+                    flashState: flashState,
+                    sessionState: sessionState,
+                    currentState: currentState,
+                    previousState: $previousState,
+                    lastChimeTime: $lastChimeTime,
+                    flashOpacity: $flashOpacity,
+                    chimeCooldown: chimeCooldown,
+                    glassConfig: glassConfig
+                )
+                .contextMenu { cardContextMenu }
         }
     }
+
+    // MARK: - Card Content
+
+    private var cardContent: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            ProjectCardHeader(
+                project: project,
+                isStale: isStale,
+                todoStatus: todoStatus,
+                devServerPort: devServerPort,
+                currentState: currentState,
+                nameColor: nameColor,
+                isHovered: isHovered,
+                isInfoHovered: $isInfoHovered,
+                isBrowserHovered: $isBrowserHovered,
+                onInfoTap: onInfoTap,
+                onOpenBrowser: onOpenBrowser
+            )
+
+            ProjectCardContent(
+                workingOn: sessionState?.workingOn,
+                blocker: projectStatus?.blocker
+            )
+        }
+        .padding(12)
+    }
+
+    // MARK: - Context Menu
 
     @ViewBuilder
     private var cardContextMenu: some View {
@@ -288,6 +147,8 @@ struct ProjectCardView: View {
             }
         }
     }
+
+    // MARK: - Background Styles
 
     private var floatingCardBackground: some View {
         #if DEBUG
@@ -327,8 +188,291 @@ struct ProjectCardView: View {
                 )
         }
     }
-
 }
+
+// MARK: - Card Header Component
+
+private struct ProjectCardHeader: View {
+    let project: Project
+    let isStale: Bool
+    let todoStatus: (completed: Int, total: Int)?
+    let devServerPort: UInt16?
+    let currentState: SessionState?
+    let nameColor: Color
+    let isHovered: Bool
+    @Binding var isInfoHovered: Bool
+    @Binding var isBrowserHovered: Bool
+    let onInfoTap: () -> Void
+    let onOpenBrowser: () -> Void
+
+    var body: some View {
+        HStack {
+            if project.isMissing {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .font(.system(size: 12))
+                    .foregroundColor(.orange)
+            }
+
+            Text(project.name)
+                .font(.system(size: 14, weight: .medium, design: .monospaced))
+                .foregroundColor(nameColor)
+                .strikethrough(project.isMissing, color: .white.opacity(0.3))
+
+            if isStale {
+                StaleBadge()
+            }
+
+            if let status = todoStatus, status.total > 0 {
+                TodoBadge(completed: status.completed, total: status.total)
+            }
+
+            InfoButton(
+                isHovered: isHovered,
+                isInfoHovered: $isInfoHovered,
+                action: onInfoTap
+            )
+
+            Spacer()
+
+            if let port = devServerPort {
+                DevServerButton(
+                    port: port,
+                    isHovered: isHovered,
+                    isBrowserHovered: $isBrowserHovered,
+                    action: onOpenBrowser
+                )
+            }
+
+            if let state = currentState {
+                StatusIndicatorView(state: state)
+            }
+        }
+    }
+}
+
+// MARK: - Card Content Component
+
+private struct ProjectCardContent: View {
+    let workingOn: String?
+    let blocker: String?
+
+    var body: some View {
+        Group {
+            if let workingOn = workingOn, !workingOn.isEmpty {
+                Text(workingOn)
+                    .font(.system(size: 12, weight: .regular))
+                    .foregroundColor(.white.opacity(0.6))
+                    .lineLimit(2)
+            }
+
+            if let blocker = blocker, !blocker.isEmpty {
+                HStack(spacing: 4) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .font(.system(size: 9))
+                    Text(blocker)
+                        .font(.system(size: 10))
+                        .lineLimit(1)
+                }
+                .foregroundColor(Color(hue: 0, saturation: 0.7, brightness: 0.85))
+            }
+        }
+    }
+}
+
+// MARK: - Reusable Button Components
+
+private struct InfoButton: View {
+    let isHovered: Bool
+    @Binding var isInfoHovered: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: "info.circle")
+                .font(.system(size: 13))
+                .foregroundColor(.white.opacity(isInfoHovered ? 0.7 : (isHovered ? 0.35 : 0.2)))
+        }
+        .buttonStyle(.plain)
+        .onHover { hovering in
+            withAnimation(.easeOut(duration: 0.15)) {
+                isInfoHovered = hovering
+            }
+        }
+        .help("View details")
+    }
+}
+
+private struct DevServerButton: View {
+    let port: UInt16
+    let isHovered: Bool
+    @Binding var isBrowserHovered: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 4) {
+                Image(systemName: "globe")
+                    .font(.system(size: 11))
+                Text(":\(String(port))")
+                    .font(.system(size: 10, weight: .medium, design: .monospaced))
+            }
+            .foregroundColor(.white.opacity(isBrowserHovered ? 0.85 : (isHovered ? 0.55 : 0.35)))
+            .padding(.horizontal, 7)
+            .padding(.vertical, 4)
+            .background(
+                Capsule()
+                    .fill(Color.white.opacity(isBrowserHovered ? 0.12 : (isHovered ? 0.06 : 0.03)))
+            )
+            .overlay(
+                Capsule()
+                    .strokeBorder(Color.white.opacity(isBrowserHovered ? 0.15 : 0), lineWidth: 0.5)
+            )
+            .scaleEffect(isBrowserHovered ? 1.02 : 1.0)
+        }
+        .buttonStyle(.plain)
+        .onHover { hovering in
+            withAnimation(.spring(response: 0.2, dampingFraction: 0.7)) {
+                isBrowserHovered = hovering
+            }
+        }
+        .help("Open localhost:\(port) in browser")
+    }
+}
+
+private struct StaleBadge: View {
+    var body: some View {
+        Text("stale")
+            .font(.system(size: 9, weight: .medium))
+            .foregroundColor(.white.opacity(0.5))
+            .padding(.horizontal, 5)
+            .padding(.vertical, 2)
+            .background(Color.white.opacity(0.08))
+            .clipShape(Capsule())
+    }
+}
+
+// MARK: - View Modifiers
+
+extension View {
+    func cardStyling(
+        isHovered: Bool,
+        isReady: Bool,
+        flashState: SessionState?,
+        flashOpacity: Double,
+        floatingMode: Bool,
+        floatingCardBackground: some View,
+        solidCardBackground: some View
+    ) -> some View {
+        self
+            .background {
+                if floatingMode {
+                    floatingCardBackground
+                        #if DEBUG
+                        .id(GlassConfig.shared.cardConfigHash)
+                        #endif
+                } else {
+                    solidCardBackground
+                }
+            }
+            .clipShape(RoundedRectangle(cornerRadius: 12))
+            .overlay(
+                RoundedRectangle(cornerRadius: 12)
+                    .stroke(flashState.map { Color.flashColor(for: $0) } ?? .clear, lineWidth: 2)
+                    .opacity(flashOpacity)
+            )
+            .overlay {
+                if isReady {
+                    ReadyAmbientGlow()
+                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                        .transition(.opacity.animation(.easeInOut(duration: 0.4)))
+                }
+            }
+            .overlay {
+                if isReady {
+                    ReadyBorderGlow()
+                        .transition(.opacity.animation(.easeInOut(duration: 0.4)))
+                }
+            }
+            .shadow(
+                color: floatingMode ? .black.opacity(0.25) : (isHovered ? .black.opacity(0.2) : .black.opacity(0.08)),
+                radius: floatingMode ? 8 : (isHovered ? 12 : 4),
+                y: floatingMode ? 3 : (isHovered ? 4 : 2)
+            )
+            .scaleEffect(isHovered ? 0.99 : 1.0)
+            .animation(.easeOut(duration: 0.2), value: isHovered)
+    }
+
+    func cardInteractions(
+        isHovered: Binding<Bool>,
+        onTap: @escaping () -> Void,
+        onDragStarted: (() -> NSItemProvider)?
+    ) -> some View {
+        self
+            .contentShape(Rectangle())
+            .onTapGesture(perform: onTap)
+            .onHover { hovering in
+                withAnimation(.easeOut(duration: 0.2)) {
+                    isHovered.wrappedValue = hovering
+                }
+            }
+            .onDrag {
+                _ = onDragStarted?()
+                return NSItemProvider(object: "" as NSString)
+            } preview: {
+                Color.clear.frame(width: 1, height: 1)
+            }
+    }
+
+    func cardLifecycleHandlers(
+        flashState: SessionState?,
+        sessionState: ProjectSessionState?,
+        currentState: SessionState?,
+        previousState: Binding<SessionState?>,
+        lastChimeTime: Binding<Date?>,
+        flashOpacity: Binding<Double>,
+        chimeCooldown: TimeInterval,
+        glassConfig: GlassConfig?
+    ) -> some View {
+        self
+            .animation(.easeInOut(duration: 0.4), value: sessionState?.state)
+            .onChange(of: flashState) { _, newValue in
+                guard newValue != nil else { return }
+                withAnimation(.easeOut(duration: 0.1)) {
+                    flashOpacity.wrappedValue = 1.0
+                }
+                withAnimation(.easeOut(duration: 1.3).delay(0.1)) {
+                    flashOpacity.wrappedValue = 0
+                }
+            }
+            .onChange(of: sessionState?.state) { oldValue, newValue in
+                #if DEBUG
+                if glassConfig?.previewState != .none { return }
+                #endif
+
+                if newValue == .ready && oldValue != .ready && oldValue != nil {
+                    let now = Date()
+                    let shouldPlayChime = lastChimeTime.wrappedValue.map { now.timeIntervalSince($0) >= chimeCooldown } ?? true
+                    if shouldPlayChime {
+                        lastChimeTime.wrappedValue = now
+                        ReadyChime.shared.play()
+                    }
+                }
+                previousState.wrappedValue = newValue
+            }
+            #if DEBUG
+            .onChange(of: glassConfig?.previewState) { oldValue, newValue in
+                if newValue == .ready && oldValue != .ready {
+                    ReadyChime.shared.play()
+                }
+            }
+            #endif
+            .onAppear {
+                previousState.wrappedValue = sessionState?.state
+            }
+    }
+}
+
+// MARK: - Ready State Glow Effects
 
 struct ReadyAmbientGlow: View {
     #if DEBUG
@@ -337,54 +481,26 @@ struct ReadyAmbientGlow: View {
 
     var body: some View {
         TimelineView(.animation) { timeline in
-            #if DEBUG
-            let speed = config.rippleSpeed
-            let count = config.rippleCount
-            let maxOpacity = config.rippleMaxOpacity
-            let lineWidth = config.rippleLineWidth
-            let blurAmount = config.rippleBlurAmount
-            let originXPercent = config.rippleOriginX
-            let originYPercent = config.rippleOriginY
-            let fadeInZone = config.rippleFadeInZone
-            let fadeOutPower = config.rippleFadeOutPower
-            #else
-            let speed: Double = 4.9
-            let count: Int = 4
-            let maxOpacity: Double = 1.00
-            let lineWidth: Double = 30.0
-            let blurAmount: Double = 41.5
-            let originXPercent: Double = 0.89
-            let originYPercent: Double = 0.00
-            let fadeInZone: Double = 0.10
-            let fadeOutPower: Double = 4.0
-            #endif
-
-            let phase = timeline.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: speed) / speed
+            let params = glowParameters
+            let phase = timeline.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: params.speed) / params.speed
 
             GeometryReader { geometry in
-                let originX = geometry.size.width * originXPercent
-                let originY = geometry.size.height * originYPercent
+                let originX = geometry.size.width * params.originXPercent
+                let originY = geometry.size.height * params.originYPercent
                 let maxRadius = max(geometry.size.width, geometry.size.height) * 1.8
 
                 Canvas { context, size in
-                    for i in 0..<count {
-                        let stagger = Double(i) / Double(count)
+                    for i in 0..<params.count {
+                        let stagger = Double(i) / Double(params.count)
                         let ringPhase = (phase + stagger).truncatingRemainder(dividingBy: 1.0)
                         let radius = maxRadius * ringPhase
 
-                        let fadeIn: Double
-                        if fadeInZone > 0 {
-                            let rawFadeIn = min(ringPhase / fadeInZone, 1.0)
-                            fadeIn = smoothstep(rawFadeIn)
-                        } else {
-                            fadeIn = 1.0
-                        }
+                        let fadeIn = params.fadeInZone > 0 ? smoothstep(min(ringPhase / params.fadeInZone, 1.0)) : 1.0
+                        let fadeOut = pow(1.0 - ringPhase, params.fadeOutPower)
+                        let opacity = params.maxOpacity * fadeIn * fadeOut
 
-                        let fadeOut = pow(1.0 - ringPhase, fadeOutPower)
-                        let opacity = maxOpacity * fadeIn * fadeOut
-
-                        let lineWidthFadeIn = fadeInZone > 0 ? min(ringPhase / fadeInZone, 1.0) : 1.0
-                        let effectiveLineWidth = lineWidth * smoothstep(lineWidthFadeIn)
+                        let lineWidthFadeIn = params.fadeInZone > 0 ? min(ringPhase / params.fadeInZone, 1.0) : 1.0
+                        let effectiveLineWidth = params.lineWidth * smoothstep(lineWidthFadeIn)
 
                         if radius > 0 && opacity > 0.005 && effectiveLineWidth > 0.1 {
                             let rect = CGRect(
@@ -394,7 +510,6 @@ struct ReadyAmbientGlow: View {
                                 height: radius * 2
                             )
                             let path = Circle().path(in: rect)
-
                             context.stroke(
                                 path,
                                 with: .color(Color.statusReady.opacity(opacity)),
@@ -403,10 +518,38 @@ struct ReadyAmbientGlow: View {
                         }
                     }
                 }
-                .blur(radius: blurAmount)
+                .blur(radius: params.blurAmount)
             }
         }
         .allowsHitTesting(false)
+    }
+
+    private var glowParameters: GlowParameters {
+        #if DEBUG
+        GlowParameters(
+            speed: config.rippleSpeed,
+            count: config.rippleCount,
+            maxOpacity: config.rippleMaxOpacity,
+            lineWidth: config.rippleLineWidth,
+            blurAmount: config.rippleBlurAmount,
+            originXPercent: config.rippleOriginX,
+            originYPercent: config.rippleOriginY,
+            fadeInZone: config.rippleFadeInZone,
+            fadeOutPower: config.rippleFadeOutPower
+        )
+        #else
+        GlowParameters(
+            speed: 4.9,
+            count: 4,
+            maxOpacity: 1.0,
+            lineWidth: 30.0,
+            blurAmount: 41.5,
+            originXPercent: 0.89,
+            originYPercent: 0.0,
+            fadeInZone: 0.10,
+            fadeOutPower: 4.0
+        )
+        #endif
     }
 
     private func smoothstep(_ t: Double) -> Double {
@@ -415,59 +558,88 @@ struct ReadyAmbientGlow: View {
     }
 }
 
+private struct GlowParameters {
+    let speed: Double
+    let count: Int
+    let maxOpacity: Double
+    let lineWidth: Double
+    let blurAmount: Double
+    let originXPercent: Double
+    let originYPercent: Double
+    let fadeInZone: Double
+    let fadeOutPower: Double
+}
+
 struct ReadyBorderGlow: View {
     #if DEBUG
     @ObservedObject private var config = GlassConfig.shared
     #endif
 
     var body: some View {
-        #if DEBUG
         TimelineView(.animation) { timeline in
+            #if DEBUG
             ReadyBorderGlowContent(date: timeline.date, config: config)
+            #else
+            ReadyBorderGlowContent(date: timeline.date, config: nil)
+            #endif
         }
         .allowsHitTesting(false)
-        #else
-        TimelineView(.animation) { timeline in
-            ReadyBorderGlowContent(date: timeline.date)
+    }
+}
+
+private struct ReadyBorderGlowContent: View {
+    let date: Date
+    let config: GlassConfig?
+
+    var body: some View {
+        let params = borderGlowParameters
+        let time = date.timeIntervalSinceReferenceDate
+        let phase = time.truncatingRemainder(dividingBy: params.speed) / params.speed
+        let rotationPeriod = params.speed / params.rotationMult
+        let rotationAngle = Angle(degrees: time.truncatingRemainder(dividingBy: rotationPeriod) / rotationPeriod * 360)
+        let combinedIntensity = computeIntensity(phase: phase, count: params.count, fadeInZone: params.fadeInZone, fadeOutPower: params.fadeOutPower)
+        let baseOpacity = params.baseOp + combinedIntensity * params.pulseIntensity
+
+        return borderGlowStack(
+            baseOpacity: baseOpacity,
+            rotationAngle: rotationAngle,
+            innerWidth: params.innerWidth,
+            outerWidth: params.outerWidth,
+            innerBlur: params.innerBlur,
+            outerBlur: params.outerBlur
+        )
+    }
+
+    private var borderGlowParameters: BorderGlowParameters {
+        #if DEBUG
+        if let config = config {
+            return BorderGlowParameters(
+                speed: config.rippleSpeed,
+                count: config.rippleCount,
+                fadeInZone: config.rippleFadeInZone,
+                fadeOutPower: config.rippleFadeOutPower,
+                rotationMult: config.borderGlowRotationMultiplier,
+                baseOp: config.borderGlowBaseOpacity,
+                pulseIntensity: config.borderGlowPulseIntensity,
+                innerWidth: config.borderGlowInnerWidth,
+                outerWidth: config.borderGlowOuterWidth,
+                innerBlur: config.borderGlowInnerBlur,
+                outerBlur: config.borderGlowOuterBlur
+            )
         }
-        .allowsHitTesting(false)
         #endif
-    }
-}
-
-#if DEBUG
-private struct ReadyBorderGlowContent: View {
-    let date: Date
-    let config: GlassConfig
-
-    var body: some View {
-        let speed = config.rippleSpeed
-        let count = config.rippleCount
-        let fadeInZone = config.rippleFadeInZone
-        let fadeOutPower = config.rippleFadeOutPower
-        let rotationMult = config.borderGlowRotationMultiplier
-        let baseOp = config.borderGlowBaseOpacity
-        let pulseIntensity = config.borderGlowPulseIntensity
-        let innerWidth = config.borderGlowInnerWidth
-        let outerWidth = config.borderGlowOuterWidth
-        let innerBlur = config.borderGlowInnerBlur
-        let outerBlur = config.borderGlowOuterBlur
-
-        let time = date.timeIntervalSinceReferenceDate
-        let phase = time.truncatingRemainder(dividingBy: speed) / speed
-        let rotationPeriod = speed / rotationMult
-        let rotationAngle = Angle(degrees: time.truncatingRemainder(dividingBy: rotationPeriod) / rotationPeriod * 360)
-
-        let combinedIntensity = computeIntensity(phase: phase, count: count, fadeInZone: fadeInZone, fadeOutPower: fadeOutPower)
-        let baseOpacity = baseOp + combinedIntensity * pulseIntensity
-
-        borderGlowStack(
-            baseOpacity: baseOpacity,
-            rotationAngle: rotationAngle,
-            innerWidth: innerWidth,
-            outerWidth: outerWidth,
-            innerBlur: innerBlur,
-            outerBlur: outerBlur
+        return BorderGlowParameters(
+            speed: 4.9,
+            count: 4,
+            fadeInZone: 0.10,
+            fadeOutPower: 4.0,
+            rotationMult: 0.50,
+            baseOp: 0.30,
+            pulseIntensity: 0.50,
+            innerWidth: 0.49,
+            outerWidth: 2.88,
+            innerBlur: 0.5,
+            outerBlur: 1.5
         )
     }
 
@@ -528,99 +700,22 @@ private struct ReadyBorderGlowContent: View {
         .blendMode(.plusLighter)
     }
 }
-#else
-private struct ReadyBorderGlowContent: View {
-    let date: Date
 
-    var body: some View {
-        let speed: Double = 4.9
-        let count: Int = 4
-        let fadeInZone: Double = 0.10
-        let fadeOutPower: Double = 4.0
-        let rotationMult: Double = 0.50
-        let baseOp: Double = 0.30
-        let pulseIntensity: Double = 0.50
-        let innerWidth: Double = 0.49
-        let outerWidth: Double = 2.88
-        let innerBlur: Double = 0.5
-        let outerBlur: Double = 1.5
-
-        let time = date.timeIntervalSinceReferenceDate
-        let phase = time.truncatingRemainder(dividingBy: speed) / speed
-        let rotationPeriod = speed / rotationMult
-        let rotationAngle = Angle(degrees: time.truncatingRemainder(dividingBy: rotationPeriod) / rotationPeriod * 360)
-
-        let combinedIntensity = computeIntensity(phase: phase, count: count, fadeInZone: fadeInZone, fadeOutPower: fadeOutPower)
-        let baseOpacity = baseOp + combinedIntensity * pulseIntensity
-
-        borderGlowStack(
-            baseOpacity: baseOpacity,
-            rotationAngle: rotationAngle,
-            innerWidth: innerWidth,
-            outerWidth: outerWidth,
-            innerBlur: innerBlur,
-            outerBlur: outerBlur
-        )
-    }
-
-    private func computeIntensity(phase: Double, count: Int, fadeInZone: Double, fadeOutPower: Double) -> Double {
-        var maxIntensity: Double = 0
-        for i in 0..<count {
-            let stagger = Double(i) / Double(count)
-            let ringPhase = (phase + stagger).truncatingRemainder(dividingBy: 1.0)
-            let fadeIn: Double = fadeInZone > 0 ? min(ringPhase / fadeInZone, 1.0) : 1.0
-            let fadeOut = pow(1.0 - ringPhase, fadeOutPower)
-            maxIntensity = max(maxIntensity, fadeIn * fadeOut)
-        }
-        return maxIntensity
-    }
-
-    private func borderGlowStack(baseOpacity: Double, rotationAngle: Angle, innerWidth: Double, outerWidth: Double, innerBlur: Double, outerBlur: Double) -> some View {
-        ZStack {
-            RoundedRectangle(cornerRadius: 12)
-                .strokeBorder(
-                    AngularGradient(
-                        gradient: Gradient(stops: [
-                            .init(color: Color.statusReady.opacity(baseOpacity * 0.3), location: 0.0),
-                            .init(color: Color.statusReady.opacity(baseOpacity), location: 0.15),
-                            .init(color: Color.statusReady.opacity(baseOpacity * 0.5), location: 0.25),
-                            .init(color: Color.statusReady.opacity(baseOpacity * 0.2), location: 0.4),
-                            .init(color: Color.statusReady.opacity(baseOpacity * 0.1), location: 0.5),
-                            .init(color: Color.statusReady.opacity(baseOpacity * 0.2), location: 0.6),
-                            .init(color: Color.statusReady.opacity(baseOpacity * 0.5), location: 0.75),
-                            .init(color: Color.statusReady.opacity(baseOpacity), location: 0.85),
-                            .init(color: Color.statusReady.opacity(baseOpacity * 0.3), location: 1.0)
-                        ]),
-                        center: .center,
-                        angle: rotationAngle
-                    ),
-                    lineWidth: innerWidth
-                )
-                .blur(radius: innerBlur)
-
-            RoundedRectangle(cornerRadius: 12)
-                .strokeBorder(
-                    AngularGradient(
-                        gradient: Gradient(stops: [
-                            .init(color: Color.statusReady.opacity(baseOpacity * 0.2), location: 0.0),
-                            .init(color: Color.statusReady.opacity(baseOpacity * 0.8), location: 0.15),
-                            .init(color: Color.statusReady.opacity(baseOpacity * 0.3), location: 0.25),
-                            .init(color: Color.statusReady.opacity(baseOpacity * 0.1), location: 0.5),
-                            .init(color: Color.statusReady.opacity(baseOpacity * 0.3), location: 0.75),
-                            .init(color: Color.statusReady.opacity(baseOpacity * 0.8), location: 0.85),
-                            .init(color: Color.statusReady.opacity(baseOpacity * 0.2), location: 1.0)
-                        ]),
-                        center: .center,
-                        angle: rotationAngle + Angle(degrees: 180)
-                    ),
-                    lineWidth: outerWidth
-                )
-                .blur(radius: outerBlur)
-        }
-        .blendMode(.plusLighter)
-    }
+private struct BorderGlowParameters {
+    let speed: Double
+    let count: Int
+    let fadeInZone: Double
+    let fadeOutPower: Double
+    let rotationMult: Double
+    let baseOp: Double
+    let pulseIntensity: Double
+    let innerWidth: Double
+    let outerWidth: Double
+    let innerBlur: Double
+    let outerBlur: Double
 }
-#endif
+
+// MARK: - Status Indicator
 
 struct StatusIndicatorView: View {
     let state: SessionState
@@ -651,6 +746,44 @@ struct StatusIndicatorView: View {
             .animation(.smooth(duration: 0.3), value: state)
     }
 }
+
+// MARK: - Badge Components
+
+struct TodoBadge: View {
+    let completed: Int
+    let total: Int
+
+    private var isAllDone: Bool {
+        completed == total && total > 0
+    }
+
+    private var badgeColor: Color {
+        if isAllDone {
+            return Color(hue: 0.35, saturation: 0.6, brightness: 0.75)
+        } else if completed > 0 {
+            return Color(hue: 0.12, saturation: 0.5, brightness: 0.8)
+        } else {
+            return Color.white.opacity(0.4)
+        }
+    }
+
+    var body: some View {
+        HStack(spacing: 2) {
+            Image(systemName: isAllDone ? "checkmark.circle.fill" : "checklist")
+                .font(.system(size: 8))
+            Text("\(completed)/\(total)")
+                .font(.system(size: 8, weight: .medium, design: .monospaced))
+        }
+        .foregroundColor(badgeColor)
+        .padding(.horizontal, 5)
+        .padding(.vertical, 2)
+        .background(badgeColor.opacity(0.12))
+        .clipShape(Capsule())
+        .help("\(completed) of \(total) tasks completed")
+    }
+}
+
+// MARK: - Unused Legacy Components (kept for compatibility)
 
 struct PressableButtonStyle: ButtonStyle {
     @Binding var isPressed: Bool
@@ -772,39 +905,5 @@ struct HealthDetailPopover: View {
         }
         .padding(12)
         .frame(width: 260)
-    }
-}
-
-struct TodoBadge: View {
-    let completed: Int
-    let total: Int
-
-    private var isAllDone: Bool {
-        completed == total && total > 0
-    }
-
-    private var badgeColor: Color {
-        if isAllDone {
-            return Color(hue: 0.35, saturation: 0.6, brightness: 0.75)
-        } else if completed > 0 {
-            return Color(hue: 0.12, saturation: 0.5, brightness: 0.8)
-        } else {
-            return Color.white.opacity(0.4)
-        }
-    }
-
-    var body: some View {
-        HStack(spacing: 2) {
-            Image(systemName: isAllDone ? "checkmark.circle.fill" : "checklist")
-                .font(.system(size: 8))
-            Text("\(completed)/\(total)")
-                .font(.system(size: 8, weight: .medium, design: .monospaced))
-        }
-        .foregroundColor(badgeColor)
-        .padding(.horizontal, 5)
-        .padding(.vertical, 2)
-        .background(badgeColor.opacity(0.12))
-        .clipShape(Capsule())
-        .help("\(completed) of \(total) tasks completed")
     }
 }
