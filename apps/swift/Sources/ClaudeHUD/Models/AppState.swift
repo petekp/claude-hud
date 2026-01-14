@@ -25,6 +25,46 @@ enum ProjectView: Equatable {
     }
 }
 
+/// Terminal application configuration for launching and activation
+enum TerminalApp {
+    case ghostty
+    case iTerm
+    case alacritty
+    case kitty
+    case warp
+    case terminal
+
+    var displayName: String {
+        switch self {
+        case .ghostty: return "Ghostty"
+        case .iTerm: return "iTerm"
+        case .alacritty: return "Alacritty"
+        case .kitty: return "kitty"
+        case .warp: return "Warp"
+        case .terminal: return "Terminal"
+        }
+    }
+
+    var bundlePath: String? {
+        switch self {
+        case .ghostty: return "/Applications/Ghostty.app"
+        case .iTerm: return "/Applications/iTerm.app"
+        case .alacritty: return "/Applications/Alacritty.app"
+        case .warp: return "/Applications/Warp.app"
+        case .kitty, .terminal: return nil
+        }
+    }
+
+    /// Priority order for terminal activation (highest to lowest)
+    static let priorityOrder: [TerminalApp] = [
+        .ghostty,
+        .iTerm,
+        .alacritty,
+        .kitty,
+        .warp,
+        .terminal
+    ]
+}
 
 @MainActor
 class AppState: ObservableObject {
@@ -211,7 +251,7 @@ class AppState: ObservableObject {
         if let frontmost = NSWorkspace.shared.frontmostApplication,
            isTerminalApp(frontmost) {
             // Terminal already frontmost, just reactivate it
-            frontmost.activate(options: [.activateIgnoringOtherApps])
+            frontmost.activate()
             return
         }
 
@@ -222,39 +262,33 @@ class AppState: ObservableObject {
     /// Checks if the given app is a known terminal application.
     private func isTerminalApp(_ app: NSRunningApplication) -> Bool {
         guard let name = app.localizedName else { return false }
-        let terminals = ["Ghostty", "iTerm", "Terminal", "Alacritty", "kitty", "Warp"]
-        return terminals.contains(where: { name.contains($0) })
+        return TerminalApp.priorityOrder.contains { terminal in
+            name.contains(terminal.displayName)
+        }
     }
 
     /// Activates the first running terminal found in priority order.
-    ///
-    /// Priority matches bash script order: Ghostty → iTerm → Alacritty → kitty → Warp → Terminal
     private func activateTerminalInPriorityOrder() {
-        let terminalsInOrder: [(name: String, bundlePath: String?)] = [
-            ("Ghostty", "/Applications/Ghostty.app"),
-            ("iTerm", "/Applications/iTerm.app"),
-            ("Alacritty", "/Applications/Alacritty.app"),
-            ("kitty", nil), // CLI tool
-            ("Warp", "/Applications/Warp.app"),
-            ("Terminal", nil) // Built-in
-        ]
-
-        for (terminalName, bundlePath) in terminalsInOrder {
+        for terminal in TerminalApp.priorityOrder {
             // If bundlePath specified, check if installed
-            if let path = bundlePath, !FileManager.default.fileExists(atPath: path) {
+            if let bundlePath = terminal.bundlePath,
+               !FileManager.default.fileExists(atPath: bundlePath) {
                 continue
             }
 
             // Look for running instance of this terminal
-            for app in NSWorkspace.shared.runningApplications {
-                guard let appName = app.localizedName else { continue }
-
-                // Match terminal name (case-insensitive, partial match)
-                if appName.lowercased().contains(terminalName.lowercased()) {
-                    app.activate(options: [.activateIgnoringOtherApps])
-                    return
-                }
+            if let app = findRunningTerminal(terminal) {
+                app.activate()
+                return
             }
+        }
+    }
+
+    /// Finds a running instance of the specified terminal app.
+    private func findRunningTerminal(_ terminal: TerminalApp) -> NSRunningApplication? {
+        NSWorkspace.shared.runningApplications.first { app in
+            guard let appName = app.localizedName else { return false }
+            return appName.lowercased().contains(terminal.displayName.lowercased())
         }
     }
 
