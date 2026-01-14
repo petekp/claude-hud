@@ -6,15 +6,17 @@ struct ClaudeHUDApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
     @StateObject private var appState = AppState()
     @AppStorage("floatingMode") private var floatingMode = false
+    @AppStorage("alwaysOnTop") private var alwaysOnTop = false
 
     var body: some Scene {
         WindowGroup {
             ContentView()
                 .environmentObject(appState)
                 .environment(\.floatingMode, floatingMode)
+                .environment(\.alwaysOnTop, alwaysOnTop)
                 .frame(minWidth: 280, idealWidth: 360, maxWidth: 500,
                        minHeight: 400, idealHeight: 700, maxHeight: .infinity)
-                .background(FloatingWindowConfigurator(enabled: floatingMode))
+                .background(FloatingWindowConfigurator(enabled: floatingMode, alwaysOnTop: alwaysOnTop))
         }
         .defaultSize(width: 360, height: 700)
         .windowResizability(.contentSize)
@@ -22,6 +24,9 @@ struct ClaudeHUDApp: App {
             CommandGroup(after: .appSettings) {
                 Toggle("Floating Mode", isOn: $floatingMode)
                     .keyboardShortcut("T", modifiers: [.command, .shift])
+
+                Toggle("Always on Top", isOn: $alwaysOnTop)
+                    .keyboardShortcut("P", modifiers: [.command, .shift])
 
                 #if DEBUG
                 Divider()
@@ -80,6 +85,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
 struct FloatingWindowConfigurator: NSViewRepresentable {
     let enabled: Bool
+    let alwaysOnTop: Bool
 
     func makeNSView(context: Context) -> NSView {
         let view = NSView()
@@ -97,6 +103,13 @@ struct FloatingWindowConfigurator: NSViewRepresentable {
 
     private func configureWindow(_ window: NSWindow?) {
         guard let window = window else { return }
+
+        // Set window level based on alwaysOnTop preference
+        if alwaysOnTop {
+            window.level = .floating
+        } else {
+            window.level = .normal
+        }
 
         if enabled {
             window.isOpaque = false
@@ -154,9 +167,18 @@ private struct FloatingModeKey: EnvironmentKey {
     static let defaultValue = false
 }
 
+private struct AlwaysOnTopKey: EnvironmentKey {
+    static let defaultValue = false
+}
+
 extension EnvironmentValues {
     var floatingMode: Bool {
         get { self[FloatingModeKey.self] }
         set { self[FloatingModeKey.self] = newValue }
+    }
+
+    var alwaysOnTop: Bool {
+        get { self[AlwaysOnTopKey.self] }
+        set { self[AlwaysOnTopKey.self] = newValue }
     }
 }

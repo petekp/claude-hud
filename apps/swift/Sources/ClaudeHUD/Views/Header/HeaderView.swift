@@ -4,9 +4,13 @@ import AppKit
 struct HeaderView: View {
     @EnvironmentObject var appState: AppState
     @Environment(\.floatingMode) private var floatingMode
+    @Environment(\.alwaysOnTop) private var alwaysOnTop
+    @AppStorage("alwaysOnTop") private var alwaysOnTopStorage = false
 
     var body: some View {
         HStack(spacing: 16) {
+            PinButton(isPinned: $alwaysOnTopStorage)
+
             Spacer()
 
             AddProjectButton()
@@ -15,6 +19,39 @@ struct HeaderView: View {
         .padding(.vertical, 8)
         .padding(.top, floatingMode ? 8 : 0)
         .background(floatingMode ? Color.clear : Color.hudBackground)
+    }
+}
+
+struct PinButton: View {
+    @Binding var isPinned: Bool
+    @State private var isHovered = false
+
+    var body: some View {
+        Button(action: { isPinned.toggle() }) {
+            Image(systemName: isPinned ? "pin.fill" : "pin")
+                .font(.system(size: 12, weight: .medium))
+                .foregroundColor(isPinned ? .white : .white.opacity(isHovered ? 0.7 : 0.4))
+                .frame(width: 28, height: 28)
+                .background(
+                    Circle()
+                        .fill(isPinned ? Color.white.opacity(0.15) : Color.white.opacity(isHovered ? 0.1 : 0))
+                )
+                .overlay(
+                    Circle()
+                        .strokeBorder(
+                            isPinned ? Color.white.opacity(0.3) : Color.white.opacity(isHovered ? 0.15 : 0),
+                            lineWidth: isPinned ? 1 : 0.5
+                        )
+                )
+        }
+        .buttonStyle(.plain)
+        .help(isPinned ? "Unpin window (⌘⇧P)" : "Pin window to stay on top (⌘⇧P)")
+        .scaleEffect(isHovered ? 1.05 : 1.0)
+        .onHover { hovering in
+            withAnimation(.spring(response: 0.2, dampingFraction: 0.7)) {
+                isHovered = hovering
+            }
+        }
     }
 }
 

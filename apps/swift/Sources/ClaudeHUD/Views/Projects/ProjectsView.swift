@@ -172,8 +172,8 @@ struct SectionHeader: View {
     var body: some View {
         HStack(spacing: 6) {
             Text(title.uppercased())
-                .font(.system(size: 10, weight: .semibold))
-                .tracking(1.2)
+                .font(.system(size: 10, weight: .medium))
+                .tracking(0.8)
                 .foregroundColor(.white.opacity(0.45))
 
             if count > 1 {
@@ -206,6 +206,7 @@ struct SectionHeader: View {
                 }
             }
         }
+        .padding(.horizontal, 4)
     }
 }
 
@@ -222,8 +223,8 @@ struct PausedSectionHeader: View {
         }) {
             HStack(spacing: 6) {
                 Text("PAUSED")
-                    .font(.system(size: 10, weight: .semibold))
-                    .tracking(1.2)
+                    .font(.system(size: 10, weight: .medium))
+                    .tracking(0.8)
                     .foregroundColor(.white.opacity(0.45))
 
                 if count > 1 {
@@ -238,6 +239,7 @@ struct PausedSectionHeader: View {
 
                 Spacer()
             }
+            .padding(.horizontal, 4)
             .padding(.vertical, 4)
             .contentShape(Rectangle())
         }

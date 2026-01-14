@@ -87,7 +87,6 @@ class AppState: ObservableObject {
     // UI State
     @Published var isLoading = true
     @Published var error: String?
-    @Published var alwaysOnTop = false
     @Published var flashingProjects: [String: SessionState] = [:]
 
     // Active project tracking (ephemeral, click-based)
