@@ -1,23 +1,15 @@
 import SwiftUI
+import AppKit
 
 struct HeaderView: View {
     @EnvironmentObject var appState: AppState
     @Environment(\.floatingMode) private var floatingMode
-    @State private var showingSettings = false
 
     var body: some View {
         HStack(spacing: 16) {
             Spacer()
 
-            RelayStatusIndicator()
-                .onTapGesture {
-                    showingSettings.toggle()
-                }
-                .popover(isPresented: $showingSettings, arrowEdge: .bottom) {
-                    RelaySettingsView()
-                        .environmentObject(appState)
-                        .frame(width: 320)
-                }
+            AddProjectButton()
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 8)
@@ -26,71 +18,50 @@ struct HeaderView: View {
     }
 }
 
-struct RelayStatusIndicator: View {
+struct AddProjectButton: View {
     @EnvironmentObject var appState: AppState
     @State private var isHovered = false
-    @State private var pulseAnimation = false
-
-    private var statusColor: Color {
-        appState.relayClient.isConnected ? .statusReady : .orange
-    }
 
     var body: some View {
-        HStack(spacing: 5) {
-            if appState.relayClient.isConfigured {
-                ZStack {
-                    if appState.relayClient.isConnected {
-                        Circle()
-                            .fill(statusColor.opacity(0.4))
-                            .frame(width: 12, height: 12)
-                            .blur(radius: 4)
-                            .scaleEffect(pulseAnimation ? 1.2 : 0.8)
-                            .opacity(pulseAnimation ? 0.3 : 0.6)
-                    }
+        Button(action: openFolderPicker) {
+            HStack(spacing: 6) {
+                Image(systemName: "plus.circle.fill")
+                    .font(.system(size: 14, weight: .medium))
 
-                    Circle()
-                        .fill(statusColor)
-                        .frame(width: 6, height: 6)
-                        .shadow(color: statusColor.opacity(0.5), radius: 2)
-                }
-
-                if appState.isRemoteMode {
-                    Image(systemName: "antenna.radiowaves.left.and.right")
-                        .font(.system(size: 11))
-                        .foregroundColor(.white.opacity(isHovered ? 0.7 : 0.5))
-                }
-            } else {
-                Image(systemName: "wifi.slash")
-                    .font(.system(size: 11))
-                    .foregroundColor(.white.opacity(isHovered ? 0.5 : 0.3))
+                Text("Add Project")
+                    .font(.system(size: 12, weight: .medium))
             }
+            .foregroundColor(.white.opacity(isHovered ? 0.9 : 0.6))
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
+            .background(
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(Color.white.opacity(isHovered ? 0.12 : 0.06))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 8)
+                    .strokeBorder(Color.white.opacity(isHovered ? 0.15 : 0.08), lineWidth: 0.5)
+            )
         }
-        .padding(.horizontal, 9)
-        .padding(.vertical, 5)
-        .background(
-            RoundedRectangle(cornerRadius: 6)
-                .fill(Color.white.opacity(isHovered ? 0.08 : 0.05))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 6)
-                .strokeBorder(Color.white.opacity(isHovered ? 0.12 : 0), lineWidth: 0.5)
-        )
-        .contentShape(Rectangle())
+        .buttonStyle(.plain)
         .scaleEffect(isHovered ? 1.02 : 1.0)
         .onHover { hovering in
             withAnimation(.spring(response: 0.2, dampingFraction: 0.7)) {
                 isHovered = hovering
             }
         }
-        .onAppear {
-            if appState.relayClient.isConnected {
-                withAnimation(
-                    .easeInOut(duration: 1.5)
-                    .repeatForever(autoreverses: true)
-                ) {
-                    pulseAnimation = true
-                }
-            }
+    }
+
+    private func openFolderPicker() {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.allowsMultipleSelection = false
+        panel.message = "Select a project folder to add"
+        panel.prompt = "Add Project"
+
+        if panel.runModal() == .OK, let url = panel.url {
+            appState.addProject(url.path)
         }
     }
 }

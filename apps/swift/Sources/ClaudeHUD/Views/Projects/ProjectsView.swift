@@ -121,29 +121,31 @@ struct ProjectsView: View {
                         .transition(.opacity)
 
                         if !pausedCollapsed {
-                            ForEach(pausedProjects, id: \.path) { project in
-                                let index = pausedProjects.firstIndex(where: { $0.path == project.path }) ?? 0
+                            VStack(spacing: 0) {
+                                ForEach(pausedProjects, id: \.path) { project in
+                                    let index = pausedProjects.firstIndex(where: { $0.path == project.path }) ?? 0
 
-                                CompactProjectCardView(
-                                    project: project,
-                                    onTap: {
-                                        appState.launchTerminal(for: project)
-                                    },
-                                    onInfoTap: {
-                                        appState.showProjectDetail(project)
-                                    },
-                                    onMoveToRecent: {
-                                        withAnimation(.spring(response: 0.4, dampingFraction: 0.75)) {
-                                            appState.moveToRecent(project)
-                                        }
-                                    },
-                                    showSeparator: index < pausedProjects.count - 1
-                                )
-                                .id("paused-\(project.path)")
-                                .transition(.asymmetric(
-                                    insertion: .opacity.combined(with: .scale(scale: 0.95)),
-                                    removal: .opacity.combined(with: .scale(scale: 0.9))
-                                ))
+                                    CompactProjectCardView(
+                                        project: project,
+                                        onTap: {
+                                            appState.launchTerminal(for: project)
+                                        },
+                                        onInfoTap: {
+                                            appState.showProjectDetail(project)
+                                        },
+                                        onMoveToRecent: {
+                                            withAnimation(.spring(response: 0.4, dampingFraction: 0.75)) {
+                                                appState.moveToRecent(project)
+                                            }
+                                        },
+                                        showSeparator: index < pausedProjects.count - 1
+                                    )
+                                    .id("paused-\(project.path)")
+                                    .transition(.asymmetric(
+                                        insertion: .opacity.combined(with: .scale(scale: 0.95)),
+                                        removal: .opacity.combined(with: .scale(scale: 0.9))
+                                    ))
+                                }
                             }
                         }
                     }
@@ -173,14 +175,15 @@ struct SectionHeader: View {
 
     var body: some View {
         HStack(spacing: 6) {
-            Text(title)
-                .font(.system(size: 11, weight: .medium))
-                .foregroundColor(.white.opacity(0.5))
+            Text(title.uppercased())
+                .font(.system(size: 10, weight: .semibold))
+                .tracking(1.2)
+                .foregroundColor(.white.opacity(0.45))
 
             if count > 1 {
                 Text("(\(count))")
-                    .font(.system(size: 10, weight: .regular))
-                    .foregroundColor(.white.opacity(0.3))
+                    .font(.system(size: 9, weight: .medium))
+                    .foregroundColor(.white.opacity(0.25))
             }
 
             Spacer()
@@ -222,19 +225,20 @@ struct PausedSectionHeader: View {
             }
         }) {
             HStack(spacing: 6) {
-                Text("Paused")
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundColor(.white.opacity(0.5))
+                Text("PAUSED")
+                    .font(.system(size: 10, weight: .semibold))
+                    .tracking(1.2)
+                    .foregroundColor(.white.opacity(0.45))
 
                 if count > 1 {
                     Text("(\(count))")
-                        .font(.system(size: 10, weight: .regular))
-                        .foregroundColor(.white.opacity(0.3))
+                        .font(.system(size: 9, weight: .medium))
+                        .foregroundColor(.white.opacity(0.25))
                 }
 
                 Image(systemName: isCollapsed ? "chevron.right" : "chevron.down")
-                    .font(.system(size: 9, weight: .medium))
-                    .foregroundColor(.white.opacity(isHovered ? 0.5 : 0.3))
+                    .font(.system(size: 8, weight: .semibold))
+                    .foregroundColor(.white.opacity(isHovered ? 0.45 : 0.25))
 
                 Spacer()
             }

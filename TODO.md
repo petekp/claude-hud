@@ -13,13 +13,7 @@
 
 *Currently in progress. Limit to 1-3 items.*
 
-### Agent SDK Integration - Phase 1: Foundation
-**Spec:** `.claude/docs/agent-sdk-migration-guide.md`
-
-- [ ] Create `apps/sdk-bridge/` TypeScript project
-- [ ] Implement IPC communication (Unix socket) with hud-core
-- [ ] Replace `generate_session_summary_sync()` subprocess with SDK query
-- [ ] Add model selection (use Haiku for cheaper summaries)
+*(No active items — Visual Polish Sprint completed!)*
 
 ---
 
@@ -47,6 +41,10 @@
 
 *Ideas and lower priority items.*
 
+### UX Enhancements
+- [ ] Enable drag-and-drop on In Progress project cards for manual sorting; persist sort order so paused→revived projects remember their position
+- [ ] Alternative views: Kanban, Agenda, Focus Mode
+
 ### Agent SDK - Phase 4: Quick Actions
 - [ ] Define HUD agent presets (project-status, quick-fix, update-deps)
 - [ ] Add quick action dropdown/buttons to Project Detail view
@@ -56,18 +54,15 @@
 **Spec:** `.claude/docs/feature-idea-to-v1-launcher.md`
 
 Flagship feature: go from project idea to working v1 with minimal friction.
-- 5a: Core Infrastructure (3-4 days)
-- 5b: Progress Tracking (2-3 days)
-- 5c: HUD Integration (3-4 days)
-- 5d: Polish & Edge Cases (2-3 days)
+- 5a: Core Infrastructure
+- 5b: Progress Tracking
+- 5c: HUD Integration
+- 5d: Polish & Edge Cases
 
 ### Agent SDK - Phase 6: Advanced Features
 - [ ] Activity timeline with hook-based logging
 - [ ] Session forking ("try different approach" button)
 - [ ] Idea queue (batch multiple ideas, run overnight)
-
-### Projects View Enhancements
-- [ ] Alternative views: Kanban, Agenda, Focus Mode
 
 ---
 

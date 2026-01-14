@@ -6,6 +6,27 @@ Archive of completed features and improvements. See `TODO.md` for active work.
 
 ## January 2026
 
+### Visual Polish Sprint 🎨
+*Cohesive refinement pass for organic, flowing interface.*
+
+- State change visual effects now fade in/out gracefully (0.4s easeInOut transitions for Ready border glow)
+- Section headers ("IN PROGRESS", "PAUSED") use small caps treatment (10pt semibold, 1.2 tracking, uppercase)
+- Paused section spacing fixed (wrapped in VStack with 0 spacing, dividers provide equidistant separation)
+- Project card summary text more subtle (12pt regular, 60% opacity vs previous full white)
+- Project card titles use monospace font (14pt medium monospaced)
+- Ready sound refined to "wooden knock" character:
+  - Warmer fundamental (680Hz vs 880Hz), inharmonic overtones (2.3x, 4.1x)
+  - Fast percussive attack (3ms), exponential decay
+  - Subtle noise burst for organic texture
+  - Slight vibrato wobble for natural resonance
+
+### Header UX Improvements
+- Replaced remote sync button with "Add Project" button in header
+- New button uses NSOpenPanel for native macOS folder picker
+- Projects can now be added anytime (not just from empty state)
+- Removed RelayStatusIndicator and associated relay UI from header
+- Remote sync features deprioritized; code remains in codebase for future use
+
 ### State Resolver Matching Logic Refinement (8 Iterations)
 **ADR:** `docs/architecture-decisions/002-state-resolver-matching-logic.md`
 

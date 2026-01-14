@@ -63,7 +63,7 @@ struct ProjectCardView: View {
                     }
 
                     Text(project.name)
-                        .font(.system(size: 14, weight: .semibold))
+                        .font(.system(size: 14, weight: .medium, design: .monospaced))
                         .foregroundColor(nameColor)
                         .strikethrough(project.isMissing, color: .white.opacity(0.3))
 
@@ -139,8 +139,8 @@ struct ProjectCardView: View {
 
                 if let workingOn = sessionState?.workingOn, !workingOn.isEmpty {
                     Text(workingOn)
-                        .font(.system(size: 13, weight: .regular))
-                        .foregroundColor(.white)
+                        .font(.system(size: 12, weight: .regular))
+                        .foregroundColor(.white.opacity(0.6))
                         .lineLimit(2)
                 }
 
@@ -182,6 +182,7 @@ struct ProjectCardView: View {
                 if isReady {
                     ReadyAmbientGlow()
                         .clipShape(RoundedRectangle(cornerRadius: 12))
+                        .transition(.opacity.animation(.easeInOut(duration: 0.4)))
                 }
             }
             .overlay {
@@ -193,8 +194,10 @@ struct ProjectCardView: View {
 
                 if isReady {
                     ReadyBorderGlow()
+                        .transition(.opacity.animation(.easeInOut(duration: 0.4)))
                 }
             }
+            .animation(.easeInOut(duration: 0.4), value: sessionState?.state)
             .shadow(
                 color: floatingMode ? .black.opacity(0.25) : (isHovered ? .black.opacity(0.2) : .black.opacity(0.08)),
                 radius: floatingMode ? 8 : (isHovered ? 12 : 4),

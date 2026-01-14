@@ -19,9 +19,15 @@ STATE_FILE="$HOME/.claude/hud-session-states-v2.json"
 LOG_FILE="$HOME/.claude/hud-hook-debug.log"
 STATE_LOCK_DIR="${STATE_FILE}.lock"
 
-# Normalize a path: strip all trailing slashes except for root "/"
+# Normalize a path: resolve symlinks and strip trailing slashes
 normalize_path() {
   local path="$1"
+
+  # Resolve symlinks if possible (handles ~/projects -> /Users/foo/Code)
+  if [ -d "$path" ]; then
+    path=$(cd "$path" 2>/dev/null && pwd -P) || path="$path"
+  fi
+
   # Strip all trailing slashes using pattern expansion
   while [[ "$path" == */ && "$path" != "/" ]]; do
     path="${path%/}"
@@ -213,6 +219,107 @@ write_lock_metadata() {
   fi
 }
 
+# Check if a PID belongs to a Claude process
+# Args: $1=pid
+# Returns: 0 if it's a Claude process, 1 if not
+is_claude_process() {
+  local pid="$1"
+  local proc_name proc_cmd
+
+  # Check process name
+  proc_name=$(ps -p "$pid" -o comm= 2>/dev/null | tr '[:upper:]' '[:lower:]')
+  if [[ "$proc_name" == *claude* ]]; then
+    return 0
+  fi
+
+  # Check command line (handles node-based execution)
+  proc_cmd=$(ps -p "$pid" -o args= 2>/dev/null | tr '[:upper:]' '[:lower:]')
+  if [[ "$proc_cmd" == *claude* ]]; then
+    return 0
+  fi
+
+  return 1
+}
+
+# Check if a lock file is a stale legacy lock (no proc_started AND > 24h old)
+# This matches the Rust resolver's staleness logic for consistency
+# Args: $1=lock_dir (the .lock directory)
+# Returns: 0 if stale (should be taken over), 1 if not stale
+is_legacy_lock_stale() {
+  local lock_dir="$1"
+  local meta_file="$lock_dir/meta.json"
+
+  [ -f "$meta_file" ] || return 1  # No meta file - not stale (missing data)
+
+  # Check if lock has proc_started (modern lock format)
+  local has_proc_started
+  has_proc_started=$(jq -r 'if .proc_started then "yes" else "no" end' "$meta_file" 2>/dev/null)
+
+  if [ "$has_proc_started" = "yes" ]; then
+    # Modern lock with proc_started - not a legacy lock, not stale by this check
+    return 1
+  fi
+
+  # Legacy lock - check age
+  local now_ms lock_age_ms
+  now_ms=$(get_time_ms)
+
+  # Try to get created timestamp (milliseconds)
+  local created_ms
+  created_ms=$(jq -r '.created // empty' "$meta_file" 2>/dev/null)
+
+  if [ -n "$created_ms" ] && [[ "$created_ms" =~ ^[0-9]+$ ]]; then
+    # Normalize to milliseconds if needed (values < 1 trillion assumed to be seconds)
+    if [ "$created_ms" -lt 1000000000000 ]; then
+      created_ms=$((created_ms * 1000))
+    fi
+    lock_age_ms=$((now_ms - created_ms))
+  else
+    # Try ISO string "started" field
+    local iso_started
+    iso_started=$(jq -r '.started // empty' "$meta_file" 2>/dev/null)
+
+    if [ -n "$iso_started" ]; then
+      # Parse ISO 8601 to epoch seconds, then to ms
+      local epoch_s
+      epoch_s=$(date -j -f "%Y-%m-%dT%H:%M:%SZ" "$iso_started" +%s 2>/dev/null) || \
+      epoch_s=$(date -j -f "%Y-%m-%dT%H:%M:%S" "${iso_started%Z}" +%s 2>/dev/null) || \
+      epoch_s=""
+
+      if [ -n "$epoch_s" ]; then
+        local created_from_iso_ms=$((epoch_s * 1000))
+        lock_age_ms=$((now_ms - created_from_iso_ms))
+      else
+        # Can't parse - use file mtime as fallback
+        local mtime_s
+        mtime_s=$(stat -f %m "$lock_dir" 2>/dev/null) || mtime_s=""
+        if [ -n "$mtime_s" ]; then
+          lock_age_ms=$(( (now_ms / 1000 - mtime_s) * 1000 ))
+        else
+          lock_age_ms=0  # Can't determine - assume not stale
+        fi
+      fi
+    else
+      # No timestamp at all - use file mtime
+      local mtime_s
+      mtime_s=$(stat -f %m "$lock_dir" 2>/dev/null) || mtime_s=""
+      if [ -n "$mtime_s" ]; then
+        lock_age_ms=$(( (now_ms / 1000 - mtime_s) * 1000 ))
+      else
+        lock_age_ms=0
+      fi
+    fi
+  fi
+
+  # 24 hours = 86,400,000 milliseconds
+  if [ "$lock_age_ms" -gt 86400000 ]; then
+    echo "$(date -u +"%Y-%m-%dT%H:%M:%SZ") | Legacy lock at $lock_dir is stale (age: $((lock_age_ms / 3600000))h)" >> "$LOG_FILE"
+    return 0  # Stale
+  fi
+
+  return 1  # Not stale
+}
+
 input=$(cat)
 
 # Log every hook call (include trigger for PreCompact debugging)
@@ -353,8 +460,26 @@ case "$event" in
               echo "$(date -u +"%Y-%m-%dT%H:%M:%SZ") | Reused existing lock for PID $CLAUDE_PID at $cwd" >> "$LOG_FILE"
               exit 0  # Lock exists and is valid
             elif kill -0 "$OLD_PID" 2>/dev/null; then
-              # Different PID still alive - conflict, exit
-              exit 0
+              # Different PID still alive - check if we should take over
+              # Take over if: (1) not a Claude process (PID reuse), or (2) stale legacy lock
+              if ! is_claude_process "$OLD_PID"; then
+                # PID reused by non-Claude process - safe to take over
+                echo "$(date -u +"%Y-%m-%dT%H:%M:%SZ") | Taking over lock from PID $OLD_PID (not a Claude process) at $cwd" >> "$LOG_FILE"
+                rm -rf "$LOCK_FILE"
+                if ! mkdir "$LOCK_FILE" 2>/dev/null; then
+                  exit 0  # Another process grabbed it
+                fi
+              elif is_legacy_lock_stale "$LOCK_FILE"; then
+                # Stale legacy lock (>24h) - take over even though PID is alive
+                echo "$(date -u +"%Y-%m-%dT%H:%M:%SZ") | Taking over stale legacy lock from PID $OLD_PID at $cwd" >> "$LOG_FILE"
+                rm -rf "$LOCK_FILE"
+                if ! mkdir "$LOCK_FILE" 2>/dev/null; then
+                  exit 0  # Another process grabbed it
+                fi
+              else
+                # Recent lock held by active Claude process - respect it
+                exit 0
+              fi
             else
               # Stale lock - remove and retry
               rm -rf "$LOCK_FILE"
@@ -513,13 +638,31 @@ case "$event" in
           if [ -f "$LOCK_FILE/pid" ]; then
             OLD_PID=$(cat "$LOCK_FILE/pid" 2>/dev/null)
             if [ -n "$OLD_PID" ] && kill -0 "$OLD_PID" 2>/dev/null; then
-              # Process still running - exit
-              exit 0
-            fi
-            # Stale lock - remove and retry
-            rm -rf "$LOCK_FILE"
-            if ! mkdir "$LOCK_FILE" 2>/dev/null; then
-              exit 0
+              # Process still running - check if we should take over
+              if ! is_claude_process "$OLD_PID"; then
+                # PID reused by non-Claude process - safe to take over
+                echo "$(date -u +"%Y-%m-%dT%H:%M:%SZ") | Taking over lock from PID $OLD_PID (not Claude) at $cwd (UserPromptSubmit)" >> "$LOG_FILE"
+                rm -rf "$LOCK_FILE"
+                if ! mkdir "$LOCK_FILE" 2>/dev/null; then
+                  exit 0
+                fi
+              elif is_legacy_lock_stale "$LOCK_FILE"; then
+                # Stale legacy lock (>24h) - take over
+                echo "$(date -u +"%Y-%m-%dT%H:%M:%SZ") | Taking over stale legacy lock from PID $OLD_PID at $cwd (UserPromptSubmit)" >> "$LOG_FILE"
+                rm -rf "$LOCK_FILE"
+                if ! mkdir "$LOCK_FILE" 2>/dev/null; then
+                  exit 0
+                fi
+              else
+                # Recent lock held by active Claude process - respect it
+                exit 0
+              fi
+            else
+              # Dead PID - stale lock, remove and retry
+              rm -rf "$LOCK_FILE"
+              if ! mkdir "$LOCK_FILE" 2>/dev/null; then
+                exit 0
+              fi
             fi
           else
             exit 0

@@ -44,12 +44,9 @@ final class ReadyChime {
         }
 
         let sampleRate: Double = 44100
-        let duration1: Double = 0.12
-        let duration2: Double = 0.18
-        let gap: Double = 0.06
-
-        let freq1: Double = 880   // A5
-        let freq2: Double = 1318  // E6 (perfect fifth up, pleasing interval)
+        let duration1: Double = 0.15
+        let duration2: Double = 0.20
+        let gap: Double = 0.08
 
         let totalDuration = duration1 + gap + duration2
         let frameCount = AVAudioFrameCount(totalDuration * sampleRate)
@@ -72,16 +69,10 @@ final class ReadyChime {
             var sample: Float = 0
 
             if t < duration1 {
-                let envelope = smoothEnvelope(t: t, duration: duration1, attackTime: 0.01, releaseTime: 0.04)
-                let wave = sin(2.0 * .pi * freq1 * t)
-                let harmonic = sin(4.0 * .pi * freq1 * t) * 0.15
-                sample = Float((wave + harmonic) * envelope * 0.25)
+                sample = Float(woodenKnock(t: t, duration: duration1, pitch: 0.9) * 0.35)
             } else if t >= duration1 + gap && t < totalDuration {
                 let t2 = t - duration1 - gap
-                let envelope = smoothEnvelope(t: t2, duration: duration2, attackTime: 0.01, releaseTime: 0.08)
-                let wave = sin(2.0 * .pi * freq2 * t2)
-                let harmonic = sin(4.0 * .pi * freq2 * t2) * 0.12
-                sample = Float((wave + harmonic) * envelope * 0.28)
+                sample = Float(woodenKnock(t: t2, duration: duration2, pitch: 1.15) * 0.38)
             }
 
             floatData[i] = sample
@@ -101,18 +92,31 @@ final class ReadyChime {
         isPlaying = false
     }
 
-    private func smoothEnvelope(t: Double, duration: Double, attackTime: Double, releaseTime: Double) -> Double {
-        let sustainEnd = duration - releaseTime
+    private func woodenKnock(t: Double, duration: Double, pitch: Double) -> Double {
+        let fundamental: Double = 680 * pitch
+        let harmonic2: Double = fundamental * 2.3
+        let harmonic3: Double = fundamental * 4.1
 
-        if t < attackTime {
-            let x = t / attackTime
-            return x * x * (3 - 2 * x)
-        } else if t < sustainEnd {
-            return 1.0
-        } else {
-            let x = (t - sustainEnd) / releaseTime
-            let decay = 1 - x * x * (3 - 2 * x)
-            return max(0, decay)
-        }
+        let attackTime: Double = 0.003
+        let attack = min(1.0, t / attackTime)
+        let attackCurve = attack * attack
+
+        let decayRate: Double = 12.0
+        let decay = exp(-decayRate * t)
+
+        let tone1 = sin(2.0 * .pi * fundamental * t)
+        let tone2 = sin(2.0 * .pi * harmonic2 * t) * 0.3
+        let tone3 = sin(2.0 * .pi * harmonic3 * t) * 0.1
+
+        let noiseAmount = 0.15 * exp(-40.0 * t)
+        let noise = (Double.random(in: -1...1)) * noiseAmount
+
+        let vibrato = 1.0 + 0.008 * sin(2.0 * .pi * 25 * t) * exp(-8.0 * t)
+
+        let body = (tone1 + tone2 + tone3) * vibrato
+
+        let envelope = attackCurve * decay
+
+        return (body + noise) * envelope
     }
 }
