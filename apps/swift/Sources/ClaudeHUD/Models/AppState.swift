@@ -50,6 +50,9 @@ class AppState: ObservableObject {
     @Published var alwaysOnTop = false
     @Published var flashingProjects: [String: SessionState] = [:]
 
+    // Active project tracking (ephemeral, click-based)
+    @Published var activeProjectPath: String?
+
     // Dev Environment
     @Published var devServerPorts: [String: UInt16] = [:]
     @Published var devServerBrowsers: [String: String] = [:]
@@ -690,6 +693,9 @@ class AppState: ObservableObject {
     }
 
     func launchTerminal(for project: Project) {
+        // Set active project when launching terminal
+        activeProjectPath = project.path
+
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/bin/bash")
         process.arguments = ["-c", """

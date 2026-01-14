@@ -66,6 +66,7 @@ struct ProjectsView: View {
                                 devServerPort: appState.getDevServerPort(for: project),
                                 isStale: isStale(project),
                                 todoStatus: appState.todosManager.getCompletionStatus(for: project.path),
+                                isActive: appState.activeProjectPath == project.path,
                                 onTap: {
                                     appState.launchTerminal(for: project)
                                 },

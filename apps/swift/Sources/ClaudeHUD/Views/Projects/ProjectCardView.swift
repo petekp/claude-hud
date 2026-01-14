@@ -10,6 +10,7 @@ struct ProjectCardView: View {
     let devServerPort: UInt16?
     let isStale: Bool
     let todoStatus: (completed: Int, total: Int)?
+    let isActive: Bool
     let onTap: () -> Void
     let onInfoTap: () -> Void
     let onMoveToDormant: () -> Void
@@ -64,6 +65,7 @@ struct ProjectCardView: View {
                 .cardStyling(
                     isHovered: isHovered,
                     isReady: isReady,
+                    isActive: isActive,
                     flashState: flashState,
                     flashOpacity: flashOpacity,
                     floatingMode: floatingMode,
@@ -357,6 +359,7 @@ extension View {
     func cardStyling(
         isHovered: Bool,
         isReady: Bool,
+        isActive: Bool,
         flashState: SessionState?,
         flashOpacity: Double,
         floatingMode: Bool,
@@ -380,6 +383,28 @@ extension View {
                     .stroke(flashState.map { Color.flashColor(for: $0) } ?? .clear, lineWidth: 2)
                     .opacity(flashOpacity)
             )
+            .overlay {
+                // Active project border with vibrancy
+                if isActive {
+                    ZStack {
+                        // Outer glow for vibrancy
+                        RoundedRectangle(cornerRadius: 12)
+                            .strokeBorder(
+                                Color.white.opacity(0.3),
+                                lineWidth: 3
+                            )
+                            .blur(radius: 4)
+
+                        // Sharp inner border
+                        RoundedRectangle(cornerRadius: 12)
+                            .strokeBorder(
+                                Color.white.opacity(0.8),
+                                lineWidth: 1.5
+                            )
+                    }
+                    .transition(.opacity.animation(.easeOut(duration: 0.2)))
+                }
+            }
             .overlay {
                 if isReady {
                     ReadyAmbientGlow()
