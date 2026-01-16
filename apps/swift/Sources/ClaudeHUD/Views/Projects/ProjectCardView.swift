@@ -15,7 +15,7 @@ struct ProjectCardView: View {
     let onMoveToDormant: () -> Void
     let onOpenBrowser: () -> Void
     var onCaptureIdea: (() -> Void)?
-    var onRemove: (() -> Void)?
+    let onRemove: () -> Void
     var onDragStarted: (() -> NSItemProvider)?
 
     @Environment(\.floatingMode) private var floatingMode
@@ -169,10 +169,8 @@ struct ProjectCardView: View {
                 Label("View Details", systemImage: "info.circle")
             }
             Divider()
-            if let onRemove = onRemove {
-                Button(role: .destructive, action: onRemove) {
-                    Label("Remove Missing Project", systemImage: "trash")
-                }
+            Button(role: .destructive, action: onRemove) {
+                Label("Remove from HUD", systemImage: "trash")
             }
         } else {
             Button(action: onTap) {
@@ -194,6 +192,9 @@ struct ProjectCardView: View {
             Divider()
             Button(action: onMoveToDormant) {
                 Label("Move to Paused", systemImage: "moon.zzz")
+            }
+            Button(role: .destructive, action: onRemove) {
+                Label("Remove from HUD", systemImage: "trash")
             }
         }
     }

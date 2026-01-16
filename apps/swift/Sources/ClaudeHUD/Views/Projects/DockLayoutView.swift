@@ -96,7 +96,7 @@ struct DockLayoutView: View {
             onMoveToDormant: { appState.moveToDormant(project) },
             onOpenBrowser: { appState.openInBrowser(project) },
             onCaptureIdea: { appState.showIdeaCaptureModal(for: project) },
-            onRemove: project.isMissing ? { appState.removeProject(project.path) } : nil
+            onRemove: { appState.removeProject(project.path) }
         )
         .scrollTransition { content, phase in
             content

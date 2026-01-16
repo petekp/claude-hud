@@ -538,6 +538,14 @@ public protocol HudEngineProtocol: AnyObject {
     func claudeDir() -> String
 
     /**
+     * Creates a CLAUDE.md file for a project.
+     *
+     * Returns Ok(()) if successful, or an error if the file couldn't be created.
+     * Does NOT overwrite existing CLAUDE.md files.
+     */
+    func createProjectClaudeMd(projectPath: String) throws
+
+    /**
      * Gets session states for multiple projects.
      * Uses session-ID keyed state and lock detection for reliable state.
      *
@@ -626,6 +634,20 @@ public protocol HudEngineProtocol: AnyObject {
      * Valid triage statuses: pending, validated
      */
     func updateIdeaTriage(projectPath: String, ideaId: String, newTriage: String) throws
+
+    /**
+     * Validates a project path before adding it.
+     *
+     * Returns validation result indicating whether the path is valid,
+     * if there's a better path to use, or if the project is missing CLAUDE.md.
+     *
+     * This enables smart UI flows like:
+     * - Suggesting parent directory when user picks a subdirectory
+     * - Warning about dangerous paths (/, ~, etc.)
+     * - Offering to create CLAUDE.md when missing
+     * - Detecting if the project is already tracked
+     */
+    func validateProject(path: String) -> ValidationResultFfi
 }
 
 /**
@@ -729,6 +751,18 @@ open class HudEngine:
         return try! FfiConverterString.lift(try! rustCall {
             uniffi_hud_core_fn_method_hudengine_claude_dir(self.uniffiClonePointer(), $0)
         })
+    }
+
+    /**
+     * Creates a CLAUDE.md file for a project.
+     *
+     * Returns Ok(()) if successful, or an error if the file couldn't be created.
+     * Does NOT overwrite existing CLAUDE.md files.
+     */
+    open func createProjectClaudeMd(projectPath: String) throws { try rustCallWithError(FfiConverterTypeHudFfiError.lift) {
+        uniffi_hud_core_fn_method_hudengine_create_project_claude_md(self.uniffiClonePointer(),
+                                                                     FfiConverterString.lower(projectPath), $0)
+    }
     }
 
     /**
@@ -891,6 +925,25 @@ open class HudEngine:
                                                                FfiConverterString.lower(ideaId),
                                                                FfiConverterString.lower(newTriage), $0)
     }
+    }
+
+    /**
+     * Validates a project path before adding it.
+     *
+     * Returns validation result indicating whether the path is valid,
+     * if there's a better path to use, or if the project is missing CLAUDE.md.
+     *
+     * This enables smart UI flows like:
+     * - Suggesting parent directory when user picks a subdirectory
+     * - Warning about dangerous paths (/, ~, etc.)
+     * - Offering to create CLAUDE.md when missing
+     * - Detecting if the project is already tracked
+     */
+    open func validateProject(path: String) -> ValidationResultFfi {
+        return try! FfiConverterTypeValidationResultFfi.lift(try! rustCall {
+            uniffi_hud_core_fn_method_hudengine_validate_project(self.uniffiClonePointer(),
+                                                                 FfiConverterString.lower(path), $0)
+        })
     }
 }
 
@@ -3025,6 +3078,141 @@ public func FfiConverterTypeTask_lower(_ value: Task) -> RustBuffer {
     return FfiConverterTypeTask.lower(value)
 }
 
+/**
+ * FFI-friendly validation result for Swift/Kotlin/Python.
+ *
+ * Uses flat structure instead of enum variants for better FFI compatibility.
+ */
+public struct ValidationResultFfi {
+    /**
+     * Result type: "valid", "suggest_parent", "missing_claude_md", "not_a_project", "path_not_found", "dangerous_path"
+     */
+    public var resultType: String
+    /**
+     * The path (canonical or as provided, depending on result type)
+     */
+    public var path: String
+    /**
+     * For suggest_parent: the suggested project path
+     */
+    public var suggestedPath: String?
+    /**
+     * Human-readable reason for the result
+     */
+    public var reason: String?
+    /**
+     * Whether the project has a CLAUDE.md file
+     */
+    public var hasClaudeMd: Bool
+    /**
+     * Whether the project has other markers (.git, package.json, etc.)
+     */
+    public var hasOtherMarkers: Bool
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * Result type: "valid", "suggest_parent", "missing_claude_md", "not_a_project", "path_not_found", "dangerous_path"
+         */ resultType: String,
+        /**
+            * The path (canonical or as provided, depending on result type)
+            */ path: String,
+        /**
+            * For suggest_parent: the suggested project path
+            */ suggestedPath: String?,
+        /**
+            * Human-readable reason for the result
+            */ reason: String?,
+        /**
+            * Whether the project has a CLAUDE.md file
+            */ hasClaudeMd: Bool,
+        /**
+            * Whether the project has other markers (.git, package.json, etc.)
+            */ hasOtherMarkers: Bool
+    ) {
+        self.resultType = resultType
+        self.path = path
+        self.suggestedPath = suggestedPath
+        self.reason = reason
+        self.hasClaudeMd = hasClaudeMd
+        self.hasOtherMarkers = hasOtherMarkers
+    }
+}
+
+extension ValidationResultFfi: Equatable, Hashable {
+    public static func == (lhs: ValidationResultFfi, rhs: ValidationResultFfi) -> Bool {
+        if lhs.resultType != rhs.resultType {
+            return false
+        }
+        if lhs.path != rhs.path {
+            return false
+        }
+        if lhs.suggestedPath != rhs.suggestedPath {
+            return false
+        }
+        if lhs.reason != rhs.reason {
+            return false
+        }
+        if lhs.hasClaudeMd != rhs.hasClaudeMd {
+            return false
+        }
+        if lhs.hasOtherMarkers != rhs.hasOtherMarkers {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(resultType)
+        hasher.combine(path)
+        hasher.combine(suggestedPath)
+        hasher.combine(reason)
+        hasher.combine(hasClaudeMd)
+        hasher.combine(hasOtherMarkers)
+    }
+}
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeValidationResultFfi: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ValidationResultFfi {
+        return
+            try ValidationResultFfi(
+                resultType: FfiConverterString.read(from: &buf),
+                path: FfiConverterString.read(from: &buf),
+                suggestedPath: FfiConverterOptionString.read(from: &buf),
+                reason: FfiConverterOptionString.read(from: &buf),
+                hasClaudeMd: FfiConverterBool.read(from: &buf),
+                hasOtherMarkers: FfiConverterBool.read(from: &buf)
+            )
+    }
+
+    public static func write(_ value: ValidationResultFfi, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.resultType, into: &buf)
+        FfiConverterString.write(value.path, into: &buf)
+        FfiConverterOptionString.write(value.suggestedPath, into: &buf)
+        FfiConverterOptionString.write(value.reason, into: &buf)
+        FfiConverterBool.write(value.hasClaudeMd, into: &buf)
+        FfiConverterBool.write(value.hasOtherMarkers, into: &buf)
+    }
+}
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+public func FfiConverterTypeValidationResultFfi_lift(_ buf: RustBuffer) throws -> ValidationResultFfi {
+    return try FfiConverterTypeValidationResultFfi.lift(buf)
+}
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+public func FfiConverterTypeValidationResultFfi_lower(_ value: ValidationResultFfi) -> RustBuffer {
+    return FfiConverterTypeValidationResultFfi.lower(value)
+}
+
 // Note that we don't yet support `indirect` for enums.
 // See https://github.com/mozilla/uniffi-rs/issues/396 for further discussion.
 /**
@@ -3662,6 +3850,9 @@ private var initializationResult: InitializationResult = {
     if uniffi_hud_core_checksum_method_hudengine_claude_dir() != 21224 {
         return InitializationResult.apiChecksumMismatch
     }
+    if uniffi_hud_core_checksum_method_hudengine_create_project_claude_md() != 43265 {
+        return InitializationResult.apiChecksumMismatch
+    }
     if uniffi_hud_core_checksum_method_hudengine_get_all_session_states() != 34670 {
         return InitializationResult.apiChecksumMismatch
     }
@@ -3705,6 +3896,9 @@ private var initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if uniffi_hud_core_checksum_method_hudengine_update_idea_triage() != 43321 {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if uniffi_hud_core_checksum_method_hudengine_validate_project() != 446 {
         return InitializationResult.apiChecksumMismatch
     }
     if uniffi_hud_core_checksum_constructor_hudengine_new() != 38960 {

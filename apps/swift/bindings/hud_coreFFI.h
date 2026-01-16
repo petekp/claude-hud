@@ -282,6 +282,11 @@ RustBuffer uniffi_hud_core_fn_method_hudengine_capture_idea(void*_Nonnull ptr, R
 RustBuffer uniffi_hud_core_fn_method_hudengine_claude_dir(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_HUD_CORE_FN_METHOD_HUDENGINE_CREATE_PROJECT_CLAUDE_MD
+#define UNIFFI_FFIDEF_UNIFFI_HUD_CORE_FN_METHOD_HUDENGINE_CREATE_PROJECT_CLAUDE_MD
+void uniffi_hud_core_fn_method_hudengine_create_project_claude_md(void*_Nonnull ptr, RustBuffer project_path, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_HUD_CORE_FN_METHOD_HUDENGINE_GET_ALL_SESSION_STATES
 #define UNIFFI_FFIDEF_UNIFFI_HUD_CORE_FN_METHOD_HUDENGINE_GET_ALL_SESSION_STATES
 RustBuffer uniffi_hud_core_fn_method_hudengine_get_all_session_states(void*_Nonnull ptr, RustBuffer projects, RustCallStatus *_Nonnull out_status
@@ -355,6 +360,11 @@ void uniffi_hud_core_fn_method_hudengine_update_idea_title(void*_Nonnull ptr, Ru
 #ifndef UNIFFI_FFIDEF_UNIFFI_HUD_CORE_FN_METHOD_HUDENGINE_UPDATE_IDEA_TRIAGE
 #define UNIFFI_FFIDEF_UNIFFI_HUD_CORE_FN_METHOD_HUDENGINE_UPDATE_IDEA_TRIAGE
 void uniffi_hud_core_fn_method_hudengine_update_idea_triage(void*_Nonnull ptr, RustBuffer project_path, RustBuffer idea_id, RustBuffer new_triage, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_HUD_CORE_FN_METHOD_HUDENGINE_VALIDATE_PROJECT
+#define UNIFFI_FFIDEF_UNIFFI_HUD_CORE_FN_METHOD_HUDENGINE_VALIDATE_PROJECT
+RustBuffer uniffi_hud_core_fn_method_hudengine_validate_project(void*_Nonnull ptr, RustBuffer path, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_FFI_HUD_CORE_RUSTBUFFER_ALLOC
@@ -655,6 +665,12 @@ uint16_t uniffi_hud_core_checksum_method_hudengine_claude_dir(void
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_HUD_CORE_CHECKSUM_METHOD_HUDENGINE_CREATE_PROJECT_CLAUDE_MD
+#define UNIFFI_FFIDEF_UNIFFI_HUD_CORE_CHECKSUM_METHOD_HUDENGINE_CREATE_PROJECT_CLAUDE_MD
+uint16_t uniffi_hud_core_checksum_method_hudengine_create_project_claude_md(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_HUD_CORE_CHECKSUM_METHOD_HUDENGINE_GET_ALL_SESSION_STATES
 #define UNIFFI_FFIDEF_UNIFFI_HUD_CORE_CHECKSUM_METHOD_HUDENGINE_GET_ALL_SESSION_STATES
 uint16_t uniffi_hud_core_checksum_method_hudengine_get_all_session_states(void
@@ -742,6 +758,12 @@ uint16_t uniffi_hud_core_checksum_method_hudengine_update_idea_title(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_HUD_CORE_CHECKSUM_METHOD_HUDENGINE_UPDATE_IDEA_TRIAGE
 #define UNIFFI_FFIDEF_UNIFFI_HUD_CORE_CHECKSUM_METHOD_HUDENGINE_UPDATE_IDEA_TRIAGE
 uint16_t uniffi_hud_core_checksum_method_hudengine_update_idea_triage(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_HUD_CORE_CHECKSUM_METHOD_HUDENGINE_VALIDATE_PROJECT
+#define UNIFFI_FFIDEF_UNIFFI_HUD_CORE_CHECKSUM_METHOD_HUDENGINE_VALIDATE_PROJECT
+uint16_t uniffi_hud_core_checksum_method_hudengine_validate_project(void
     
 );
 #endif

@@ -44,6 +44,10 @@ class AppState: ObservableObject {
     @Published var projectView: ProjectView = .list
     @Published var selectedProject: Project?
 
+    /// Path pending validation when navigating to AddProjectView
+    /// Set by HeaderView's folder picker, consumed by AddProjectView on appear
+    @Published var pendingProjectPath: String?
+
     // MARK: - Data
 
     @Published var dashboard: DashboardData?
@@ -259,6 +263,25 @@ class AppState: ObservableObject {
         }
     }
 
+    /// Validates a project path before adding.
+    /// Returns the validation result for UI handling.
+    func validateProject(_ path: String) -> ValidationResultFfi? {
+        guard let engine = engine else { return nil }
+        return engine.validateProject(path: path)
+    }
+
+    /// Creates a CLAUDE.md file for a project.
+    func createClaudeMd(for path: String) -> Bool {
+        guard let engine = engine else { return false }
+        do {
+            try engine.createProjectClaudeMd(projectPath: path)
+            return true
+        } catch {
+            self.error = error.localizedDescription
+            return false
+        }
+    }
+
     // MARK: - Session State Access (delegating to manager)
 
     func getSessionState(for project: Project) -> ProjectSessionState? {
@@ -287,7 +310,8 @@ class AppState: ObservableObject {
         projectView = .detail(project)
     }
 
-    func showAddProject() {
+    func showAddProject(withPath path: String? = nil) {
+        pendingProjectPath = path
         projectView = .add
     }
 

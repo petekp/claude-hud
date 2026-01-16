@@ -16,8 +16,10 @@ fi
 CLAUDE_PID="$PPID"
 
 STATE_FILE="$HOME/.claude/hud-session-states-v2.json"
+ACTIVITY_FILE="$HOME/.claude/hud-file-activity.json"
 LOG_FILE="$HOME/.claude/hud-hook-debug.log"
 STATE_LOCK_DIR="${STATE_FILE}.lock"
+ACTIVITY_LOCK_DIR="${ACTIVITY_FILE}.lock"
 
 # Normalize a path: resolve symlinks and strip trailing slashes
 normalize_path() {
@@ -320,6 +322,81 @@ is_legacy_lock_stale() {
   return 1  # Not stale
 }
 
+# Record file activity for a tool use
+# This enables HUD to track which projects have recent file edits
+# Args: $1=session_id, $2=cwd, $3=file_path, $4=tool_name, $5=timestamp
+record_file_activity() {
+  local sid="$1"
+  local cwd="$2"
+  local file_path="$3"
+  local tool_name="$4"
+  local timestamp="$5"
+
+  # Skip if no file path
+  [ -z "$file_path" ] && return 0
+
+  # Resolve relative paths against cwd
+  if [[ "$file_path" != /* ]]; then
+    file_path="$cwd/$file_path"
+  fi
+
+  # Canonicalize if path exists (resolve symlinks)
+  if [ -e "$file_path" ] || [ -e "$(dirname "$file_path")" ]; then
+    local canonical
+    canonical=$(cd "$(dirname "$file_path")" 2>/dev/null && pwd -P)/$(basename "$file_path")
+    if [ -n "$canonical" ]; then
+      file_path="$canonical"
+    fi
+  fi
+
+  # Initialize activity file if needed
+  if [ ! -f "$ACTIVITY_FILE" ] || ! jq -e . "$ACTIVITY_FILE" &>/dev/null; then
+    echo '{"version":1,"sessions":{}}' > "$ACTIVITY_FILE"
+  fi
+
+  # Update activity file with lock
+  _record_activity_inner() {
+    local tmp_file
+    tmp_file=$(mktemp "${ACTIVITY_FILE}.tmp.XXXXXX")
+
+    jq --arg sid "$sid" \
+       --arg cwd "$cwd" \
+       --arg file_path "$file_path" \
+       --arg tool "$tool_name" \
+       --arg ts "$timestamp" \
+       '
+       # Ensure session exists
+       .sessions[$sid] //= {cwd: $cwd, files: []}
+       # Update cwd (in case session moved)
+       | .sessions[$sid].cwd = $cwd
+       # Add file activity (keep last 100 per session for memory efficiency)
+       | .sessions[$sid].files = ([{
+           file_path: $file_path,
+           tool: $tool,
+           timestamp: $ts
+         }] + .sessions[$sid].files)[:100]
+       ' "$ACTIVITY_FILE" > "$tmp_file" && mv "$tmp_file" "$ACTIVITY_FILE"
+  }
+
+  # Acquire activity lock (similar to state lock but simpler)
+  local timeout=30  # 3 seconds max
+  local attempt=0
+  while ! mkdir "$ACTIVITY_LOCK_DIR" 2>/dev/null; do
+    ((attempt++))
+    if [ $attempt -ge $timeout ]; then
+      # Force break stale lock
+      rm -rf "$ACTIVITY_LOCK_DIR" 2>/dev/null
+      mkdir "$ACTIVITY_LOCK_DIR" 2>/dev/null || return 1
+      break
+    fi
+    sleep 0.1
+  done
+
+  # Execute and release lock
+  _record_activity_inner
+  rm -rf "$ACTIVITY_LOCK_DIR" 2>/dev/null
+}
+
 input=$(cat)
 
 # Log every hook call (include trigger for PreCompact debugging)
@@ -332,6 +409,10 @@ transcript_path=$(echo "$input" | jq -r '.transcript_path // empty')
 stop_hook_active=$(echo "$input" | jq -r '.stop_hook_active // false')
 source=$(echo "$input" | jq -r '.source // empty')
 trigger=$(echo "$input" | jq -r '.trigger // empty')
+
+# Extract tool info for PostToolUse file activity tracking
+tool_name=$(echo "$input" | jq -r '.tool_name // empty')
+tool_file_path=$(echo "$input" | jq -r '.tool_input.file_path // empty')
 
 # Expand tilde in transcript_path (bash doesn't expand ~ in variables)
 transcript_path="${transcript_path/#\~/$HOME}"
@@ -761,6 +842,18 @@ case "$event" in
       exit 0
     fi
 
+    # Record file activity for file-modifying tools (enables monorepo package tracking)
+    # This runs in background to not block the hook response
+    if [ -n "$tool_file_path" ]; then
+      case "$tool_name" in
+        Edit|Write|Read|NotebookEdit)
+          activity_ts=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          (record_file_activity "$session_id" "$cwd" "$tool_file_path" "$tool_name" "$activity_ts") &
+          disown 2>/dev/null
+          ;;
+      esac
+    fi
+
     current_state=$(jq -r --arg sid "$session_id" '.sessions[$sid].state // "idle"' "$STATE_FILE" 2>/dev/null)
 
     if [ "$current_state" = "compacting" ]; then
@@ -808,6 +901,33 @@ case "$event" in
     # Set to idle when session ends - this is the correct final state
     # Even though it fires after Stop, "idle" is correct when Claude is closed
     new_state="idle"
+
+    # Clean up file activity for this session (background, non-blocking)
+    if [ -n "$session_id" ] && [ -f "$ACTIVITY_FILE" ]; then
+      (
+        # Acquire activity lock
+        timeout=30
+        attempt=0
+        while ! mkdir "$ACTIVITY_LOCK_DIR" 2>/dev/null; do
+          attempt=$((attempt + 1))
+          if [ $attempt -ge $timeout ]; then
+            rm -rf "$ACTIVITY_LOCK_DIR" 2>/dev/null
+            mkdir "$ACTIVITY_LOCK_DIR" 2>/dev/null || exit 0
+            break
+          fi
+          sleep 0.1
+        done
+
+        # Remove session's activity data
+        tmp_file=$(mktemp "${ACTIVITY_FILE}.tmp.XXXXXX")
+        jq --arg sid "$session_id" 'del(.sessions[$sid])' "$ACTIVITY_FILE" > "$tmp_file" && \
+          mv "$tmp_file" "$ACTIVITY_FILE"
+
+        rm -rf "$ACTIVITY_LOCK_DIR" 2>/dev/null
+        echo "$(date -u +"%Y-%m-%dT%H:%M:%SZ") | Cleaned up activity data for session $session_id" >> "$LOG_FILE"
+      ) &
+      disown 2>/dev/null
+    fi
     ;;
   "PreCompact")
     # Always show "compacting" status for both auto and manual compaction

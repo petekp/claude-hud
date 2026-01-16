@@ -3,6 +3,7 @@
 //! Handles reading session states from the v2 state store and
 //! detecting the current state of Claude Code sessions.
 
+use crate::activity::ActivityStore;
 use crate::config::get_claude_dir;
 use crate::state::{resolve_state_with_details, ClaudeState, StateStore};
 use crate::types::{ProjectSessionState, SessionState};
@@ -58,15 +59,35 @@ pub fn detect_session_state(project_path: &str) -> ProjectSessionState {
                 is_locked: true,
             }
         }
-        None => ProjectSessionState {
-            state: SessionState::Idle,
-            state_changed_at: None,
-            session_id: None,
-            working_on: None,
-            context: None,
-            thinking: None,
-            is_locked: false,
-        },
+        None => {
+            // No direct session found - check for file activity in this project
+            // This enables monorepo package tracking where cwd != project_path
+            let activity_file = claude_dir.join("hud-file-activity.json");
+            let activity_store = ActivityStore::load(&activity_file);
+
+            if activity_store.has_recent_activity(project_path, crate::activity::ACTIVITY_THRESHOLD) {
+                // Recent file edits in this project from a session elsewhere
+                ProjectSessionState {
+                    state: SessionState::Working,
+                    state_changed_at: None,
+                    session_id: None, // We don't know which session (could track in activity)
+                    working_on: None,
+                    context: None,
+                    thinking: Some(true),
+                    is_locked: false, // No lock at this path, but still working
+                }
+            } else {
+                ProjectSessionState {
+                    state: SessionState::Idle,
+                    state_changed_at: None,
+                    session_id: None,
+                    working_on: None,
+                    context: None,
+                    thinking: None,
+                    is_locked: false,
+                }
+            }
+        }
     }
 }
 
