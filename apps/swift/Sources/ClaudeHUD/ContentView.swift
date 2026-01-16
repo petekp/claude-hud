@@ -9,6 +9,30 @@ struct ContentView: View {
     #endif
 
     var body: some View {
+        Group {
+            switch appState.layoutMode {
+            case .vertical:
+                verticalLayout
+            case .dock:
+                dockLayout
+            }
+        }
+        .background {
+            if floatingMode {
+                #if DEBUG
+                DarkFrostedGlass()
+                    .id(glassConfig.panelConfigHash)
+                #else
+                DarkFrostedGlass()
+                #endif
+            } else {
+                Color.hudBackground
+            }
+        }
+        .preferredColorScheme(.dark)
+    }
+
+    private var verticalLayout: some View {
         VStack(spacing: 0) {
             HeaderView()
 
@@ -24,19 +48,10 @@ struct ContentView: View {
 
             BottomTabBar()
         }
-        .background {
-            if floatingMode {
-                #if DEBUG
-                DarkFrostedGlass()
-                    .id(glassConfig.panelConfigHash)
-                #else
-                DarkFrostedGlass()
-                #endif
-            } else {
-                Color.hudBackground
-            }
-        }
-        .preferredColorScheme(.dark)
+    }
+
+    private var dockLayout: some View {
+        DockLayoutView()
     }
 }
 

@@ -11,7 +11,8 @@ extension View {
         floatingMode: Bool,
         floatingCardBackground: some View,
         solidCardBackground: some View,
-        animationSeed: String
+        animationSeed: String,
+        cornerRadius: CGFloat = 12
     ) -> some View {
         self
             .background {
@@ -24,23 +25,23 @@ extension View {
                     solidCardBackground
                 }
             }
-            .clipShape(RoundedRectangle(cornerRadius: 12))
+            .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
             .overlay(
-                RoundedRectangle(cornerRadius: 12)
+                RoundedRectangle(cornerRadius: cornerRadius)
                     .stroke(flashState.map { Color.flashColor(for: $0) } ?? .clear, lineWidth: 2)
                     .opacity(flashOpacity)
             )
             .overlay {
                 if isActive {
                     ZStack {
-                        RoundedRectangle(cornerRadius: 12)
+                        RoundedRectangle(cornerRadius: cornerRadius)
                             .strokeBorder(
                                 Color.white.opacity(0.3),
                                 lineWidth: 3
                             )
                             .blur(radius: 4)
 
-                        RoundedRectangle(cornerRadius: 12)
+                        RoundedRectangle(cornerRadius: cornerRadius)
                             .strokeBorder(
                                 Color.white.opacity(0.8),
                                 lineWidth: 1.5
@@ -52,13 +53,13 @@ extension View {
             .overlay {
                 if isReady {
                     ReadyAmbientGlow()
-                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                        .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
                         .transition(.opacity.animation(.easeInOut(duration: 0.4)))
                 }
             }
             .overlay {
                 if isReady {
-                    ReadyBorderGlow(seed: animationSeed)
+                    ReadyBorderGlow(seed: animationSeed, cornerRadius: cornerRadius)
                         .transition(.opacity.animation(.easeInOut(duration: 0.4)))
                 }
             }

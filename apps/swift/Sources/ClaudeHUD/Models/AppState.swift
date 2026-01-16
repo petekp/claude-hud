@@ -7,6 +7,11 @@ enum Tab: String, CaseIterable {
     case artifacts
 }
 
+enum LayoutMode: String, CaseIterable {
+    case vertical
+    case dock
+}
+
 enum ProjectView: Equatable {
     case list
     case detail(Project)
@@ -27,6 +32,12 @@ enum ProjectView: Equatable {
 
 @MainActor
 class AppState: ObservableObject {
+    // MARK: - Layout Mode
+
+    @Published var layoutMode: LayoutMode = .vertical {
+        didSet { saveLayoutMode() }
+    }
+
     // MARK: - Navigation
 
     @Published var activeTab: Tab = .projects
@@ -86,6 +97,7 @@ class AppState: ObservableObject {
 
     private let dormantOverridesKey = "manuallyDormantProjects"
     private let projectOrderKey = "customProjectOrder"
+    private let layoutModeKey = "layoutMode"
     private var engine: HudEngine?
     private var cancellables = Set<AnyCancellable>()
     private var stalenessTimer: Timer?
@@ -133,6 +145,7 @@ class AppState: ObservableObject {
     // MARK: - Initialization
 
     init() {
+        loadLayoutMode()
         loadDormantOverrides()
         loadProjectOrder()
         loadCreations()
@@ -297,6 +310,19 @@ class AppState: ObservableObject {
     func disconnectRelay() {
         isRemoteMode = false
         relayClient.disconnect()
+    }
+
+    // MARK: - Layout Mode Persistence
+
+    private func loadLayoutMode() {
+        if let rawValue = UserDefaults.standard.string(forKey: layoutModeKey),
+           let mode = LayoutMode(rawValue: rawValue) {
+            layoutMode = mode
+        }
+    }
+
+    private func saveLayoutMode() {
+        UserDefaults.standard.set(layoutMode.rawValue, forKey: layoutModeKey)
     }
 
     // MARK: - Dormant/Order Persistence

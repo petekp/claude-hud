@@ -121,6 +121,7 @@ struct GlowParameters {
 
 struct ReadyBorderGlow: View {
     let seed: String
+    var cornerRadius: CGFloat = 12
     @Environment(\.prefersReducedMotion) private var reduceMotion
 
     #if DEBUG
@@ -143,7 +144,7 @@ struct ReadyBorderGlow: View {
     }
 
     private var staticBorderGlow: some View {
-        RoundedRectangle(cornerRadius: 12)
+        RoundedRectangle(cornerRadius: cornerRadius)
             .strokeBorder(Color.statusReady.opacity(0.3), lineWidth: 1)
             .allowsHitTesting(false)
     }
@@ -151,9 +152,9 @@ struct ReadyBorderGlow: View {
     private var animatedBorderGlow: some View {
         TimelineView(.animation) { timeline in
             #if DEBUG
-            ReadyBorderGlowContent(date: timeline.date, config: config, timeOffset: timeOffset)
+            ReadyBorderGlowContent(date: timeline.date, config: config, timeOffset: timeOffset, cornerRadius: cornerRadius)
             #else
-            ReadyBorderGlowContent(date: timeline.date, config: nil, timeOffset: timeOffset)
+            ReadyBorderGlowContent(date: timeline.date, config: nil, timeOffset: timeOffset, cornerRadius: cornerRadius)
             #endif
         }
         .allowsHitTesting(false)
@@ -163,19 +164,22 @@ struct ReadyBorderGlow: View {
 struct ReadyBorderGlowContent: View {
     let date: Date
     let timeOffset: Double
+    let cornerRadius: CGFloat
 
     #if DEBUG
     let config: GlassConfig?
 
-    init(date: Date, config: GlassConfig?, timeOffset: Double) {
+    init(date: Date, config: GlassConfig?, timeOffset: Double, cornerRadius: CGFloat = 12) {
         self.date = date
         self.config = config
         self.timeOffset = timeOffset
+        self.cornerRadius = cornerRadius
     }
     #else
-    init(date: Date, config: Any?, timeOffset: Double) {
+    init(date: Date, config: Any?, timeOffset: Double, cornerRadius: CGFloat = 12) {
         self.date = date
         self.timeOffset = timeOffset
+        self.cornerRadius = cornerRadius
     }
     #endif
 
@@ -245,7 +249,7 @@ struct ReadyBorderGlowContent: View {
 
     private func borderGlowStack(baseOpacity: Double, rotationAngle: Angle, innerWidth: Double, outerWidth: Double, innerBlur: Double, outerBlur: Double) -> some View {
         ZStack {
-            RoundedRectangle(cornerRadius: 12)
+            RoundedRectangle(cornerRadius: cornerRadius)
                 .strokeBorder(
                     AngularGradient(
                         gradient: Gradient(stops: [
@@ -266,7 +270,7 @@ struct ReadyBorderGlowContent: View {
                 )
                 .blur(radius: innerBlur)
 
-            RoundedRectangle(cornerRadius: 12)
+            RoundedRectangle(cornerRadius: cornerRadius)
                 .strokeBorder(
                     AngularGradient(
                         gradient: Gradient(stops: [

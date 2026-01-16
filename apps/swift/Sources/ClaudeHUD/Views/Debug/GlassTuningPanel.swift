@@ -141,20 +141,6 @@ class GlassConfig: ObservableObject {
     @Published var borderGlowPulseIntensity: Double = 0.50
     @Published var borderGlowRotationMultiplier: Double = 0.50
 
-    // Breathing dot
-    @Published var breathingDotSize: Double = 12
-    @Published var breathingDotShadowRadius: Double = 0
-    @Published var breathingGlowSize: Double = 8
-    @Published var breathingGlowBlur: Double = 5
-    @Published var breathingSpeed: Double = 3.00
-    @Published var breathingMinScale: Double = 0.52
-    @Published var breathingMinOpacity: Double = 0.7
-    @Published var breathingGlowMinScale: Double = 0.80
-    @Published var breathingGlowMaxScale: Double = 1.46
-    @Published var breathingGlowMinOpacity: Double = 0.25
-    @Published var breathingGlowMaxOpacity: Double = 0.5
-    @Published var breathingPhaseOffset: Double = 0.0  // 0-1, offset from ripple phase when synced
-
     // Status text settings
     @Published var statusTextSize: Double = 12
     @Published var statusTextWeight: Int = 5  // 3=light, 4=regular, 5=medium, 6=semibold, 7=bold
@@ -259,19 +245,6 @@ class GlassConfig: ObservableObject {
         borderGlowPulseIntensity = 0.50
         borderGlowRotationMultiplier = 0.50
 
-        breathingDotSize = 12
-        breathingDotShadowRadius = 0
-        breathingGlowSize = 8
-        breathingGlowBlur = 5
-        breathingSpeed = 3.00
-        breathingMinScale = 0.52
-        breathingMinOpacity = 0.7
-        breathingGlowMinScale = 0.80
-        breathingGlowMaxScale = 1.46
-        breathingGlowMinOpacity = 0.25
-        breathingGlowMaxOpacity = 0.5
-        breathingPhaseOffset = 0.0
-
         statusTextSize = 12
         statusTextWeight = 5
         statusTextSpacing = 4
@@ -346,22 +319,6 @@ class GlassConfig: ObservableObject {
         borderGlowBaseOpacity: \(String(format: "%.2f", borderGlowBaseOpacity))
         borderGlowPulseIntensity: \(String(format: "%.2f", borderGlowPulseIntensity))
         borderGlowRotationMultiplier: \(String(format: "%.2f", borderGlowRotationMultiplier))
-        ```
-
-        ### Breathing Dot
-        ```swift
-        breathingDotSize: \(String(format: "%.0f", breathingDotSize))
-        breathingDotShadowRadius: \(String(format: "%.1f", breathingDotShadowRadius))
-        breathingMinScale: \(String(format: "%.2f", breathingMinScale))
-        breathingMinOpacity: \(String(format: "%.2f", breathingMinOpacity))
-        breathingSpeed: \(String(format: "%.2f", breathingSpeed))
-        breathingPhaseOffset: \(String(format: "%.2f", breathingPhaseOffset))
-        breathingGlowSize: \(String(format: "%.0f", breathingGlowSize))
-        breathingGlowBlur: \(String(format: "%.0f", breathingGlowBlur))
-        breathingGlowMinScale: \(String(format: "%.2f", breathingGlowMinScale))
-        breathingGlowMaxScale: \(String(format: "%.2f", breathingGlowMaxScale))
-        breathingGlowMinOpacity: \(String(format: "%.2f", breathingGlowMinOpacity))
-        breathingGlowMaxOpacity: \(String(format: "%.2f", breathingGlowMaxOpacity))
         ```
 
         ### Status Text Settings
@@ -553,27 +510,6 @@ struct GlassTuningPanel: View {
                 TuningSlider(label: "Rotation Speed", value: $config.borderGlowRotationMultiplier, range: 0...2)
             }
 
-            TuningSection(title: "Breathing Dot") {
-                TuningSlider(label: "Dot Size", value: $config.breathingDotSize, range: 3...20)
-                TuningSlider(label: "Shadow Radius", value: $config.breathingDotShadowRadius, range: 0...6)
-                TuningSlider(label: "Min Scale", value: $config.breathingMinScale, range: 0.3...1)
-                TuningSlider(label: "Min Opacity", value: $config.breathingMinOpacity, range: 0.3...1)
-                TuningSlider(label: "Speed (non-sync)", value: $config.breathingSpeed, range: 0.5...10)
-                TuningSlider(label: "Phase Offset", value: $config.breathingPhaseOffset, range: 0...1)
-
-                Text("Glow Settings")
-                    .font(.system(size: 9, weight: .semibold))
-                    .foregroundColor(.white.opacity(0.4))
-                    .padding(.top, 4)
-
-                TuningSlider(label: "Glow Size", value: $config.breathingGlowSize, range: 4...40)
-                TuningSlider(label: "Glow Blur", value: $config.breathingGlowBlur, range: 0...20)
-                TuningSlider(label: "Glow Min Scale", value: $config.breathingGlowMinScale, range: 0.3...1)
-                TuningSlider(label: "Glow Max Scale", value: $config.breathingGlowMaxScale, range: 1...3)
-                TuningSlider(label: "Glow Min Opacity", value: $config.breathingGlowMinOpacity, range: 0...1)
-                TuningSlider(label: "Glow Max Opacity", value: $config.breathingGlowMaxOpacity, range: 0...1)
-            }
-
             TuningSection(title: "Status Text") {
                 TuningSlider(label: "Font Size", value: $config.statusTextSize, range: 8...16)
 
@@ -624,15 +560,14 @@ struct GlassTuningPanel: View {
                 VStack(spacing: 12) {
                     ForEach([PreviewState.ready, .working, .waiting, .compacting, .idle], id: \.self) { state in
                         HStack(spacing: 8) {
-                            TunableBreathingDot(color: config.colorForState(state), config: config)
+                            Circle()
+                                .fill(config.colorForState(state))
+                                .frame(width: 10, height: 10)
+                                .shadow(color: config.colorForState(state).opacity(0.6), radius: 4)
                             Text(state.rawValue)
                                 .font(.system(size: 11, weight: .medium))
                                 .foregroundColor(.white.opacity(0.8))
                             Spacer()
-                            Circle()
-                                .fill(config.colorForState(state))
-                                .frame(width: 8, height: 8)
-                                .shadow(color: config.colorForState(state).opacity(0.6), radius: 4)
                         }
                         .padding(.vertical, 4)
                     }
@@ -772,34 +707,6 @@ struct StatePreviewButton: View {
             .clipShape(RoundedRectangle(cornerRadius: 6))
         }
         .buttonStyle(.plain)
-    }
-}
-
-struct TunableBreathingDot: View {
-    let color: Color
-    let config: GlassConfig
-    @State private var isAnimating = false
-
-    var body: some View {
-        ZStack {
-            Circle()
-                .fill(color.opacity(0.3))
-                .frame(width: config.breathingGlowSize, height: config.breathingGlowSize)
-                .scaleEffect(isAnimating ? config.breathingGlowMaxScale : config.breathingGlowMinScale)
-                .opacity(isAnimating ? 0.25 : 0.5)
-
-            Circle()
-                .fill(color)
-                .frame(width: config.breathingDotSize, height: config.breathingDotSize)
-                .shadow(color: color.opacity(0.6), radius: 3)
-                .scaleEffect(isAnimating ? config.breathingMinScale : 1.0)
-                .opacity(isAnimating ? 0.7 : 1.0)
-        }
-        .onAppear {
-            withAnimation(.easeInOut(duration: config.breathingSpeed).repeatForever(autoreverses: true)) {
-                isAnimating = true
-            }
-        }
     }
 }
 
