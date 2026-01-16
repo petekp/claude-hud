@@ -12,7 +12,8 @@ extension View {
         floatingCardBackground: some View,
         solidCardBackground: some View,
         animationSeed: String,
-        cornerRadius: CGFloat = 12
+        cornerRadius: CGFloat = 12,
+        layoutMode: LayoutMode = .vertical
     ) -> some View {
         self
             .background {
@@ -51,14 +52,14 @@ extension View {
             }
             .overlay {
                 if isReady {
-                    ReadyAmbientGlow()
+                    ReadyAmbientGlow(layoutMode: layoutMode)
                         .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
                         .transition(.opacity.animation(.easeInOut(duration: 0.4)))
                 }
             }
             .overlay {
                 if isReady {
-                    ReadyBorderGlow(seed: animationSeed, cornerRadius: cornerRadius)
+                    ReadyBorderGlow(seed: animationSeed, cornerRadius: cornerRadius, layoutMode: layoutMode)
                         .transition(.opacity.animation(.easeInOut(duration: 0.4)))
                 }
             }

@@ -42,6 +42,22 @@ struct ProjectDetailView: View {
                 .opacity(appeared ? 1 : 0)
                 .offset(y: appeared ? 0 : 16)
 
+                Button(action: {
+                    appState.removeProject(project.path)
+                    appState.showProjectList()
+                }) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "minus.circle")
+                        Text("Remove from HUD")
+                    }
+                    .font(AppTypography.bodySecondary)
+                    .foregroundColor(.red.opacity(0.8))
+                }
+                .buttonStyle(.plain)
+                .padding(.top, 8)
+                .opacity(appeared ? 1 : 0)
+                .offset(y: appeared ? 0 : 20)
+
                 Spacer()
             }
             .padding(16)

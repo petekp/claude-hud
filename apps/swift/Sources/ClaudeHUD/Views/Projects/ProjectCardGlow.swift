@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct ReadyAmbientGlow: View {
+    var layoutMode: LayoutMode = .vertical
     @Environment(\.prefersReducedMotion) private var reduceMotion
     #if DEBUG
     @ObservedObject private var config = GlassConfig.shared
@@ -76,27 +77,27 @@ struct ReadyAmbientGlow: View {
     private var glowParameters: GlowParameters {
         #if DEBUG
         GlowParameters(
-            speed: config.rippleSpeed,
-            count: config.rippleCount,
-            maxOpacity: config.rippleMaxOpacity,
-            lineWidth: config.rippleLineWidth,
-            blurAmount: config.rippleBlurAmount,
-            originXPercent: config.rippleOriginX,
-            originYPercent: config.rippleOriginY,
-            fadeInZone: config.rippleFadeInZone,
-            fadeOutPower: config.rippleFadeOutPower
+            speed: config.rippleSpeed(for: layoutMode),
+            count: config.rippleCount(for: layoutMode),
+            maxOpacity: config.rippleMaxOpacity(for: layoutMode),
+            lineWidth: config.rippleLineWidth(for: layoutMode),
+            blurAmount: config.rippleBlurAmount(for: layoutMode),
+            originXPercent: config.rippleOriginX(for: layoutMode),
+            originYPercent: config.rippleOriginY(for: layoutMode),
+            fadeInZone: config.rippleFadeInZone(for: layoutMode),
+            fadeOutPower: config.rippleFadeOutPower(for: layoutMode)
         )
         #else
         GlowParameters(
-            speed: 4.9,
-            count: 4,
-            maxOpacity: 1.0,
+            speed: layoutMode == .dock ? 7.2 : 4.9,
+            count: layoutMode == .dock ? 6 : 4,
+            maxOpacity: layoutMode == .dock ? 0.53 : 1.0,
             lineWidth: 30.0,
-            blurAmount: 41.5,
-            originXPercent: 0.89,
+            blurAmount: layoutMode == .dock ? 29.3 : 41.5,
+            originXPercent: layoutMode == .dock ? 0.20 : 0.89,
             originYPercent: 0.0,
-            fadeInZone: 0.10,
-            fadeOutPower: 4.0
+            fadeInZone: layoutMode == .dock ? 0.17 : 0.10,
+            fadeOutPower: layoutMode == .dock ? 2.9 : 4.0
         )
         #endif
     }
@@ -122,6 +123,7 @@ struct GlowParameters {
 struct ReadyBorderGlow: View {
     let seed: String
     var cornerRadius: CGFloat = 12
+    var layoutMode: LayoutMode = .vertical
     @Environment(\.prefersReducedMotion) private var reduceMotion
 
     #if DEBUG
@@ -152,9 +154,9 @@ struct ReadyBorderGlow: View {
     private var animatedBorderGlow: some View {
         TimelineView(.animation) { timeline in
             #if DEBUG
-            ReadyBorderGlowContent(date: timeline.date, config: config, timeOffset: timeOffset, cornerRadius: cornerRadius)
+            ReadyBorderGlowContent(date: timeline.date, config: config, timeOffset: timeOffset, cornerRadius: cornerRadius, layoutMode: layoutMode)
             #else
-            ReadyBorderGlowContent(date: timeline.date, config: nil, timeOffset: timeOffset, cornerRadius: cornerRadius)
+            ReadyBorderGlowContent(date: timeline.date, config: nil, timeOffset: timeOffset, cornerRadius: cornerRadius, layoutMode: layoutMode)
             #endif
         }
         .allowsHitTesting(false)
@@ -165,21 +167,24 @@ struct ReadyBorderGlowContent: View {
     let date: Date
     let timeOffset: Double
     let cornerRadius: CGFloat
+    let layoutMode: LayoutMode
 
     #if DEBUG
     let config: GlassConfig?
 
-    init(date: Date, config: GlassConfig?, timeOffset: Double, cornerRadius: CGFloat = 12) {
+    init(date: Date, config: GlassConfig?, timeOffset: Double, cornerRadius: CGFloat = 12, layoutMode: LayoutMode = .vertical) {
         self.date = date
         self.config = config
         self.timeOffset = timeOffset
         self.cornerRadius = cornerRadius
+        self.layoutMode = layoutMode
     }
     #else
-    init(date: Date, config: Any?, timeOffset: Double, cornerRadius: CGFloat = 12) {
+    init(date: Date, config: Any?, timeOffset: Double, cornerRadius: CGFloat = 12, layoutMode: LayoutMode = .vertical) {
         self.date = date
         self.timeOffset = timeOffset
         self.cornerRadius = cornerRadius
+        self.layoutMode = layoutMode
     }
     #endif
 
@@ -206,32 +211,32 @@ struct ReadyBorderGlowContent: View {
         #if DEBUG
         if let config = config {
             return BorderGlowParameters(
-                speed: config.rippleSpeed,
-                count: config.rippleCount,
-                fadeInZone: config.rippleFadeInZone,
-                fadeOutPower: config.rippleFadeOutPower,
-                rotationMult: config.borderGlowRotationMultiplier,
-                baseOp: config.borderGlowBaseOpacity,
-                pulseIntensity: config.borderGlowPulseIntensity,
-                innerWidth: config.borderGlowInnerWidth,
-                outerWidth: config.borderGlowOuterWidth,
-                innerBlur: config.borderGlowInnerBlur,
-                outerBlur: config.borderGlowOuterBlur
+                speed: config.rippleSpeed(for: layoutMode),
+                count: config.rippleCount(for: layoutMode),
+                fadeInZone: config.rippleFadeInZone(for: layoutMode),
+                fadeOutPower: config.rippleFadeOutPower(for: layoutMode),
+                rotationMult: config.borderGlowRotationMultiplier(for: layoutMode),
+                baseOp: config.borderGlowBaseOpacity(for: layoutMode),
+                pulseIntensity: config.borderGlowPulseIntensity(for: layoutMode),
+                innerWidth: config.borderGlowInnerWidth(for: layoutMode),
+                outerWidth: config.borderGlowOuterWidth(for: layoutMode),
+                innerBlur: config.borderGlowInnerBlur(for: layoutMode),
+                outerBlur: config.borderGlowOuterBlur(for: layoutMode)
             )
         }
         #endif
         return BorderGlowParameters(
-            speed: 4.9,
-            count: 4,
-            fadeInZone: 0.10,
-            fadeOutPower: 4.0,
+            speed: layoutMode == .dock ? 7.2 : 4.9,
+            count: layoutMode == .dock ? 6 : 4,
+            fadeInZone: layoutMode == .dock ? 0.17 : 0.10,
+            fadeOutPower: layoutMode == .dock ? 2.9 : 4.0,
             rotationMult: 0.50,
-            baseOp: 0.30,
-            pulseIntensity: 0.50,
-            innerWidth: 0.49,
-            outerWidth: 2.88,
-            innerBlur: 0.5,
-            outerBlur: 1.5
+            baseOp: layoutMode == .dock ? 0.48 : 0.30,
+            pulseIntensity: layoutMode == .dock ? 0.38 : 0.50,
+            innerWidth: layoutMode == .dock ? 1.55 : 0.49,
+            outerWidth: layoutMode == .dock ? 1.93 : 2.88,
+            innerBlur: layoutMode == .dock ? 0.3 : 0.5,
+            outerBlur: layoutMode == .dock ? 3.1 : 1.5
         )
     }
 

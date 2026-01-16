@@ -28,6 +28,9 @@ use crate::types::{
     Artifact, DashboardData, GlobalConfig, HudConfig, Plugin, PluginManifest, Project,
     ProjectSessionState, SuggestedProject,
 };
+use crate::validation::{
+    create_claude_md, validate_project_path, ValidationResultFfi,
+};
 use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
@@ -440,5 +443,32 @@ impl HudEngine {
     /// then this is called once the AI-generated title is ready.
     pub fn update_idea_title(&self, project_path: String, idea_id: String, new_title: String) -> Result<(), HudFfiError> {
         crate::ideas::update_idea_title(&project_path, &idea_id, &new_title).map_err(HudFfiError::from)
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────────
+    // Validation API
+    // ─────────────────────────────────────────────────────────────────────────────
+
+    /// Validates a project path before adding it.
+    ///
+    /// Returns validation result indicating whether the path is valid,
+    /// if there's a better path to use, or if the project is missing CLAUDE.md.
+    ///
+    /// This enables smart UI flows like:
+    /// - Suggesting parent directory when user picks a subdirectory
+    /// - Warning about dangerous paths (/, ~, etc.)
+    /// - Offering to create CLAUDE.md when missing
+    /// - Detecting if the project is already tracked
+    pub fn validate_project(&self, path: String) -> ValidationResultFfi {
+        let config = load_hud_config();
+        validate_project_path(&path, &config.pinned_projects).into()
+    }
+
+    /// Creates a CLAUDE.md file for a project.
+    ///
+    /// Returns Ok(()) if successful, or an error if the file couldn't be created.
+    /// Does NOT overwrite existing CLAUDE.md files.
+    pub fn create_project_claude_md(&self, project_path: String) -> Result<(), HudFfiError> {
+        create_claude_md(&project_path).map_err(HudFfiError::from)
     }
 }

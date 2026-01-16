@@ -25,7 +25,9 @@
 uniffi::setup_scaffolding!();
 
 // Public modules
+pub mod activity;
 pub mod artifacts;
+pub mod boundaries;
 pub mod config;
 pub mod engine;
 pub mod error;
@@ -36,9 +38,12 @@ pub mod sessions;
 pub mod state;
 pub mod stats;
 pub mod types;
+pub mod validation;
 
 // Re-export commonly used items at crate root
+pub use activity::*;
 pub use artifacts::*;
+pub use boundaries::*;
 pub use config::*;
 pub use engine::HudEngine;
 pub use error::{HudError, HudFfiError, Result};
@@ -48,3 +53,4 @@ pub use projects::*;
 pub use sessions::*;
 pub use stats::*;
 pub use types::*;
+pub use validation::*;

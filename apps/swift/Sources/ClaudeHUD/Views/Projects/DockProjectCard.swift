@@ -13,7 +13,7 @@ struct DockProjectCard: View {
     let onMoveToDormant: () -> Void
     let onOpenBrowser: () -> Void
     var onCaptureIdea: (() -> Void)?
-    var onRemove: (() -> Void)?
+    let onRemove: () -> Void
 
     @Environment(\.floatingMode) private var floatingMode
     @Environment(\.prefersReducedMotion) private var reduceMotion
@@ -70,7 +70,8 @@ struct DockProjectCard: View {
                 floatingCardBackground: floatingCardBackground,
                 solidCardBackground: solidCardBackground,
                 animationSeed: project.path,
-                cornerRadius: cornerRadius
+                cornerRadius: cornerRadius,
+                layoutMode: .dock
             )
             .scaleEffect(isHovered && !reduceMotion ? 1.02 : 1.0)
             .animation(reduceMotion ? AppMotion.reducedMotionFallback : .spring(response: 0.3, dampingFraction: 0.7), value: isHovered)
@@ -193,10 +194,8 @@ struct DockProjectCard: View {
                 Label("View Details", systemImage: "info.circle")
             }
             Divider()
-            if let onRemove = onRemove {
-                Button(role: .destructive, action: onRemove) {
-                    Label("Remove Missing Project", systemImage: "trash")
-                }
+            Button(role: .destructive, action: onRemove) {
+                Label("Remove from HUD", systemImage: "trash")
             }
         } else {
             Button(action: onTap) {
@@ -218,6 +217,9 @@ struct DockProjectCard: View {
             Divider()
             Button(action: onMoveToDormant) {
                 Label("Move to Paused", systemImage: "moon.zzz")
+            }
+            Button(role: .destructive, action: onRemove) {
+                Label("Remove from HUD", systemImage: "trash")
             }
         }
     }

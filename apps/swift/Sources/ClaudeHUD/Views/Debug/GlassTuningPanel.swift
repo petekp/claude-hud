@@ -98,9 +98,9 @@ class GlassConfig: ObservableObject {
     @Published var useEmphasizedMaterial: Bool = true
     @Published var materialType: Int = 0  // 0=hudWindow, 1=popover, 2=menu, 3=sidebar, 4=fullScreenUI
 
-    // Status Colors - Ready (green)
-    @Published var statusReadyHue: Double = 0.329
-    @Published var statusReadySaturation: Double = 1.00
+    // Status Colors - Ready (cyan-green)
+    @Published var statusReadyHue: Double = 0.406
+    @Published var statusReadySaturation: Double = 0.83
     @Published var statusReadyBrightness: Double = 1.00
 
     // Status Colors - Working (yellow/orange)
@@ -140,6 +140,27 @@ class GlassConfig: ObservableObject {
     @Published var borderGlowBaseOpacity: Double = 0.30
     @Published var borderGlowPulseIntensity: Double = 0.50
     @Published var borderGlowRotationMultiplier: Double = 0.50
+
+    // MARK: - Dock Layout Effects
+    // Dock-specific ripple (tuned for compact cards)
+    @Published var dockRippleSpeed: Double = 7.2
+    @Published var dockRippleCount: Int = 6
+    @Published var dockRippleMaxOpacity: Double = 0.53
+    @Published var dockRippleLineWidth: Double = 30.0
+    @Published var dockRippleBlurAmount: Double = 29.3
+    @Published var dockRippleOriginX: Double = 0.20
+    @Published var dockRippleOriginY: Double = 0.00
+    @Published var dockRippleFadeInZone: Double = 0.17
+    @Published var dockRippleFadeOutPower: Double = 2.9
+
+    // Dock-specific border glow
+    @Published var dockBorderGlowInnerWidth: Double = 1.55
+    @Published var dockBorderGlowOuterWidth: Double = 1.93
+    @Published var dockBorderGlowInnerBlur: Double = 0.3
+    @Published var dockBorderGlowOuterBlur: Double = 3.1
+    @Published var dockBorderGlowBaseOpacity: Double = 0.48
+    @Published var dockBorderGlowPulseIntensity: Double = 0.38
+    @Published var dockBorderGlowRotationMultiplier: Double = 0.50
 
     // Status text settings
     @Published var statusTextSize: Double = 12
@@ -189,6 +210,57 @@ class GlassConfig: ObservableObject {
         }
     }
 
+    // MARK: - Layout-Aware Accessors
+    func rippleSpeed(for layout: LayoutMode) -> Double {
+        layout == .dock ? dockRippleSpeed : rippleSpeed
+    }
+    func rippleCount(for layout: LayoutMode) -> Int {
+        layout == .dock ? dockRippleCount : rippleCount
+    }
+    func rippleMaxOpacity(for layout: LayoutMode) -> Double {
+        layout == .dock ? dockRippleMaxOpacity : rippleMaxOpacity
+    }
+    func rippleLineWidth(for layout: LayoutMode) -> Double {
+        layout == .dock ? dockRippleLineWidth : rippleLineWidth
+    }
+    func rippleBlurAmount(for layout: LayoutMode) -> Double {
+        layout == .dock ? dockRippleBlurAmount : rippleBlurAmount
+    }
+    func rippleOriginX(for layout: LayoutMode) -> Double {
+        layout == .dock ? dockRippleOriginX : rippleOriginX
+    }
+    func rippleOriginY(for layout: LayoutMode) -> Double {
+        layout == .dock ? dockRippleOriginY : rippleOriginY
+    }
+    func rippleFadeInZone(for layout: LayoutMode) -> Double {
+        layout == .dock ? dockRippleFadeInZone : rippleFadeInZone
+    }
+    func rippleFadeOutPower(for layout: LayoutMode) -> Double {
+        layout == .dock ? dockRippleFadeOutPower : rippleFadeOutPower
+    }
+
+    func borderGlowInnerWidth(for layout: LayoutMode) -> Double {
+        layout == .dock ? dockBorderGlowInnerWidth : borderGlowInnerWidth
+    }
+    func borderGlowOuterWidth(for layout: LayoutMode) -> Double {
+        layout == .dock ? dockBorderGlowOuterWidth : borderGlowOuterWidth
+    }
+    func borderGlowInnerBlur(for layout: LayoutMode) -> Double {
+        layout == .dock ? dockBorderGlowInnerBlur : borderGlowInnerBlur
+    }
+    func borderGlowOuterBlur(for layout: LayoutMode) -> Double {
+        layout == .dock ? dockBorderGlowOuterBlur : borderGlowOuterBlur
+    }
+    func borderGlowBaseOpacity(for layout: LayoutMode) -> Double {
+        layout == .dock ? dockBorderGlowBaseOpacity : borderGlowBaseOpacity
+    }
+    func borderGlowPulseIntensity(for layout: LayoutMode) -> Double {
+        layout == .dock ? dockBorderGlowPulseIntensity : borderGlowPulseIntensity
+    }
+    func borderGlowRotationMultiplier(for layout: LayoutMode) -> Double {
+        layout == .dock ? dockBorderGlowRotationMultiplier : borderGlowRotationMultiplier
+    }
+
     func reset() {
         panelTintOpacity = 0.33
         panelCornerRadius = 22
@@ -209,8 +281,8 @@ class GlassConfig: ObservableObject {
         useEmphasizedMaterial = true
         materialType = 0
 
-        statusReadyHue = 0.329
-        statusReadySaturation = 1.00
+        statusReadyHue = 0.406
+        statusReadySaturation = 0.83
         statusReadyBrightness = 1.00
 
         statusWorkingHue = 0.103
@@ -244,6 +316,25 @@ class GlassConfig: ObservableObject {
         borderGlowBaseOpacity = 0.30
         borderGlowPulseIntensity = 0.50
         borderGlowRotationMultiplier = 0.50
+
+        // Dock-specific effects (tuned values)
+        dockRippleSpeed = 7.2
+        dockRippleCount = 6
+        dockRippleMaxOpacity = 0.53
+        dockRippleLineWidth = 30.0
+        dockRippleBlurAmount = 29.3
+        dockRippleOriginX = 0.20
+        dockRippleOriginY = 0.00
+        dockRippleFadeInZone = 0.17
+        dockRippleFadeOutPower = 2.9
+
+        dockBorderGlowInnerWidth = 1.55
+        dockBorderGlowOuterWidth = 1.93
+        dockBorderGlowInnerBlur = 0.3
+        dockBorderGlowOuterBlur = 3.1
+        dockBorderGlowBaseOpacity = 0.48
+        dockBorderGlowPulseIntensity = 0.38
+        dockBorderGlowRotationMultiplier = 0.50
 
         statusTextSize = 12
         statusTextWeight = 5
@@ -321,6 +412,30 @@ class GlassConfig: ObservableObject {
         borderGlowRotationMultiplier: \(String(format: "%.2f", borderGlowRotationMultiplier))
         ```
 
+        ### Dock Ripple (Compact Layout)
+        ```swift
+        dockRippleSpeed: \(String(format: "%.1f", dockRippleSpeed))
+        dockRippleCount: \(dockRippleCount)
+        dockRippleMaxOpacity: \(String(format: "%.2f", dockRippleMaxOpacity))
+        dockRippleLineWidth: \(String(format: "%.1f", dockRippleLineWidth))
+        dockRippleBlurAmount: \(String(format: "%.1f", dockRippleBlurAmount))
+        dockRippleFadeInZone: \(String(format: "%.2f", dockRippleFadeInZone))
+        dockRippleFadeOutPower: \(String(format: "%.1f", dockRippleFadeOutPower))
+        dockRippleOriginX: \(String(format: "%.2f", dockRippleOriginX))
+        dockRippleOriginY: \(String(format: "%.2f", dockRippleOriginY))
+        ```
+
+        ### Dock Border Glow (Compact Layout)
+        ```swift
+        dockBorderGlowInnerWidth: \(String(format: "%.2f", dockBorderGlowInnerWidth))
+        dockBorderGlowOuterWidth: \(String(format: "%.2f", dockBorderGlowOuterWidth))
+        dockBorderGlowInnerBlur: \(String(format: "%.1f", dockBorderGlowInnerBlur))
+        dockBorderGlowOuterBlur: \(String(format: "%.1f", dockBorderGlowOuterBlur))
+        dockBorderGlowBaseOpacity: \(String(format: "%.2f", dockBorderGlowBaseOpacity))
+        dockBorderGlowPulseIntensity: \(String(format: "%.2f", dockBorderGlowPulseIntensity))
+        dockBorderGlowRotationMultiplier: \(String(format: "%.2f", dockBorderGlowRotationMultiplier))
+        ```
+
         ### Status Text Settings
         ```swift
         statusTextSize: \(String(format: "%.0f", statusTextSize))
@@ -337,6 +452,7 @@ struct GlassTuningPanel: View {
     @Binding var isPresented: Bool
     @State private var copiedToClipboard = false
     @State private var selectedTab = 0
+    @State private var effectsLayoutMode: LayoutMode = .vertical
 
     var body: some View {
         VStack(spacing: 0) {
@@ -485,29 +601,63 @@ struct GlassTuningPanel: View {
 
     private var effectsContent: some View {
         VStack(spacing: 12) {
-            TuningSection(title: "Ready Ripple") {
-                TuningSlider(label: "Speed (seconds)", value: $config.rippleSpeed, range: 1...10)
-                TuningSlider(label: "Ring Count", value: Binding(
-                    get: { Double(config.rippleCount) },
-                    set: { config.rippleCount = Int($0) }
-                ), range: 1...6)
-                TuningSlider(label: "Max Opacity", value: $config.rippleMaxOpacity, range: 0...1)
-                TuningSlider(label: "Line Width", value: $config.rippleLineWidth, range: 0.5...30)
-                TuningSlider(label: "Blur Amount", value: $config.rippleBlurAmount, range: 0...60)
-                TuningSlider(label: "Fade In Zone", value: $config.rippleFadeInZone, range: 0...0.5)
-                TuningSlider(label: "Fade Out Power", value: $config.rippleFadeOutPower, range: 0.5...4)
-                TuningSlider(label: "Origin X", value: $config.rippleOriginX, range: 0...1)
-                TuningSlider(label: "Origin Y", value: $config.rippleOriginY, range: 0...1)
+            Picker("Layout", selection: $effectsLayoutMode) {
+                Text("Vertical").tag(LayoutMode.vertical)
+                Text("Dock").tag(LayoutMode.dock)
             }
+            .pickerStyle(.segmented)
+            .padding(.horizontal, 4)
 
-            TuningSection(title: "Border Glow") {
-                TuningSlider(label: "Inner Width", value: $config.borderGlowInnerWidth, range: 0.25...3)
-                TuningSlider(label: "Outer Width", value: $config.borderGlowOuterWidth, range: 0.5...5)
-                TuningSlider(label: "Inner Blur", value: $config.borderGlowInnerBlur, range: 0...3)
-                TuningSlider(label: "Outer Blur", value: $config.borderGlowOuterBlur, range: 0...8)
-                TuningSlider(label: "Base Opacity", value: $config.borderGlowBaseOpacity, range: 0...1)
-                TuningSlider(label: "Pulse Intensity", value: $config.borderGlowPulseIntensity, range: 0...1)
-                TuningSlider(label: "Rotation Speed", value: $config.borderGlowRotationMultiplier, range: 0...2)
+            if effectsLayoutMode == .vertical {
+                TuningSection(title: "Ready Ripple") {
+                    TuningSlider(label: "Speed (seconds)", value: $config.rippleSpeed, range: 1...10)
+                    TuningSlider(label: "Ring Count", value: Binding(
+                        get: { Double(config.rippleCount) },
+                        set: { config.rippleCount = Int($0) }
+                    ), range: 1...6)
+                    TuningSlider(label: "Max Opacity", value: $config.rippleMaxOpacity, range: 0...1)
+                    TuningSlider(label: "Line Width", value: $config.rippleLineWidth, range: 0.5...30)
+                    TuningSlider(label: "Blur Amount", value: $config.rippleBlurAmount, range: 0...60)
+                    TuningSlider(label: "Fade In Zone", value: $config.rippleFadeInZone, range: 0...0.5)
+                    TuningSlider(label: "Fade Out Power", value: $config.rippleFadeOutPower, range: 0.5...4)
+                    TuningSlider(label: "Origin X", value: $config.rippleOriginX, range: 0...1)
+                    TuningSlider(label: "Origin Y", value: $config.rippleOriginY, range: 0...1)
+                }
+
+                TuningSection(title: "Border Glow") {
+                    TuningSlider(label: "Inner Width", value: $config.borderGlowInnerWidth, range: 0.25...3)
+                    TuningSlider(label: "Outer Width", value: $config.borderGlowOuterWidth, range: 0.5...5)
+                    TuningSlider(label: "Inner Blur", value: $config.borderGlowInnerBlur, range: 0...3)
+                    TuningSlider(label: "Outer Blur", value: $config.borderGlowOuterBlur, range: 0...8)
+                    TuningSlider(label: "Base Opacity", value: $config.borderGlowBaseOpacity, range: 0...1)
+                    TuningSlider(label: "Pulse Intensity", value: $config.borderGlowPulseIntensity, range: 0...1)
+                    TuningSlider(label: "Rotation Speed", value: $config.borderGlowRotationMultiplier, range: 0...2)
+                }
+            } else {
+                TuningSection(title: "Dock Ripple") {
+                    TuningSlider(label: "Speed (seconds)", value: $config.dockRippleSpeed, range: 1...10)
+                    TuningSlider(label: "Ring Count", value: Binding(
+                        get: { Double(config.dockRippleCount) },
+                        set: { config.dockRippleCount = Int($0) }
+                    ), range: 1...6)
+                    TuningSlider(label: "Max Opacity", value: $config.dockRippleMaxOpacity, range: 0...1)
+                    TuningSlider(label: "Line Width", value: $config.dockRippleLineWidth, range: 0.5...30)
+                    TuningSlider(label: "Blur Amount", value: $config.dockRippleBlurAmount, range: 0...60)
+                    TuningSlider(label: "Fade In Zone", value: $config.dockRippleFadeInZone, range: 0...0.5)
+                    TuningSlider(label: "Fade Out Power", value: $config.dockRippleFadeOutPower, range: 0.5...4)
+                    TuningSlider(label: "Origin X", value: $config.dockRippleOriginX, range: 0...1)
+                    TuningSlider(label: "Origin Y", value: $config.dockRippleOriginY, range: 0...1)
+                }
+
+                TuningSection(title: "Dock Border Glow") {
+                    TuningSlider(label: "Inner Width", value: $config.dockBorderGlowInnerWidth, range: 0.25...3)
+                    TuningSlider(label: "Outer Width", value: $config.dockBorderGlowOuterWidth, range: 0.5...5)
+                    TuningSlider(label: "Inner Blur", value: $config.dockBorderGlowInnerBlur, range: 0...3)
+                    TuningSlider(label: "Outer Blur", value: $config.dockBorderGlowOuterBlur, range: 0...8)
+                    TuningSlider(label: "Base Opacity", value: $config.dockBorderGlowBaseOpacity, range: 0...1)
+                    TuningSlider(label: "Pulse Intensity", value: $config.dockBorderGlowPulseIntensity, range: 0...1)
+                    TuningSlider(label: "Rotation Speed", value: $config.dockBorderGlowRotationMultiplier, range: 0...2)
+                }
             }
 
             TuningSection(title: "Status Text") {

@@ -102,10 +102,11 @@ struct AddProjectButton: View {
         panel.canChooseDirectories = true
         panel.allowsMultipleSelection = false
         panel.message = "Select a project folder to add"
-        panel.prompt = "Add Project"
+        panel.prompt = "Select"
 
         if panel.runModal() == .OK, let url = panel.url {
-            appState.addProject(url.path)
+            // Navigate to AddProjectView with the path for validation
+            appState.showAddProject(withPath: url.path)
         }
     }
 }
