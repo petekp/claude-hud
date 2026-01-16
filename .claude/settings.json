@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(pkill -x ClaudeHUD:*)",
+      "Bash(pkill:*)",
+      "Bash(kill:*)",
+      "Bash(swift build:*)",
+      "Bash(swift run:*)",
+      "Bash(cargo build:*)"
+    ]
+  }
+}
