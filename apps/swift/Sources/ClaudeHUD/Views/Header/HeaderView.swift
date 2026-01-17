@@ -62,10 +62,11 @@ struct PinButton: View {
 struct AddProjectButton: View {
     @EnvironmentObject var appState: AppState
     @State private var isHovered = false
+    @State private var showingPopover = false
     @Environment(\.prefersReducedMotion) private var reduceMotion
 
     var body: some View {
-        Button(action: { appState.showAddProject() }) {
+        Button(action: { showingPopover = true }) {
             HStack(spacing: 6) {
                 Image(systemName: "plus.circle.fill")
                     .font(AppTypography.cardTitle)
@@ -91,6 +92,87 @@ struct AddProjectButton: View {
         .scaleEffect(isHovered && !reduceMotion ? 1.02 : 1.0)
         .onHover { hovering in
             withAnimation(reduceMotion ? AppMotion.reducedMotionFallback : .spring(response: 0.2, dampingFraction: 0.7)) {
+                isHovered = hovering
+            }
+        }
+        .popover(isPresented: $showingPopover, arrowEdge: .bottom) {
+            AddProjectPopover(
+                onLinkExisting: {
+                    showingPopover = false
+                    appState.showAddLink()
+                },
+                onCreateNew: {
+                    showingPopover = false
+                    appState.showNewIdea()
+                }
+            )
+        }
+    }
+}
+
+struct AddProjectPopover: View {
+    let onLinkExisting: () -> Void
+    let onCreateNew: () -> Void
+
+    var body: some View {
+        VStack(spacing: 4) {
+            PopoverOptionButton(
+                icon: "folder.badge.plus",
+                title: "Link Existing",
+                subtitle: "Add a project folder",
+                action: onLinkExisting
+            )
+
+            PopoverOptionButton(
+                icon: "sparkles",
+                title: "Create with Claude",
+                subtitle: "Scaffold a new project",
+                action: onCreateNew
+            )
+        }
+        .padding(8)
+    }
+}
+
+private struct PopoverOptionButton: View {
+    let icon: String
+    let title: String
+    let subtitle: String
+    let action: () -> Void
+
+    @State private var isHovered = false
+    @Environment(\.prefersReducedMotion) private var reduceMotion
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 12) {
+                Image(systemName: icon)
+                    .font(.system(size: 18, weight: .medium))
+                    .foregroundColor(.white.opacity(0.7))
+                    .frame(width: 24)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title)
+                        .font(AppTypography.bodySecondary.weight(.medium))
+                        .foregroundColor(.white.opacity(0.9))
+
+                    Text(subtitle)
+                        .font(AppTypography.caption)
+                        .foregroundColor(.white.opacity(0.5))
+                }
+
+                Spacer()
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
+            .background(
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(Color.white.opacity(isHovered ? 0.1 : 0))
+            )
+        }
+        .buttonStyle(.plain)
+        .onHover { hovering in
+            withAnimation(reduceMotion ? AppMotion.reducedMotionFallback : .easeOut(duration: 0.15)) {
                 isHovered = hovering
             }
         }

@@ -15,13 +15,12 @@ enum LayoutMode: String, CaseIterable {
 enum ProjectView: Equatable {
     case list
     case detail(Project)
-    case add
     case addLink
     case newIdea
 
     static func == (lhs: ProjectView, rhs: ProjectView) -> Bool {
         switch (lhs, rhs) {
-        case (.list, .list), (.add, .add), (.addLink, .addLink), (.newIdea, .newIdea):
+        case (.list, .list), (.addLink, .addLink), (.newIdea, .newIdea):
             return true
         case let (.detail(p1), .detail(p2)):
             return p1.path == p2.path
@@ -314,10 +313,8 @@ class AppState: ObservableObject {
     func showAddProject(withPath path: String? = nil) {
         if let path = path {
             pendingProjectPath = path
-            projectView = .addLink
-        } else {
-            projectView = .add
         }
+        projectView = .addLink
     }
 
     func showAddLink() {

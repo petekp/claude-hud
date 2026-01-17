@@ -14,8 +14,8 @@ struct AddProjectView: View {
     var body: some View {
         VStack(spacing: 16) {
             HStack {
-                BackButton(title: "Add Project") {
-                    appState.showAddProject()
+                BackButton(title: "Projects") {
+                    appState.showProjectList()
                 }
                 .keyboardShortcut("[", modifiers: .command)
 
