@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 extension Color {
@@ -65,12 +66,16 @@ extension Color {
     static var flashWaiting: Color { statusWaiting.opacity(0.25) }
     static var flashCompacting: Color { statusCompacting.opacity(0.20) }
 
-    // Accent
-    static let hudAccent = Color(hue: 24/360, saturation: 0.85, brightness: 0.95)
-    static let hudAccentDark = Color(hue: 24/360, saturation: 0.90, brightness: 0.75)
+    // Accent - uses system accent color
+    static var hudAccent: Color { Color.accentColor }
+    static var hudAccentDark: Color {
+        Color(nsColor: NSColor.controlAccentColor.blended(withFraction: 0.3, of: .black) ?? NSColor.controlAccentColor)
+    }
 
     // Detail view section accent
-    static let sectionAccent = Color(hue: 24/360, saturation: 0.70, brightness: 0.85)
+    static var sectionAccent: Color {
+        Color(nsColor: NSColor.controlAccentColor.blended(withFraction: 0.15, of: .black) ?? NSColor.controlAccentColor)
+    }
 
     static func flashColor(for state: SessionState) -> Color {
         switch state {

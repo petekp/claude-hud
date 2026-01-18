@@ -28,11 +28,15 @@ struct StatusIndicator: View {
 
     var body: some View {
         HStack(spacing: 0) {
-            Text(statusText.uppercased())
-                .font(.system(.callout, design: .monospaced).weight(.semibold))
-                .tracking(0.5)
-                .foregroundColor(isActive ? statusColor : statusColor.opacity(0.55))
-                .contentTransition(reduceMotion ? .identity : .numericText())
+            if state == .compacting {
+                AnimatedCompactingText(color: statusColor)
+            } else {
+                Text(statusText.uppercased())
+                    .font(.system(.callout, design: .monospaced).weight(.semibold))
+                    .tracking(0.5)
+                    .foregroundColor(isActive ? statusColor : statusColor.opacity(0.55))
+                    .contentTransition(reduceMotion ? .identity : .numericText())
+            }
 
             if state == .working {
                 AnimatedEllipsis(color: statusColor)
@@ -82,6 +86,126 @@ struct AnimatedEllipsis: View {
             }
             .accessibilityHidden(true)
     }
+}
+
+// MARK: - Animated Compacting Text
+
+/// Animated "COMPACTING" text with tracking that compresses and expands
+struct AnimatedCompactingText: View {
+    let color: Color
+
+    @Environment(\.prefersReducedMotion) private var reduceMotion
+
+    #if DEBUG
+    @ObservedObject private var config = GlassConfig.shared
+    #endif
+
+    var body: some View {
+        if reduceMotion {
+            staticText
+        } else {
+            animatedText
+        }
+    }
+
+    private var staticText: some View {
+        Text("COMPACTING")
+            .font(.system(.callout, design: .monospaced).weight(.semibold))
+            .tracking(0.5)
+            .foregroundColor(color)
+    }
+
+    private var animatedText: some View {
+        TimelineView(.animation) { timeline in
+            let params = trackingParameters
+            let time = timeline.date.timeIntervalSinceReferenceDate
+            let phase = time.truncatingRemainder(dividingBy: params.cycleLength) / params.cycleLength
+            let tracking = computeTracking(phase: phase, params: params)
+
+            Text("COMPACTING")
+                .font(.system(.callout, design: .monospaced).weight(.semibold))
+                .tracking(tracking)
+                .foregroundColor(color)
+        }
+    }
+
+    private var trackingParameters: CompactingTrackingParameters {
+        #if DEBUG
+        CompactingTrackingParameters(
+            cycleLength: config.compactingCycleLength,
+            minTracking: config.compactingMinTracking,
+            maxTracking: config.compactingMaxTracking,
+            compressDuration: config.compactingCompressDuration,
+            holdDuration: config.compactingHoldDuration,
+            expandDuration: config.compactingExpandDuration,
+            compressDamping: config.compactingCompressDamping,
+            compressOmega: config.compactingCompressOmega,
+            expandDamping: config.compactingExpandDamping,
+            expandOmega: config.compactingExpandOmega
+        )
+        #else
+        CompactingTrackingParameters(
+            cycleLength: 1.8,
+            minTracking: 0.0,
+            maxTracking: 2.1,
+            compressDuration: 0.26,
+            holdDuration: 0.50,
+            expandDuration: 1.0,
+            compressDamping: 0.3,
+            compressOmega: 16.0,
+            expandDamping: 0.8,
+            expandOmega: 4.0
+        )
+        #endif
+    }
+
+    private func computeTracking(phase: Double, params: CompactingTrackingParameters) -> Double {
+        let compressEnd = params.compressDuration / params.cycleLength
+        let holdEnd = compressEnd + params.holdDuration / params.cycleLength
+        let expandEnd = holdEnd + params.expandDuration / params.cycleLength
+
+        if phase < compressEnd {
+            let t = phase / compressEnd
+            let springValue = dampedSpring(t: t, damping: params.compressDamping, omega: params.compressOmega)
+            return params.maxTracking + (params.minTracking - params.maxTracking) * springValue
+        } else if phase < holdEnd {
+            return params.minTracking
+        } else if phase < expandEnd {
+            let t = (phase - holdEnd) / (expandEnd - holdEnd)
+            let springValue = dampedSpring(t: t, damping: params.expandDamping, omega: params.expandOmega)
+            return params.minTracking + (params.maxTracking - params.minTracking) * springValue
+        } else {
+            return params.maxTracking
+        }
+    }
+
+    private func dampedSpring(t: Double, damping: Double, omega: Double) -> Double {
+        let dampedT = t * omega
+
+        if damping >= 1.0 {
+            // Over-damped: smooth exponential approach
+            let decay = exp(-damping * dampedT)
+            return 1.0 - decay * (1.0 + damping * dampedT)
+        } else {
+            // Under-damped: slight oscillation/bounce
+            let dampedOmega = omega * sqrt(1.0 - damping * damping)
+            let decay = exp(-damping * omega * t)
+            return 1.0 - decay * (cos(dampedOmega * t) + (damping * omega / dampedOmega) * sin(dampedOmega * t))
+        }
+    }
+}
+
+struct CompactingTrackingParameters {
+    let cycleLength: Double
+    let minTracking: Double
+    let maxTracking: Double
+    let compressDuration: Double
+    let holdDuration: Double
+    let expandDuration: Double
+    let compressDamping: Double
+    let compressOmega: Double
+    let expandDamping: Double
+    let expandOmega: Double
 }
 
 // MARK: - Shared Context Menu
@@ -267,14 +391,14 @@ struct IdeasBadge: View {
                 Text("\(count)")
                     .font(AppTypography.captionSmall.weight(.medium))
             }
-            .foregroundColor(.hudAccent.opacity(isHovered ? 1.0 : (isCardHovered ? 0.8 : 0.6)))
+            .foregroundColor(.white.opacity(isHovered ? 1.0 : (isCardHovered ? 0.85 : 0.7)))
             .padding(.horizontal, 6)
             .padding(.vertical, 3)
-            .background(Color.hudAccent.opacity(isHovered ? 0.2 : (isCardHovered ? 0.12 : 0.08)))
+            .background(.ultraThinMaterial.opacity(isHovered ? 1.0 : (isCardHovered ? 0.9 : 0.8)))
             .clipShape(Capsule())
             .overlay(
                 Capsule()
-                    .strokeBorder(Color.hudAccent.opacity(isHovered ? 0.3 : 0), lineWidth: 0.5)
+                    .strokeBorder(Color.white.opacity(isHovered ? 0.25 : 0.12), lineWidth: 0.5)
             )
         }
         .buttonStyle(.plain)

@@ -54,6 +54,10 @@ struct DockProjectCard: View {
         currentState == .ready
     }
 
+    private var isWaiting: Bool {
+        currentState == .waiting
+    }
+
     private var displaySummary: String? {
         if let current = sessionState?.workingOn, !current.isEmpty {
             return current
@@ -77,6 +81,7 @@ struct DockProjectCard: View {
             .cardStyling(
                 isHovered: isHovered,
                 isReady: isReady,
+                isWaiting: isWaiting,
                 isActive: isActive,
                 flashState: flashState,
                 flashOpacity: flashOpacity,

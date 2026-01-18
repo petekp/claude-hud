@@ -5,6 +5,7 @@ extension View {
     func cardStyling(
         isHovered: Bool,
         isReady: Bool,
+        isWaiting: Bool = false,
         isActive: Bool,
         flashState: SessionState?,
         flashOpacity: Double,
@@ -60,6 +61,19 @@ extension View {
             .overlay {
                 if isReady {
                     ReadyBorderGlow(seed: animationSeed, cornerRadius: cornerRadius, layoutMode: layoutMode)
+                        .transition(.opacity.animation(.easeInOut(duration: 0.4)))
+                }
+            }
+            .overlay {
+                if isWaiting {
+                    WaitingAmbientPulse(layoutMode: layoutMode)
+                        .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
+                        .transition(.opacity.animation(.easeInOut(duration: 0.4)))
+                }
+            }
+            .overlay {
+                if isWaiting {
+                    WaitingBorderPulse(seed: animationSeed, cornerRadius: cornerRadius, layoutMode: layoutMode)
                         .transition(.opacity.animation(.easeInOut(duration: 0.4)))
                 }
             }

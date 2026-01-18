@@ -311,3 +311,329 @@ struct BorderGlowParameters {
     let innerBlur: Double
     let outerBlur: Double
 }
+
+// MARK: - Waiting State Effects
+
+/// Double-flash pulse effect for the Waiting state - extends beyond card bounds
+struct WaitingAmbientPulse: View {
+    var layoutMode: LayoutMode = .vertical
+    @Environment(\.prefersReducedMotion) private var reduceMotion
+
+    #if DEBUG
+    @ObservedObject private var config = GlassConfig.shared
+    #endif
+
+    var body: some View {
+        if reduceMotion {
+            staticGlow
+        } else {
+            animatedPulse
+        }
+    }
+
+    private var staticGlow: some View {
+        GeometryReader { geometry in
+            Circle()
+                .fill(
+                    RadialGradient(
+                        colors: [Color.statusWaiting.opacity(0.25), Color.statusWaiting.opacity(0)],
+                        center: .center,
+                        startRadius: 0,
+                        endRadius: max(geometry.size.width, geometry.size.height) * 0.8
+                    )
+                )
+                .frame(width: geometry.size.width * 2, height: geometry.size.height * 2)
+                .position(x: geometry.size.width / 2, y: geometry.size.height / 2)
+        }
+        .allowsHitTesting(false)
+    }
+
+    private var animatedPulse: some View {
+        TimelineView(.animation) { timeline in
+            let params = pulseParameters
+            let time = timeline.date.timeIntervalSinceReferenceDate
+            let phase = time.truncatingRemainder(dividingBy: params.cycleLength) / params.cycleLength
+            let (intensity, scale) = springPulseValues(phase: phase, params: params)
+
+            GeometryReader { geometry in
+                let baseSize = max(geometry.size.width, geometry.size.height) * params.pulseScale
+                let pulseSize = baseSize * (1.0 + scale * params.scaleAmount)
+
+                Circle()
+                    .fill(
+                        RadialGradient(
+                            colors: [
+                                Color.statusWaiting.opacity(params.maxOpacity * intensity),
+                                Color.statusWaiting.opacity(params.maxOpacity * intensity * 0.4),
+                                Color.statusWaiting.opacity(params.maxOpacity * intensity * 0.1),
+                                Color.statusWaiting.opacity(0)
+                            ],
+                            center: .center,
+                            startRadius: 0,
+                            endRadius: pulseSize / 2
+                        )
+                    )
+                    .frame(width: pulseSize, height: pulseSize)
+                    .position(
+                        x: geometry.size.width * params.originXPercent,
+                        y: geometry.size.height * params.originYPercent
+                    )
+                    .blur(radius: params.blurAmount + intensity * 10)
+            }
+        }
+        .allowsHitTesting(false)
+    }
+
+    private var pulseParameters: WaitingPulseParameters {
+        #if DEBUG
+        WaitingPulseParameters(
+            cycleLength: config.waitingCycleLength(for: layoutMode),
+            firstPulseDuration: config.waitingFirstPulseDuration(for: layoutMode),
+            firstPulseFadeOut: config.waitingFirstPulseFadeOut(for: layoutMode),
+            secondPulseDelay: config.waitingSecondPulseDelay(for: layoutMode),
+            secondPulseDuration: config.waitingSecondPulseDuration(for: layoutMode),
+            secondPulseFadeOut: config.waitingSecondPulseFadeOut(for: layoutMode),
+            maxOpacity: config.waitingMaxOpacity(for: layoutMode),
+            blurAmount: config.waitingBlurAmount(for: layoutMode),
+            pulseScale: config.waitingPulseScale(for: layoutMode),
+            scaleAmount: config.waitingScaleAmount(for: layoutMode),
+            springDamping: config.waitingSpringDamping(for: layoutMode),
+            springOmega: config.waitingSpringOmega(for: layoutMode),
+            firstPulseIntensity: config.waitingFirstPulseIntensity(for: layoutMode),
+            secondPulseIntensity: config.waitingSecondPulseIntensity(for: layoutMode),
+            originXPercent: config.waitingOriginX(for: layoutMode),
+            originYPercent: config.waitingOriginY(for: layoutMode)
+        )
+        #else
+        WaitingPulseParameters(
+            cycleLength: layoutMode == .dock ? 2.4 : 1.68,
+            firstPulseDuration: layoutMode == .dock ? 0.15 : 0.17,
+            firstPulseFadeOut: layoutMode == .dock ? 0.25 : 0.17,
+            secondPulseDelay: layoutMode == .dock ? 0.12 : 0.00,
+            secondPulseDuration: layoutMode == .dock ? 0.12 : 0.17,
+            secondPulseFadeOut: layoutMode == .dock ? 0.20 : 0.48,
+            maxOpacity: layoutMode == .dock ? 0.5 : 0.34,
+            blurAmount: layoutMode == .dock ? 25 : 0.0,
+            pulseScale: layoutMode == .dock ? 1.6 : 2.22,
+            scaleAmount: layoutMode == .dock ? 0.4 : 0.30,
+            springDamping: layoutMode == .dock ? 1.2 : 1.69,
+            springOmega: layoutMode == .dock ? 8.0 : 3.3,
+            firstPulseIntensity: layoutMode == .dock ? 1.0 : 0.34,
+            secondPulseIntensity: layoutMode == .dock ? 0.6 : 0.47,
+            originXPercent: layoutMode == .dock ? 0.5 : 1.00,
+            originYPercent: layoutMode == .dock ? 0.5 : 0.00
+        )
+        #endif
+    }
+
+    private func springPulseValues(phase: Double, params: WaitingPulseParameters) -> (intensity: Double, scale: Double) {
+        let firstEnd = params.firstPulseDuration
+        let firstFadeEnd = firstEnd + params.firstPulseFadeOut
+        let secondStart = firstFadeEnd + params.secondPulseDelay
+        let secondEnd = secondStart + params.secondPulseDuration
+        let secondFadeEnd = secondEnd + params.secondPulseFadeOut
+        let firstIntensity = params.firstPulseIntensity
+        let secondIntensity = params.secondPulseIntensity
+
+        if phase < firstEnd {
+            // First pulse attack - heavily damped spring
+            let t = phase / firstEnd
+            let intensity = dampedSpring(t: t, damping: params.springDamping, omega: params.springOmega) * firstIntensity
+            return (intensity, intensity)
+        } else if phase < firstFadeEnd {
+            // First pulse fade out - smooth decay
+            let t = (phase - firstEnd) / params.firstPulseFadeOut
+            let intensity = dampedSpring(t: 1.0 - t, damping: params.springDamping * 0.75, omega: params.springOmega) * firstIntensity
+            return (intensity, intensity)
+        } else if phase >= secondStart && phase < secondEnd {
+            // Second pulse attack - smaller, heavily damped
+            let t = (phase - secondStart) / params.secondPulseDuration
+            let intensity = dampedSpring(t: t, damping: params.springDamping * 1.1, omega: params.springOmega) * secondIntensity
+            return (intensity, intensity * 0.8)
+        } else if phase >= secondEnd && phase < secondFadeEnd {
+            // Second pulse fade out
+            let t = (phase - secondEnd) / params.secondPulseFadeOut
+            let intensity = dampedSpring(t: 1.0 - t, damping: params.springDamping * 0.85, omega: params.springOmega) * secondIntensity
+            return (intensity, intensity * 0.8)
+        }
+        return (0, 0)
+    }
+
+    private func dampedSpring(t: Double, damping: Double, omega: Double) -> Double {
+        // Critically/over-damped spring - no oscillation, smooth settle
+        // damping >= 1.0 means no overshoot
+        let dampedT = t * omega
+
+        if damping >= 1.0 {
+            // Over-damped: smooth exponential approach
+            let decay = exp(-damping * dampedT)
+            return 1.0 - decay * (1.0 + damping * dampedT)
+        } else {
+            // Under-damped: slight oscillation
+            let dampedOmega = omega * sqrt(1.0 - damping * damping)
+            let decay = exp(-damping * omega * t)
+            return 1.0 - decay * (cos(dampedOmega * t) + (damping * omega / dampedOmega) * sin(dampedOmega * t))
+        }
+    }
+}
+
+/// Synchronized border pulse for the Waiting state with spring animation
+struct WaitingBorderPulse: View {
+    let seed: String
+    var cornerRadius: CGFloat = 12
+    var layoutMode: LayoutMode = .vertical
+    @Environment(\.prefersReducedMotion) private var reduceMotion
+
+    #if DEBUG
+    @ObservedObject private var config = GlassConfig.shared
+    #endif
+
+    var body: some View {
+        if reduceMotion {
+            staticBorder
+        } else {
+            animatedBorder
+        }
+    }
+
+    private var staticBorder: some View {
+        RoundedRectangle(cornerRadius: cornerRadius)
+            .strokeBorder(Color.statusWaiting.opacity(0.5), lineWidth: 2)
+            .allowsHitTesting(false)
+    }
+
+    private var animatedBorder: some View {
+        TimelineView(.animation) { timeline in
+            let params = pulseParameters
+            let time = timeline.date.timeIntervalSinceReferenceDate
+            let phase = time.truncatingRemainder(dividingBy: params.cycleLength) / params.cycleLength
+            let intensity = springPulseIntensity(phase: phase, params: params)
+
+            ZStack {
+                RoundedRectangle(cornerRadius: cornerRadius)
+                    .strokeBorder(
+                        Color.statusWaiting.opacity(params.baseOpacity + intensity * params.pulseOpacity),
+                        lineWidth: params.innerWidth + intensity * 1.5
+                    )
+
+                RoundedRectangle(cornerRadius: cornerRadius)
+                    .strokeBorder(
+                        Color.statusWaiting.opacity((params.baseOpacity + intensity * params.pulseOpacity) * 0.5),
+                        lineWidth: params.outerWidth + intensity * 4
+                    )
+                    .blur(radius: params.outerBlur + intensity * 6)
+            }
+            .blendMode(.plusLighter)
+        }
+        .allowsHitTesting(false)
+    }
+
+    private var pulseParameters: WaitingPulseParameters {
+        #if DEBUG
+        WaitingPulseParameters(
+            cycleLength: config.waitingCycleLength(for: layoutMode),
+            firstPulseDuration: config.waitingFirstPulseDuration(for: layoutMode),
+            firstPulseFadeOut: config.waitingFirstPulseFadeOut(for: layoutMode),
+            secondPulseDelay: config.waitingSecondPulseDelay(for: layoutMode),
+            secondPulseDuration: config.waitingSecondPulseDuration(for: layoutMode),
+            secondPulseFadeOut: config.waitingSecondPulseFadeOut(for: layoutMode),
+            maxOpacity: config.waitingMaxOpacity(for: layoutMode),
+            blurAmount: 0,
+            springDamping: config.waitingSpringDamping(for: layoutMode),
+            springOmega: config.waitingSpringOmega(for: layoutMode),
+            firstPulseIntensity: config.waitingFirstPulseIntensity(for: layoutMode),
+            secondPulseIntensity: config.waitingSecondPulseIntensity(for: layoutMode),
+            baseOpacity: config.waitingBorderBaseOpacity(for: layoutMode),
+            pulseOpacity: config.waitingBorderPulseOpacity(for: layoutMode),
+            innerWidth: config.waitingBorderInnerWidth(for: layoutMode),
+            outerWidth: config.waitingBorderOuterWidth(for: layoutMode),
+            innerBlur: 0,
+            outerBlur: config.waitingBorderOuterBlur(for: layoutMode)
+        )
+        #else
+        WaitingPulseParameters(
+            cycleLength: layoutMode == .dock ? 2.4 : 1.68,
+            firstPulseDuration: layoutMode == .dock ? 0.15 : 0.17,
+            firstPulseFadeOut: layoutMode == .dock ? 0.25 : 0.17,
+            secondPulseDelay: layoutMode == .dock ? 0.12 : 0.00,
+            secondPulseDuration: layoutMode == .dock ? 0.12 : 0.17,
+            secondPulseFadeOut: layoutMode == .dock ? 0.20 : 0.48,
+            maxOpacity: layoutMode == .dock ? 0.5 : 0.34,
+            blurAmount: 0,
+            springDamping: layoutMode == .dock ? 1.2 : 1.69,
+            springOmega: layoutMode == .dock ? 8.0 : 3.3,
+            firstPulseIntensity: layoutMode == .dock ? 1.0 : 0.34,
+            secondPulseIntensity: layoutMode == .dock ? 0.6 : 0.47,
+            baseOpacity: layoutMode == .dock ? 0.2 : 0.12,
+            pulseOpacity: layoutMode == .dock ? 0.6 : 0.37,
+            innerWidth: layoutMode == .dock ? 1.5 : 0.50,
+            outerWidth: layoutMode == .dock ? 3.0 : 1.86,
+            innerBlur: 0,
+            outerBlur: layoutMode == .dock ? 4.0 : 0.8
+        )
+        #endif
+    }
+
+    private func springPulseIntensity(phase: Double, params: WaitingPulseParameters) -> Double {
+        let firstEnd = params.firstPulseDuration
+        let firstFadeEnd = firstEnd + params.firstPulseFadeOut
+        let secondStart = firstFadeEnd + params.secondPulseDelay
+        let secondEnd = secondStart + params.secondPulseDuration
+        let secondFadeEnd = secondEnd + params.secondPulseFadeOut
+        let firstIntensity = params.firstPulseIntensity
+        let secondIntensity = params.secondPulseIntensity
+
+        if phase < firstEnd {
+            let t = phase / firstEnd
+            return dampedSpring(t: t, damping: params.springDamping, omega: params.springOmega) * firstIntensity
+        } else if phase < firstFadeEnd {
+            let t = (phase - firstEnd) / params.firstPulseFadeOut
+            return dampedSpring(t: 1.0 - t, damping: params.springDamping * 0.75, omega: params.springOmega) * firstIntensity
+        } else if phase >= secondStart && phase < secondEnd {
+            let t = (phase - secondStart) / params.secondPulseDuration
+            return dampedSpring(t: t, damping: params.springDamping * 1.1, omega: params.springOmega) * secondIntensity
+        } else if phase >= secondEnd && phase < secondFadeEnd {
+            let t = (phase - secondEnd) / params.secondPulseFadeOut
+            return dampedSpring(t: 1.0 - t, damping: params.springDamping * 0.85, omega: params.springOmega) * secondIntensity
+        }
+        return 0
+    }
+
+    private func dampedSpring(t: Double, damping: Double, omega: Double) -> Double {
+        let dampedT = t * omega
+
+        if damping >= 1.0 {
+            let decay = exp(-damping * dampedT)
+            return 1.0 - decay * (1.0 + damping * dampedT)
+        } else {
+            let dampedOmega = omega * sqrt(1.0 - damping * damping)
+            let decay = exp(-damping * omega * t)
+            return 1.0 - decay * (cos(dampedOmega * t) + (damping * omega / dampedOmega) * sin(dampedOmega * t))
+        }
+    }
+}
+
+struct WaitingPulseParameters {
+    let cycleLength: Double
+    let firstPulseDuration: Double
+    let firstPulseFadeOut: Double
+    let secondPulseDelay: Double
+    let secondPulseDuration: Double
+    let secondPulseFadeOut: Double
+    let maxOpacity: Double
+    let blurAmount: Double
+    var pulseScale: Double = 1.6
+    var scaleAmount: Double = 0.4
+    var springDamping: Double = 1.2
+    var springOmega: Double = 8.0
+    var firstPulseIntensity: Double = 1.0
+    var secondPulseIntensity: Double = 0.6
+    var baseOpacity: Double = 0.2
+    var pulseOpacity: Double = 0.5
+    var innerWidth: Double = 1.0
+    var outerWidth: Double = 2.0
+    var innerBlur: Double = 0.3
+    var outerBlur: Double = 3.0
+    var originXPercent: Double = 0.5
+    var originYPercent: Double = 0.5
+}

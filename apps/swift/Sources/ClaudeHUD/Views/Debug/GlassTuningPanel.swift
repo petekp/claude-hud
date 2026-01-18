@@ -162,22 +162,69 @@ class GlassConfig: ObservableObject {
     @Published var dockBorderGlowPulseIntensity: Double = 0.38
     @Published var dockBorderGlowRotationMultiplier: Double = 0.50
 
-    // Status text settings
-    @Published var statusTextSize: Double = 12
-    @Published var statusTextWeight: Int = 5  // 3=light, 4=regular, 5=medium, 6=semibold, 7=bold
-    @Published var statusTextSpacing: Double = 4
-    @Published var statusIdleTextOpacity: Double = 0.55
+    // MARK: - Waiting Pulse Effect (Vertical Layout)
+    @Published var waitingCycleLength: Double = 1.68
+    @Published var waitingFirstPulseDuration: Double = 0.17
+    @Published var waitingFirstPulseFadeOut: Double = 0.17
+    @Published var waitingSecondPulseDelay: Double = 0.00
+    @Published var waitingSecondPulseDuration: Double = 0.17
+    @Published var waitingSecondPulseFadeOut: Double = 0.48
+    @Published var waitingFirstPulseIntensity: Double = 0.34
+    @Published var waitingSecondPulseIntensity: Double = 0.47
+    @Published var waitingMaxOpacity: Double = 0.34
+    @Published var waitingBlurAmount: Double = 0.0
+    @Published var waitingPulseScale: Double = 2.22
+    @Published var waitingScaleAmount: Double = 0.30
+    @Published var waitingSpringDamping: Double = 1.69
+    @Published var waitingSpringOmega: Double = 3.3
+    @Published var waitingOriginX: Double = 1.00
+    @Published var waitingOriginY: Double = 0.00
 
-    var fontWeight: Font.Weight {
-        switch statusTextWeight {
-        case 3: return .light
-        case 4: return .regular
-        case 5: return .medium
-        case 6: return .semibold
-        case 7: return .bold
-        default: return .medium
-        }
-    }
+    // Waiting border glow
+    @Published var waitingBorderBaseOpacity: Double = 0.12
+    @Published var waitingBorderPulseOpacity: Double = 0.37
+    @Published var waitingBorderInnerWidth: Double = 0.50
+    @Published var waitingBorderOuterWidth: Double = 1.86
+    @Published var waitingBorderOuterBlur: Double = 0.8
+
+    // MARK: - Waiting Pulse Effect (Dock Layout)
+    @Published var dockWaitingCycleLength: Double = 2.4
+    @Published var dockWaitingFirstPulseDuration: Double = 0.15
+    @Published var dockWaitingFirstPulseFadeOut: Double = 0.25
+    @Published var dockWaitingSecondPulseDelay: Double = 0.12
+    @Published var dockWaitingSecondPulseDuration: Double = 0.12
+    @Published var dockWaitingSecondPulseFadeOut: Double = 0.20
+    @Published var dockWaitingFirstPulseIntensity: Double = 1.0
+    @Published var dockWaitingSecondPulseIntensity: Double = 0.6
+    @Published var dockWaitingMaxOpacity: Double = 0.5
+    @Published var dockWaitingBlurAmount: Double = 25.0
+    @Published var dockWaitingPulseScale: Double = 1.6
+    @Published var dockWaitingScaleAmount: Double = 0.4
+    @Published var dockWaitingSpringDamping: Double = 1.2
+    @Published var dockWaitingSpringOmega: Double = 8.0
+    @Published var dockWaitingOriginX: Double = 0.5
+    @Published var dockWaitingOriginY: Double = 0.5
+
+    // Dock waiting border glow
+    @Published var dockWaitingBorderBaseOpacity: Double = 0.2
+    @Published var dockWaitingBorderPulseOpacity: Double = 0.6
+    @Published var dockWaitingBorderInnerWidth: Double = 1.5
+    @Published var dockWaitingBorderOuterWidth: Double = 3.0
+    @Published var dockWaitingBorderOuterBlur: Double = 4.0
+
+    // MARK: - Compacting Text Animation
+    @Published var compactingCycleLength: Double = 1.8
+    @Published var compactingMinTracking: Double = 0.0
+    @Published var compactingMaxTracking: Double = 2.1
+    @Published var compactingCompressDuration: Double = 0.26
+    @Published var compactingHoldDuration: Double = 0.50
+    @Published var compactingExpandDuration: Double = 1.0
+    // Spring parameters for compress phase
+    @Published var compactingCompressDamping: Double = 0.3
+    @Published var compactingCompressOmega: Double = 16.0
+    // Spring parameters for expand phase
+    @Published var compactingExpandDamping: Double = 0.8
+    @Published var compactingExpandOmega: Double = 4.0
 
     // State Preview
     @Published var previewState: PreviewState = .none
@@ -261,6 +308,71 @@ class GlassConfig: ObservableObject {
         layout == .dock ? dockBorderGlowRotationMultiplier : borderGlowRotationMultiplier
     }
 
+    // MARK: - Waiting Effect Accessors
+    func waitingCycleLength(for layout: LayoutMode) -> Double {
+        layout == .dock ? dockWaitingCycleLength : waitingCycleLength
+    }
+    func waitingFirstPulseDuration(for layout: LayoutMode) -> Double {
+        layout == .dock ? dockWaitingFirstPulseDuration : waitingFirstPulseDuration
+    }
+    func waitingFirstPulseFadeOut(for layout: LayoutMode) -> Double {
+        layout == .dock ? dockWaitingFirstPulseFadeOut : waitingFirstPulseFadeOut
+    }
+    func waitingSecondPulseDelay(for layout: LayoutMode) -> Double {
+        layout == .dock ? dockWaitingSecondPulseDelay : waitingSecondPulseDelay
+    }
+    func waitingSecondPulseDuration(for layout: LayoutMode) -> Double {
+        layout == .dock ? dockWaitingSecondPulseDuration : waitingSecondPulseDuration
+    }
+    func waitingSecondPulseFadeOut(for layout: LayoutMode) -> Double {
+        layout == .dock ? dockWaitingSecondPulseFadeOut : waitingSecondPulseFadeOut
+    }
+    func waitingFirstPulseIntensity(for layout: LayoutMode) -> Double {
+        layout == .dock ? dockWaitingFirstPulseIntensity : waitingFirstPulseIntensity
+    }
+    func waitingSecondPulseIntensity(for layout: LayoutMode) -> Double {
+        layout == .dock ? dockWaitingSecondPulseIntensity : waitingSecondPulseIntensity
+    }
+    func waitingMaxOpacity(for layout: LayoutMode) -> Double {
+        layout == .dock ? dockWaitingMaxOpacity : waitingMaxOpacity
+    }
+    func waitingBlurAmount(for layout: LayoutMode) -> Double {
+        layout == .dock ? dockWaitingBlurAmount : waitingBlurAmount
+    }
+    func waitingPulseScale(for layout: LayoutMode) -> Double {
+        layout == .dock ? dockWaitingPulseScale : waitingPulseScale
+    }
+    func waitingScaleAmount(for layout: LayoutMode) -> Double {
+        layout == .dock ? dockWaitingScaleAmount : waitingScaleAmount
+    }
+    func waitingSpringDamping(for layout: LayoutMode) -> Double {
+        layout == .dock ? dockWaitingSpringDamping : waitingSpringDamping
+    }
+    func waitingSpringOmega(for layout: LayoutMode) -> Double {
+        layout == .dock ? dockWaitingSpringOmega : waitingSpringOmega
+    }
+    func waitingBorderBaseOpacity(for layout: LayoutMode) -> Double {
+        layout == .dock ? dockWaitingBorderBaseOpacity : waitingBorderBaseOpacity
+    }
+    func waitingBorderPulseOpacity(for layout: LayoutMode) -> Double {
+        layout == .dock ? dockWaitingBorderPulseOpacity : waitingBorderPulseOpacity
+    }
+    func waitingBorderInnerWidth(for layout: LayoutMode) -> Double {
+        layout == .dock ? dockWaitingBorderInnerWidth : waitingBorderInnerWidth
+    }
+    func waitingBorderOuterWidth(for layout: LayoutMode) -> Double {
+        layout == .dock ? dockWaitingBorderOuterWidth : waitingBorderOuterWidth
+    }
+    func waitingBorderOuterBlur(for layout: LayoutMode) -> Double {
+        layout == .dock ? dockWaitingBorderOuterBlur : waitingBorderOuterBlur
+    }
+    func waitingOriginX(for layout: LayoutMode) -> Double {
+        layout == .dock ? dockWaitingOriginX : waitingOriginX
+    }
+    func waitingOriginY(for layout: LayoutMode) -> Double {
+        layout == .dock ? dockWaitingOriginY : waitingOriginY
+    }
+
     func reset() {
         panelTintOpacity = 0.33
         panelCornerRadius = 22
@@ -336,10 +448,63 @@ class GlassConfig: ObservableObject {
         dockBorderGlowPulseIntensity = 0.38
         dockBorderGlowRotationMultiplier = 0.50
 
-        statusTextSize = 12
-        statusTextWeight = 5
-        statusTextSpacing = 4
-        statusIdleTextOpacity = 0.55
+        // Waiting effect (vertical)
+        waitingCycleLength = 1.68
+        waitingFirstPulseDuration = 0.17
+        waitingFirstPulseFadeOut = 0.17
+        waitingSecondPulseDelay = 0.00
+        waitingSecondPulseDuration = 0.17
+        waitingSecondPulseFadeOut = 0.48
+        waitingFirstPulseIntensity = 0.34
+        waitingSecondPulseIntensity = 0.47
+        waitingMaxOpacity = 0.34
+        waitingBlurAmount = 0.0
+        waitingPulseScale = 2.22
+        waitingScaleAmount = 0.30
+        waitingSpringDamping = 1.69
+        waitingSpringOmega = 3.3
+        waitingOriginX = 1.00
+        waitingOriginY = 0.00
+        waitingBorderBaseOpacity = 0.12
+        waitingBorderPulseOpacity = 0.37
+        waitingBorderInnerWidth = 0.50
+        waitingBorderOuterWidth = 1.86
+        waitingBorderOuterBlur = 0.8
+
+        // Waiting effect (dock)
+        dockWaitingCycleLength = 2.4
+        dockWaitingFirstPulseDuration = 0.15
+        dockWaitingFirstPulseFadeOut = 0.25
+        dockWaitingSecondPulseDelay = 0.12
+        dockWaitingSecondPulseDuration = 0.12
+        dockWaitingSecondPulseFadeOut = 0.20
+        dockWaitingFirstPulseIntensity = 1.0
+        dockWaitingSecondPulseIntensity = 0.6
+        dockWaitingMaxOpacity = 0.5
+        dockWaitingBlurAmount = 25.0
+        dockWaitingPulseScale = 1.6
+        dockWaitingScaleAmount = 0.4
+        dockWaitingSpringDamping = 1.2
+        dockWaitingSpringOmega = 8.0
+        dockWaitingOriginX = 0.5
+        dockWaitingOriginY = 0.5
+        dockWaitingBorderBaseOpacity = 0.2
+        dockWaitingBorderPulseOpacity = 0.6
+        dockWaitingBorderInnerWidth = 1.5
+        dockWaitingBorderOuterWidth = 3.0
+        dockWaitingBorderOuterBlur = 4.0
+
+        // Compacting text animation
+        compactingCycleLength = 1.8
+        compactingMinTracking = 0.0
+        compactingMaxTracking = 2.1
+        compactingCompressDuration = 0.26
+        compactingHoldDuration = 0.50
+        compactingExpandDuration = 1.0
+        compactingCompressDamping = 0.3
+        compactingCompressOmega = 16.0
+        compactingExpandDamping = 0.8
+        compactingExpandOmega = 4.0
 
         previewState = .none
     }
@@ -436,12 +601,76 @@ class GlassConfig: ObservableObject {
         dockBorderGlowRotationMultiplier: \(String(format: "%.2f", dockBorderGlowRotationMultiplier))
         ```
 
-        ### Status Text Settings
+        ### Waiting Pulse Effect
         ```swift
-        statusTextSize: \(String(format: "%.0f", statusTextSize))
-        statusTextWeight: \(statusTextWeight)
-        statusTextSpacing: \(String(format: "%.0f", statusTextSpacing))
-        statusIdleTextOpacity: \(String(format: "%.2f", statusIdleTextOpacity))
+        waitingCycleLength: \(String(format: "%.2f", waitingCycleLength))
+        waitingFirstPulseDuration: \(String(format: "%.2f", waitingFirstPulseDuration))
+        waitingFirstPulseFadeOut: \(String(format: "%.2f", waitingFirstPulseFadeOut))
+        waitingSecondPulseDelay: \(String(format: "%.2f", waitingSecondPulseDelay))
+        waitingSecondPulseDuration: \(String(format: "%.2f", waitingSecondPulseDuration))
+        waitingSecondPulseFadeOut: \(String(format: "%.2f", waitingSecondPulseFadeOut))
+        waitingFirstPulseIntensity: \(String(format: "%.2f", waitingFirstPulseIntensity))
+        waitingSecondPulseIntensity: \(String(format: "%.2f", waitingSecondPulseIntensity))
+        waitingMaxOpacity: \(String(format: "%.2f", waitingMaxOpacity))
+        waitingBlurAmount: \(String(format: "%.1f", waitingBlurAmount))
+        waitingPulseScale: \(String(format: "%.2f", waitingPulseScale))
+        waitingScaleAmount: \(String(format: "%.2f", waitingScaleAmount))
+        waitingSpringDamping: \(String(format: "%.2f", waitingSpringDamping))
+        waitingSpringOmega: \(String(format: "%.1f", waitingSpringOmega))
+        waitingOriginX: \(String(format: "%.2f", waitingOriginX))
+        waitingOriginY: \(String(format: "%.2f", waitingOriginY))
+        ```
+
+        ### Waiting Border
+        ```swift
+        waitingBorderBaseOpacity: \(String(format: "%.2f", waitingBorderBaseOpacity))
+        waitingBorderPulseOpacity: \(String(format: "%.2f", waitingBorderPulseOpacity))
+        waitingBorderInnerWidth: \(String(format: "%.2f", waitingBorderInnerWidth))
+        waitingBorderOuterWidth: \(String(format: "%.2f", waitingBorderOuterWidth))
+        waitingBorderOuterBlur: \(String(format: "%.1f", waitingBorderOuterBlur))
+        ```
+
+        ### Dock Waiting Pulse Effect
+        ```swift
+        dockWaitingCycleLength: \(String(format: "%.2f", dockWaitingCycleLength))
+        dockWaitingFirstPulseDuration: \(String(format: "%.2f", dockWaitingFirstPulseDuration))
+        dockWaitingFirstPulseFadeOut: \(String(format: "%.2f", dockWaitingFirstPulseFadeOut))
+        dockWaitingSecondPulseDelay: \(String(format: "%.2f", dockWaitingSecondPulseDelay))
+        dockWaitingSecondPulseDuration: \(String(format: "%.2f", dockWaitingSecondPulseDuration))
+        dockWaitingSecondPulseFadeOut: \(String(format: "%.2f", dockWaitingSecondPulseFadeOut))
+        dockWaitingFirstPulseIntensity: \(String(format: "%.2f", dockWaitingFirstPulseIntensity))
+        dockWaitingSecondPulseIntensity: \(String(format: "%.2f", dockWaitingSecondPulseIntensity))
+        dockWaitingMaxOpacity: \(String(format: "%.2f", dockWaitingMaxOpacity))
+        dockWaitingBlurAmount: \(String(format: "%.1f", dockWaitingBlurAmount))
+        dockWaitingPulseScale: \(String(format: "%.2f", dockWaitingPulseScale))
+        dockWaitingScaleAmount: \(String(format: "%.2f", dockWaitingScaleAmount))
+        dockWaitingSpringDamping: \(String(format: "%.2f", dockWaitingSpringDamping))
+        dockWaitingSpringOmega: \(String(format: "%.1f", dockWaitingSpringOmega))
+        dockWaitingOriginX: \(String(format: "%.2f", dockWaitingOriginX))
+        dockWaitingOriginY: \(String(format: "%.2f", dockWaitingOriginY))
+        ```
+
+        ### Dock Waiting Border
+        ```swift
+        dockWaitingBorderBaseOpacity: \(String(format: "%.2f", dockWaitingBorderBaseOpacity))
+        dockWaitingBorderPulseOpacity: \(String(format: "%.2f", dockWaitingBorderPulseOpacity))
+        dockWaitingBorderInnerWidth: \(String(format: "%.2f", dockWaitingBorderInnerWidth))
+        dockWaitingBorderOuterWidth: \(String(format: "%.2f", dockWaitingBorderOuterWidth))
+        dockWaitingBorderOuterBlur: \(String(format: "%.1f", dockWaitingBorderOuterBlur))
+        ```
+
+        ### Compacting Text Animation
+        ```swift
+        compactingCycleLength: \(String(format: "%.2f", compactingCycleLength))
+        compactingMinTracking: \(String(format: "%.1f", compactingMinTracking))
+        compactingMaxTracking: \(String(format: "%.1f", compactingMaxTracking))
+        compactingCompressDuration: \(String(format: "%.2f", compactingCompressDuration))
+        compactingHoldDuration: \(String(format: "%.2f", compactingHoldDuration))
+        compactingExpandDuration: \(String(format: "%.2f", compactingExpandDuration))
+        compactingCompressDamping: \(String(format: "%.2f", compactingCompressDamping))
+        compactingCompressOmega: \(String(format: "%.1f", compactingCompressOmega))
+        compactingExpandDamping: \(String(format: "%.2f", compactingExpandDamping))
+        compactingExpandOmega: \(String(format: "%.1f", compactingExpandOmega))
         ```
         """
     }
@@ -459,7 +688,7 @@ struct GlassTuningPanel: View {
             header
             tabBar
             ScrollView {
-                VStack(spacing: 12) {
+                VStack(spacing: 10) {
                     switch selectedTab {
                     case 0: glassContent
                     case 1: statusColorsContent
@@ -468,34 +697,48 @@ struct GlassTuningPanel: View {
                     default: glassContent
                     }
                 }
-                .padding(12)
+                .padding(10)
             }
+            .scrollIndicators(.hidden)
             actionsSection
-                .padding(12)
+                .padding(10)
         }
         .frame(width: 300, height: 580)
-        .background(Color(nsColor: .windowBackgroundColor))
+        .background(Color.hudBackground)
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .overlay(
+            RoundedRectangle(cornerRadius: 12)
+                .strokeBorder(Color.hudBorder, lineWidth: 0.5)
+        )
     }
 
     private var header: some View {
-        HStack {
+        HStack(spacing: 8) {
             Image(systemName: "slider.horizontal.3")
-                .font(.system(size: 14, weight: .semibold))
-                .foregroundColor(.orange)
+                .font(AppTypography.labelMedium)
+                .foregroundColor(.hudAccent)
 
             Text("Visual Tuning")
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundColor(.white)
+                .font(AppTypography.cardTitle)
+                .foregroundColor(.white.opacity(0.9))
 
             Spacer()
+
+            Text("DEBUG")
+                .font(AppTypography.badge)
+                .foregroundColor(.hudAccent)
+                .padding(.horizontal, 6)
+                .padding(.vertical, 2)
+                .background(Color.hudAccent.opacity(0.15))
+                .clipShape(Capsule())
         }
-        .padding(.horizontal, 16)
+        .padding(.horizontal, 14)
         .padding(.vertical, 10)
-        .background(Color.white.opacity(0.05))
+        .background(Color.hudCard.opacity(0.6))
     }
 
     private var tabBar: some View {
-        HStack(spacing: 0) {
+        HStack(spacing: 4) {
             TuningTab(title: "Glass", icon: "square.on.square", isSelected: selectedTab == 0) {
                 selectedTab = 0
             }
@@ -509,9 +752,9 @@ struct GlassTuningPanel: View {
                 selectedTab = 3
             }
         }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 6)
-        .background(Color.black.opacity(0.2))
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .background(Color.black.opacity(0.25))
     }
 
     private var glassContent: some View {
@@ -543,10 +786,10 @@ struct GlassTuningPanel: View {
                     }
                 }
                 .pickerStyle(.menu)
-                .font(.system(size: 11))
+                .font(AppTypography.label)
 
                 Text("isEmphasized only affects .selection material (for sidebars)")
-                    .font(.system(size: 9))
+                    .font(AppTypography.captionSmall)
                     .foregroundColor(.white.opacity(0.4))
                     .italic()
             }
@@ -601,6 +844,19 @@ struct GlassTuningPanel: View {
 
     private var effectsContent: some View {
         VStack(spacing: 12) {
+            TuningSection(title: "Compacting Text") {
+                TuningSlider(label: "Cycle Length", value: $config.compactingCycleLength, range: 0.5...4)
+                TuningSlider(label: "Min Tracking", value: $config.compactingMinTracking, range: -6...3)
+                TuningSlider(label: "Max Tracking", value: $config.compactingMaxTracking, range: -3...6)
+                TuningSlider(label: "Compress Time", value: $config.compactingCompressDuration, range: 0.1...1)
+                TuningSlider(label: "Compress Damping", value: $config.compactingCompressDamping, range: 0.3...2)
+                TuningSlider(label: "Compress Omega", value: $config.compactingCompressOmega, range: 2...20)
+                TuningSlider(label: "Hold Time", value: $config.compactingHoldDuration, range: 0...1)
+                TuningSlider(label: "Expand Time", value: $config.compactingExpandDuration, range: 0.1...2)
+                TuningSlider(label: "Expand Damping", value: $config.compactingExpandDamping, range: 0.3...2)
+                TuningSlider(label: "Expand Omega", value: $config.compactingExpandOmega, range: 2...20)
+            }
+
             Picker("Layout", selection: $effectsLayoutMode) {
                 Text("Vertical").tag(LayoutMode.vertical)
                 Text("Dock").tag(LayoutMode.dock)
@@ -633,6 +889,33 @@ struct GlassTuningPanel: View {
                     TuningSlider(label: "Pulse Intensity", value: $config.borderGlowPulseIntensity, range: 0...1)
                     TuningSlider(label: "Rotation Speed", value: $config.borderGlowRotationMultiplier, range: 0...2)
                 }
+
+                TuningSection(title: "Waiting Pulse", isExpanded: false) {
+                    TuningSlider(label: "Cycle Length", value: $config.waitingCycleLength, range: 1...5)
+                    TuningSlider(label: "1st Pulse Duration", value: $config.waitingFirstPulseDuration, range: 0.05...0.5)
+                    TuningSlider(label: "1st Pulse Fade", value: $config.waitingFirstPulseFadeOut, range: 0.1...0.6)
+                    TuningSlider(label: "2nd Pulse Delay", value: $config.waitingSecondPulseDelay, range: 0...0.5)
+                    TuningSlider(label: "2nd Pulse Duration", value: $config.waitingSecondPulseDuration, range: 0.05...0.5)
+                    TuningSlider(label: "2nd Pulse Fade", value: $config.waitingSecondPulseFadeOut, range: 0.1...0.6)
+                    TuningSlider(label: "1st Pulse Intensity", value: $config.waitingFirstPulseIntensity, range: 0...1)
+                    TuningSlider(label: "2nd Pulse Intensity", value: $config.waitingSecondPulseIntensity, range: 0...1)
+                    TuningSlider(label: "Max Opacity", value: $config.waitingMaxOpacity, range: 0...1)
+                    TuningSlider(label: "Blur Amount", value: $config.waitingBlurAmount, range: 0...60)
+                    TuningSlider(label: "Pulse Scale", value: $config.waitingPulseScale, range: 1...3)
+                    TuningSlider(label: "Scale Amount", value: $config.waitingScaleAmount, range: 0...1)
+                    TuningSlider(label: "Spring Damping", value: $config.waitingSpringDamping, range: 0.5...2)
+                    TuningSlider(label: "Spring Omega", value: $config.waitingSpringOmega, range: 2...20)
+                    TuningSlider(label: "Origin X", value: $config.waitingOriginX, range: 0...1)
+                    TuningSlider(label: "Origin Y", value: $config.waitingOriginY, range: 0...1)
+                }
+
+                TuningSection(title: "Waiting Border", isExpanded: false) {
+                    TuningSlider(label: "Base Opacity", value: $config.waitingBorderBaseOpacity, range: 0...0.5)
+                    TuningSlider(label: "Pulse Opacity", value: $config.waitingBorderPulseOpacity, range: 0...1)
+                    TuningSlider(label: "Inner Width", value: $config.waitingBorderInnerWidth, range: 0.5...4)
+                    TuningSlider(label: "Outer Width", value: $config.waitingBorderOuterWidth, range: 1...8)
+                    TuningSlider(label: "Outer Blur", value: $config.waitingBorderOuterBlur, range: 0...12)
+                }
             } else {
                 TuningSection(title: "Dock Ripple") {
                     TuningSlider(label: "Speed (seconds)", value: $config.dockRippleSpeed, range: 1...10)
@@ -658,29 +941,33 @@ struct GlassTuningPanel: View {
                     TuningSlider(label: "Pulse Intensity", value: $config.dockBorderGlowPulseIntensity, range: 0...1)
                     TuningSlider(label: "Rotation Speed", value: $config.dockBorderGlowRotationMultiplier, range: 0...2)
                 }
-            }
 
-            TuningSection(title: "Status Text") {
-                TuningSlider(label: "Font Size", value: $config.statusTextSize, range: 8...16)
-
-                HStack {
-                    Text("Weight")
-                        .font(.system(size: 10))
-                        .foregroundColor(.white.opacity(0.6))
-                    Spacer()
-                    Picker("", selection: $config.statusTextWeight) {
-                        Text("Light").tag(3)
-                        Text("Regular").tag(4)
-                        Text("Medium").tag(5)
-                        Text("Semibold").tag(6)
-                        Text("Bold").tag(7)
-                    }
-                    .pickerStyle(.menu)
-                    .frame(width: 100)
+                TuningSection(title: "Dock Waiting Pulse", isExpanded: false) {
+                    TuningSlider(label: "Cycle Length", value: $config.dockWaitingCycleLength, range: 1...5)
+                    TuningSlider(label: "1st Pulse Duration", value: $config.dockWaitingFirstPulseDuration, range: 0.05...0.5)
+                    TuningSlider(label: "1st Pulse Fade", value: $config.dockWaitingFirstPulseFadeOut, range: 0.1...0.6)
+                    TuningSlider(label: "2nd Pulse Delay", value: $config.dockWaitingSecondPulseDelay, range: 0...0.5)
+                    TuningSlider(label: "2nd Pulse Duration", value: $config.dockWaitingSecondPulseDuration, range: 0.05...0.5)
+                    TuningSlider(label: "2nd Pulse Fade", value: $config.dockWaitingSecondPulseFadeOut, range: 0.1...0.6)
+                    TuningSlider(label: "1st Pulse Intensity", value: $config.dockWaitingFirstPulseIntensity, range: 0...1)
+                    TuningSlider(label: "2nd Pulse Intensity", value: $config.dockWaitingSecondPulseIntensity, range: 0...1)
+                    TuningSlider(label: "Max Opacity", value: $config.dockWaitingMaxOpacity, range: 0...1)
+                    TuningSlider(label: "Blur Amount", value: $config.dockWaitingBlurAmount, range: 0...60)
+                    TuningSlider(label: "Pulse Scale", value: $config.dockWaitingPulseScale, range: 1...3)
+                    TuningSlider(label: "Scale Amount", value: $config.dockWaitingScaleAmount, range: 0...1)
+                    TuningSlider(label: "Spring Damping", value: $config.dockWaitingSpringDamping, range: 0.5...2)
+                    TuningSlider(label: "Spring Omega", value: $config.dockWaitingSpringOmega, range: 2...20)
+                    TuningSlider(label: "Origin X", value: $config.dockWaitingOriginX, range: 0...1)
+                    TuningSlider(label: "Origin Y", value: $config.dockWaitingOriginY, range: 0...1)
                 }
 
-                TuningSlider(label: "Dot Spacing", value: $config.statusTextSpacing, range: 2...12)
-                TuningSlider(label: "Idle Opacity", value: $config.statusIdleTextOpacity, range: 0.2...1)
+                TuningSection(title: "Dock Waiting Border", isExpanded: false) {
+                    TuningSlider(label: "Base Opacity", value: $config.dockWaitingBorderBaseOpacity, range: 0...0.5)
+                    TuningSlider(label: "Pulse Opacity", value: $config.dockWaitingBorderPulseOpacity, range: 0...1)
+                    TuningSlider(label: "Inner Width", value: $config.dockWaitingBorderInnerWidth, range: 0.5...4)
+                    TuningSlider(label: "Outer Width", value: $config.dockWaitingBorderOuterWidth, range: 1...8)
+                    TuningSlider(label: "Outer Blur", value: $config.dockWaitingBorderOuterBlur, range: 0...12)
+                }
             }
         }
     }
@@ -689,7 +976,7 @@ struct GlassTuningPanel: View {
         VStack(spacing: 16) {
             TuningSection(title: "Trigger State Preview") {
                 Text("Click a state to preview it on all project cards")
-                    .font(.system(size: 10))
+                    .font(AppTypography.captionSmall)
                     .foregroundColor(.white.opacity(0.5))
                     .padding(.bottom, 4)
 
@@ -715,7 +1002,7 @@ struct GlassTuningPanel: View {
                                 .frame(width: 10, height: 10)
                                 .shadow(color: config.colorForState(state).opacity(0.6), radius: 4)
                             Text(state.rawValue)
-                                .font(.system(size: 11, weight: .medium))
+                                .font(AppTypography.labelMedium)
                                 .foregroundColor(.white.opacity(0.8))
                             Spacer()
                         }
@@ -731,15 +1018,19 @@ struct GlassTuningPanel: View {
             Button(action: { config.reset() }) {
                 HStack(spacing: 4) {
                     Image(systemName: "arrow.counterclockwise")
-                        .font(.system(size: 10, weight: .semibold))
+                        .font(AppTypography.label.weight(.semibold))
                     Text("Reset")
-                        .font(.system(size: 11, weight: .medium))
+                        .font(AppTypography.labelMedium)
                 }
-                .foregroundColor(.white.opacity(0.8))
-                .padding(.horizontal, 10)
-                .padding(.vertical, 6)
-                .background(Color.white.opacity(0.1))
-                .clipShape(RoundedRectangle(cornerRadius: 6))
+                .foregroundColor(.white.opacity(0.7))
+                .padding(.horizontal, 12)
+                .padding(.vertical, 7)
+                .background(Color.hudCard)
+                .clipShape(RoundedRectangle(cornerRadius: 8))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8)
+                        .strokeBorder(Color.white.opacity(0.1), lineWidth: 0.5)
+                )
             }
             .buttonStyle(.plain)
 
@@ -748,15 +1039,21 @@ struct GlassTuningPanel: View {
             Button(action: copyToClipboard) {
                 HStack(spacing: 4) {
                     Image(systemName: copiedToClipboard ? "checkmark" : "doc.on.doc")
-                        .font(.system(size: 10, weight: .semibold))
+                        .font(AppTypography.label.weight(.semibold))
                     Text(copiedToClipboard ? "Copied!" : "Export")
-                        .font(.system(size: 11, weight: .medium))
+                        .font(AppTypography.labelMedium)
                 }
                 .foregroundColor(.white)
-                .padding(.horizontal, 10)
-                .padding(.vertical, 6)
-                .background(Color.orange.opacity(0.8))
-                .clipShape(RoundedRectangle(cornerRadius: 6))
+                .padding(.horizontal, 12)
+                .padding(.vertical, 7)
+                .background(
+                    LinearGradient(
+                        colors: [Color.hudAccent, Color.hudAccentDark],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                )
+                .clipShape(RoundedRectangle(cornerRadius: 8))
             }
             .buttonStyle(.plain)
         }
@@ -787,19 +1084,20 @@ struct TuningTab: View {
 
     var body: some View {
         Button(action: action) {
-            VStack(spacing: 2) {
+            VStack(spacing: 3) {
                 Image(systemName: icon)
-                    .font(.system(size: 12))
+                    .font(AppTypography.caption)
                 Text(title)
-                    .font(.system(size: 9, weight: .medium))
+                    .font(AppTypography.captionSmall.weight(.medium))
             }
-            .foregroundColor(isSelected ? .orange : .white.opacity(0.5))
+            .foregroundColor(isSelected ? .hudAccent : .white.opacity(0.45))
             .frame(maxWidth: .infinity)
-            .padding(.vertical, 6)
-            .background(isSelected ? Color.orange.opacity(0.15) : Color.clear)
+            .padding(.vertical, 7)
+            .background(isSelected ? Color.hudAccent.opacity(0.12) : Color.clear)
             .clipShape(RoundedRectangle(cornerRadius: 6))
         }
         .buttonStyle(.plain)
+        .animation(.easeOut(duration: 0.15), value: isSelected)
     }
 }
 
@@ -815,8 +1113,11 @@ struct StatusColorSection: View {
             HStack {
                 Circle()
                     .fill(color)
-                    .frame(width: 16, height: 16)
-                    .shadow(color: color.opacity(0.6), radius: 4)
+                    .frame(width: 14, height: 14)
+                    .shadow(color: color.opacity(0.5), radius: 4)
+                Text(title)
+                    .font(AppTypography.captionSmall)
+                    .foregroundColor(.white.opacity(0.5))
                 Spacer()
             }
             TuningSlider(label: "Hue", value: $hue, range: 0...1)
@@ -834,29 +1135,34 @@ struct StatePreviewButton: View {
 
     var body: some View {
         Button(action: action) {
-            HStack {
+            HStack(spacing: 8) {
                 if state != .none {
                     Circle()
                         .fill(color)
                         .frame(width: 10, height: 10)
-                        .shadow(color: color.opacity(0.5), radius: 3)
+                        .shadow(color: color.opacity(0.4), radius: 3)
                 }
                 Text(state.rawValue)
-                    .font(.system(size: 11, weight: isSelected ? .semibold : .medium))
+                    .font(isSelected ? AppTypography.labelMedium : AppTypography.label)
                 Spacer()
                 if isSelected {
                     Image(systemName: "checkmark")
-                        .font(.system(size: 10, weight: .bold))
-                        .foregroundColor(.orange)
+                        .font(AppTypography.captionSmall.weight(.bold))
+                        .foregroundColor(.hudAccent)
                 }
             }
-            .foregroundColor(isSelected ? .white : .white.opacity(0.7))
+            .foregroundColor(isSelected ? .white : .white.opacity(0.6))
             .padding(.horizontal, 10)
             .padding(.vertical, 8)
-            .background(isSelected ? Color.orange.opacity(0.2) : Color.white.opacity(0.05))
+            .background(isSelected ? Color.hudAccent.opacity(0.15) : Color.hudCard.opacity(0.3))
             .clipShape(RoundedRectangle(cornerRadius: 6))
+            .overlay(
+                RoundedRectangle(cornerRadius: 6)
+                    .strokeBorder(isSelected ? Color.hudAccent.opacity(0.3) : Color.clear, lineWidth: 0.5)
+            )
         }
         .buttonStyle(.plain)
+        .animation(.easeOut(duration: 0.15), value: isSelected)
     }
 }
 
@@ -876,31 +1182,35 @@ struct TuningSection<Content: View>: View {
             Button(action: { withAnimation(.spring(response: 0.25)) { isExpanded.toggle() } }) {
                 HStack {
                     Text(title.uppercased())
-                        .font(.system(size: 10, weight: .bold))
-                        .tracking(1)
-                        .foregroundColor(.white.opacity(0.5))
+                        .font(AppTypography.captionSmall.weight(.bold))
+                        .tracking(0.8)
+                        .foregroundColor(.white.opacity(0.4))
 
                     Spacer()
 
                     Image(systemName: "chevron.right")
-                        .font(.system(size: 9, weight: .semibold))
-                        .foregroundColor(.white.opacity(0.3))
+                        .font(AppTypography.captionSmall.weight(.semibold))
+                        .foregroundColor(.white.opacity(0.25))
                         .rotationEffect(.degrees(isExpanded ? 90 : 0))
                 }
             }
             .buttonStyle(.plain)
 
             if isExpanded {
-                VStack(spacing: 10) {
+                VStack(spacing: 8) {
                     content()
                 }
-                .padding(.leading, 4)
+                .padding(.top, 2)
                 .transition(.opacity.combined(with: .move(edge: .top)))
             }
         }
         .padding(10)
-        .background(Color.white.opacity(0.03))
+        .background(Color.hudCard.opacity(0.5))
         .clipShape(RoundedRectangle(cornerRadius: 8))
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .strokeBorder(Color.white.opacity(0.04), lineWidth: 0.5)
+        )
     }
 }
 
@@ -923,19 +1233,19 @@ struct TuningSlider: View {
         VStack(alignment: .leading, spacing: 3) {
             HStack {
                 Text(label)
-                    .font(.system(size: 10))
-                    .foregroundColor(.white.opacity(0.6))
+                    .font(AppTypography.captionSmall)
+                    .foregroundColor(.white.opacity(0.55))
 
                 Spacer()
 
                 Text(displayValue)
-                    .font(.system(size: 9, weight: .medium, design: .monospaced))
-                    .foregroundColor(.orange)
+                    .font(AppTypography.monoSmall.weight(.medium))
+                    .foregroundColor(.hudAccent)
             }
 
             Slider(value: $value, in: range)
                 .controlSize(.mini)
-                .tint(.orange)
+                .tint(.hudAccent)
         }
     }
 }
