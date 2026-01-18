@@ -15,6 +15,7 @@ struct DockProjectCard: View {
     var onCaptureIdea: (() -> Void)?
     let onRemove: () -> Void
     var onDragStarted: (() -> NSItemProvider)?
+    var isDragging: Bool = false
 
     // Ideas support (shared with ProjectCardView)
     var ideas: [Idea] = []
@@ -32,6 +33,7 @@ struct DockProjectCard: View {
     #endif
 
     @State private var isHovered = false
+    @State private var isPressed = false
     @State private var flashOpacity: Double = 0
     @State private var previousState: SessionState?
     @State private var lastChimeTime: Date?
@@ -69,6 +71,30 @@ struct DockProjectCard: View {
     private var glassConfigForHandlers: GlassConfig? {
         glassConfig
     }
+
+    private var cardScale: CGFloat {
+        guard !reduceMotion else { return 1.0 }
+        if isPressed || isDragging {
+            return glassConfig.cardPressedScale(for: .dock)
+        } else if isHovered {
+            return glassConfig.cardHoverScale(for: .dock)
+        }
+        return glassConfig.cardIdleScale(for: .dock)
+    }
+
+    private var cardAnimation: Animation {
+        guard !reduceMotion else { return AppMotion.reducedMotionFallback }
+        if isPressed {
+            return .spring(
+                response: glassConfig.cardPressedSpringResponse(for: .dock),
+                dampingFraction: glassConfig.cardPressedSpringDamping(for: .dock)
+            )
+        }
+        return .spring(
+            response: glassConfig.cardHoverSpringResponse(for: .dock),
+            dampingFraction: glassConfig.cardHoverSpringDamping(for: .dock)
+        )
+    }
     #else
     private var glassConfigForHandlers: Any? {
         nil
@@ -90,10 +116,19 @@ struct DockProjectCard: View {
                 solidCardBackground: solidCardBackground,
                 animationSeed: project.path,
                 cornerRadius: cornerRadius,
-                layoutMode: .dock
+                layoutMode: .dock,
+                isPressed: isPressed
             )
+            #if DEBUG
+            .scaleEffect(cardScale)
+            .animation(cardAnimation, value: cardScale)
+            .onLongPressGesture(minimumDuration: .infinity, pressing: { pressing in
+                isPressed = pressing
+            }, perform: {})
+            #else
             .scaleEffect(isHovered && !reduceMotion ? 1.02 : 1.0)
             .animation(reduceMotion ? AppMotion.reducedMotionFallback : .spring(response: 0.3, dampingFraction: 0.7), value: isHovered)
+            #endif
             .contentShape(Rectangle())
             .onHover { hovering in
                 isHovered = hovering
@@ -149,11 +184,14 @@ struct DockProjectCard: View {
     private var cardContent: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 6) {
-                Text(project.name)
-                    .font(AppTypography.sectionTitle.monospaced())
-                    .tracking(-0.5)
-                    .foregroundColor(.white.opacity(0.9))
-                    .lineLimit(1)
+                ClickableProjectTitle(
+                    name: project.name,
+                    nameColor: .white.opacity(0.9),
+                    isMissing: project.isMissing,
+                    action: onInfoTap,
+                    font: AppTypography.sectionTitle.monospaced()
+                )
+                .lineLimit(1)
 
                 if totalIdeasCount > 0 {
                     IdeasBadge(

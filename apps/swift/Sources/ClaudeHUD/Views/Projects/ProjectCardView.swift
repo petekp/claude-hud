@@ -17,6 +17,7 @@ struct ProjectCardView: View {
     var onCaptureIdea: (() -> Void)?
     let onRemove: () -> Void
     var onDragStarted: (() -> NSItemProvider)?
+    var isDragging: Bool = false
 
     // Ideas support
     var ideas: [Idea] = []
@@ -27,13 +28,14 @@ struct ProjectCardView: View {
     var onDismissIdea: ((Idea) -> Void)?
 
     @Environment(\.floatingMode) private var floatingMode
+    @Environment(\.prefersReducedMotion) private var reduceMotion
     #if DEBUG
     @ObservedObject private var glassConfig = GlassConfig.shared
     #endif
 
     @State private var isHovered = false
+    @State private var isPressed = false
     @State private var flashOpacity: Double = 0
-    @State private var isInfoHovered = false
     @State private var isBrowserHovered = false
     @State private var previousState: SessionState?
     @State private var lastChimeTime: Date?
@@ -83,6 +85,30 @@ struct ProjectCardView: View {
     private var glassConfigForHandlers: GlassConfig? {
         glassConfig
     }
+
+    private var cardScale: CGFloat {
+        guard !reduceMotion else { return 1.0 }
+        if isPressed || isDragging {
+            return glassConfig.cardPressedScale(for: .vertical)
+        } else if isHovered {
+            return glassConfig.cardHoverScale(for: .vertical)
+        }
+        return glassConfig.cardIdleScale(for: .vertical)
+    }
+
+    private var cardAnimation: Animation {
+        guard !reduceMotion else { return AppMotion.reducedMotionFallback }
+        if isPressed {
+            return .spring(
+                response: glassConfig.cardPressedSpringResponse(for: .vertical),
+                dampingFraction: glassConfig.cardPressedSpringDamping(for: .vertical)
+            )
+        }
+        return .spring(
+            response: glassConfig.cardHoverSpringResponse(for: .vertical),
+            dampingFraction: glassConfig.cardHoverSpringDamping(for: .vertical)
+        )
+    }
     #else
     private var glassConfigForHandlers: Any? {
         nil
@@ -114,8 +140,16 @@ struct ProjectCardView: View {
                 floatingMode: floatingMode,
                 floatingCardBackground: floatingCardBackground,
                 solidCardBackground: solidCardBackground,
-                animationSeed: project.path
+                animationSeed: project.path,
+                isPressed: isPressed
             )
+            #if DEBUG
+            .scaleEffect(cardScale)
+            .animation(cardAnimation, value: cardScale)
+            .onLongPressGesture(minimumDuration: .infinity, pressing: { pressing in
+                isPressed = pressing
+            }, perform: {})
+            #endif
             .cardInteractions(
                 isHovered: $isHovered,
                 onTap: onTap,
@@ -157,7 +191,6 @@ struct ProjectCardView: View {
                 currentState: currentState,
                 nameColor: nameColor,
                 isHovered: isHovered,
-                isInfoHovered: $isInfoHovered,
                 isBrowserHovered: $isBrowserHovered,
                 showIdeasPopover: $showIdeasPopover,
                 onInfoTap: onInfoTap,
@@ -272,7 +305,6 @@ private struct ProjectCardHeader: View {
     let currentState: SessionState?
     let nameColor: Color
     let isHovered: Bool
-    @Binding var isInfoHovered: Bool
     @Binding var isBrowserHovered: Bool
     @Binding var showIdeasPopover: Bool
     let onInfoTap: () -> Void
@@ -299,10 +331,12 @@ private struct ProjectCardHeader: View {
                     .foregroundColor(.orange)
             }
 
-            Text(project.name)
-                .font(AppTypography.cardTitle.monospaced())
-                .foregroundColor(nameColor)
-                .strikethrough(project.isMissing, color: .white.opacity(0.3))
+            ClickableProjectTitle(
+                name: project.name,
+                nameColor: nameColor,
+                isMissing: project.isMissing,
+                action: onInfoTap
+            )
 
             if isStale {
                 StaleBadge()
@@ -326,12 +360,6 @@ private struct ProjectCardHeader: View {
                     )
                 }
             }
-
-            InfoButton(
-                isHovered: isHovered,
-                isInfoHovered: $isInfoHovered,
-                action: onInfoTap
-            )
 
             Spacer()
 
@@ -439,30 +467,6 @@ private struct ShimmerEffect: View {
 }
 
 // MARK: - Reusable Button Components
-
-private struct InfoButton: View {
-    let isHovered: Bool
-    @Binding var isInfoHovered: Bool
-    let action: () -> Void
-    @Environment(\.prefersReducedMotion) private var reduceMotion
-
-    var body: some View {
-        Button(action: action) {
-            Image(systemName: "info.circle")
-                .font(AppTypography.body)
-                .foregroundColor(.white.opacity(isInfoHovered ? 0.7 : (isHovered ? 0.35 : 0.2)))
-        }
-        .buttonStyle(.plain)
-        .onHover { hovering in
-            withAnimation(reduceMotion ? AppMotion.reducedMotionFallback : .easeOut(duration: 0.15)) {
-                isInfoHovered = hovering
-            }
-        }
-        .help("View details")
-        .accessibilityLabel("View project details")
-        .accessibilityHint("Shows description, ideas, and other project information")
-    }
-}
 
 private struct DevServerButton: View {
     let port: UInt16

@@ -333,6 +333,47 @@ struct ProjectCardBackground: View {
     }
 }
 
+// MARK: - Clickable Project Title
+
+struct ClickableProjectTitle: View {
+    let name: String
+    let nameColor: Color
+    var isMissing: Bool = false
+    let action: () -> Void
+
+    var font: Font = AppTypography.cardTitle.monospaced()
+
+    @State private var isHovered = false
+    @Environment(\.prefersReducedMotion) private var reduceMotion
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 4) {
+                Text(name)
+                    .font(font)
+                    .foregroundColor(isHovered ? nameColor.opacity(1.0) : nameColor)
+                    .strikethrough(isMissing, color: .white.opacity(0.3))
+
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundColor(.white.opacity(isHovered ? 0.6 : 0.35))
+                    .opacity(isHovered ? 1 : 0)
+                    .offset(x: isHovered ? 0 : -4)
+            }
+            .contentShape(.rect)
+        }
+        .buttonStyle(.plain)
+        .onHover { hovering in
+            withAnimation(reduceMotion ? AppMotion.reducedMotionFallback : .spring(response: 0.25, dampingFraction: 0.8)) {
+                isHovered = hovering
+            }
+        }
+        .help("View project details")
+        .accessibilityLabel("View \(name) details")
+        .accessibilityHint("Shows description, ideas, and other project information")
+    }
+}
+
 // MARK: - Shared Badges
 
 /// Stale session badge
