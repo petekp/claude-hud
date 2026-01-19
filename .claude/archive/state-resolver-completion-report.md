@@ -2,11 +2,13 @@
 
 **Date:** 2026-01-13
 **Work Duration:** 8 iterations (multiple rounds of ChatGPT review)
-**Status:** ✅ Complete
+**Status:** ✅ Complete (Historical Document)
+
+> **Note:** This document captures the state at completion (2026-01-13). The test suite has since grown to 198+ tests as additional features were added. The architecture and design decisions remain accurate.
 
 ## Overview
 
-Comprehensively fixed session state detection logic through iterative external AI review. Started with 4 identified issues, expanded to 6 issues through rigorous analysis, resulting in battle-tested resolver logic with 94 passing tests.
+Comprehensively fixed session state detection logic through iterative external AI review. Started with 4 identified issues, expanded to 6 issues through rigorous analysis, resulting in battle-tested resolver logic.
 
 ## What Was Fixed
 
@@ -73,15 +75,15 @@ if lock_path_normalized == "/" {
 
 ```rust
 // Collect all matching locks (exact + children)
-// Select newest by started timestamp
-if info.started > current.started {
+// Select newest by created timestamp
+if info.created > current.created {
     best_match = Some(info);
 }
 ```
 
 ## Test Coverage
 
-**Total:** 94 tests passing
+**At completion:** 94 tests (now 198+ tests)
 
 **Key Tests:**
 - `test_root_cd_to_nested_path()` - Root to arbitrary depth

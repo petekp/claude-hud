@@ -62,7 +62,7 @@ Hooks track local Claude Code sessions → state file → HUD reads.
 
 - **State file:** `~/.claude/hud-session-states-v2.json`
 - **Hook script:** `~/.claude/scripts/hud-state-tracker.sh`
-- **State machine spec:** `.claude/docs/hook-state-machine.md`
+- **Hook reference:** `.claude/docs/hook-operations.md`
 
 ## Documentation Index
 
@@ -71,8 +71,10 @@ Hooks track local Claude Code sessions → state file → HUD reads.
 | Development workflows | `.claude/docs/development-workflows.md` |
 | Detailed architecture | `.claude/docs/architecture-overview.md` |
 | Debugging procedures | `.claude/docs/debugging-guide.md` |
-| Hook state machine | `.claude/docs/hook-state-machine.md` |
-| Hook troubleshooting | `.claude/docs/hook-prevention-checklist.md` |
+| Hook operations | `.claude/docs/hook-operations.md` |
+| Status sync architecture | `.claude/docs/status-sync-architecture.md` |
+| Adding CLI agents | `.claude/docs/adding-new-cli-agent-guide.md` |
+| Idea capture specs | `.claude/docs/idea-capture-specs.md` |
 | Claude Code CLI reference | `docs/claude-code/` |
 | Agent SDK reference | `docs/agent-sdk/` |
 | Architecture decisions | `docs/architecture-decisions/` |
