@@ -13,8 +13,10 @@ struct IdeaQueueView: View {
 
     // Drag state
     @State private var draggingId: String?
-    @State private var dragTranslation: CGFloat = 0
-    @State private var isDragging = false
+    @State private var dragPosition: CGPoint = .zero
+    @State private var dragStartPosition: CGPoint = .zero
+    @State private var containerFrame: CGRect = .zero
+    @State private var isAnimatingRelease = false
 
     @Environment(\.prefersReducedMotion) private var reduceMotion
 
@@ -25,12 +27,17 @@ struct IdeaQueueView: View {
         localIdeas.filter { $0.status != "done" }
     }
 
+    private var draggingIdea: Idea? {
+        guard let draggingId else { return nil }
+        return queuedIdeas.first { $0.id == draggingId }
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             if queuedIdeas.isEmpty {
                 emptyState
             } else {
-                queueList
+                queueListWithOverlay
             }
         }
         .onAppear {
@@ -39,6 +46,51 @@ struct IdeaQueueView: View {
         .onChange(of: ideas) { _, newValue in
             localIdeas = newValue
         }
+    }
+
+    private var queueListWithOverlay: some View {
+        ZStack(alignment: .topLeading) {
+            // Layer 1: The list (items animate freely here)
+            queueList
+                .background(
+                    GeometryReader { geo in
+                        Color.clear
+                            .onAppear {
+                                containerFrame = geo.frame(in: .global)
+                            }
+                            .onChange(of: geo.frame(in: .global)) { _, newFrame in
+                                containerFrame = newFrame
+                            }
+                    }
+                )
+
+            // Layer 2: The dragged item overlay
+            if let idea = draggingIdea {
+                IdeaQueueRow(
+                    idea: idea,
+                    isFirst: false,
+                    isGeneratingTitle: isGeneratingTitle(idea.id),
+                    onTap: nil,
+                    onRemove: nil
+                )
+                .frame(height: rowHeight)
+                .scaleEffect(isAnimatingRelease ? 1.0 : 1.03)
+                .shadow(
+                    color: .black.opacity(isAnimatingRelease ? 0 : 0.3),
+                    radius: isAnimatingRelease ? 0 : 12,
+                    y: isAnimatingRelease ? 0 : 4
+                )
+                .position(
+                    x: containerFrame.width / 2,
+                    y: dragPosition.y - containerFrame.minY
+                )
+                .animation(.spring(response: 0.3, dampingFraction: 1.0), value: dragPosition)
+                .animation(.spring(response: 0.3, dampingFraction: 1.0), value: isAnimatingRelease)
+                .zIndex(1000)
+                .allowsHitTesting(false)
+            }
+        }
+        .coordinateSpace(name: "queueContainer")
     }
 
     private var queueList: some View {
@@ -69,20 +121,12 @@ struct IdeaQueueView: View {
                             }
                     }
                 )
-                // Only the dragged item gets offset
-                .offset(y: isBeingDragged ? dragTranslation : 0)
-                .zIndex(isBeingDragged ? 100 : 0)
-                .scaleEffect(isBeingDragged ? 1.02 : 1.0)
-                .opacity(isBeingDragged ? 0.9 : 1.0)
-                .shadow(
-                    color: .black.opacity(isBeingDragged ? 0.25 : 0),
-                    radius: isBeingDragged ? 8 : 0,
-                    y: isBeingDragged ? 2 : 0
-                )
+                // Hide the original when dragging (the overlay shows the dragged copy)
+                .opacity(isBeingDragged ? 0 : 1)
                 .gesture(
-                    DragGesture()
+                    DragGesture(coordinateSpace: .global)
                         .onChanged { value in
-                            handleDragChanged(idea: idea, currentIndex: index, translation: value.translation.height)
+                            handleDragChanged(idea: idea, globalPosition: value.location)
                         }
                         .onEnded { _ in
                             handleDragEnded()
@@ -90,41 +134,51 @@ struct IdeaQueueView: View {
                 )
             }
         }
+        // Now safe to animate - dragged item is in overlay, not here
+        .animation(reduceMotion ? .none : .spring(response: 0.3, dampingFraction: 0.9), value: queuedIdeas.map(\.id))
     }
 
-    private func handleDragChanged(idea: Idea, currentIndex: Int, translation: CGFloat) {
+    private func handleDragChanged(idea: Idea, globalPosition: CGPoint) {
         // Start dragging if not already
         if draggingId == nil {
             draggingId = idea.id
-            isDragging = true
+            // Record where the drag started (center of the row)
+            if let frame = rowFrames[idea.id] {
+                dragStartPosition = CGPoint(x: frame.midX, y: frame.midY)
+            }
         }
 
-        dragTranslation = translation
+        // Update drag position to follow cursor
+        dragPosition = globalPosition
 
-        // Calculate if we should swap with another item
-        let threshold = rowHeight / 2
-        let rowPlusSpacing = rowHeight + rowSpacing
+        // Calculate which slot the dragged item should move to
+        let currentIndex = queuedIdeas.firstIndex { $0.id == idea.id } ?? 0
+        let targetIndex = calculateTargetIndex(for: globalPosition)
 
-        // Find where in the list the dragged item currently appears
-        guard let currentArrayIndex = queuedIdeas.firstIndex(where: { $0.id == idea.id }) else { return }
-
-        // Check if we should move up
-        if translation < -threshold && currentArrayIndex > 0 {
-            let targetIndex = currentArrayIndex - 1
-            swapItems(from: currentArrayIndex, to: targetIndex)
-            // Adjust translation so item stays under cursor
-            dragTranslation += rowPlusSpacing
-        }
-        // Check if we should move down
-        else if translation > threshold && currentArrayIndex < queuedIdeas.count - 1 {
-            let targetIndex = currentArrayIndex + 1
-            swapItems(from: currentArrayIndex, to: targetIndex)
-            // Adjust translation so item stays under cursor
-            dragTranslation -= rowPlusSpacing
+        if targetIndex != currentIndex {
+            moveItem(from: currentIndex, to: targetIndex)
         }
     }
 
-    private func swapItems(from sourceIndex: Int, to targetIndex: Int) {
+    private func calculateTargetIndex(for position: CGPoint) -> Int {
+        let rowPlusSpacing = rowHeight + rowSpacing
+
+        // Calculate relative Y within the container
+        let relativeY = position.y - containerFrame.minY
+
+        // Which row slot does this Y position correspond to?
+        let slotIndex = Int(relativeY / rowPlusSpacing)
+
+        return max(0, min(queuedIdeas.count - 1, slotIndex))
+    }
+
+    private func moveItem(from sourceIndex: Int, to targetIndex: Int) {
+        guard sourceIndex != targetIndex,
+              sourceIndex >= 0, sourceIndex < queuedIdeas.count,
+              targetIndex >= 0, targetIndex < queuedIdeas.count else {
+            return
+        }
+
         // Map queue indices to localIdeas indices
         let sourceId = queuedIdeas[sourceIndex].id
         let targetId = queuedIdeas[targetIndex].id
@@ -134,21 +188,33 @@ struct IdeaQueueView: View {
             return
         }
 
-        // Swap in the local array (no animation during drag to prevent jitter)
-        localIdeas.swapAt(sourceLocalIndex, targetLocalIndex)
+        // Move in the local array
+        let destinationIndex = targetIndex > sourceIndex ? targetLocalIndex + 1 : targetLocalIndex
+        localIdeas.move(fromOffsets: IndexSet(integer: sourceLocalIndex), toOffset: destinationIndex)
     }
 
     private func handleDragEnded() {
-        // Animate the dragged item back to its layout position
-        withAnimation(.spring(response: 0.3, dampingFraction: 1.0)) {
-            dragTranslation = 0
-            draggingId = nil
-            isDragging = false
-        }
+        guard let draggingId = draggingId else { return }
 
-        // Notify parent of final order
-        let reorderedQueue = localIdeas.filter { $0.status != "done" }
-        onReorder?(reorderedQueue)
+        // Find where the item will end up
+        let targetIndex = queuedIdeas.firstIndex { $0.id == draggingId } ?? 0
+        let rowPlusSpacing = rowHeight + rowSpacing
+        let targetY = containerFrame.minY + (CGFloat(targetIndex) * rowPlusSpacing) + (rowHeight / 2)
+
+        // Start release animation
+        isAnimatingRelease = true
+        dragPosition = CGPoint(x: dragPosition.x, y: targetY)
+
+        // After animation completes, clean up
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+            self.draggingId = nil
+            self.dragPosition = .zero
+            self.isAnimatingRelease = false
+
+            // Notify parent of final order
+            let reorderedQueue = localIdeas.filter { $0.status != "done" }
+            onReorder?(reorderedQueue)
+        }
     }
 
     private var emptyState: some View {
