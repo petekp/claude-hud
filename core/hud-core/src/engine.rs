@@ -546,6 +546,40 @@ impl HudEngine {
             .map_err(HudFfiError::from)
     }
 
+    /// Updates the description of an idea.
+    ///
+    /// Used for sensemaking - the idea is initially saved with raw user input,
+    /// then this is called with an AI-generated expansion.
+    pub fn update_idea_description(
+        &self,
+        project_path: String,
+        idea_id: String,
+        new_description: String,
+    ) -> Result<(), HudFfiError> {
+        crate::ideas::update_idea_description(&project_path, &idea_id, &new_description)
+            .map_err(HudFfiError::from)
+    }
+
+    /// Saves the display order of ideas for a project.
+    ///
+    /// The order is stored separately from idea content in `.claude/ideas-order.json`.
+    /// This prevents churning the ideas markdown file on every drag-reorder.
+    pub fn save_ideas_order(
+        &self,
+        project_path: String,
+        idea_ids: Vec<String>,
+    ) -> Result<(), HudFfiError> {
+        crate::ideas::save_ideas_order(&project_path, idea_ids).map_err(HudFfiError::from)
+    }
+
+    /// Loads the display order of ideas for a project.
+    ///
+    /// Returns an empty vector if no order file exists (graceful degradation).
+    /// The caller should merge this with loaded ideas: ordered first, unordered appended.
+    pub fn load_ideas_order(&self, project_path: String) -> Result<Vec<String>, HudFfiError> {
+        crate::ideas::load_ideas_order(&project_path).map_err(HudFfiError::from)
+    }
+
     // ─────────────────────────────────────────────────────────────────────────────
     // Validation API
     // ─────────────────────────────────────────────────────────────────────────────

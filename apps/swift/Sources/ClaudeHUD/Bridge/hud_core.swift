@@ -546,6 +546,22 @@ public protocol HudEngineProtocol: AnyObject {
     func createProjectClaudeMd(projectPath: String) throws
 
     /**
+     * Detects all agent sessions for a project path.
+     *
+     * Returns sessions from all installed agents (Claude, Codex, Aider, etc.)
+     * that have active sessions at the given path or its children.
+     */
+    func getAgentSessions(projectPath: String) -> [AgentSession]
+
+    /**
+     * Gets all agent sessions across all projects (cached).
+     *
+     * Uses mtime-based caching for efficient repeated calls.
+     * Call `invalidate_agent_cache()` to force a refresh.
+     */
+    func getAllAgentSessions() -> [AgentSession]
+
+    /**
      * Gets session states for multiple projects.
      * Uses session-ID keyed state and lock detection for reliable state.
      *
@@ -557,6 +573,14 @@ public protocol HudEngineProtocol: AnyObject {
      * Gets the HUD configuration (pinned projects, terminal app, etc.)
      */
     func getConfig() -> HudConfig
+
+    /**
+     * Detects the primary agent session for a project path.
+     *
+     * Returns the first session found based on user preference order.
+     * Use this when you only need to display one agent's state.
+     */
+    func getPrimaryAgentSession(projectPath: String) -> AgentSession?
 
     /**
      * Gets project status from .claude/hud-status.json.
@@ -575,9 +599,24 @@ public protocol HudEngineProtocol: AnyObject {
     func getSuggestedProjects() throws -> [SuggestedProject]
 
     /**
+     * Invalidates the agent session cache.
+     *
+     * Call this when you know the underlying state has changed
+     * and want to force a fresh read on the next call.
+     */
+    func invalidateAgentCache()
+
+    /**
      * Lists all artifacts (skills, commands, agents) from global and plugin sources.
      */
     func listArtifacts() -> [Artifact]
+
+    /**
+     * Returns the list of installed agent IDs.
+     *
+     * Useful for debugging and UI display of which agents are available.
+     */
+    func listInstalledAgents() -> [String]
 
     /**
      * Lists all installed plugins.
@@ -602,9 +641,33 @@ public protocol HudEngineProtocol: AnyObject {
     func loadIdeas(projectPath: String) throws -> [Idea]
 
     /**
+     * Loads the display order of ideas for a project.
+     *
+     * Returns an empty vector if no order file exists (graceful degradation).
+     * The caller should merge this with loaded ideas: ordered first, unordered appended.
+     */
+    func loadIdeasOrder(projectPath: String) throws -> [String]
+
+    /**
      * Removes a project from the pinned projects list.
      */
     func removeProject(path: String) throws
+
+    /**
+     * Saves the display order of ideas for a project.
+     *
+     * The order is stored separately from idea content in `.claude/ideas-order.json`.
+     * This prevents churning the ideas markdown file on every drag-reorder.
+     */
+    func saveIdeasOrder(projectPath: String, ideaIds: [String]) throws
+
+    /**
+     * Updates the description of an idea.
+     *
+     * Used for sensemaking - the idea is initially saved with raw user input,
+     * then this is called with an AI-generated expansion.
+     */
+    func updateIdeaDescription(projectPath: String, ideaId: String, newDescription: String) throws
 
     /**
      * Updates the effort estimate of an idea.
@@ -766,6 +829,31 @@ open class HudEngine:
     }
 
     /**
+     * Detects all agent sessions for a project path.
+     *
+     * Returns sessions from all installed agents (Claude, Codex, Aider, etc.)
+     * that have active sessions at the given path or its children.
+     */
+    open func getAgentSessions(projectPath: String) -> [AgentSession] {
+        return try! FfiConverterSequenceTypeAgentSession.lift(try! rustCall {
+            uniffi_hud_core_fn_method_hudengine_get_agent_sessions(self.uniffiClonePointer(),
+                                                                   FfiConverterString.lower(projectPath), $0)
+        })
+    }
+
+    /**
+     * Gets all agent sessions across all projects (cached).
+     *
+     * Uses mtime-based caching for efficient repeated calls.
+     * Call `invalidate_agent_cache()` to force a refresh.
+     */
+    open func getAllAgentSessions() -> [AgentSession] {
+        return try! FfiConverterSequenceTypeAgentSession.lift(try! rustCall {
+            uniffi_hud_core_fn_method_hudengine_get_all_agent_sessions(self.uniffiClonePointer(), $0)
+        })
+    }
+
+    /**
      * Gets session states for multiple projects.
      * Uses session-ID keyed state and lock detection for reliable state.
      *
@@ -784,6 +872,19 @@ open class HudEngine:
     open func getConfig() -> HudConfig {
         return try! FfiConverterTypeHudConfig.lift(try! rustCall {
             uniffi_hud_core_fn_method_hudengine_get_config(self.uniffiClonePointer(), $0)
+        })
+    }
+
+    /**
+     * Detects the primary agent session for a project path.
+     *
+     * Returns the first session found based on user preference order.
+     * Use this when you only need to display one agent's state.
+     */
+    open func getPrimaryAgentSession(projectPath: String) -> AgentSession? {
+        return try! FfiConverterOptionTypeAgentSession.lift(try! rustCall {
+            uniffi_hud_core_fn_method_hudengine_get_primary_agent_session(self.uniffiClonePointer(),
+                                                                          FfiConverterString.lower(projectPath), $0)
         })
     }
 
@@ -818,11 +919,33 @@ open class HudEngine:
     }
 
     /**
+     * Invalidates the agent session cache.
+     *
+     * Call this when you know the underlying state has changed
+     * and want to force a fresh read on the next call.
+     */
+    open func invalidateAgentCache() { try! rustCall {
+        uniffi_hud_core_fn_method_hudengine_invalidate_agent_cache(self.uniffiClonePointer(), $0)
+    }
+    }
+
+    /**
      * Lists all artifacts (skills, commands, agents) from global and plugin sources.
      */
     open func listArtifacts() -> [Artifact] {
         return try! FfiConverterSequenceTypeArtifact.lift(try! rustCall {
             uniffi_hud_core_fn_method_hudengine_list_artifacts(self.uniffiClonePointer(), $0)
+        })
+    }
+
+    /**
+     * Returns the list of installed agent IDs.
+     *
+     * Useful for debugging and UI display of which agents are available.
+     */
+    open func listInstalledAgents() -> [String] {
+        return try! FfiConverterSequenceString.lift(try! rustCall {
+            uniffi_hud_core_fn_method_hudengine_list_installed_agents(self.uniffiClonePointer(), $0)
         })
     }
 
@@ -866,11 +989,51 @@ open class HudEngine:
     }
 
     /**
+     * Loads the display order of ideas for a project.
+     *
+     * Returns an empty vector if no order file exists (graceful degradation).
+     * The caller should merge this with loaded ideas: ordered first, unordered appended.
+     */
+    open func loadIdeasOrder(projectPath: String) throws -> [String] {
+        return try FfiConverterSequenceString.lift(rustCallWithError(FfiConverterTypeHudFfiError.lift) {
+            uniffi_hud_core_fn_method_hudengine_load_ideas_order(self.uniffiClonePointer(),
+                                                                 FfiConverterString.lower(projectPath), $0)
+        })
+    }
+
+    /**
      * Removes a project from the pinned projects list.
      */
     open func removeProject(path: String) throws { try rustCallWithError(FfiConverterTypeHudFfiError.lift) {
         uniffi_hud_core_fn_method_hudengine_remove_project(self.uniffiClonePointer(),
                                                            FfiConverterString.lower(path), $0)
+    }
+    }
+
+    /**
+     * Saves the display order of ideas for a project.
+     *
+     * The order is stored separately from idea content in `.claude/ideas-order.json`.
+     * This prevents churning the ideas markdown file on every drag-reorder.
+     */
+    open func saveIdeasOrder(projectPath: String, ideaIds: [String]) throws { try rustCallWithError(FfiConverterTypeHudFfiError.lift) {
+        uniffi_hud_core_fn_method_hudengine_save_ideas_order(self.uniffiClonePointer(),
+                                                             FfiConverterString.lower(projectPath),
+                                                             FfiConverterSequenceString.lower(ideaIds), $0)
+    }
+    }
+
+    /**
+     * Updates the description of an idea.
+     *
+     * Used for sensemaking - the idea is initially saved with raw user input,
+     * then this is called with an AI-generated expansion.
+     */
+    open func updateIdeaDescription(projectPath: String, ideaId: String, newDescription: String) throws { try rustCallWithError(FfiConverterTypeHudFfiError.lift) {
+        uniffi_hud_core_fn_method_hudengine_update_idea_description(self.uniffiClonePointer(),
+                                                                    FfiConverterString.lower(projectPath),
+                                                                    FfiConverterString.lower(ideaId),
+                                                                    FfiConverterString.lower(newDescription), $0)
     }
     }
 
@@ -992,6 +1155,121 @@ public func FfiConverterTypeHudEngine_lift(_ pointer: UnsafeMutableRawPointer) t
 #endif
 public func FfiConverterTypeHudEngine_lower(_ value: HudEngine) -> UnsafeMutableRawPointer {
     return FfiConverterTypeHudEngine.lower(value)
+}
+
+/**
+ * A detected agent session
+ *
+ * NOTE: The composite key is (agent_type, session_id). Session IDs are only
+ * unique within an agent type, not globally.
+ */
+public struct AgentSession {
+    public var agentType: AgentType
+    public var agentName: String
+    public var state: AgentState
+    public var sessionId: String?
+    public var cwd: String
+    public var detail: String?
+    public var workingOn: String?
+    public var updatedAt: String?
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(agentType: AgentType, agentName: String, state: AgentState, sessionId: String?, cwd: String, detail: String?, workingOn: String?, updatedAt: String?) {
+        self.agentType = agentType
+        self.agentName = agentName
+        self.state = state
+        self.sessionId = sessionId
+        self.cwd = cwd
+        self.detail = detail
+        self.workingOn = workingOn
+        self.updatedAt = updatedAt
+    }
+}
+
+extension AgentSession: Equatable, Hashable {
+    public static func == (lhs: AgentSession, rhs: AgentSession) -> Bool {
+        if lhs.agentType != rhs.agentType {
+            return false
+        }
+        if lhs.agentName != rhs.agentName {
+            return false
+        }
+        if lhs.state != rhs.state {
+            return false
+        }
+        if lhs.sessionId != rhs.sessionId {
+            return false
+        }
+        if lhs.cwd != rhs.cwd {
+            return false
+        }
+        if lhs.detail != rhs.detail {
+            return false
+        }
+        if lhs.workingOn != rhs.workingOn {
+            return false
+        }
+        if lhs.updatedAt != rhs.updatedAt {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(agentType)
+        hasher.combine(agentName)
+        hasher.combine(state)
+        hasher.combine(sessionId)
+        hasher.combine(cwd)
+        hasher.combine(detail)
+        hasher.combine(workingOn)
+        hasher.combine(updatedAt)
+    }
+}
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeAgentSession: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> AgentSession {
+        return
+            try AgentSession(
+                agentType: FfiConverterTypeAgentType.read(from: &buf),
+                agentName: FfiConverterString.read(from: &buf),
+                state: FfiConverterTypeAgentState.read(from: &buf),
+                sessionId: FfiConverterOptionString.read(from: &buf),
+                cwd: FfiConverterString.read(from: &buf),
+                detail: FfiConverterOptionString.read(from: &buf),
+                workingOn: FfiConverterOptionString.read(from: &buf),
+                updatedAt: FfiConverterOptionString.read(from: &buf)
+            )
+    }
+
+    public static func write(_ value: AgentSession, into buf: inout [UInt8]) {
+        FfiConverterTypeAgentType.write(value.agentType, into: &buf)
+        FfiConverterString.write(value.agentName, into: &buf)
+        FfiConverterTypeAgentState.write(value.state, into: &buf)
+        FfiConverterOptionString.write(value.sessionId, into: &buf)
+        FfiConverterString.write(value.cwd, into: &buf)
+        FfiConverterOptionString.write(value.detail, into: &buf)
+        FfiConverterOptionString.write(value.workingOn, into: &buf)
+        FfiConverterOptionString.write(value.updatedAt, into: &buf)
+    }
+}
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAgentSession_lift(_ buf: RustBuffer) throws -> AgentSession {
+    return try FfiConverterTypeAgentSession.lift(buf)
+}
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAgentSession_lower(_ value: AgentSession) -> RustBuffer {
+    return FfiConverterTypeAgentSession.lower(value)
 }
 
 /**
@@ -3216,6 +3494,158 @@ public func FfiConverterTypeValidationResultFfi_lower(_ value: ValidationResultF
 // Note that we don't yet support `indirect` for enums.
 // See https://github.com/mozilla/uniffi-rs/issues/396 for further discussion.
 /**
+ * Universal agent states - maps to any CLI agent's activity
+ */
+
+public enum AgentState {
+    case idle
+    case ready
+    case working
+    case waiting
+}
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeAgentState: FfiConverterRustBuffer {
+    typealias SwiftType = AgentState
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> AgentState {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        case 1: return .idle
+
+        case 2: return .ready
+
+        case 3: return .working
+
+        case 4: return .waiting
+
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: AgentState, into buf: inout [UInt8]) {
+        switch value {
+        case .idle:
+            writeInt(&buf, Int32(1))
+
+        case .ready:
+            writeInt(&buf, Int32(2))
+
+        case .working:
+            writeInt(&buf, Int32(3))
+
+        case .waiting:
+            writeInt(&buf, Int32(4))
+        }
+    }
+}
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAgentState_lift(_ buf: RustBuffer) throws -> AgentState {
+    return try FfiConverterTypeAgentState.lift(buf)
+}
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAgentState_lower(_ value: AgentState) -> RustBuffer {
+    return FfiConverterTypeAgentState.lower(value)
+}
+
+extension AgentState: Equatable, Hashable {}
+
+// Note that we don't yet support `indirect` for enums.
+// See https://github.com/mozilla/uniffi-rs/issues/396 for further discussion.
+/**
+ * Known agent types - flat enum for UniFFI compatibility
+ */
+
+public enum AgentType {
+    case claude
+    case codex
+    case aider
+    case amp
+    case openCode
+    case droid
+    case other
+}
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeAgentType: FfiConverterRustBuffer {
+    typealias SwiftType = AgentType
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> AgentType {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        case 1: return .claude
+
+        case 2: return .codex
+
+        case 3: return .aider
+
+        case 4: return .amp
+
+        case 5: return .openCode
+
+        case 6: return .droid
+
+        case 7: return .other
+
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: AgentType, into buf: inout [UInt8]) {
+        switch value {
+        case .claude:
+            writeInt(&buf, Int32(1))
+
+        case .codex:
+            writeInt(&buf, Int32(2))
+
+        case .aider:
+            writeInt(&buf, Int32(3))
+
+        case .amp:
+            writeInt(&buf, Int32(4))
+
+        case .openCode:
+            writeInt(&buf, Int32(5))
+
+        case .droid:
+            writeInt(&buf, Int32(6))
+
+        case .other:
+            writeInt(&buf, Int32(7))
+        }
+    }
+}
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAgentType_lift(_ buf: RustBuffer) throws -> AgentType {
+    return try FfiConverterTypeAgentType.lift(buf)
+}
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAgentType_lower(_ value: AgentType) -> RustBuffer {
+    return FfiConverterTypeAgentType.lower(value)
+}
+
+extension AgentType: Equatable, Hashable {}
+
+// Note that we don't yet support `indirect` for enums.
+// See https://github.com/mozilla/uniffi-rs/issues/396 for further discussion.
+/**
  * Status of a project creation.
  */
 
@@ -3479,6 +3909,30 @@ private struct FfiConverterOptionString: FfiConverterRustBuffer {
 #if swift(>=5.8)
     @_documentation(visibility: private)
 #endif
+private struct FfiConverterOptionTypeAgentSession: FfiConverterRustBuffer {
+    typealias SwiftType = AgentSession?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeAgentSession.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeAgentSession.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
 private struct FfiConverterOptionTypeContextInfo: FfiConverterRustBuffer {
     typealias SwiftType = ContextInfo?
 
@@ -3592,6 +4046,31 @@ private struct FfiConverterSequenceString: FfiConverterRustBuffer {
         seq.reserveCapacity(Int(len))
         for _ in 0 ..< len {
             try seq.append(FfiConverterString.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+private struct FfiConverterSequenceTypeAgentSession: FfiConverterRustBuffer {
+    typealias SwiftType = [AgentSession]
+
+    public static func write(_ value: [AgentSession], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeAgentSession.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [AgentSession] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [AgentSession]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            try seq.append(FfiConverterTypeAgentSession.read(from: &buf))
         }
         return seq
     }
@@ -3853,10 +4332,19 @@ private var initializationResult: InitializationResult = {
     if uniffi_hud_core_checksum_method_hudengine_create_project_claude_md() != 43265 {
         return InitializationResult.apiChecksumMismatch
     }
+    if uniffi_hud_core_checksum_method_hudengine_get_agent_sessions() != 47314 {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if uniffi_hud_core_checksum_method_hudengine_get_all_agent_sessions() != 27566 {
+        return InitializationResult.apiChecksumMismatch
+    }
     if uniffi_hud_core_checksum_method_hudengine_get_all_session_states() != 34670 {
         return InitializationResult.apiChecksumMismatch
     }
     if uniffi_hud_core_checksum_method_hudengine_get_config() != 46018 {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if uniffi_hud_core_checksum_method_hudengine_get_primary_agent_session() != 36656 {
         return InitializationResult.apiChecksumMismatch
     }
     if uniffi_hud_core_checksum_method_hudengine_get_project_status() != 14524 {
@@ -3868,7 +4356,13 @@ private var initializationResult: InitializationResult = {
     if uniffi_hud_core_checksum_method_hudengine_get_suggested_projects() != 38527 {
         return InitializationResult.apiChecksumMismatch
     }
+    if uniffi_hud_core_checksum_method_hudengine_invalidate_agent_cache() != 27475 {
+        return InitializationResult.apiChecksumMismatch
+    }
     if uniffi_hud_core_checksum_method_hudengine_list_artifacts() != 5270 {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if uniffi_hud_core_checksum_method_hudengine_list_installed_agents() != 5136 {
         return InitializationResult.apiChecksumMismatch
     }
     if uniffi_hud_core_checksum_method_hudengine_list_plugins() != 12518 {
@@ -3883,7 +4377,16 @@ private var initializationResult: InitializationResult = {
     if uniffi_hud_core_checksum_method_hudengine_load_ideas() != 23681 {
         return InitializationResult.apiChecksumMismatch
     }
+    if uniffi_hud_core_checksum_method_hudengine_load_ideas_order() != 374 {
+        return InitializationResult.apiChecksumMismatch
+    }
     if uniffi_hud_core_checksum_method_hudengine_remove_project() != 46288 {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if uniffi_hud_core_checksum_method_hudengine_save_ideas_order() != 53397 {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if uniffi_hud_core_checksum_method_hudengine_update_idea_description() != 28488 {
         return InitializationResult.apiChecksumMismatch
     }
     if uniffi_hud_core_checksum_method_hudengine_update_idea_effort() != 54859 {

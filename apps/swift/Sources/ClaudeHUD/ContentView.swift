@@ -8,13 +8,32 @@ struct ContentView: View {
     @ObservedObject private var glassConfig = GlassConfig.shared
     #endif
 
+    private var isCaptureModalOpen: Bool {
+        appState.showCaptureModal && appState.captureModalProject != nil
+    }
+
     var body: some View {
-        Group {
-            switch appState.layoutMode {
-            case .vertical:
-                verticalLayout
-            case .dock:
-                dockLayout
+        ZStack {
+            Group {
+                switch appState.layoutMode {
+                case .vertical:
+                    verticalLayout
+                case .dock:
+                    dockLayout
+                }
+            }
+            .blur(radius: isCaptureModalOpen ? 8 : 0)
+            .saturation(isCaptureModalOpen ? 0.8 : 1)
+            .animation(.easeInOut(duration: 0.25), value: isCaptureModalOpen)
+
+            if let project = appState.captureModalProject {
+                IdeaCaptureModalOverlay(
+                    isPresented: $appState.showCaptureModal,
+                    projectName: project.name,
+                    onCapture: { text in
+                        appState.captureIdea(for: project, text: text)
+                    }
+                )
             }
         }
         .background {

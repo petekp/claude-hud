@@ -97,9 +97,6 @@ struct ProjectsView: View {
                                 onCaptureIdea: {
                                     appState.showIdeaCaptureModal(for: project)
                                 },
-                                onCaptureIdeaText: { text in
-                                    appState.captureIdea(for: project, text: text)
-                                },
                                 onRemove: {
                                     withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
                                         appState.removeProject(project.path)
@@ -196,18 +193,6 @@ struct ProjectsView: View {
                 withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
                     pausedCollapsed = false
                 }
-            }
-        }
-        .sheet(isPresented: $appState.showCaptureModal) {
-            if let project = appState.captureModalProject {
-                TextCaptureView(
-                    projectPath: project.path,
-                    projectName: project.name,
-                    onCapture: { text in
-                        appState.captureIdea(for: project, text: text)
-                    }
-                )
-                .presentationBackground(.ultraThinMaterial)
             }
         }
     }

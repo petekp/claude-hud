@@ -6,76 +6,104 @@ struct ProjectDetailView: View {
     let project: Project
 
     @State private var appeared = false
+    @State private var selectedIdea: Idea?
+    @State private var selectedIdeaFrame: CGRect?
+
+    private var isModalOpen: Bool {
+        selectedIdea != nil
+    }
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
-                HStack {
-                    BackButton(title: "Projects") {
-                        appState.showProjectList()
+        ZStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    HStack {
+                        BackButton(title: "Projects") {
+                            appState.showProjectList()
+                        }
+                        .keyboardShortcut("[", modifiers: .command)
+
+                        Spacer()
                     }
-                    .keyboardShortcut("[", modifiers: .command)
+
+                    Text(project.name)
+                        .font(AppTypography.pageTitle)
+                        .foregroundColor(.white)
+                        .opacity(appeared ? 1 : 0)
+                        .offset(y: appeared ? 0 : 8)
+
+                    DescriptionCard(
+                        description: appState.getDescription(for: project),
+                        isGenerating: appState.isGeneratingDescription(for: project),
+                        onGenerate: { appState.generateDescription(for: project) }
+                    )
+                    .opacity(appeared ? 1 : 0)
+                    .offset(y: appeared ? 0 : 12)
+
+                    VStack(alignment: .leading, spacing: 12) {
+                        DetailSectionLabel(title: "IDEA QUEUE")
+
+                        IdeaQueueView(
+                            ideas: appState.getIdeas(for: project),
+                            isGeneratingTitle: { appState.isGeneratingTitle(for: $0) },
+                            onTapIdea: { idea, frame in
+                                selectedIdea = idea
+                                selectedIdeaFrame = frame
+                            },
+                            onReorder: { reorderedIdeas in
+                                appState.reorderIdeas(reorderedIdeas, for: project)
+                            },
+                            onRemove: { idea in
+                                withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                                    appState.dismissIdea(idea, for: project)
+                                }
+                            }
+                        )
+                    }
+                    .opacity(appeared ? 1 : 0)
+                    .offset(y: appeared ? 0 : 16)
+
+                    Button(action: {
+                        appState.removeProject(project.path)
+                        appState.showProjectList()
+                    }) {
+                        HStack(spacing: 6) {
+                            Image(systemName: "minus.circle")
+                            Text("Remove from HUD")
+                        }
+                        .font(AppTypography.bodySecondary)
+                        .foregroundColor(.red.opacity(0.8))
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.top, 8)
+                    .opacity(appeared ? 1 : 0)
+                    .offset(y: appeared ? 0 : 20)
 
                     Spacer()
                 }
-
-                Text(project.name)
-                    .font(AppTypography.pageTitle)
-                    .foregroundColor(.white)
-                    .opacity(appeared ? 1 : 0)
-                    .offset(y: appeared ? 0 : 8)
-
-                DescriptionCard(
-                    description: appState.getDescription(for: project),
-                    isGenerating: appState.isGeneratingDescription(for: project),
-                    onGenerate: { appState.generateDescription(for: project) }
-                )
-                .opacity(appeared ? 1 : 0)
-                .offset(y: appeared ? 0 : 12)
-
-                VStack(alignment: .leading, spacing: 12) {
-                    DetailSectionLabel(title: "IDEA QUEUE")
-
-                    IdeaQueueView(
-                        ideas: appState.getIdeas(for: project),
-                        isGeneratingTitle: { appState.isGeneratingTitle(for: $0) },
-                        onTapIdea: { idea in
-                            // TODO: Open detail modal (Phase 3)
-                        },
-                        onReorder: { reorderedIdeas in
-                            appState.reorderIdeas(reorderedIdeas, for: project)
-                        },
-                        onRemove: { idea in
-                            withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
-                                appState.dismissIdea(idea, for: project)
-                            }
-                        }
-                    )
-                }
-                .opacity(appeared ? 1 : 0)
-                .offset(y: appeared ? 0 : 16)
-
-                Button(action: {
-                    appState.removeProject(project.path)
-                    appState.showProjectList()
-                }) {
-                    HStack(spacing: 6) {
-                        Image(systemName: "minus.circle")
-                        Text("Remove from HUD")
-                    }
-                    .font(AppTypography.bodySecondary)
-                    .foregroundColor(.red.opacity(0.8))
-                }
-                .buttonStyle(.plain)
-                .padding(.top, 8)
-                .opacity(appeared ? 1 : 0)
-                .offset(y: appeared ? 0 : 20)
-
-                Spacer()
+                .padding(16)
             }
-            .padding(16)
+            .blur(radius: isModalOpen ? 8 : 0)
+            .saturation(isModalOpen ? 0.8 : 1)
+            .animation(.easeInOut(duration: 0.25), value: isModalOpen)
+            .background(floatingMode ? Color.clear : Color.hudBackground)
+
+            IdeaDetailModalOverlay(
+                idea: selectedIdea,
+                anchorFrame: selectedIdeaFrame,
+                onDismiss: {
+                    selectedIdea = nil
+                    selectedIdeaFrame = nil
+                },
+                onRemove: { idea in
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                        appState.dismissIdea(idea, for: project)
+                    }
+                    selectedIdea = nil
+                    selectedIdeaFrame = nil
+                }
+            )
         }
-        .background(floatingMode ? Color.clear : Color.hudBackground)
         .onAppear {
             withAnimation(.spring(response: 0.5, dampingFraction: 0.8).delay(0.1)) {
                 appeared = true

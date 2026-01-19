@@ -3,11 +3,12 @@ import SwiftUI
 struct IdeaQueueView: View {
     let ideas: [Idea]
     let isGeneratingTitle: (String) -> Bool
-    var onTapIdea: ((Idea) -> Void)?
+    var onTapIdea: ((Idea, CGRect) -> Void)?
     var onReorder: (([Idea]) -> Void)?
     var onRemove: ((Idea) -> Void)?
 
     @State private var localIdeas: [Idea] = []
+    @State private var rowFrames: [String: CGRect] = [:]
 
     private var queuedIdeas: [Idea] {
         localIdeas.filter { $0.status != "done" }
@@ -27,6 +28,7 @@ struct IdeaQueueView: View {
         .onChange(of: ideas) { _, newValue in
             localIdeas = newValue
         }
+        .coordinateSpace(name: "ideaQueue")
     }
 
     private var queueList: some View {
@@ -36,8 +38,23 @@ struct IdeaQueueView: View {
                     idea: idea,
                     isFirst: index == 0,
                     isGeneratingTitle: isGeneratingTitle(idea.id),
-                    onTap: { onTapIdea?(idea) },
+                    onTap: {
+                        if let frame = rowFrames[idea.id] {
+                            onTapIdea?(idea, frame)
+                        }
+                    },
                     onRemove: onRemove != nil ? { onRemove?(idea) } : nil
+                )
+                .background(
+                    GeometryReader { geo in
+                        Color.clear
+                            .onAppear {
+                                rowFrames[idea.id] = geo.frame(in: .global)
+                            }
+                            .onChange(of: geo.frame(in: .global)) { _, newFrame in
+                                rowFrames[idea.id] = newFrame
+                            }
+                    }
                 )
                 .onDrag {
                     NSItemProvider(object: idea.id as NSString)

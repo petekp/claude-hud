@@ -14,10 +14,18 @@ use crate::error::{HudError, Result};
 use crate::types::Idea;
 use chrono::Utc;
 use regex::Regex;
+use serde::{Deserialize, Serialize};
 use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use tempfile::NamedTempFile;
+
+/// Order file structure - just an array of idea IDs in display order
+#[derive(Debug, Serialize, Deserialize, Default)]
+struct IdeasOrder {
+    /// Ordered list of idea IDs (first = top of queue)
+    order: Vec<String>,
+}
 
 // Version marker for the ideas file format
 const IDEAS_FILE_VERSION: &str = "<!-- hud-ideas-v1 -->";
@@ -73,10 +81,11 @@ fn atomic_write(path: &Path, contents: &str) -> Result<()> {
         source: e,
     })?;
 
-    tmp.write_all(contents.as_bytes()).map_err(|e| HudError::Io {
-        context: format!("writing temp file for {}", path.display()),
-        source: e,
-    })?;
+    tmp.write_all(contents.as_bytes())
+        .map_err(|e| HudError::Io {
+            context: format!("writing temp file for {}", path.display()),
+            source: e,
+        })?;
 
     tmp.flush().map_err(|e| HudError::Io {
         context: format!("flushing temp file for {}", path.display()),
@@ -231,6 +240,83 @@ pub fn update_idea_title(project_path: &str, idea_id: &str, new_title: &str) -> 
     Ok(())
 }
 
+/// Updates the description of an idea by ID.
+///
+/// This is used for sensemaking - the idea is initially saved with the raw user input,
+/// then the description is updated with an AI-generated expansion.
+pub fn update_idea_description(
+    project_path: &str,
+    idea_id: &str,
+    new_description: &str,
+) -> Result<()> {
+    let ideas_file = get_ideas_file_path(project_path);
+
+    if !ideas_file.exists() {
+        return Err(HudError::FileNotFound(ideas_file));
+    }
+
+    let content = fs::read_to_string(&ideas_file).map_err(|e| HudError::Io {
+        context: format!("reading ideas file: {}", ideas_file.display()),
+        source: e,
+    })?;
+    let updated = update_description_in_content(&content, idea_id, new_description)?;
+    atomic_write(&ideas_file, &updated)?;
+
+    Ok(())
+}
+
+/// Saves the display order of ideas for a project.
+///
+/// The order is stored separately from idea content in `.claude/ideas-order.json`.
+/// This prevents churning the ideas markdown file on every reorder.
+///
+/// Ideas not in the order list will be appended at the end when loading.
+/// IDs in the order list that don't exist will be ignored when loading.
+pub fn save_ideas_order(project_path: &str, idea_ids: Vec<String>) -> Result<()> {
+    let order_file = get_order_file_path(project_path);
+
+    // Ensure .claude directory exists
+    if let Some(parent) = order_file.parent() {
+        fs::create_dir_all(parent).map_err(|e| HudError::Io {
+            context: format!("creating directory: {}", parent.display()),
+            source: e,
+        })?;
+    }
+
+    let order = IdeasOrder { order: idea_ids };
+    let json = serde_json::to_string_pretty(&order).map_err(|e| HudError::Json {
+        context: "serializing ideas order".to_string(),
+        source: e,
+    })?;
+
+    atomic_write(&order_file, &json)?;
+    Ok(())
+}
+
+/// Loads the display order of ideas for a project.
+///
+/// Returns an empty vector if the order file doesn't exist (graceful degradation).
+/// The caller should sort ideas by this order, appending any ideas not in the list.
+pub fn load_ideas_order(project_path: &str) -> Result<Vec<String>> {
+    let order_file = get_order_file_path(project_path);
+
+    if !order_file.exists() {
+        return Ok(Vec::new());
+    }
+
+    let content = fs::read_to_string(&order_file).map_err(|e| HudError::Io {
+        context: format!("reading order file: {}", order_file.display()),
+        source: e,
+    })?;
+
+    let order: IdeasOrder = serde_json::from_str(&content).map_err(|e| HudError::Json {
+        context: "parsing ideas order".to_string(),
+        source: e,
+    })?;
+
+    Ok(order.order)
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Internal Helper Functions
 // ─────────────────────────────────────────────────────────────────────────────
@@ -238,6 +324,11 @@ pub fn update_idea_title(project_path: &str, idea_id: &str, new_title: &str) -> 
 /// Returns the path to the project's ideas file.
 fn get_ideas_file_path(project_path: &str) -> PathBuf {
     Path::new(project_path).join(".claude/ideas.local.md")
+}
+
+/// Returns the path to the project's ideas order file.
+fn get_order_file_path(project_path: &str) -> PathBuf {
+    Path::new(project_path).join(".claude/ideas-order.json")
 }
 
 /// Ensures the ideas file exists with proper structure.
@@ -460,6 +551,69 @@ fn update_title_in_content(content: &str, idea_id: &str, new_title: &str) -> Res
     }
 
     if !found {
+        return Err(HudError::IdeaNotFound {
+            id: idea_id.to_string(),
+        });
+    }
+
+    // Preserve trailing newline if original had one
+    let mut result = updated_lines.join("\n");
+    if content.ends_with('\n') && !result.ends_with('\n') {
+        result.push('\n');
+    }
+
+    Ok(result)
+}
+
+/// Updates the description content in an idea block by ID.
+///
+/// Finds the idea by its ULID and replaces the description text (everything
+/// after the metadata block until `---` or the next heading).
+/// The description is sanitized to prevent file corruption.
+fn update_description_in_content(
+    content: &str,
+    idea_id: &str,
+    new_description: &str,
+) -> Result<String> {
+    let heading_prefix = format!("### [#idea-{}]", idea_id);
+    let mut found_heading = false;
+    let mut in_target_idea = false;
+    let mut in_metadata = false;
+    let mut description_replaced = false;
+    let mut updated_lines = Vec::new();
+
+    for line in content.lines() {
+        if line.starts_with(&heading_prefix) {
+            // Found our idea
+            found_heading = true;
+            in_target_idea = true;
+            in_metadata = true;
+            updated_lines.push(line.to_string());
+        } else if in_target_idea && in_metadata {
+            // In metadata block - keep lines until blank line
+            updated_lines.push(line.to_string());
+            if line.trim().is_empty() {
+                // End of metadata, insert new description
+                in_metadata = false;
+                if !new_description.trim().is_empty() {
+                    updated_lines.push(new_description.trim().to_string());
+                    updated_lines.push(String::new()); // blank line before ---
+                }
+                description_replaced = true;
+            }
+        } else if in_target_idea && !description_replaced {
+            // Skip old description lines until we hit --- or next heading
+            if line.trim() == "---" || line.starts_with("### ") || line.starts_with("## ") {
+                in_target_idea = false;
+                updated_lines.push(line.to_string());
+            }
+            // Otherwise skip the old description line
+        } else {
+            updated_lines.push(line.to_string());
+        }
+    }
+
+    if !found_heading {
         return Err(HudError::IdeaNotFound {
             id: idea_id.to_string(),
         });

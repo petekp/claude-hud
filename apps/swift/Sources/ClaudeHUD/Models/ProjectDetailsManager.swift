@@ -39,7 +39,7 @@ final class ProjectDetailsManager {
         do {
             let ideaId = try engine.captureIdea(projectPath: project.path, ideaText: text)
             loadIdeas(for: project)
-            generateTitleForIdea(ideaId: ideaId, description: text, project: project)
+            sensemakeIdea(ideaId: ideaId, rawInput: text, project: project)
             return .success(())
         } catch {
             return .failure(error)
@@ -51,7 +51,10 @@ final class ProjectDetailsManager {
 
         do {
             let ideas = try engine.loadIdeas(projectPath: project.path)
-            projectIdeas[project.path] = ideas
+
+            // Apply saved order (self-healing: missing IDs skipped, new ideas appended)
+            let orderedIdeas = applyIdeasOrder(ideas: ideas, for: project)
+            projectIdeas[project.path] = orderedIdeas
 
             let ideasFilePath = "\(project.path)/.claude/ideas.local.md"
             if let attrs = try? FileManager.default.attributesOfItem(atPath: ideasFilePath),
@@ -60,6 +63,43 @@ final class ProjectDetailsManager {
             }
         } catch {
             projectIdeas[project.path] = []
+        }
+    }
+
+    private func applyIdeasOrder(ideas: [Idea], for project: Project) -> [Idea] {
+        guard let engine = engine else { return ideas }
+
+        do {
+            let orderedIds = try engine.loadIdeasOrder(projectPath: project.path)
+            guard !orderedIds.isEmpty else { return ideas }
+
+            // Build lookup for O(1) access
+            var ideasById: [String: Idea] = [:]
+            for idea in ideas {
+                ideasById[idea.id] = idea
+            }
+
+            // Collect ordered ideas first
+            var result: [Idea] = []
+            var usedIds: Set<String> = []
+
+            for id in orderedIds {
+                if let idea = ideasById[id] {
+                    result.append(idea)
+                    usedIds.insert(id)
+                }
+                // Missing IDs silently skipped (self-healing)
+            }
+
+            // Append any new ideas not in order file (preserves ULID order)
+            for idea in ideas where !usedIds.contains(idea.id) {
+                result.append(idea)
+            }
+
+            return result
+        } catch {
+            // Graceful degradation: return original order
+            return ideas
         }
     }
 
@@ -117,32 +157,57 @@ final class ProjectDetailsManager {
 
     func reorderIdeas(_ reorderedIdeas: [Idea], for project: Project) {
         projectIdeas[project.path] = reorderedIdeas
-        // TODO: Persist order to disk (Phase 2, task 4)
+
+        // Persist order to disk asynchronously
+        let ideaIds = reorderedIdeas.map { $0.id }
+        _Concurrency.Task {
+            do {
+                try engine?.saveIdeasOrder(projectPath: project.path, ideaIds: ideaIds)
+            } catch {
+                // Silently fail - order will be regenerated from ULID sort
+            }
+        }
     }
 
-    private func generateTitleForIdea(ideaId: String, description: String, project: Project) {
+    // MARK: - Sensemaking
+
+    private struct SensemakingResult: Decodable {
+        let title: String
+        let description: String?
+        let confidence: Double?
+    }
+
+    private func sensemakeIdea(ideaId: String, rawInput: String, project: Project) {
         generatingTitleForIdeas.insert(ideaId)
 
         _Concurrency.Task {
             do {
-                let existingTitles = await MainActor.run {
-                    getIdeas(for: project)
-                        .filter { $0.id != ideaId && $0.title != "..." }
-                        .prefix(10)
-                        .map { "- \($0.title)" }
-                        .joined(separator: "\n")
-                }
+                // Gather context
+                let context = await gatherSensemakingContext(for: project, excluding: ideaId)
 
-                let title = try await generateWithHaiku(prompt: buildTitlePrompt(description: description, existingIdeas: existingTitles), stripTrailingPunctuation: true)
+                // Build and run prompt
+                let prompt = buildSensemakingPrompt(rawInput: rawInput, context: context)
+                let response = try await generateWithHaiku(prompt: prompt, stripTrailingPunctuation: false)
+
+                // Parse JSON response
+                let result = try parseSensemakingResponse(response)
 
                 await MainActor.run {
-                    try? engine?.updateIdeaTitle(projectPath: project.path, ideaId: ideaId, newTitle: title)
+                    // Update title
+                    try? engine?.updateIdeaTitle(projectPath: project.path, ideaId: ideaId, newTitle: result.title)
+
+                    // Update description if we got an expansion
+                    if let expandedDescription = result.description, !expandedDescription.isEmpty {
+                        try? engine?.updateIdeaDescription(projectPath: project.path, ideaId: ideaId, newDescription: expandedDescription)
+                    }
+
                     loadIdeas(for: project)
                     generatingTitleForIdeas.remove(ideaId)
                 }
             } catch {
                 await MainActor.run {
-                    let fallbackTitle = String(description.prefix(Constants.fallbackTitleLength))
+                    // Fallback: use truncated raw input as title
+                    let fallbackTitle = String(rawInput.prefix(Constants.fallbackTitleLength))
                         .trimmingCharacters(in: .whitespacesAndNewlines)
                     try? engine?.updateIdeaTitle(projectPath: project.path, ideaId: ideaId, newTitle: fallbackTitle)
                     loadIdeas(for: project)
@@ -152,18 +217,164 @@ final class ProjectDetailsManager {
         }
     }
 
-    private func buildTitlePrompt(description: String, existingIdeas: String) -> String {
-        let contextSection = existingIdeas.isEmpty ? "" : """
+    private struct SensemakingContext {
+        let projectName: String
+        let existingTitles: String
+        let recentFiles: [String]
+        let gitBranch: String?
+        let lastCommitMessage: String?
+    }
 
-            Other ideas in this project (for context/uniqueness):
-            \(existingIdeas)
-            """
+    private func gatherSensemakingContext(for project: Project, excluding ideaId: String) async -> SensemakingContext {
+        // Get existing idea titles for uniqueness
+        let existingTitles = await MainActor.run {
+            getIdeas(for: project)
+                .filter { $0.id != ideaId && $0.title != "..." }
+                .prefix(5)
+                .map { "- \($0.title)" }
+                .joined(separator: "\n")
+        }
+
+        // Get recent files from git
+        let recentFiles = getRecentFiles(for: project, limit: 5)
+
+        // Get git context
+        let gitBranch = getGitBranch(for: project)
+        let lastCommitMessage = getLastCommitMessage(for: project)
+
+        return SensemakingContext(
+            projectName: project.name,
+            existingTitles: existingTitles,
+            recentFiles: recentFiles,
+            gitBranch: gitBranch,
+            lastCommitMessage: lastCommitMessage
+        )
+    }
+
+    private func getRecentFiles(for project: Project, limit: Int) -> [String] {
+        let process = Process()
+        let pipe = Pipe()
+
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/git")
+        process.arguments = ["diff", "--name-only", "HEAD~3", "HEAD"]
+        process.currentDirectoryURL = URL(fileURLWithPath: project.path)
+        process.standardOutput = pipe
+        process.standardError = FileHandle.nullDevice
+
+        do {
+            try process.run()
+            process.waitUntilExit()
+
+            let data = pipe.fileHandleForReading.readDataToEndOfFile()
+            let output = String(data: data, encoding: .utf8) ?? ""
+            return output.split(separator: "\n").prefix(limit).map(String.init)
+        } catch {
+            return []
+        }
+    }
+
+    private func getGitBranch(for project: Project) -> String? {
+        let process = Process()
+        let pipe = Pipe()
+
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/git")
+        process.arguments = ["branch", "--show-current"]
+        process.currentDirectoryURL = URL(fileURLWithPath: project.path)
+        process.standardOutput = pipe
+        process.standardError = FileHandle.nullDevice
+
+        do {
+            try process.run()
+            process.waitUntilExit()
+
+            let data = pipe.fileHandleForReading.readDataToEndOfFile()
+            let branch = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines)
+            return branch?.isEmpty == false ? branch : nil
+        } catch {
+            return nil
+        }
+    }
+
+    private func getLastCommitMessage(for project: Project) -> String? {
+        let process = Process()
+        let pipe = Pipe()
+
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/git")
+        process.arguments = ["log", "-1", "--format=%s"]
+        process.currentDirectoryURL = URL(fileURLWithPath: project.path)
+        process.standardOutput = pipe
+        process.standardError = FileHandle.nullDevice
+
+        do {
+            try process.run()
+            process.waitUntilExit()
+
+            let data = pipe.fileHandleForReading.readDataToEndOfFile()
+            let message = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines)
+            return message?.isEmpty == false ? message : nil
+        } catch {
+            return nil
+        }
+    }
+
+    private func buildSensemakingPrompt(rawInput: String, context: SensemakingContext) -> String {
+        var contextParts: [String] = []
+
+        if !context.existingTitles.isEmpty {
+            contextParts.append("Existing ideas:\n\(context.existingTitles)")
+        }
+
+        if !context.recentFiles.isEmpty {
+            contextParts.append("Recent files: \(context.recentFiles.joined(separator: ", "))")
+        }
+
+        if let branch = context.gitBranch {
+            contextParts.append("Branch: \(branch)")
+        }
+
+        if let commit = context.lastCommitMessage {
+            contextParts.append("Last commit: \(commit)")
+        }
+
+        let contextSection = contextParts.isEmpty ? "" : "\n\nContext:\n\(contextParts.joined(separator: "\n"))"
 
         return """
-            Generate a concise 3-8 word title for this idea. Return ONLY the title text, no quotes, no punctuation unless part of a name.
+            Transform this raw idea capture into a structured format.
 
-            Idea: \(description)\(contextSection)
+            ASSESS the input:
+            - If VAGUE (e.g., "that auth thing"): provide title AND 1-2 sentence description expanding what this likely means
+            - If MODERATE (e.g., "fix timeout in auth flow"): provide title AND brief description
+            - If SPECIFIC (e.g., "In auth.ts:42, handle 401"): provide title only, description can be null
+
+            Project: \(context.projectName)
+            Raw input: \(rawInput)\(contextSection)
+
+            Return ONLY valid JSON (no markdown, no explanation):
+            {"title": "3-8 word title", "description": "expansion or null", "confidence": 0.0-1.0}
             """
+    }
+
+    private func parseSensemakingResponse(_ response: String) throws -> SensemakingResult {
+        // Clean up response - extract JSON if wrapped in markdown code blocks
+        var json = response.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        // Remove markdown code block if present
+        if json.hasPrefix("```") {
+            let lines = json.split(separator: "\n", omittingEmptySubsequences: false)
+            let filtered = lines.dropFirst().dropLast().joined(separator: "\n")
+            json = filtered.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+
+        // Handle case where model returns ```json ... ```
+        if json.hasPrefix("json") {
+            json = String(json.dropFirst(4)).trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+
+        guard let data = json.data(using: .utf8) else {
+            throw NSError(domain: "Sensemaking", code: 1, userInfo: [NSLocalizedDescriptionKey: "Invalid UTF-8"])
+        }
+
+        return try JSONDecoder().decode(SensemakingResult.self, from: data)
     }
 
     // MARK: - Project Descriptions
