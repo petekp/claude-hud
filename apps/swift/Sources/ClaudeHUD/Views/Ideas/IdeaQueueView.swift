@@ -20,9 +20,6 @@ struct IdeaQueueView: View {
 
     @Environment(\.prefersReducedMotion) private var reduceMotion
 
-    private let rowHeight: CGFloat = 48
-    private let rowSpacing: CGFloat = 2
-
     private var queuedIdeas: [Idea] {
         localIdeas.filter { $0.status != "done" }
     }
@@ -30,6 +27,11 @@ struct IdeaQueueView: View {
     private var draggingIdea: Idea? {
         guard let draggingId else { return nil }
         return queuedIdeas.first { $0.id == draggingId }
+    }
+
+    private var draggingItemHeight: CGFloat {
+        guard let draggingId, let frame = rowFrames[draggingId] else { return 44 }
+        return frame.height
     }
 
     var body: some View {
@@ -73,7 +75,7 @@ struct IdeaQueueView: View {
                     onTap: nil,
                     onRemove: nil
                 )
-                .frame(height: rowHeight)
+                .frame(height: draggingItemHeight)
                 .scaleEffect(isAnimatingRelease ? 1.0 : 1.03)
                 .shadow(
                     color: .black.opacity(isAnimatingRelease ? 0 : 0.3),
@@ -94,7 +96,7 @@ struct IdeaQueueView: View {
     }
 
     private var queueList: some View {
-        VStack(spacing: rowSpacing) {
+        VStack(spacing: 4) {
             ForEach(Array(queuedIdeas.enumerated()), id: \.element.id) { index, idea in
                 let isBeingDragged = draggingId == idea.id
 
@@ -161,15 +163,18 @@ struct IdeaQueueView: View {
     }
 
     private func calculateTargetIndex(for position: CGPoint) -> Int {
-        let rowPlusSpacing = rowHeight + rowSpacing
+        // Find which row the position falls within using actual frames
+        for (index, idea) in queuedIdeas.enumerated() {
+            guard let frame = rowFrames[idea.id] else { continue }
 
-        // Calculate relative Y within the container
-        let relativeY = position.y - containerFrame.minY
+            // Check if position is above the midpoint of this row
+            if position.y < frame.midY {
+                return index
+            }
+        }
 
-        // Which row slot does this Y position correspond to?
-        let slotIndex = Int(relativeY / rowPlusSpacing)
-
-        return max(0, min(queuedIdeas.count - 1, slotIndex))
+        // If below all rows, return last index
+        return max(0, queuedIdeas.count - 1)
     }
 
     private func moveItem(from sourceIndex: Int, to targetIndex: Int) {
@@ -196,10 +201,17 @@ struct IdeaQueueView: View {
     private func handleDragEnded() {
         guard let draggingId = draggingId else { return }
 
-        // Find where the item will end up
+        // Find the target position using actual row frame
         let targetIndex = queuedIdeas.firstIndex { $0.id == draggingId } ?? 0
-        let rowPlusSpacing = rowHeight + rowSpacing
-        let targetY = containerFrame.minY + (CGFloat(targetIndex) * rowPlusSpacing) + (rowHeight / 2)
+        let targetIdea = queuedIdeas[targetIndex]
+        let targetY: CGFloat
+
+        if let frame = rowFrames[targetIdea.id] {
+            targetY = frame.midY
+        } else {
+            // Fallback: estimate based on other frames
+            targetY = containerFrame.minY + 22
+        }
 
         // Start release animation
         isAnimatingRelease = true
@@ -256,8 +268,7 @@ struct IdeaQueueRow: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
         .padding(.horizontal, 14)
-        .padding(.vertical, 8)
-        .frame(minHeight: 48)
+        .padding(.vertical, 10)
         .overlay(alignment: .trailing) {
             if isHovered && !isGeneratingTitle {
                 hoverActions
