@@ -36,29 +36,22 @@ pub const IGNORED_DIRECTORIES: &[&str] = &[
 /// Lower number = higher priority.
 /// CLAUDE.md is explicit intent, .git is repo boundary, others are package markers.
 pub const PROJECT_MARKERS: &[(&str, u8)] = &[
-    ("CLAUDE.md", 1),       // Priority 1 (highest) - explicit project marker
-    (".git", 2),            // Priority 2 - repository root
-    ("package.json", 3),    // Priority 3 - package markers
+    ("CLAUDE.md", 1),    // Priority 1 (highest) - explicit project marker
+    (".git", 2),         // Priority 2 - repository root
+    ("package.json", 3), // Priority 3 - package markers
     ("Cargo.toml", 3),
     ("pyproject.toml", 3),
     ("go.mod", 3),
-    ("pubspec.yaml", 3),    // Dart/Flutter
-    ("Project.toml", 3),    // Julia
-    ("deno.json", 3),       // Deno
-    ("Makefile", 4),        // Priority 4 (lowest) - build markers
+    ("pubspec.yaml", 3), // Dart/Flutter
+    ("Project.toml", 3), // Julia
+    ("deno.json", 3),    // Deno
+    ("Makefile", 4),     // Priority 4 (lowest) - build markers
     ("CMakeLists.txt", 4),
 ];
 
 /// Paths that are too broad to be meaningful project boundaries.
 /// Pinning these would encompass many unrelated projects.
-pub const DANGEROUS_PATHS: &[&str] = &[
-    "/",
-    "/Users",
-    "/home",
-    "/var",
-    "/tmp",
-    "/opt",
-];
+pub const DANGEROUS_PATHS: &[&str] = &["/", "/Users", "/home", "/var", "/tmp", "/opt"];
 
 /// Represents a detected project boundary.
 #[derive(Debug, Clone, PartialEq)]
@@ -193,7 +186,10 @@ pub fn is_dangerous_path(path: &str) -> Option<String> {
     // Check against explicit dangerous paths
     for dangerous in DANGEROUS_PATHS {
         if normalized == *dangerous {
-            return Some(format!("Path '{}' is too broad and would encompass many projects", path));
+            return Some(format!(
+                "Path '{}' is too broad and would encompass many projects",
+                path
+            ));
         }
     }
 
@@ -222,9 +218,9 @@ pub fn is_dangerous_path(path: &str) -> Option<String> {
 /// - Removes trailing slashes
 pub fn canonicalize_path(path: &str) -> std::io::Result<String> {
     // Handle tilde expansion
-    let expanded = if path.starts_with("~/") {
+    let expanded = if let Some(stripped) = path.strip_prefix("~/") {
         if let Some(home) = dirs::home_dir() {
-            home.join(&path[2..]).to_string_lossy().to_string()
+            home.join(stripped).to_string_lossy().to_string()
         } else {
             path.to_string()
         }
@@ -376,7 +372,10 @@ mod tests {
 
         assert!(result.is_some());
         let boundary = result.unwrap();
-        assert_eq!(boundary.marker, "CLAUDE.md", "CLAUDE.md should have priority over .git");
+        assert_eq!(
+            boundary.marker, "CLAUDE.md",
+            "CLAUDE.md should have priority over .git"
+        );
         assert_eq!(boundary.priority, 1);
     }
 
@@ -393,7 +392,10 @@ mod tests {
 
         assert!(result.is_some());
         let boundary = result.unwrap();
-        assert_eq!(boundary.marker, ".git", ".git should have priority over package.json");
+        assert_eq!(
+            boundary.marker, ".git",
+            ".git should have priority over package.json"
+        );
         assert_eq!(boundary.priority, 2);
     }
 
@@ -439,7 +441,10 @@ mod tests {
 
         let result = find_project_boundary(file.to_str().unwrap());
 
-        assert!(result.is_some(), "Should find boundary from deeply nested file");
+        assert!(
+            result.is_some(),
+            "Should find boundary from deeply nested file"
+        );
         let boundary = result.unwrap();
         assert_eq!(boundary.path, tmp.path().to_string_lossy());
     }
@@ -461,7 +466,10 @@ mod tests {
         let result = find_project_boundary(file.to_str().unwrap());
 
         // Should return None because no marker found within MAX_BOUNDARY_DEPTH
-        assert!(result.is_none(), "Should not find boundary beyond max depth");
+        assert!(
+            result.is_none(),
+            "Should not find boundary beyond max depth"
+        );
     }
 
     #[test]
@@ -695,7 +703,10 @@ mod tests {
             // but we can test the logic by checking if ~/. resolves to home
             let result = canonicalize_path("~");
             if result.is_ok() {
-                assert_eq!(result.unwrap(), home.to_string_lossy().trim_end_matches('/'));
+                assert_eq!(
+                    result.unwrap(),
+                    home.to_string_lossy().trim_end_matches('/')
+                );
             }
         }
     }
@@ -712,12 +723,18 @@ mod tests {
 
     #[test]
     fn normalize_path_removes_trailing_slash() {
-        assert_eq!(normalize_path("/Users/pete/Code/project/"), "/Users/pete/Code/project");
+        assert_eq!(
+            normalize_path("/Users/pete/Code/project/"),
+            "/Users/pete/Code/project"
+        );
     }
 
     #[test]
     fn normalize_path_removes_multiple_trailing_slashes() {
-        assert_eq!(normalize_path("/Users/pete/Code/project///"), "/Users/pete/Code/project");
+        assert_eq!(
+            normalize_path("/Users/pete/Code/project///"),
+            "/Users/pete/Code/project"
+        );
     }
 
     #[test]
@@ -742,7 +759,8 @@ mod tests {
     /// Gets the priority of a marker, or None if not a known marker.
     /// Test-only helper for verifying constant values.
     fn marker_priority(marker: &str) -> Option<u8> {
-        PROJECT_MARKERS.iter()
+        PROJECT_MARKERS
+            .iter()
             .find(|(m, _)| *m == marker)
             .map(|(_, p)| *p)
     }

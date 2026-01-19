@@ -694,7 +694,6 @@ impl IdeaBuilder {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::fs;
     use tempfile::TempDir;
 
     #[test]
@@ -710,7 +709,8 @@ mod tests {
         let ideas = load_ideas(project_path).unwrap();
         assert_eq!(ideas.len(), 1);
         assert_eq!(ideas[0].id, id);
-        assert!(ideas[0].title.contains("Test idea"));
+        // Title is initially a placeholder "..." (replaced async by AI-generated title)
+        assert_eq!(ideas[0].title, "...");
         assert_eq!(ideas[0].status, "open");
         assert_eq!(ideas[0].triage, "pending");
     }

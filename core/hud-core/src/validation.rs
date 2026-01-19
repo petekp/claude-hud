@@ -38,7 +38,10 @@ pub struct ValidationResultFfi {
 impl From<ValidationResult> for ValidationResultFfi {
     fn from(result: ValidationResult) -> Self {
         match result {
-            ValidationResult::Valid { path, has_claude_md } => Self {
+            ValidationResult::Valid {
+                path,
+                has_claude_md,
+            } => Self {
                 result_type: "valid".to_string(),
                 path,
                 suggested_path: None,
@@ -65,7 +68,10 @@ impl From<ValidationResult> for ValidationResultFfi {
                 result_type: "missing_claude_md".to_string(),
                 path,
                 suggested_path: None,
-                reason: Some("Consider creating a CLAUDE.md file for better Claude Code integration.".to_string()),
+                reason: Some(
+                    "Consider creating a CLAUDE.md file for better Claude Code integration."
+                        .to_string(),
+                ),
                 has_claude_md: false,
                 has_other_markers,
             },
@@ -176,7 +182,11 @@ pub enum ValidationResult {
 pub fn validate_project_path(path: &str, pinned_projects: &[String]) -> ValidationResult {
     // Normalize trailing slashes
     let normalized = path.trim_end_matches('/');
-    let normalized = if normalized.is_empty() { "/" } else { normalized };
+    let normalized = if normalized.is_empty() {
+        "/"
+    } else {
+        normalized
+    };
 
     // Check if path exists first (needed for canonical comparison)
     let canonical = match canonicalize_path(normalized) {
@@ -197,7 +207,10 @@ pub fn validate_project_path(path: &str, pinned_projects: &[String]) -> Validati
                     .and_then(|s| s.to_str())
                     .unwrap_or(&canonical)
                     .to_string();
-                return ValidationResult::AlreadyTracked { path: canonical, name };
+                return ValidationResult::AlreadyTracked {
+                    path: canonical,
+                    name,
+                };
             }
         }
     }
@@ -230,9 +243,8 @@ pub fn validate_project_path(path: &str, pinned_projects: &[String]) -> Validati
             return ValidationResult::SuggestParent {
                 requested_path: canonical.clone(),
                 suggested_path: boundary.path,
-                reason: format!(
-                    "This path is inside a project. Consider pinning the project root instead."
-                ),
+                reason: "This path is inside a project. Consider pinning the project root instead."
+                    .to_string(),
             };
         }
     }
@@ -248,7 +260,8 @@ pub fn validate_project_path(path: &str, pinned_projects: &[String]) -> Validati
     // No markers at all - not a project
     ValidationResult::NotAProject {
         path: canonical,
-        reason: "No project markers found (CLAUDE.md, .git, package.json, Cargo.toml, etc.)".to_string(),
+        reason: "No project markers found (CLAUDE.md, .git, package.json, Cargo.toml, etc.)"
+            .to_string(),
     }
 }
 
@@ -260,7 +273,9 @@ pub fn has_claude_md(path: &str) -> bool {
 /// Checks if a path has any project markers (.git, package.json, etc.)
 pub fn has_any_project_marker(path: &str) -> bool {
     let dir = Path::new(path);
-    PROJECT_MARKERS.iter().any(|(marker, _)| dir.join(marker).exists())
+    PROJECT_MARKERS
+        .iter()
+        .any(|(marker, _)| dir.join(marker).exists())
 }
 
 /// Information extracted from package.json for CLAUDE.md generation.
@@ -285,7 +300,10 @@ pub fn extract_package_json_info(project_path: &str) -> Option<PackageInfo> {
 
     let parsed: serde_json::Value = serde_json::from_str(&content).ok()?;
 
-    let name = parsed.get("name").and_then(|v| v.as_str()).map(String::from);
+    let name = parsed
+        .get("name")
+        .and_then(|v| v.as_str())
+        .map(String::from);
     let description = parsed
         .get("description")
         .and_then(|v| v.as_str())
@@ -311,12 +329,10 @@ pub fn extract_cargo_toml_info(project_path: &str) -> Option<CargoInfo> {
 
     // Match: name = "value" or name = 'value' with flexible whitespace
     // Valid TOML allows: name="value", name = "value", name  =  "value"
-    static NAME_RE: Lazy<Regex> = Lazy::new(|| {
-        Regex::new(r#"^\s*name\s*=\s*["']([^"']+)["']"#).unwrap()
-    });
-    static DESC_RE: Lazy<Regex> = Lazy::new(|| {
-        Regex::new(r#"^\s*description\s*=\s*["']([^"']+)["']"#).unwrap()
-    });
+    static NAME_RE: Lazy<Regex> =
+        Lazy::new(|| Regex::new(r#"^\s*name\s*=\s*["']([^"']+)["']"#).unwrap());
+    static DESC_RE: Lazy<Regex> =
+        Lazy::new(|| Regex::new(r#"^\s*description\s*=\s*["']([^"']+)["']"#).unwrap());
 
     let cargo_toml_path = Path::new(project_path).join("Cargo.toml");
     let content = std::fs::read_to_string(&cargo_toml_path).ok()?;
@@ -436,10 +452,11 @@ pub fn create_claude_md(project_path: &str) -> Result<()> {
         source: e,
     })?;
 
-    file.write_all(content.as_bytes()).map_err(|e| HudError::Io {
-        context: "Failed to write CLAUDE.md content".to_string(),
-        source: e,
-    })?;
+    file.write_all(content.as_bytes())
+        .map_err(|e| HudError::Io {
+            context: "Failed to write CLAUDE.md content".to_string(),
+            source: e,
+        })?;
 
     file.flush().map_err(|e| HudError::Io {
         context: "Failed to flush CLAUDE.md".to_string(),
@@ -497,7 +514,10 @@ mod tests {
         let result = validate_project_path(tmp.path().to_str().unwrap(), &[]);
 
         match result {
-            ValidationResult::Valid { path, has_claude_md } => {
+            ValidationResult::Valid {
+                path,
+                has_claude_md,
+            } => {
                 assert!(path.contains(tmp.path().file_name().unwrap().to_str().unwrap()));
                 assert!(has_claude_md, "Should detect CLAUDE.md");
             }
@@ -513,7 +533,10 @@ mod tests {
         let result = validate_project_path(tmp.path().to_str().unwrap(), &[]);
 
         match result {
-            ValidationResult::MissingClaudeMd { path, has_other_markers } => {
+            ValidationResult::MissingClaudeMd {
+                path,
+                has_other_markers,
+            } => {
                 assert!(path.contains(tmp.path().file_name().unwrap().to_str().unwrap()));
                 assert!(has_other_markers, "Should detect .git as marker");
             }
@@ -579,9 +602,7 @@ mod tests {
         let result = validate_project_path(src.to_str().unwrap(), &[]);
 
         match result {
-            ValidationResult::SuggestParent {
-                suggested_path, ..
-            } => {
+            ValidationResult::SuggestParent { suggested_path, .. } => {
                 assert!(
                     suggested_path.ends_with("auth") || suggested_path.contains("auth"),
                     "Should suggest auth package, not monorepo root. Got: {}",
@@ -608,9 +629,7 @@ mod tests {
         let result = validate_project_path(deep.to_str().unwrap(), &[]);
 
         match result {
-            ValidationResult::SuggestParent {
-                suggested_path, ..
-            } => {
+            ValidationResult::SuggestParent { suggested_path, .. } => {
                 // Should suggest the package, not the monorepo root
                 assert!(
                     suggested_path.contains("auth"),
@@ -635,7 +654,9 @@ mod tests {
         let result = validate_project_path(tmp.path().to_str().unwrap(), &[]);
 
         match result {
-            ValidationResult::MissingClaudeMd { has_other_markers, .. } => {
+            ValidationResult::MissingClaudeMd {
+                has_other_markers, ..
+            } => {
                 assert!(has_other_markers);
             }
             other => panic!("Expected MissingClaudeMd, got {:?}", other),
@@ -650,7 +671,9 @@ mod tests {
         let result = validate_project_path(tmp.path().to_str().unwrap(), &[]);
 
         match result {
-            ValidationResult::MissingClaudeMd { has_other_markers, .. } => {
+            ValidationResult::MissingClaudeMd {
+                has_other_markers, ..
+            } => {
                 assert!(has_other_markers);
             }
             other => panic!("Expected MissingClaudeMd, got {:?}", other),
@@ -665,7 +688,9 @@ mod tests {
         let result = validate_project_path(tmp.path().to_str().unwrap(), &[]);
 
         match result {
-            ValidationResult::MissingClaudeMd { has_other_markers, .. } => {
+            ValidationResult::MissingClaudeMd {
+                has_other_markers, ..
+            } => {
                 assert!(has_other_markers);
             }
             other => panic!("Expected MissingClaudeMd, got {:?}", other),
@@ -685,7 +710,10 @@ mod tests {
 
         match result {
             ValidationResult::NotAProject { reason, .. } => {
-                assert!(reason.to_lowercase().contains("marker") || reason.to_lowercase().contains("project"));
+                assert!(
+                    reason.to_lowercase().contains("marker")
+                        || reason.to_lowercase().contains("project")
+                );
             }
             other => panic!("Expected NotAProject, got {:?}", other),
         }
@@ -715,7 +743,10 @@ mod tests {
 
         match result {
             ValidationResult::DangerousPath { reason, .. } => {
-                assert!(reason.to_lowercase().contains("broad") || reason.to_lowercase().contains("many"));
+                assert!(
+                    reason.to_lowercase().contains("broad")
+                        || reason.to_lowercase().contains("many")
+                );
             }
             other => panic!("Expected DangerousPath, got {:?}", other),
         }
@@ -730,7 +761,10 @@ mod tests {
                 ValidationResult::DangerousPath { .. } => {}
                 // Home might also be NotAProject if it has no markers
                 ValidationResult::NotAProject { .. } => {}
-                other => panic!("Expected DangerousPath or NotAProject for home, got {:?}", other),
+                other => panic!(
+                    "Expected DangerousPath or NotAProject for home, got {:?}",
+                    other
+                ),
             }
         }
     }
@@ -744,7 +778,10 @@ mod tests {
             // /tmp might not exist or might be a project
             ValidationResult::PathNotFound { .. } => {}
             ValidationResult::NotAProject { .. } => {}
-            other => panic!("Expected DangerousPath, PathNotFound, or NotAProject, got {:?}", other),
+            other => panic!(
+                "Expected DangerousPath, PathNotFound, or NotAProject, got {:?}",
+                other
+            ),
         }
     }
 
@@ -1083,9 +1120,13 @@ description = "A Rust library"
     #[test]
     fn does_not_overwrite_existing() {
         let tmp = create_test_dir();
-        create_file_with_content(tmp.path(), "CLAUDE.md", "# My custom content\n\nDon't overwrite!");
+        create_file_with_content(
+            tmp.path(),
+            "CLAUDE.md",
+            "# My custom content\n\nDon't overwrite!",
+        );
 
-        let result = create_claude_md(tmp.path().to_str().unwrap());
+        let _result = create_claude_md(tmp.path().to_str().unwrap());
 
         // Should either return error or silently skip
         let content = fs::read_to_string(tmp.path().join("CLAUDE.md")).unwrap();

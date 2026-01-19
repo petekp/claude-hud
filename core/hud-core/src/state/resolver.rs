@@ -355,13 +355,13 @@ pub fn resolve_state_with_details(
                             })
                         } else {
                             // Path doesn't match - search for correct session
-                            find_session_for_lock_with_details(store, &lock_info).or_else(|| {
-                                Some(ResolvedState {
+                            find_session_for_lock_with_details(store, &lock_info).or(Some(
+                                ResolvedState {
                                     state: ClaudeState::Ready,
                                     session_id: None,
                                     cwd: lock_info.path,
-                                })
-                            })
+                                },
+                            ))
                         }
                     }
                 }

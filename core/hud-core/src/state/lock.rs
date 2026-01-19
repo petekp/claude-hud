@@ -9,7 +9,7 @@ use super::types::LockInfo;
 // Thread-local cache for sysinfo System
 // Using per-PID refresh (O(1)) instead of full process list refresh (O(n))
 thread_local! {
-    static SYSTEM_CACHE: RefCell<Option<(sysinfo::System, Instant)>> = RefCell::new(None);
+    static SYSTEM_CACHE: RefCell<Option<(sysinfo::System, Instant)>> = const { RefCell::new(None) };
 }
 
 /// Normalize a path for consistent hashing and comparison.
@@ -140,13 +140,7 @@ fn is_pid_alive_verified(pid: u32, expected_start: Option<u64>) -> bool {
     // Get actual process start time
     if let Some(actual_start) = get_process_start_time(pid) {
         // Allow ±2 second tolerance for timing differences between bash calculation and sysinfo
-        let diff = if actual_start > expected_start_time {
-            actual_start - expected_start_time
-        } else {
-            expected_start_time - actual_start
-        };
-
-        diff <= 2
+        actual_start.abs_diff(expected_start_time) <= 2
     } else {
         // Process doesn't exist or can't be queried
         false
