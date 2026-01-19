@@ -44,7 +44,17 @@ else
 fi
 echo ""
 
-echo -e "${YELLOW}[2/4] Rust Tests${NC}"
+echo -e "${YELLOW}[2/5] Rust Formatting${NC}"
+if cargo fmt --check 2>&1; then
+    echo -e "${GREEN}✓ Formatting check passed${NC}"
+else
+    echo -e "${RED}✗ Formatting check failed${NC}"
+    echo -e "${YELLOW}  Run 'cargo fmt' to fix${NC}"
+    FAILED=1
+fi
+echo ""
+
+echo -e "${YELLOW}[3/5] Rust Tests${NC}"
 if cargo test 2>&1; then
     echo -e "${GREEN}✓ Rust tests passed${NC}"
 else
@@ -53,7 +63,7 @@ else
 fi
 echo ""
 
-echo -e "${YELLOW}[3/4] Rust Linting${NC}"
+echo -e "${YELLOW}[4/5] Rust Linting${NC}"
 if cargo clippy -- -D warnings 2>&1; then
     echo -e "${GREEN}✓ Clippy passed${NC}"
 else
@@ -63,7 +73,7 @@ fi
 echo ""
 
 if [ "$QUICK" = false ]; then
-    echo -e "${YELLOW}[4/4] Swift Tests${NC}"
+    echo -e "${YELLOW}[5/5] Swift Tests${NC}"
 
     echo "Building Rust library for Swift tests..."
     cargo build -p hud-core --release
@@ -78,7 +88,7 @@ if [ "$QUICK" = false ]; then
     fi
     cd "$PROJECT_ROOT"
 else
-    echo -e "${YELLOW}[4/4] Swift Tests${NC}"
+    echo -e "${YELLOW}[5/5] Swift Tests${NC}"
     echo -e "${YELLOW}⚠ Skipped (--quick mode)${NC}"
 fi
 echo ""
