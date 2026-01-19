@@ -15,6 +15,7 @@ struct ProjectCardView: View {
     let onMoveToDormant: () -> Void
     let onOpenBrowser: () -> Void
     var onCaptureIdea: (() -> Void)?
+    var onCaptureIdeaText: ((String) -> Result<Void, Error>)?
     let onRemove: () -> Void
     var onDragStarted: (() -> NSItemProvider)?
     var isDragging: Bool = false
@@ -207,7 +208,9 @@ struct ProjectCardView: View {
             ProjectCardContent(
                 workingOn: displaySummary,
                 blocker: projectStatus?.blocker,
-                isWorking: currentState == .working
+                isWorking: currentState == .working,
+                isCardHovered: isHovered,
+                onCaptureIdea: onCaptureIdeaText
             )
         }
         .padding(12)
@@ -385,12 +388,20 @@ private struct ProjectCardContent: View {
     let workingOn: String?
     let blocker: String?
     let isWorking: Bool
+    let isCardHovered: Bool
+    var onCaptureIdea: ((String) -> Result<Void, Error>)?
+
+    @State private var isContentHovered = false
+    @State private var showCapturePopover = false
+    @Environment(\.prefersReducedMotion) private var reduceMotion
+
+    private var showAddButton: Bool {
+        isCardHovered || isContentHovered
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            if let workingOn = workingOn, !workingOn.isEmpty {
-                TickerText(text: workingOn, isShimmering: isWorking)
-            }
+            descriptionOrAddButton
 
             if let blocker = blocker, !blocker.isEmpty {
                 HStack(spacing: 4) {
@@ -405,6 +416,61 @@ private struct ProjectCardContent: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    @ViewBuilder
+    private var descriptionOrAddButton: some View {
+        ZStack(alignment: .leading) {
+            // Description text - visible when not hovered
+            if let workingOn = workingOn, !workingOn.isEmpty {
+                TickerText(text: workingOn, isShimmering: isWorking)
+                    .opacity(showAddButton ? 0 : 1)
+            } else {
+                // Dimmed placeholder when no description
+                Text("Generating summary...")
+                    .font(AppTypography.bodySecondary)
+                    .foregroundColor(.white.opacity(0.35))
+                    .opacity(showAddButton ? 0 : 1)
+            }
+
+            // "+ Idea" button - visible on hover
+            if onCaptureIdea != nil {
+                Button(action: { showCapturePopover = true }) {
+                    HStack(spacing: 5) {
+                        Image(systemName: "plus")
+                            .font(AppTypography.bodySecondary.weight(.medium))
+                        Text("Idea")
+                            .font(AppTypography.bodySecondary.weight(.medium))
+                    }
+                    .foregroundColor(.white.opacity(isContentHovered ? 0.9 : 0.6))
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 5)
+                    .background(Color.white.opacity(isContentHovered ? 0.15 : 0.08))
+                    .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 6, style: .continuous)
+                            .strokeBorder(Color.white.opacity(isContentHovered ? 0.2 : 0.1), lineWidth: 0.5)
+                    )
+                }
+                .buttonStyle(.plain)
+                .opacity(showAddButton ? 1 : 0)
+                .onHover { hovering in
+                    withAnimation(reduceMotion ? AppMotion.reducedMotionFallback : .easeOut(duration: 0.15)) {
+                        isContentHovered = hovering
+                    }
+                }
+                .popover(isPresented: $showCapturePopover, arrowEdge: .bottom) {
+                    IdeaCapturePopover(
+                        isPresented: $showCapturePopover,
+                        onCapture: { text in
+                            onCaptureIdea?(text) ?? .success(())
+                        }
+                    )
+                }
+                .accessibilityLabel("Add idea to this project")
+            }
+        }
+        .animation(.spring(response: 0.4, dampingFraction: 0.8), value: showAddButton)
     }
 }
 

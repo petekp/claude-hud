@@ -97,6 +97,9 @@ struct ProjectsView: View {
                                 onCaptureIdea: {
                                     appState.showIdeaCaptureModal(for: project)
                                 },
+                                onCaptureIdeaText: { text in
+                                    appState.captureIdea(for: project, text: text)
+                                },
                                 onRemove: {
                                     withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
                                         appState.removeProject(project.path)
