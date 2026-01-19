@@ -33,12 +33,25 @@ struct ProjectDetailView: View {
                 .opacity(appeared ? 1 : 0)
                 .offset(y: appeared ? 0 : 12)
 
-                IdeasListView(
-                    ideas: appState.getIdeas(for: project),
-                    isGeneratingTitle: { appState.isGeneratingTitle(for: $0) },
-                    onWorkOn: { idea in appState.workOnIdea(idea, for: project) },
-                    onDismiss: { idea in appState.dismissIdea(idea, for: project) }
-                )
+                VStack(alignment: .leading, spacing: 12) {
+                    DetailSectionLabel(title: "IDEA QUEUE")
+
+                    IdeaQueueView(
+                        ideas: appState.getIdeas(for: project),
+                        isGeneratingTitle: { appState.isGeneratingTitle(for: $0) },
+                        onTapIdea: { idea in
+                            // TODO: Open detail modal (Phase 3)
+                        },
+                        onReorder: { reorderedIdeas in
+                            appState.reorderIdeas(reorderedIdeas, for: project)
+                        },
+                        onRemove: { idea in
+                            withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                                appState.dismissIdea(idea, for: project)
+                            }
+                        }
+                    )
+                }
                 .opacity(appeared ? 1 : 0)
                 .offset(y: appeared ? 0 : 16)
 

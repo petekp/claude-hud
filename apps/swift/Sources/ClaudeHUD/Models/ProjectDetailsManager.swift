@@ -115,6 +115,11 @@ final class ProjectDetailsManager {
         projectIdeas[project.path] = ideas
     }
 
+    func reorderIdeas(_ reorderedIdeas: [Idea], for project: Project) {
+        projectIdeas[project.path] = reorderedIdeas
+        // TODO: Persist order to disk (Phase 2, task 4)
+    }
+
     private func generateTitleForIdea(ideaId: String, description: String, project: Project) {
         generatingTitleForIdeas.insert(ideaId)
 

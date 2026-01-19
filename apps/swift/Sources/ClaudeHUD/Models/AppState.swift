@@ -522,6 +522,11 @@ class AppState: ObservableObject {
         objectWillChange.send()
     }
 
+    func reorderIdeas(_ reorderedIdeas: [Idea], for project: Project) {
+        projectDetailsManager.reorderIdeas(reorderedIdeas, for: project)
+        objectWillChange.send()
+    }
+
     // MARK: - Project Descriptions (delegating to ProjectDetailsManager)
 
     func getDescription(for project: Project) -> String? {
