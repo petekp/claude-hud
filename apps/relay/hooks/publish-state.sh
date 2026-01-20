@@ -60,9 +60,9 @@ else
     PROJECT_PATH="$CWD"
 fi
 
-# Read current status from hud-session-states.json (written by hud-state-tracker.sh)
-# Try CWD first (exact match), then fall back to project root
-STATUS_FILE="$HOME/.claude/hud-session-states.json"
+# Read current status from sessions.json (written by hud-state-tracker.sh)
+# Note: v2 format keys by session_id, not project path
+STATUS_FILE="$HOME/.capacitor/sessions.json"
 if [ -f "$STATUS_FILE" ]; then
     # Try exact CWD path first
     PROJECT_STATUS=$(jq --arg path "$CWD" '.projects[$path] // null' "$STATUS_FILE")

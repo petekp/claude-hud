@@ -6,7 +6,7 @@
 set -euo pipefail
 
 HOOK_SCRIPT="$HOME/.claude/scripts/hud-state-tracker.sh"
-STATE_FILE="$HOME/.claude/hud-session-states-v2.json"
+STATE_FILE="$HOME/.capacitor/sessions.json"
 TEST_SESSION_ID="test-$(date +%s)"
 TEST_CWD="/tmp/test-project"
 

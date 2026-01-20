@@ -1,6 +1,6 @@
 #!/bin/bash
-# HUD State Tracker Hook
-# Tracks Claude session state and writes to ~/.claude/hud-session-states.json
+# Capacitor State Tracker Hook
+# Tracks Claude session state and writes to ~/.capacitor/sessions.json
 #
 # This script should be configured in ~/.claude/settings.json for the following events:
 # - SessionStart, UserPromptSubmit, PermissionRequest, PostToolUse
@@ -19,7 +19,10 @@ if [ "$HUD_SUMMARY_GEN" = "1" ]; then
   exit 0
 fi
 
-STATE_FILE="$HOME/.claude/hud-session-states.json"
+# Ensure Capacitor directory exists
+mkdir -p "$HOME/.capacitor"
+
+STATE_FILE="$HOME/.capacitor/sessions.json"
 LOG_FILE="$HOME/.claude/hud-hook-debug.log"
 
 INPUT=$(cat)
@@ -135,9 +138,9 @@ case "$HOOK_EVENT" in
         ;;
 esac
 
-# Ensure state file exists with valid JSON
+# Ensure state file exists with valid JSON (v2 format uses "sessions" key)
 if [ ! -f "$STATE_FILE" ] || ! jq -e . "$STATE_FILE" &>/dev/null; then
-    echo '{"version": 1, "projects": {}}' > "$STATE_FILE"
+    echo '{"version": 2, "sessions": {}}' > "$STATE_FILE"
 fi
 
 # Update the state file atomically
