@@ -26,6 +26,44 @@ swift run                         # Run app
 /Users/petepetrash/Code/claude-hud/scripts/restart-app.sh
 ```
 
+## Distribution
+
+Release builds require notarization for Gatekeeper approval. Scripts handle the full workflow.
+
+### Quick Release
+
+```bash
+./scripts/bump-version.sh patch          # Bump version
+./scripts/build-distribution.sh          # Build + sign + notarize ZIP
+./scripts/create-dmg.sh                  # Create + notarize DMG
+./scripts/generate-appcast.sh            # Update Sparkle feed
+
+gh release create v0.x.x \
+  dist/ClaudeHUD-v0.x.x-arm64.dmg \
+  dist/ClaudeHUD-v0.x.x-arm64.zip \
+  dist/appcast.xml \
+  --title "Claude HUD v0.x.x" \
+  --notes "Release notes"
+```
+
+### First-Time Setup
+
+Notarization credentials (one-time):
+```bash
+xcrun notarytool store-credentials "ClaudeHUD" \
+  --apple-id "your@email.com" \
+  --team-id "YOUR_TEAM_ID" \
+  --password "app-specific-password"
+```
+
+See `docs/NOTARIZATION_SETUP.md` for full guide.
+
+### Gotchas
+
+- **Sparkle.framework must be bundled** — Swift Package Manager links but doesn't embed frameworks. The build script copies it to `Contents/Frameworks/` and signs it.
+- **Private repos break auto-updates** — Sparkle fetches appcast.xml anonymously; private GitHub repos return 404. Repo must be public for updates to work.
+- **Always run `cargo fmt`** — CI enforces formatting; commit will fail otherwise.
+
 ## Structure
 
 ```
