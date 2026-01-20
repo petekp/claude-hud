@@ -1,6 +1,44 @@
 import SwiftUI
 import AppKit
 
+// MARK: - First Mouse Click Support for Popovers
+
+/// Enables click-through for inactive windows (fixes popover two-click issue).
+/// Must be applied directly to buttons, not containers.
+/// See: https://christiantietze.de/posts/2024/04/enable-swiftui-button-click-through-inactive-windows/
+private struct ClickThroughBackdrop<Content: View>: NSViewRepresentable {
+    final class Backdrop: NSHostingView<Content> {
+        override func acceptsFirstMouse(for event: NSEvent?) -> Bool {
+            return true
+        }
+    }
+
+    let content: Content
+
+    init(_ content: Content) {
+        self.content = content
+    }
+
+    func makeNSView(context: Context) -> Backdrop {
+        let backdrop = Backdrop(rootView: content)
+        backdrop.translatesAutoresizingMaskIntoConstraints = false
+        return backdrop
+    }
+
+    func updateNSView(_ nsView: Backdrop, context: Context) {
+        nsView.rootView = content
+    }
+}
+
+extension View {
+    /// Enables this view to receive clicks even when its window is inactive.
+    fileprivate func acceptClickThrough() -> some View {
+        ClickThroughBackdrop(self)
+    }
+}
+
+// MARK: - Header View
+
 struct HeaderView: View {
     @EnvironmentObject var appState: AppState
     @Environment(\.floatingMode) private var floatingMode
@@ -109,17 +147,28 @@ struct PinButton: View {
 struct AddProjectButton: View {
     @EnvironmentObject var appState: AppState
     @State private var isHovered = false
-    @State private var showingPopover = false
     @Environment(\.prefersReducedMotion) private var reduceMotion
 
     var body: some View {
-        Button(action: { showingPopover = true }) {
-            HStack(spacing: 6) {
-                Image(systemName: "plus.circle.fill")
-                    .font(AppTypography.cardTitle)
+        Menu {
+            Button {
+                appState.showAddLink()
+            } label: {
+                Label("Link Existing", systemImage: "folder.badge.plus")
+            }
 
+            Button {
+                appState.showNewIdea()
+            } label: {
+                Label("Create with Claude", systemImage: "sparkles")
+            }
+        } label: {
+            HStack(spacing: 4) {
                 Text("Add Project")
                     .font(AppTypography.bodySecondary.weight(.medium))
+
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 10, weight: .semibold))
             }
             .foregroundColor(.white.opacity(isHovered ? 0.9 : 0.5))
             .padding(.horizontal, 12)
@@ -132,28 +181,81 @@ struct AddProjectButton: View {
                 RoundedRectangle(cornerRadius: 8)
                     .strokeBorder(Color.white.opacity(isHovered ? 0.15 : 0), lineWidth: 0.5)
             )
+            .animation(reduceMotion ? AppMotion.reducedMotionFallback : .easeOut(duration: 0.15), value: isHovered)
         }
-        .buttonStyle(.plain)
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .fixedSize()
         .accessibilityLabel("Add project")
         .accessibilityHint("Opens options to link an existing project or create a new one")
-        .scaleEffect(isHovered && !reduceMotion ? 1.02 : 1.0)
-        .onHover { hovering in
-            withAnimation(reduceMotion ? AppMotion.reducedMotionFallback : .spring(response: 0.2, dampingFraction: 0.7)) {
+        .background(
+            HoverTrackingView { hovering in
                 isHovered = hovering
             }
+        )
+    }
+}
+
+/// Uses NSTrackingArea for reliable hover detection that works with SwiftUI Menu
+private struct HoverTrackingView: NSViewRepresentable {
+    let onHover: (Bool) -> Void
+
+    func makeNSView(context: Context) -> HoverTrackingNSView {
+        let view = HoverTrackingNSView()
+        view.onHover = onHover
+        return view
+    }
+
+    func updateNSView(_ nsView: HoverTrackingNSView, context: Context) {
+        nsView.onHover = onHover
+    }
+}
+
+private class HoverTrackingNSView: NSView {
+    var onHover: ((Bool) -> Void)?
+    private var trackingArea: NSTrackingArea?
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+
+        if let existing = trackingArea {
+            removeTrackingArea(existing)
         }
-        .popover(isPresented: $showingPopover, arrowEdge: .bottom) {
-            AddProjectPopover(
-                onLinkExisting: {
-                    showingPopover = false
-                    appState.showAddLink()
-                },
-                onCreateNew: {
-                    showingPopover = false
-                    appState.showNewIdea()
-                }
-            )
+
+        let options: NSTrackingArea.Options = [.mouseEnteredAndExited, .activeAlways, .inVisibleRect]
+        trackingArea = NSTrackingArea(rect: bounds, options: options, owner: self, userInfo: nil)
+        addTrackingArea(trackingArea!)
+    }
+
+    override func mouseEntered(with event: NSEvent) {
+        onHover?(true)
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        onHover?(false)
+    }
+}
+
+private struct AddProjectMenuLabel: View {
+    let isHovered: Bool
+    @Environment(\.prefersReducedMotion) private var reduceMotion
+
+    var body: some View {
+        HStack(spacing: 4) {
+            Text("Add Project")
+                .font(AppTypography.bodySecondary.weight(.medium))
+
+            Image(systemName: "chevron.down")
+                .font(.system(size: 10, weight: .semibold))
         }
+        .foregroundColor(.white.opacity(isHovered ? 1.0 : 0.5))
+        .padding(.horizontal, 12)
+        .padding(.vertical, 6)
+        .background(
+            RoundedRectangle(cornerRadius: 8)
+                .fill(isHovered ? Color.red : Color.clear) // DEBUG: red on hover
+        )
+        .animation(reduceMotion ? AppMotion.reducedMotionFallback : .easeOut(duration: 0.15), value: isHovered)
     }
 }
 
@@ -178,8 +280,6 @@ struct AddProjectPopover: View {
             )
         }
         .padding(8)
-        .focusable(false)
-        .allowsHitTesting(true)
     }
 }
 
@@ -188,6 +288,8 @@ struct CapacitorLogo: View {
 
     #if DEBUG
     @ObservedObject private var config = GlassConfig.shared
+    @State private var shaderTime: Double = 0
+    private let timer = Timer.publish(every: 1/60, on: .main, in: .common).autoconnect()
     #endif
 
     private var fontSize: CGFloat {
@@ -290,9 +392,23 @@ struct CapacitorLogo: View {
     }
 
     var body: some View {
+        #if DEBUG
+        if config.logoShaderEnabled {
+            shaderLogo
+                .onReceive(timer) { _ in
+                    shaderTime += 1/60
+                }
+        } else {
+            letterpressLogo
+        }
+        #else
+        letterpressLogo
+        #endif
+    }
+
+    private var letterpressLogo: some View {
         baseText(.white.opacity(baseOpacity))
             .overlay {
-                // Inner shadow - masked to letter shapes
                 baseText(.black)
                     .blur(radius: shadowBlur)
                     .offset(x: shadowOffset.width, y: shadowOffset.height)
@@ -301,7 +417,6 @@ struct CapacitorLogo: View {
                     .blendMode(shadowBlendMode)
             }
             .overlay {
-                // Inner highlight - masked to letter shapes
                 baseText(.white)
                     .blur(radius: highlightBlur)
                     .offset(x: highlightOffset.width, y: highlightOffset.height)
@@ -310,6 +425,21 @@ struct CapacitorLogo: View {
                     .blendMode(highlightBlendMode)
             }
     }
+
+    #if DEBUG
+    @ViewBuilder
+    private var shaderLogo: some View {
+        if config.logoShaderMaskToText {
+            ShinyMetalView(config: config, time: shaderTime)
+                .mask(baseText(.white))
+        } else {
+            baseText(.white)
+                .background {
+                    ShinyMetalView(config: config, time: shaderTime)
+                }
+        }
+    }
+    #endif
 }
 
 private struct PopoverOptionButton: View {
@@ -322,7 +452,10 @@ private struct PopoverOptionButton: View {
     @Environment(\.prefersReducedMotion) private var reduceMotion
 
     var body: some View {
-        Button(action: action) {
+        Button {
+            print("🟢 PopoverOptionButton '\(title)' CLICKED")
+            action()
+        } label: {
             HStack(spacing: 12) {
                 Image(systemName: icon)
                     .font(.system(size: 18, weight: .medium))
@@ -349,7 +482,8 @@ private struct PopoverOptionButton: View {
                     .fill(Color.white.opacity(isHovered ? 0.1 : 0))
             )
         }
-        .buttonStyle(.borderless)
+        .buttonStyle(.plain)
+        .acceptClickThrough()
         .onHover { hovering in
             withAnimation(reduceMotion ? AppMotion.reducedMotionFallback : .easeOut(duration: 0.15)) {
                 isHovered = hovering
