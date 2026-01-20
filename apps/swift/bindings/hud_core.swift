@@ -531,7 +531,7 @@ public protocol HudEngineProtocol: AnyObject {
     /**
      * Captures a new idea for a project.
      *
-     * Appends the idea to `.claude/ideas.local.md` in the project's directory
+     * Appends the idea to `~/.capacitor/projects/{encoded}/ideas.md`
      * with default metadata (effort: unknown, status: open, triage: pending).
      *
      * Returns the generated ULID for the idea.
@@ -819,7 +819,7 @@ open class HudEngine:
     /**
      * Captures a new idea for a project.
      *
-     * Appends the idea to `.claude/ideas.local.md` in the project's directory
+     * Appends the idea to `~/.capacitor/projects/{encoded}/ideas.md`
      * with default metadata (effort: unknown, status: open, triage: pending).
      *
      * Returns the generated ULID for the idea.
@@ -2016,7 +2016,7 @@ public func FfiConverterTypeHudConfig_lower(_ value: HudConfig) -> RustBuffer {
 }
 
 /**
- * A captured idea stored in `.claude/ideas.local.md`.
+ * A captured idea stored in `~/.capacitor/projects/{encoded}/ideas.md`.
  *
  * Ideas are stored in markdown format with ULID identifiers for stable references.
  * They can be in various states (open, in-progress, done) and have triage status.
@@ -4365,7 +4365,7 @@ private var initializationResult: InitializationResult = {
     if uniffi_hud_core_checksum_method_hudengine_capacitor_dir() != 14668 {
         return InitializationResult.apiChecksumMismatch
     }
-    if uniffi_hud_core_checksum_method_hudengine_capture_idea() != 22245 {
+    if uniffi_hud_core_checksum_method_hudengine_capture_idea() != 29080 {
         return InitializationResult.apiChecksumMismatch
     }
     if uniffi_hud_core_checksum_method_hudengine_claude_dir() != 58851 {

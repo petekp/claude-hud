@@ -1,28 +1,33 @@
 use std::path::PathBuf;
 use std::time::SystemTime;
 
-use crate::config::get_claude_dir;
 use crate::state::types::ClaudeState;
 use crate::state::{resolve_state_with_details, StateStore};
+use crate::storage::StorageConfig;
 
 use super::types::{AdapterError, AgentSession, AgentState, AgentType};
 use super::AgentAdapter;
 
+/// Adapter for Claude Code CLI sessions.
+///
+/// Uses split namespaces following the sidecar architecture:
+/// - State file: `~/.capacitor/sessions.json` (Capacitor owns this)
+/// - Lock directories: `~/.claude/sessions/` (Claude Code creates these)
 pub struct ClaudeAdapter {
-    claude_dir: Option<PathBuf>,
+    storage: StorageConfig,
 }
 
 impl ClaudeAdapter {
     pub fn new() -> Self {
         Self {
-            claude_dir: get_claude_dir(),
+            storage: StorageConfig::default(),
         }
     }
 
-    pub fn with_claude_dir(dir: PathBuf) -> Self {
-        Self {
-            claude_dir: Some(dir),
-        }
+    /// Creates an adapter with custom storage configuration.
+    /// Used for testing with isolated directories.
+    pub fn with_storage(storage: StorageConfig) -> Self {
+        Self { storage }
     }
 
     fn map_state(claude_state: ClaudeState) -> AgentState {
@@ -42,14 +47,17 @@ impl ClaudeAdapter {
         }
     }
 
+    /// Returns path to the sessions state file.
+    /// Located in Capacitor namespace: `~/.capacitor/sessions.json`
     fn state_file_path(&self) -> Option<PathBuf> {
-        self.claude_dir
-            .as_ref()
-            .map(|d| d.join("hud-session-states-v2.json"))
+        Some(self.storage.sessions_file())
     }
 
+    /// Returns path to the lock directory.
+    /// Located in Claude namespace: `~/.claude/sessions/`
+    /// (Claude Code creates these, we only read them)
     fn lock_dir_path(&self) -> Option<PathBuf> {
-        self.claude_dir.as_ref().map(|d| d.join("sessions"))
+        Some(self.storage.claude_root().join("sessions"))
     }
 }
 
@@ -69,11 +77,8 @@ impl AgentAdapter for ClaudeAdapter {
     }
 
     fn is_installed(&self) -> bool {
-        self.claude_dir
-            .as_ref()
-            .and_then(|d| std::fs::metadata(d).ok())
-            .map(|m| m.is_dir())
-            .unwrap_or(false)
+        // Check if Claude directory exists (where lock files are)
+        self.storage.claude_root().is_dir()
     }
 
     fn initialize(&self) -> Result<(), AdapterError> {
@@ -170,7 +175,87 @@ impl AgentAdapter for ClaudeAdapter {
 mod tests {
     use super::*;
     use crate::state::lock::tests_helper::create_lock;
+    use crate::storage::StorageConfig;
     use tempfile::tempdir;
+
+    // ─────────────────────────────────────────────────────────────────────────────
+    // TDD: Path Configuration Tests (these should fail until we fix the adapter)
+    // ─────────────────────────────────────────────────────────────────────────────
+
+    #[test]
+    fn test_state_file_uses_capacitor_namespace() {
+        // State file should be in ~/.capacitor/sessions.json, NOT ~/.claude/
+        let temp = tempdir().unwrap();
+        let capacitor_root = temp.path().join("capacitor");
+        let claude_root = temp.path().join("claude");
+        std::fs::create_dir_all(&capacitor_root).unwrap();
+        std::fs::create_dir_all(&claude_root).unwrap();
+
+        let storage = StorageConfig::with_roots(capacitor_root.clone(), claude_root.clone());
+        let adapter = ClaudeAdapter::with_storage(storage);
+
+        // State file should be in Capacitor namespace
+        let state_path = adapter.state_file_path().unwrap();
+        assert!(
+            state_path.starts_with(&capacitor_root),
+            "State file should be in capacitor dir, got: {}",
+            state_path.display()
+        );
+        assert_eq!(state_path, capacitor_root.join("sessions.json"));
+    }
+
+    #[test]
+    fn test_lock_dir_uses_claude_namespace() {
+        // Lock dir should be in ~/.claude/sessions/ (Claude Code writes these)
+        let temp = tempdir().unwrap();
+        let capacitor_root = temp.path().join("capacitor");
+        let claude_root = temp.path().join("claude");
+        std::fs::create_dir_all(&capacitor_root).unwrap();
+        std::fs::create_dir_all(&claude_root).unwrap();
+
+        let storage = StorageConfig::with_roots(capacitor_root.clone(), claude_root.clone());
+        let adapter = ClaudeAdapter::with_storage(storage);
+
+        // Lock dir should be in Claude namespace
+        let lock_path = adapter.lock_dir_path().unwrap();
+        assert!(
+            lock_path.starts_with(&claude_root),
+            "Lock dir should be in claude dir, got: {}",
+            lock_path.display()
+        );
+        assert_eq!(lock_path, claude_root.join("sessions"));
+    }
+
+    #[test]
+    fn test_detect_session_with_split_namespaces() {
+        // Sessions file in capacitor, locks in claude
+        let temp = tempdir().unwrap();
+        let capacitor_root = temp.path().join("capacitor");
+        let claude_root = temp.path().join("claude");
+        let sessions_dir = claude_root.join("sessions");
+        std::fs::create_dir_all(&capacitor_root).unwrap();
+        std::fs::create_dir_all(&sessions_dir).unwrap();
+
+        // Create lock in Claude namespace
+        create_lock(&sessions_dir, std::process::id(), "/project");
+
+        // Create state file in Capacitor namespace
+        let state_file = capacitor_root.join("sessions.json");
+        let mut store = StateStore::new(&state_file);
+        store.update("test-session", ClaudeState::Working, "/project");
+        store.save().unwrap();
+
+        let storage = StorageConfig::with_roots(capacitor_root, claude_root);
+        let adapter = ClaudeAdapter::with_storage(storage);
+        let session = adapter.detect_session("/project").unwrap();
+
+        assert_eq!(session.state, AgentState::Working);
+        assert_eq!(session.cwd, "/project");
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────────
+    // Existing Tests (updated to use new constructor where needed)
+    // ─────────────────────────────────────────────────────────────────────────────
 
     #[test]
     fn test_state_mapping_ready() {
@@ -212,45 +297,70 @@ mod tests {
         );
     }
 
+    /// Helper to create an adapter with nonexistent directories
+    fn adapter_with_nonexistent_dirs() -> ClaudeAdapter {
+        let storage = StorageConfig::with_roots(
+            PathBuf::from("/nonexistent/capacitor"),
+            PathBuf::from("/nonexistent/claude"),
+        );
+        ClaudeAdapter::with_storage(storage)
+    }
+
     #[test]
     fn test_is_installed_returns_false_when_dir_missing() {
-        let adapter = ClaudeAdapter { claude_dir: None };
+        let adapter = adapter_with_nonexistent_dirs();
         assert!(!adapter.is_installed());
     }
 
     #[test]
     fn test_is_installed_returns_true_when_dir_exists() {
         let temp = tempdir().unwrap();
-        let adapter = ClaudeAdapter::with_claude_dir(temp.path().to_path_buf());
+        let claude_root = temp.path().join("claude");
+        std::fs::create_dir_all(&claude_root).unwrap();
+
+        let storage = StorageConfig::with_roots(temp.path().to_path_buf(), claude_root);
+        let adapter = ClaudeAdapter::with_storage(storage);
         assert!(adapter.is_installed());
     }
 
     #[test]
     fn test_detect_session_returns_none_when_not_installed() {
-        let adapter = ClaudeAdapter { claude_dir: None };
+        let adapter = adapter_with_nonexistent_dirs();
         assert!(adapter.detect_session("/some/project").is_none());
     }
 
     #[test]
     fn test_detect_session_returns_none_when_no_state() {
         let temp = tempdir().unwrap();
-        let adapter = ClaudeAdapter::with_claude_dir(temp.path().to_path_buf());
+        let capacitor_root = temp.path().join("capacitor");
+        let claude_root = temp.path().join("claude");
+        std::fs::create_dir_all(&capacitor_root).unwrap();
+        std::fs::create_dir_all(&claude_root).unwrap();
+
+        let storage = StorageConfig::with_roots(capacitor_root, claude_root);
+        let adapter = ClaudeAdapter::with_storage(storage);
         assert!(adapter.detect_session("/some/project").is_none());
     }
 
     #[test]
     fn test_detect_session_with_active_session() {
         let temp = tempdir().unwrap();
-        let sessions_dir = temp.path().join("sessions");
+        let capacitor_root = temp.path().join("capacitor");
+        let claude_root = temp.path().join("claude");
+        let sessions_dir = claude_root.join("sessions");
+        std::fs::create_dir_all(&capacitor_root).unwrap();
         std::fs::create_dir_all(&sessions_dir).unwrap();
 
+        // Lock in Claude namespace
         create_lock(&sessions_dir, std::process::id(), "/project");
 
-        let mut store = StateStore::new(&temp.path().join("hud-session-states-v2.json"));
+        // State file in Capacitor namespace
+        let mut store = StateStore::new(&capacitor_root.join("sessions.json"));
         store.update("test-session", ClaudeState::Working, "/project");
         store.save().unwrap();
 
-        let adapter = ClaudeAdapter::with_claude_dir(temp.path().to_path_buf());
+        let storage = StorageConfig::with_roots(capacitor_root, claude_root);
+        let adapter = ClaudeAdapter::with_storage(storage);
         let session = adapter.detect_session("/project").unwrap();
 
         assert_eq!(session.agent_type, AgentType::Claude);
@@ -260,20 +370,26 @@ mod tests {
 
     #[test]
     fn test_all_sessions_returns_empty_when_not_installed() {
-        let adapter = ClaudeAdapter { claude_dir: None };
+        let adapter = adapter_with_nonexistent_dirs();
         assert!(adapter.all_sessions().is_empty());
     }
 
     #[test]
     fn test_all_sessions_returns_sessions() {
         let temp = tempdir().unwrap();
+        let capacitor_root = temp.path().join("capacitor");
+        let claude_root = temp.path().join("claude");
+        std::fs::create_dir_all(&capacitor_root).unwrap();
+        std::fs::create_dir_all(&claude_root).unwrap();
 
-        let mut store = StateStore::new(&temp.path().join("hud-session-states-v2.json"));
+        // State file in Capacitor namespace
+        let mut store = StateStore::new(&capacitor_root.join("sessions.json"));
         store.update("session-1", ClaudeState::Working, "/project1");
         store.update("session-2", ClaudeState::Ready, "/project2");
         store.save().unwrap();
 
-        let adapter = ClaudeAdapter::with_claude_dir(temp.path().to_path_buf());
+        let storage = StorageConfig::with_roots(capacitor_root, claude_root);
+        let adapter = ClaudeAdapter::with_storage(storage);
         let sessions = adapter.all_sessions();
 
         assert_eq!(sessions.len(), 2);
@@ -289,17 +405,30 @@ mod tests {
     #[test]
     fn test_state_mtime_returns_none_when_no_file() {
         let temp = tempdir().unwrap();
-        let adapter = ClaudeAdapter::with_claude_dir(temp.path().to_path_buf());
+        let capacitor_root = temp.path().join("capacitor");
+        let claude_root = temp.path().join("claude");
+        std::fs::create_dir_all(&capacitor_root).unwrap();
+        std::fs::create_dir_all(&claude_root).unwrap();
+
+        let storage = StorageConfig::with_roots(capacitor_root, claude_root);
+        let adapter = ClaudeAdapter::with_storage(storage);
         assert!(adapter.state_mtime().is_none());
     }
 
     #[test]
     fn test_state_mtime_returns_some_when_file_exists() {
         let temp = tempdir().unwrap();
-        let state_file = temp.path().join("hud-session-states-v2.json");
+        let capacitor_root = temp.path().join("capacitor");
+        let claude_root = temp.path().join("claude");
+        std::fs::create_dir_all(&capacitor_root).unwrap();
+        std::fs::create_dir_all(&claude_root).unwrap();
+
+        // Create state file in Capacitor namespace
+        let state_file = capacitor_root.join("sessions.json");
         std::fs::write(&state_file, r#"{"version": 2, "sessions": {}}"#).unwrap();
 
-        let adapter = ClaudeAdapter::with_claude_dir(temp.path().to_path_buf());
+        let storage = StorageConfig::with_roots(capacitor_root, claude_root);
+        let adapter = ClaudeAdapter::with_storage(storage);
         assert!(adapter.state_mtime().is_some());
     }
 }

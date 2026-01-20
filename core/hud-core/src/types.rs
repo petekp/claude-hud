@@ -313,7 +313,7 @@ pub struct CreateProjectResult {
 // Idea Capture Types
 // ═══════════════════════════════════════════════════════════════════════════════
 
-/// A captured idea stored in `.claude/ideas.local.md`.
+/// A captured idea stored in `~/.capacitor/projects/{encoded}/ideas.md`.
 ///
 /// Ideas are stored in markdown format with ULID identifiers for stable references.
 /// They can be in various states (open, in-progress, done) and have triage status.

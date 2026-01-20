@@ -124,11 +124,10 @@ impl HudEngine {
 
         // Reconcile any orphaned locks for this path before adding
         // This handles cases where a stale lock from an old session prevents correct state display
+        // Lock dir is in Claude namespace (Claude Code creates these)
+        // State file is in Capacitor namespace (we own this)
         let lock_dir = self.storage.claude_root().join("sessions");
-        let state_file = self
-            .storage
-            .claude_root()
-            .join("hud-session-states-v2.json");
+        let state_file = self.storage.sessions_file();
         if let Ok(store) = StateStore::load(&state_file) {
             let _ = reconcile_orphaned_lock(&lock_dir, &store, &path);
         }
@@ -499,7 +498,7 @@ impl HudEngine {
 
     /// Captures a new idea for a project.
     ///
-    /// Appends the idea to `.claude/ideas.local.md` in the project's directory
+    /// Appends the idea to `~/.capacitor/projects/{encoded}/ideas.md`
     /// with default metadata (effort: unknown, status: open, triage: pending).
     ///
     /// Returns the generated ULID for the idea.

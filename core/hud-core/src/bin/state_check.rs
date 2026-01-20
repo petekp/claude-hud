@@ -1,12 +1,16 @@
 use hud_core::state::{get_lock_info, is_session_running, resolve_state, StateStore};
+use hud_core::storage::StorageConfig;
 
 fn main() {
-    let home = dirs::home_dir().expect("No home directory");
-    let lock_dir = home.join(".claude/sessions");
-    let state_file = home.join(".claude/hud-session-states-v2.json");
+    let storage = StorageConfig::default();
+
+    // Lock dir is in Claude namespace (Claude Code creates these)
+    let lock_dir = storage.claude_root().join("sessions");
+    // State file is in Capacitor namespace (we own this)
+    let state_file = storage.sessions_file();
 
     println!("═══════════════════════════════════════════════════════════");
-    println!("  Claude HUD State Check - Validation Harness");
+    println!("  Capacitor State Check - Validation Harness");
     println!("═══════════════════════════════════════════════════════════");
     println!();
 
