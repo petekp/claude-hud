@@ -142,9 +142,9 @@ impl StorageConfig {
     }
 
     /// Path to a project's idea order file.
-    /// Example: ~/.capacitor/projects/-Users-pete-Code-my-project/order.json
+    /// Example: ~/.capacitor/projects/-Users-pete-Code-my-project/ideas-order.json
     pub fn project_order_file(&self, project_path: &str) -> PathBuf {
-        self.project_data_dir(project_path).join("order.json")
+        self.project_data_dir(project_path).join("ideas-order.json")
     }
 
     // ─────────────────────────────────────────────────────────────────────────────
@@ -404,7 +404,7 @@ mod tests {
         let config = StorageConfig::with_root(PathBuf::from("/tmp/capacitor"));
         assert_eq!(
             config.project_order_file("/Users/pete/Code/my-project"),
-            PathBuf::from("/tmp/capacitor/projects/-Users-pete-Code-my-project/order.json")
+            PathBuf::from("/tmp/capacitor/projects/-Users-pete-Code-my-project/ideas-order.json")
         );
     }
 

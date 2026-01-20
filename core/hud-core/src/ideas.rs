@@ -269,7 +269,7 @@ pub fn update_idea_description(
 
 /// Saves the display order of ideas for a project.
 ///
-/// The order is stored separately from idea content in `~/.capacitor/projects/{encoded}/order.json`.
+/// The order is stored separately from idea content in `~/.capacitor/projects/{encoded}/ideas-order.json`.
 /// This prevents churning the ideas markdown file on every reorder.
 ///
 /// Ideas not in the order list will be appended at the end when loading.
@@ -332,7 +332,7 @@ fn get_ideas_file_path(project_path: &str) -> PathBuf {
 
 /// Returns the path to the project's ideas order file in global storage.
 ///
-/// Order is stored at `~/.capacitor/projects/{encoded-path}/order.json`.
+/// Order is stored at `~/.capacitor/projects/{encoded-path}/ideas-order.json`.
 fn get_order_file_path(project_path: &str) -> PathBuf {
     StorageConfig::default().project_order_file(project_path)
 }
