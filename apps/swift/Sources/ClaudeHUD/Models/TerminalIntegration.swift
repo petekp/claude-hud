@@ -168,8 +168,7 @@ final class TerminalIntegration {
 
         \(idea.description)
 
-        The details are in .claude/ideas.local.md if you need to reference them.
-        When you're done, update the Status field to "done" in that file.
+        When you're done, mark this idea as complete.
         """
     }
 

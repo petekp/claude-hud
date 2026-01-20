@@ -104,40 +104,26 @@ struct DockLayoutView: View {
         let sessionState = appState.getSessionState(for: project)
         let projectStatus = appState.getProjectStatus(for: project)
         let flashState = appState.isFlashing(project)
-        let devServerPort = appState.getDevServerPort(for: project)
         let isStale = isProjectStale(project)
         let isActive = appState.activeProjectPath == project.path
-        let (ideas, remainingCount) = filteredIdeas(for: project)
 
         DockProjectCard(
             project: project,
             sessionState: sessionState,
             projectStatus: projectStatus,
             flashState: flashState,
-            devServerPort: devServerPort,
             isStale: isStale,
             isActive: isActive,
             onTap: { appState.launchTerminal(for: project) },
             onInfoTap: { appState.showProjectDetail(project) },
             onMoveToDormant: { appState.moveToDormant(project) },
-            onOpenBrowser: { appState.openInBrowser(project) },
             onCaptureIdea: { frame in appState.showIdeaCaptureModal(for: project, from: frame) },
             onRemove: { appState.removeProject(project.path) },
             onDragStarted: {
                 draggedProject = project
                 return NSItemProvider(object: project.path as NSString)
             },
-            isDragging: draggedProject?.path == project.path,
-            ideas: ideas,
-            ideasRemainingCount: remainingCount,
-            generatingTitleIds: appState.generatingTitleForIdeas,
-            onShowMoreIdeas: { appState.showProjectDetail(project) },
-            onWorkOnIdea: { idea in appState.workOnIdea(idea, for: project) },
-            onDismissIdea: { idea in
-                withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
-                    appState.dismissIdea(idea, for: project)
-                }
-            }
+            isDragging: draggedProject?.path == project.path
         )
         .preventWindowDrag()
         .zIndex(draggedProject?.path == project.path ? 999 : 0)

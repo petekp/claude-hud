@@ -21,7 +21,6 @@ struct NewIdeaView: View {
                 BackButton(title: "Projects") {
                     appState.showProjectList()
                 }
-                .keyboardShortcut("[", modifiers: .command)
 
                 Spacer()
             }
@@ -47,6 +46,9 @@ struct NewIdeaView: View {
             withAnimation(.spring(response: 0.5, dampingFraction: 0.8).delay(0.1)) {
                 appeared = true
             }
+        }
+        .onExitCommand {
+            appState.showProjectList()
         }
     }
 

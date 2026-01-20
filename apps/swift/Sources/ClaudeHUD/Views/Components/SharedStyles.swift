@@ -5,7 +5,6 @@ struct BackButton: View {
     let action: () -> Void
 
     @State private var isHovered = false
-    @State private var isPressed = false
 
     var body: some View {
         Button(action: action) {
@@ -19,6 +18,7 @@ struct BackButton: View {
             .foregroundColor(.white.opacity(isHovered ? 0.95 : 0.55))
             .padding(.horizontal, 10)
             .padding(.vertical, 6)
+            .contentShape(Rectangle())
             .background {
                 ZStack {
                     RoundedRectangle(cornerRadius: 6)
@@ -30,23 +30,13 @@ struct BackButton: View {
                     }
                 }
             }
-            .scaleEffect(isPressed ? 0.96 : 1.0)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.borderless)
         .onHover { hovering in
             withAnimation(.easeOut(duration: 0.15)) {
                 isHovered = hovering
             }
         }
-        .simultaneousGesture(
-            DragGesture(minimumDistance: 0)
-                .onChanged { _ in
-                    withAnimation(.spring(response: 0.15)) { isPressed = true }
-                }
-                .onEnded { _ in
-                    withAnimation(.spring(response: 0.2, dampingFraction: 0.6)) { isPressed = false }
-                }
-        )
     }
 }
 

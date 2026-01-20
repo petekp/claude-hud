@@ -5,25 +5,15 @@ struct DockProjectCard: View {
     let sessionState: ProjectSessionState?
     let projectStatus: ProjectStatus?
     let flashState: SessionState?
-    let devServerPort: UInt16?
     let isStale: Bool
     let isActive: Bool
     let onTap: () -> Void
     let onInfoTap: () -> Void
     let onMoveToDormant: () -> Void
-    let onOpenBrowser: () -> Void
     var onCaptureIdea: ((CGRect) -> Void)?
     let onRemove: () -> Void
     var onDragStarted: (() -> NSItemProvider)?
     var isDragging: Bool = false
-
-    // Ideas support (shared with ProjectCardView)
-    var ideas: [Idea] = []
-    var ideasRemainingCount: Int = 0
-    var generatingTitleIds: Set<String> = []
-    var onShowMoreIdeas: (() -> Void)?
-    var onWorkOnIdea: ((Idea) -> Void)?
-    var onDismissIdea: ((Idea) -> Void)?
 
     @Environment(\.floatingMode) private var floatingMode
     @Environment(\.prefersReducedMotion) private var reduceMotion
@@ -39,14 +29,9 @@ struct DockProjectCard: View {
     @State private var lastChimeTime: Date?
     @State private var lastKnownSummary: String?
     @State private var summaryHighlighted = false
-    @State private var showIdeasPopover = false
 
     private let cornerRadius: CGFloat = 10
     private let chimeCooldown: TimeInterval = 3.0
-
-    private var totalIdeasCount: Int {
-        ideas.count + ideasRemainingCount
-    }
 
     private var currentState: SessionState? {
         sessionState?.state
@@ -103,7 +88,7 @@ struct DockProjectCard: View {
 
     var body: some View {
         cardContent
-            .frame(width: 262, height: 126)
+            .frame(width: 262)
             .cardStyling(
                 isHovered: isHovered,
                 isReady: isReady,
@@ -156,11 +141,9 @@ struct DockProjectCard: View {
             .contextMenu {
                 ProjectContextMenu(
                     project: project,
-                    devServerPort: devServerPort,
                     onTap: onTap,
                     onInfoTap: onInfoTap,
                     onMoveToDormant: onMoveToDormant,
-                    onOpenBrowser: onOpenBrowser,
                     onCaptureIdea: onCaptureIdea.map { action in { action(.zero) } },
                     onRemove: onRemove
                 )
@@ -193,25 +176,6 @@ struct DockProjectCard: View {
                 )
                 .lineLimit(1)
 
-                if totalIdeasCount > 0 {
-                    IdeasBadge(
-                        count: totalIdeasCount,
-                        isCardHovered: isHovered,
-                        showPopover: $showIdeasPopover
-                    )
-                    .popover(isPresented: $showIdeasPopover, arrowEdge: .bottom) {
-                        IdeasPopoverContent(
-                            ideas: ideas,
-                            remainingCount: ideasRemainingCount,
-                            generatingTitleIds: generatingTitleIds,
-                            onAddIdea: onCaptureIdea.map { action in { action(.zero) } },
-                            onShowMore: onShowMoreIdeas,
-                            onWorkOnIdea: onWorkOnIdea,
-                            onDismissIdea: onDismissIdea
-                        )
-                    }
-                }
-
                 Spacer(minLength: 0)
             }
 
@@ -226,7 +190,7 @@ struct DockProjectCard: View {
                 Text(summary)
                     .font(AppTypography.body)
                     .foregroundColor(.white.opacity(summaryHighlighted ? 0.9 : 0.55))
-                    .lineLimit(3)
+                    .lineLimit(2)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .contentTransition(reduceMotion ? .identity : .interpolate)
                     .animation(reduceMotion ? nil : .easeInOut(duration: 0.3), value: displaySummary)

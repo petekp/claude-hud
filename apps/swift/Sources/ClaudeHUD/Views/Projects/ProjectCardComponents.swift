@@ -213,11 +213,9 @@ struct CompactingTrackingParameters {
 /// Builds the standard context menu for project cards
 struct ProjectContextMenu: View {
     let project: Project
-    let devServerPort: UInt16?
     let onTap: () -> Void
     let onInfoTap: () -> Void
     let onMoveToDormant: () -> Void
-    let onOpenBrowser: () -> Void
     var onCaptureIdea: (() -> Void)?
     let onRemove: () -> Void
 
@@ -244,11 +242,6 @@ struct ProjectContextMenu: View {
     private var normalProjectMenu: some View {
         Button(action: onTap) {
             Label("Open in Terminal", systemImage: "terminal")
-        }
-        if devServerPort != nil {
-            Button(action: onOpenBrowser) {
-                Label("Open in Browser", systemImage: "globe")
-            }
         }
         Button(action: onInfoTap) {
             Label("View Details", systemImage: "info.circle")

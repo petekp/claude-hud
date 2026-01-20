@@ -71,13 +71,11 @@ struct ProjectsView: View {
                             .transition(.opacity)
 
                         ForEach(activeProjects, id: \.path) { project in
-                            let (ideas, remaining) = filteredIdeas(for: project)
                             ProjectCardView(
                                 project: project,
                                 sessionState: appState.getSessionState(for: project),
                                 projectStatus: appState.getProjectStatus(for: project),
                                 flashState: appState.isFlashing(project),
-                                devServerPort: appState.getDevServerPort(for: project),
                                 isStale: isStale(project),
                                 isActive: appState.activeProjectPath == project.path,
                                 onTap: {
@@ -91,9 +89,6 @@ struct ProjectsView: View {
                                         appState.moveToDormant(project)
                                     }
                                 },
-                                onOpenBrowser: {
-                                    appState.openInBrowser(project)
-                                },
                                 onCaptureIdea: { frame in
                                     appState.showIdeaCaptureModal(for: project, from: frame)
                                 },
@@ -106,19 +101,7 @@ struct ProjectsView: View {
                                     draggedProject = project
                                     return NSItemProvider(object: project.path as NSString)
                                 },
-                                isDragging: draggedProject?.path == project.path,
-                                ideas: ideas,
-                                ideasRemainingCount: remaining,
-                                generatingTitleIds: appState.generatingTitleForIdeas,
-                                onShowMoreIdeas: { appState.showProjectDetail(project) },
-                                onWorkOnIdea: { idea in
-                                    appState.workOnIdea(idea, for: project)
-                                },
-                                onDismissIdea: { idea in
-                                    withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
-                                        appState.dismissIdea(idea, for: project)
-                                    }
-                                }
+                                isDragging: draggedProject?.path == project.path
                             )
                             .preventWindowDrag()
                             .zIndex(draggedProject?.path == project.path ? 999 : 0)

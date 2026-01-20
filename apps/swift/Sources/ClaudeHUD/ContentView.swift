@@ -3,6 +3,7 @@ import SwiftUI
 struct ContentView: View {
     @EnvironmentObject var appState: AppState
     @Environment(\.floatingMode) private var floatingMode
+    @AppStorage("alwaysOnTop") private var alwaysOnTopStorage = false
 
     #if DEBUG
     @ObservedObject private var glassConfig = GlassConfig.shared
@@ -64,6 +65,10 @@ struct ContentView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
 
             HeaderView()
+        }
+        .overlay(alignment: .bottomTrailing) {
+            PinButton(isPinned: $alwaysOnTopStorage)
+                .padding(16)
         }
         .clipShape(RoundedRectangle(cornerRadius: floatingMode ? 22 : 0))
     }

@@ -4,16 +4,12 @@ import AppKit
 struct HeaderView: View {
     @EnvironmentObject var appState: AppState
     @Environment(\.floatingMode) private var floatingMode
-    @Environment(\.alwaysOnTop) private var alwaysOnTop
-    @AppStorage("alwaysOnTop") private var alwaysOnTopStorage = false
 
     private let headerBlurHeight: CGFloat = 72
 
     var body: some View {
         VStack(spacing: 0) {
             HStack(spacing: 16) {
-                PinButton(isPinned: $alwaysOnTopStorage)
-
                 Spacer()
 
                 AddProjectButton()
@@ -79,8 +75,9 @@ struct PinButton: View {
         Button(action: { isPinned.toggle() }) {
             Image(systemName: isPinned ? "pin.fill" : "pin")
                 .font(AppTypography.bodySecondary.weight(.medium))
-                .foregroundColor(isPinned ? .white : .white.opacity(isHovered ? 0.7 : 0.4))
-                .frame(width: 28, height: 28)
+                .foregroundColor(.white.opacity(isHovered ? 0.7 : 0.4))
+                .frame(width: 36, height: 36)
+                .contentShape(Circle())
                 .background(
                     Circle()
                         .fill(Color.white.opacity(isHovered ? 0.1 : 0))
@@ -179,6 +176,8 @@ struct AddProjectPopover: View {
             )
         }
         .padding(8)
+        .focusable(false)
+        .allowsHitTesting(true)
     }
 }
 
@@ -213,12 +212,13 @@ private struct PopoverOptionButton: View {
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 10)
+            .contentShape(Rectangle())
             .background(
                 RoundedRectangle(cornerRadius: 8)
                     .fill(Color.white.opacity(isHovered ? 0.1 : 0))
             )
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.borderless)
         .onHover { hovering in
             withAnimation(reduceMotion ? AppMotion.reducedMotionFallback : .easeOut(duration: 0.15)) {
                 isHovered = hovering

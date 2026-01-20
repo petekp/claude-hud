@@ -16,25 +16,15 @@ struct ProjectCardView: View {
     let sessionState: ProjectSessionState?
     let projectStatus: ProjectStatus?
     let flashState: SessionState?
-    let devServerPort: UInt16?
     let isStale: Bool
     let isActive: Bool
     let onTap: () -> Void
     let onInfoTap: () -> Void
     let onMoveToDormant: () -> Void
-    let onOpenBrowser: () -> Void
     var onCaptureIdea: ((CGRect) -> Void)?
     let onRemove: () -> Void
     var onDragStarted: (() -> NSItemProvider)?
     var isDragging: Bool = false
-
-    // Ideas support
-    var ideas: [Idea] = []
-    var ideasRemainingCount: Int = 0
-    var generatingTitleIds: Set<String> = []
-    var onShowMoreIdeas: (() -> Void)?
-    var onWorkOnIdea: ((Idea) -> Void)?
-    var onDismissIdea: ((Idea) -> Void)?
 
     @Environment(\.floatingMode) private var floatingMode
     @Environment(\.prefersReducedMotion) private var reduceMotion
@@ -45,11 +35,9 @@ struct ProjectCardView: View {
     @State private var isHovered = false
     @State private var isPressed = false
     @State private var flashOpacity: Double = 0
-    @State private var isBrowserHovered = false
     @State private var previousState: SessionState?
     @State private var lastChimeTime: Date?
     @State private var lastKnownSummary: String?
-    @State private var showIdeasPopover = false
 
     private let chimeCooldown: TimeInterval = 3.0
 
@@ -196,21 +184,9 @@ struct ProjectCardView: View {
             ProjectCardHeader(
                 project: project,
                 isStale: isStale,
-                devServerPort: devServerPort,
                 currentState: currentState,
                 nameColor: nameColor,
-                isHovered: isHovered,
-                isBrowserHovered: $isBrowserHovered,
-                showIdeasPopover: $showIdeasPopover,
-                onInfoTap: onInfoTap,
-                onOpenBrowser: onOpenBrowser,
-                ideas: ideas,
-                ideasRemainingCount: ideasRemainingCount,
-                generatingTitleIds: generatingTitleIds,
-                onAddIdea: onCaptureIdea.map { action in { action(.zero) } },
-                onShowMoreIdeas: onShowMoreIdeas,
-                onWorkOnIdea: onWorkOnIdea,
-                onDismissIdea: onDismissIdea
+                onInfoTap: onInfoTap
             )
 
             ProjectCardContent(
@@ -222,13 +198,14 @@ struct ProjectCardView: View {
         .padding(12)
         .animation(.spring(response: 0.4, dampingFraction: 0.8), value: displaySummary)
         .animation(.spring(response: 0.4, dampingFraction: 0.8), value: projectStatus?.blocker)
-        .overlay(alignment: .bottomTrailing) {
+        .overlay(alignment: .trailing) {
             if let onCaptureIdea = onCaptureIdea {
                 PeekCaptureButton(isCardHovered: isHovered, action: onCaptureIdea)
-                    .padding(.trailing, 4)
-                    .padding(.bottom, 4)
+                    .padding(.vertical, 7)
+                    .padding(.trailing, 7)
             }
         }
+        .clipped()
     }
 
     // MARK: - Context Menu
@@ -246,11 +223,6 @@ struct ProjectCardView: View {
         } else {
             Button(action: onTap) {
                 Label("Open in Terminal", systemImage: "terminal")
-            }
-            if devServerPort != nil {
-                Button(action: onOpenBrowser) {
-                    Label("Open in Browser", systemImage: "globe")
-                }
             }
             Button(action: onInfoTap) {
                 Label("View Details", systemImage: "info.circle")
@@ -317,27 +289,9 @@ struct ProjectCardView: View {
 private struct ProjectCardHeader: View {
     let project: Project
     let isStale: Bool
-    let devServerPort: UInt16?
     let currentState: SessionState?
     let nameColor: Color
-    let isHovered: Bool
-    @Binding var isBrowserHovered: Bool
-    @Binding var showIdeasPopover: Bool
     let onInfoTap: () -> Void
-    let onOpenBrowser: () -> Void
-
-    // Ideas support
-    var ideas: [Idea] = []
-    var ideasRemainingCount: Int = 0
-    var generatingTitleIds: Set<String> = []
-    var onAddIdea: (() -> Void)?
-    var onShowMoreIdeas: (() -> Void)?
-    var onWorkOnIdea: ((Idea) -> Void)?
-    var onDismissIdea: ((Idea) -> Void)?
-
-    private var totalIdeasCount: Int {
-        ideas.count + ideasRemainingCount
-    }
 
     var body: some View {
         HStack {
@@ -358,35 +312,7 @@ private struct ProjectCardHeader: View {
                 StaleBadge()
             }
 
-            if totalIdeasCount > 0 {
-                IdeasBadge(
-                    count: totalIdeasCount,
-                    isCardHovered: isHovered,
-                    showPopover: $showIdeasPopover
-                )
-                .popover(isPresented: $showIdeasPopover, arrowEdge: .bottom) {
-                    IdeasPopoverContent(
-                        ideas: ideas,
-                        remainingCount: ideasRemainingCount,
-                        generatingTitleIds: generatingTitleIds,
-                        onAddIdea: onAddIdea,
-                        onShowMore: onShowMoreIdeas,
-                        onWorkOnIdea: onWorkOnIdea,
-                        onDismissIdea: onDismissIdea
-                    )
-                }
-            }
-
             Spacer()
-
-            if let port = devServerPort {
-                DevServerButton(
-                    port: port,
-                    isHovered: isHovered,
-                    isBrowserHovered: $isBrowserHovered,
-                    action: onOpenBrowser
-                )
-            }
 
             if let state = currentState {
                 StatusIndicator(state: state)
@@ -443,35 +369,56 @@ private struct PeekCaptureButton: View {
         isCardHovered || isButtonHovered
     }
 
+    private var accentColor: Color {
+        Color(hue: 0.13, saturation: 0.65, brightness: 0.95) // Warm amber
+    }
+
     var body: some View {
         Button(action: { action(buttonFrame) }) {
-            buttonLabel
-                .padding(.horizontal, 10)
-                .padding(.vertical, 6)
-                .background(
-                    ZStack {
-                        RoundedRectangle(cornerRadius: 8, style: .continuous)
-                            .fill(.ultraThinMaterial)
+            VStack(spacing: 6) {
+                Image(systemName: "lightbulb")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(isButtonHovered ? accentColor : .white.opacity(0.8))
 
-                        RoundedRectangle(cornerRadius: 8, style: .continuous)
-                            .fill(Color.black.opacity(0.2))
-                    }
-                )
-                .overlay(
+                Text("idea")
+                    .font(.system(size: 9, weight: .semibold, design: .rounded))
+                    .textCase(.uppercase)
+                    .tracking(0.5)
+                    .foregroundStyle(.white.opacity(isButtonHovered ? 0.9 : 0.5))
+            }
+            .frame(width: 46)
+            .frame(maxHeight: .infinity)
+            .background(
+                ZStack {
+                    // Base material
                     RoundedRectangle(cornerRadius: 8, style: .continuous)
-                        .strokeBorder(
-                            LinearGradient(
-                                colors: [
-                                    .white.opacity(isButtonHovered ? 0.4 : 0.25),
-                                    .white.opacity(isButtonHovered ? 0.2 : 0.1)
-                                ],
-                                startPoint: .top,
-                                endPoint: .bottom
-                            ),
-                            lineWidth: 1
-                        )
-                )
-                .shadow(color: .black.opacity(0.3), radius: 8, y: 4)
+                        .fill(.ultraThinMaterial)
+
+                    // Dark overlay for depth (more opaque for visibility)
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .fill(Color.black.opacity(isButtonHovered ? 0.45 : 0.6))
+
+                    // Hover highlight
+                    if isButtonHovered {
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .fill(accentColor.opacity(0.1))
+                    }
+                }
+            )
+            .overlay {
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .strokeBorder(
+                        LinearGradient(
+                            colors: [
+                                .white.opacity(isButtonHovered ? 0.35 : 0.2),
+                                .white.opacity(isButtonHovered ? 0.15 : 0.08)
+                            ],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        ),
+                        lineWidth: 1
+                    )
+            }
         }
         .buttonStyle(.plain)
         .background(
@@ -485,27 +432,15 @@ private struct PeekCaptureButton: View {
         .onPreferenceChange(FramePreferenceKey.self) { frame in
             buttonFrame = frame
         }
-        .offset(y: isVisible ? 0 : 20)
-        .opacity(isVisible ? 1 : 0)
+        .offset(x: isVisible ? 0 : 60)
         .animation(
-            reduceMotion ? AppMotion.reducedMotionFallback : .spring(response: 0.35, dampingFraction: 0.75),
+            reduceMotion ? AppMotion.reducedMotionFallback : .spring(response: 0.3, dampingFraction: 0.8),
             value: isVisible
         )
         .onHover { hovering in
             isButtonHovered = hovering
         }
         .accessibilityLabel("Capture idea for this project")
-    }
-
-    // Separate view to prevent content from animating independently
-    private var buttonLabel: some View {
-        HStack(spacing: 5) {
-            Image(systemName: "lightbulb")
-                .font(.system(size: 11, weight: .medium))
-            Text("Capture idea")
-                .font(AppTypography.caption.weight(.medium))
-        }
-        .foregroundColor(.white.opacity(0.9))
     }
 }
 
@@ -567,51 +502,7 @@ private struct ShimmerEffect: View {
     }
 }
 
-// MARK: - Reusable Button Components
-
-private struct DevServerButton: View {
-    let port: UInt16
-    let isHovered: Bool
-    @Binding var isBrowserHovered: Bool
-    let action: () -> Void
-    @Environment(\.prefersReducedMotion) private var reduceMotion
-
-    var body: some View {
-        Button(action: action) {
-            HStack(spacing: 4) {
-                Image(systemName: "globe")
-                    .font(AppTypography.caption)
-                Text(":\(String(port))")
-                    .font(AppTypography.monoCaption.weight(.medium))
-            }
-            .foregroundColor(.white.opacity(isBrowserHovered ? 0.85 : (isHovered ? 0.55 : 0.35)))
-            .padding(.horizontal, 7)
-            .padding(.vertical, 4)
-            .background(
-                Capsule()
-                    .fill(Color.white.opacity(isBrowserHovered ? 0.12 : (isHovered ? 0.06 : 0.03)))
-            )
-            .overlay(
-                Capsule()
-                    .strokeBorder(Color.white.opacity(isBrowserHovered ? 0.15 : 0), lineWidth: 0.5)
-            )
-            .scaleEffect(isBrowserHovered && !reduceMotion ? 1.02 : 1.0)
-        }
-        .buttonStyle(.plain)
-        .onHover { hovering in
-            withAnimation(reduceMotion ? AppMotion.reducedMotionFallback : .spring(response: 0.2, dampingFraction: 0.7)) {
-                isBrowserHovered = hovering
-            }
-        }
-        .help("Open localhost:\(port) in browser")
-        .accessibilityLabel("Open development server in browser")
-        .accessibilityValue("Port \(port)")
-        .accessibilityHint("Opens localhost:\(port) in your default browser")
-    }
-}
-
-// Note: StaleBadge, IdeasBadge, IdeasPopoverContent, IdeaRow, and StatusIndicator
-// are now in ProjectCardComponents.swift for sharing across card types
+// Note: StaleBadge and StatusIndicator are in ProjectCardComponents.swift
 
 // View modifiers and glow effects are now in separate files:
 // - ProjectCardModifiers.swift (cardStyling, cardInteractions, cardLifecycleHandlers)

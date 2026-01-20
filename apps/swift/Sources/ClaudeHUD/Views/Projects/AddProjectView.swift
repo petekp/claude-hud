@@ -17,7 +17,6 @@ struct AddProjectView: View {
                 BackButton(title: "Projects") {
                     appState.showProjectList()
                 }
-                .keyboardShortcut("[", modifiers: .command)
 
                 Spacer()
             }
@@ -47,6 +46,9 @@ struct AddProjectView: View {
         }
         .onDrop(of: [UTType.fileURL], isTargeted: $isDragHovered) { providers in
             handleDrop(providers)
+        }
+        .onExitCommand {
+            appState.showProjectList()
         }
     }
 
