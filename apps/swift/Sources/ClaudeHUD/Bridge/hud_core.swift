@@ -582,6 +582,14 @@ public protocol HudEngineProtocol: AnyObject {
     func getConfig() -> HudConfig
 
     /**
+     * Returns the file path where ideas are stored for a project.
+     *
+     * This is useful for mtime-based change detection in the UI.
+     * Path: `~/.capacitor/projects/{encoded-path}/ideas.md`
+     */
+    func getIdeasFilePath(projectPath: String) -> String
+
+    /**
      * Detects the primary agent session for a project path.
      *
      * Returns the first session found based on user preference order.
@@ -890,6 +898,19 @@ open class HudEngine:
     open func getConfig() -> HudConfig {
         return try! FfiConverterTypeHudConfig.lift(try! rustCall {
             uniffi_hud_core_fn_method_hudengine_get_config(self.uniffiClonePointer(), $0)
+        })
+    }
+
+    /**
+     * Returns the file path where ideas are stored for a project.
+     *
+     * This is useful for mtime-based change detection in the UI.
+     * Path: `~/.capacitor/projects/{encoded-path}/ideas.md`
+     */
+    open func getIdeasFilePath(projectPath: String) -> String {
+        return try! FfiConverterString.lift(try! rustCall {
+            uniffi_hud_core_fn_method_hudengine_get_ideas_file_path(self.uniffiClonePointer(),
+                                                                    FfiConverterString.lower(projectPath), $0)
         })
     }
 
@@ -4363,6 +4384,9 @@ private var initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if uniffi_hud_core_checksum_method_hudengine_get_config() != 46018 {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if uniffi_hud_core_checksum_method_hudengine_get_ideas_file_path() != 48517 {
         return InitializationResult.apiChecksumMismatch
     }
     if uniffi_hud_core_checksum_method_hudengine_get_primary_agent_session() != 36656 {

@@ -10,7 +10,7 @@ final class ProjectDetailsManager {
     }
 
     private let descriptionsFilePath = FileManager.default.homeDirectoryForCurrentUser
-        .appendingPathComponent(".claude/hud-project-descriptions.json")
+        .appendingPathComponent(".capacitor/project-descriptions.json")
 
     private(set) var projectIdeas: [String: [Idea]] = [:]
     private(set) var projectDescriptions: [String: String] = [:]
@@ -56,7 +56,8 @@ final class ProjectDetailsManager {
             let orderedIdeas = applyIdeasOrder(ideas: ideas, for: project)
             projectIdeas[project.path] = orderedIdeas
 
-            let ideasFilePath = "\(project.path)/.claude/ideas.local.md"
+            // Track mtime for change detection (ideas now in global storage)
+            let ideasFilePath = engine.getIdeasFilePath(projectPath: project.path)
             if let attrs = try? FileManager.default.attributesOfItem(atPath: ideasFilePath),
                let mtime = attrs[.modificationDate] as? Date {
                 ideaFileMtimes[project.path] = mtime
@@ -114,8 +115,10 @@ final class ProjectDetailsManager {
         guard now.timeIntervalSince(lastIdeasCheck) >= Constants.ideasCheckIntervalSeconds else { return }
         lastIdeasCheck = now
 
+        guard let engine = engine else { return }
+
         for project in projects {
-            let ideasFilePath = "\(project.path)/.claude/ideas.local.md"
+            let ideasFilePath = engine.getIdeasFilePath(projectPath: project.path)
 
             guard let attrs = try? FileManager.default.attributesOfItem(atPath: ideasFilePath),
                   let currentMtime = attrs[.modificationDate] as? Date else {
