@@ -70,7 +70,7 @@ enum TuningSubcategory: String, CaseIterable, Identifiable {
 }
 
 struct UITuningPanel: View {
-    @Binding var isPresented: Bool
+    @Environment(\.dismissWindow) private var dismissWindow
     @ObservedObject var config = GlassConfig.shared
     @State private var selectedCategory: TuningCategory = .logo
     @State private var selectedSubcategory: TuningSubcategory = .letterpress
@@ -191,7 +191,7 @@ struct UITuningPanel: View {
 
             Spacer()
 
-            Button(action: { isPresented = false }) {
+            Button(action: { dismissWindow(id: "ui-tuning-panel") }) {
                 Image(systemName: "xmark")
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundColor(.white.opacity(0.5))

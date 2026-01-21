@@ -129,7 +129,7 @@ struct ClaudeHUDApp: App {
 
         #if DEBUG
         Window("UI Tuning", id: "ui-tuning-panel") {
-            UITuningPanel(isPresented: .constant(true))
+            UITuningPanel()
                 .preferredColorScheme(.dark)
         }
         .windowStyle(.hiddenTitleBar)
