@@ -9,6 +9,11 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 HOOK_SCRIPT="$SCRIPT_DIR/hud-state-tracker.sh"
 
+HAVE_JQ=""
+HAVE_PY=""
+command -v jq >/dev/null 2>&1 && HAVE_JQ="1"
+command -v python3 >/dev/null 2>&1 && HAVE_PY="1"
+
 # Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -39,10 +44,10 @@ fail() {
     FAILED=$((FAILED + 1))
 }
 
-check_jq() {
-    if ! command -v jq &> /dev/null; then
-        echo -e "${RED}Error: jq is required but not installed${NC}"
-        echo "Install with: brew install jq"
+check_json_parser() {
+    if [ -z "$HAVE_JQ" ] && [ -z "$HAVE_PY" ]; then
+        echo -e "${RED}Error: jq or python3 is required but not installed${NC}"
+        echo "Install with: brew install jq (or ensure python3 is available)"
         exit 1
     fi
 }
@@ -56,7 +61,21 @@ get_state() {
     local session_id="$1"
     local state_file="$HOME/.capacitor/sessions.json"
     if [ -f "$state_file" ]; then
-        jq -r ".sessions[\"$session_id\"].state // empty" "$state_file"
+        if [ -n "$HAVE_JQ" ]; then
+            jq -r ".sessions[\"$session_id\"].state // empty" "$state_file"
+        else
+            python3 - "$state_file" "$session_id" <<'PY'
+import json
+import sys
+
+path, sid = sys.argv[1], sys.argv[2]
+try:
+    data = json.load(open(path, "r", encoding="utf-8"))
+except Exception:
+    sys.exit(0)
+print(data.get("sessions", {}).get(sid, {}).get("state", ""))
+PY
+        fi
     fi
 }
 
@@ -64,7 +83,26 @@ get_session() {
     local session_id="$1"
     local state_file="$HOME/.capacitor/sessions.json"
     if [ -f "$state_file" ]; then
-        jq ".sessions[\"$session_id\"] // null" "$state_file"
+        if [ -n "$HAVE_JQ" ]; then
+            jq ".sessions[\"$session_id\"] // null" "$state_file"
+        else
+            python3 - "$state_file" "$session_id" <<'PY'
+import json
+import sys
+
+path, sid = sys.argv[1], sys.argv[2]
+try:
+    data = json.load(open(path, "r", encoding="utf-8"))
+except Exception:
+    print("null")
+    sys.exit(0)
+session = data.get("sessions", {}).get(sid)
+if session is None:
+    print("null")
+else:
+    print(json.dumps(session))
+PY
+        fi
     fi
 }
 
@@ -73,7 +111,7 @@ session_exists() {
     local state_file="$HOME/.capacitor/sessions.json"
     if [ -f "$state_file" ]; then
         local result
-        result=$(jq ".sessions[\"$session_id\"]" "$state_file")
+        result=$(get_session "$session_id")
         [ "$result" != "null" ]
     else
         return 1
@@ -90,7 +128,7 @@ check_version() {
 echo "=== Claude HUD Hook Event Tests ==="
 echo ""
 
-check_jq
+check_json_parser
 
 # Test 1: SessionStart → ready
 echo "Test 1: SessionStart event"

@@ -74,7 +74,7 @@ final class SetupRequirementsManager {
             SetupStep(
                 id: "jq",
                 title: "jq",
-                description: "Required for hook script (JSON parsing)",
+                description: "JSON parsing (jq or python3)",
                 status: .pending
             ),
             SetupStep(

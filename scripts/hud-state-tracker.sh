@@ -164,7 +164,8 @@ write_with_jq() {
        --arg ts "$TIMESTAMP" \
        '.version = 2
         | .sessions = (.sessions // {})
-        | .sessions[$sid] = ((.sessions[$sid] // {}) + {session_id: $sid, cwd: $path, state: $state, updated_at: $ts})' \
+        | .sessions[$sid] = ((.sessions[$sid] // {}) + {session_id: $sid, cwd: $path, state: $state, updated_at: $ts})
+        | del(.sessions[$sid].pid)' \
        "$STATE_FILE" > "$TEMP_FILE" 2>/dev/null
     return $?
 }
@@ -198,6 +199,7 @@ else:
     existing = sessions.get(sid)
     if not isinstance(existing, dict):
         existing = {}
+    existing.pop("pid", None)
     existing.update({
         "session_id": sid,
         "cwd": cwd,
