@@ -37,3 +37,11 @@ apps/swift/*.app
 target/
 *.local.md
 apps/swift/ClaudeHUD.app/
+
+# SwiftPM transient accessor artifacts
+apps/swift/resource_bundle_accessor-*
+
+# Local planning notes
+plan-*.md
+apps/swift/plan-*.md
+.claude/plans/
