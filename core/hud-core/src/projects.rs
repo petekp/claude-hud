@@ -8,8 +8,8 @@
 use crate::config::{
     load_hud_config_with_storage, load_stats_cache_with_storage, save_stats_cache_with_storage,
 };
-use crate::storage::StorageConfig;
 use crate::stats::compute_project_stats;
+use crate::storage::StorageConfig;
 use crate::types::{Project, StatsCache};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -270,9 +270,7 @@ pub fn load_projects_with_storage(storage: &StorageConfig) -> Result<Vec<Project
     let mut projects: Vec<(Project, SystemTime)> = Vec::new();
 
     for path in &config.pinned_projects {
-        let project =
-            if let Some(p) = build_project_from_path(path, claude_dir, &mut stats_cache)
-        {
+        let project = if let Some(p) = build_project_from_path(path, claude_dir, &mut stats_cache) {
             p
         } else {
             build_missing_project(path)

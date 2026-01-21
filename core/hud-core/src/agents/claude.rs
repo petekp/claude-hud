@@ -3,6 +3,7 @@
 use std::path::PathBuf;
 use std::time::SystemTime;
 
+use crate::sessions::{recent_session_record_for_project, NO_LOCK_STATE_TTL};
 use crate::state::types::ClaudeState;
 use crate::state::{resolve_state_with_details, StateStore};
 use crate::storage::StorageConfig;
@@ -113,12 +114,27 @@ impl AgentAdapter for ClaudeAdapter {
             }
         };
 
-        let resolved = resolve_state_with_details(&lock_dir, &store, project_path)?;
+        let resolved = resolve_state_with_details(&lock_dir, &store, project_path);
+
+        let Some(details) = resolved else {
+            let record =
+                recent_session_record_for_project(&store, project_path, NO_LOCK_STATE_TTL)?;
+            return Some(AgentSession {
+                agent_type: AgentType::Claude,
+                agent_name: self.display_name().to_string(),
+                state: Self::map_state(record.state),
+                session_id: Some(record.session_id.clone()),
+                cwd: record.cwd.clone(),
+                detail: Self::state_detail(record.state),
+                working_on: record.working_on.clone(),
+                updated_at: Some(record.updated_at.to_rfc3339()),
+            });
+        };
 
         // IMPORTANT: Use the resolved session_id to look up metadata, NOT find_by_cwd.
         // Using find_by_cwd could return a different session in multi-session scenarios,
         // causing state from Session A to be mixed with metadata from Session B.
-        let record = resolved
+        let record = details
             .session_id
             .as_deref()
             .and_then(|id| store.get_by_session_id(id));
@@ -126,10 +142,10 @@ impl AgentAdapter for ClaudeAdapter {
         Some(AgentSession {
             agent_type: AgentType::Claude,
             agent_name: self.display_name().to_string(),
-            state: Self::map_state(resolved.state),
-            session_id: resolved.session_id,
-            cwd: resolved.cwd,
-            detail: Self::state_detail(resolved.state),
+            state: Self::map_state(details.state),
+            session_id: details.session_id,
+            cwd: details.cwd,
+            detail: Self::state_detail(details.state),
             working_on: record.and_then(|r| r.working_on.clone()),
             updated_at: record.map(|r| r.updated_at.to_rfc3339()),
         })
@@ -178,6 +194,7 @@ mod tests {
     use super::*;
     use crate::state::lock::tests_helper::create_lock;
     use crate::storage::StorageConfig;
+    use chrono::{Duration as ChronoDuration, Utc};
     use tempfile::tempdir;
 
     // ─────────────────────────────────────────────────────────────────────────────
@@ -368,6 +385,47 @@ mod tests {
         assert_eq!(session.agent_type, AgentType::Claude);
         assert_eq!(session.state, AgentState::Working);
         assert_eq!(session.cwd, "/project");
+    }
+
+    #[test]
+    fn test_detect_session_returns_recent_state_without_lock() {
+        let temp = tempdir().unwrap();
+        let capacitor_root = temp.path().join("capacitor");
+        let claude_root = temp.path().join("claude");
+        std::fs::create_dir_all(&capacitor_root).unwrap();
+        std::fs::create_dir_all(&claude_root).unwrap();
+
+        let mut store = StateStore::new(&capacitor_root.join("sessions.json"));
+        store.update("session-1", ClaudeState::Ready, "/project");
+        store.save().unwrap();
+
+        let storage = StorageConfig::with_roots(capacitor_root, claude_root);
+        let adapter = ClaudeAdapter::with_storage(storage);
+        let session = adapter.detect_session("/project").unwrap();
+
+        assert_eq!(session.state, AgentState::Ready);
+        assert_eq!(session.cwd, "/project");
+        assert_eq!(session.session_id.as_deref(), Some("session-1"));
+    }
+
+    #[test]
+    fn test_detect_session_ignores_stale_state_without_lock() {
+        let temp = tempdir().unwrap();
+        let capacitor_root = temp.path().join("capacitor");
+        let claude_root = temp.path().join("claude");
+        std::fs::create_dir_all(&capacitor_root).unwrap();
+        std::fs::create_dir_all(&claude_root).unwrap();
+
+        let mut store = StateStore::new(&capacitor_root.join("sessions.json"));
+        store.update("session-1", ClaudeState::Ready, "/project");
+        store.set_timestamp_for_test("session-1", Utc::now() - ChronoDuration::minutes(10));
+        store.save().unwrap();
+
+        let storage = StorageConfig::with_roots(capacitor_root, claude_root);
+        let adapter = ClaudeAdapter::with_storage(storage);
+        let session = adapter.detect_session("/project");
+
+        assert!(session.is_none());
     }
 
     #[test]

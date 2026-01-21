@@ -171,7 +171,10 @@ pub fn get_all_session_states_with_storage(
     let mut states = std::collections::HashMap::new();
 
     for path in project_paths {
-        states.insert(path.clone(), detect_session_state_with_storage(storage, path));
+        states.insert(
+            path.clone(),
+            detect_session_state_with_storage(storage, path),
+        );
     }
 
     states
@@ -483,8 +486,10 @@ mod tests {
     #[test]
     fn test_detect_session_state_returns_idle_for_unknown() {
         let (_temp, storage) = setup_storage();
-        let state =
-            detect_session_state_with_storage(&storage, "/definitely/not/a/real/project/path/xyz123");
+        let state = detect_session_state_with_storage(
+            &storage,
+            "/definitely/not/a/real/project/path/xyz123",
+        );
         assert_eq!(state.state, SessionState::Idle);
         assert!(state.session_id.is_none());
         assert!(state.working_on.is_none());

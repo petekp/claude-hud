@@ -9,7 +9,7 @@
 //! - Offer to create CLAUDE.md for better Claude Code integration
 //! - Warn about paths that are too broad or problematic
 //! - Be helpful, not blocking (validation is advisory)
-//! Callers should treat results as guidance, not as hard errors.
+//! - **Advisory**: Callers should treat results as guidance, not as hard errors.
 
 use crate::boundaries::{
     canonicalize_path, find_project_boundary, is_dangerous_path, PROJECT_MARKERS,

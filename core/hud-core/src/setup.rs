@@ -480,11 +480,9 @@ impl SetupChecker {
                 message: format!("Failed to serialize settings: {}", e),
             })?;
 
-        let settings_dir = settings_path
-            .parent()
-            .ok_or_else(|| HudFfiError::General {
-                message: "Settings path has no parent directory".to_string(),
-            })?;
+        let settings_dir = settings_path.parent().ok_or_else(|| HudFfiError::General {
+            message: "Settings path has no parent directory".to_string(),
+        })?;
         let mut temp_settings =
             NamedTempFile::new_in(settings_dir).map_err(|e| HudFfiError::General {
                 message: format!("Failed to create temp settings file: {}", e),
@@ -582,7 +580,7 @@ mod tests {
         assert!(script_path.exists());
 
         let content = fs::read_to_string(&script_path).unwrap();
-        assert!(content.contains("Claude HUD State Tracker Hook v2.1.0"));
+        assert!(content.contains("Claude HUD State Tracker Hook v2.2.0"));
     }
 
     #[test]

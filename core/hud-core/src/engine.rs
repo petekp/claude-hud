@@ -19,9 +19,7 @@
 
 use crate::agents::{AgentConfig, AgentRegistry, AgentSession};
 use crate::artifacts::{collect_artifacts_from_dir, count_artifacts_in_dir, count_hooks_in_dir};
-use crate::config::{
-    load_hud_config_with_storage, resolve_symlink, save_hud_config_with_storage,
-};
+use crate::config::{load_hud_config_with_storage, resolve_symlink, save_hud_config_with_storage};
 use crate::error::HudFfiError;
 use crate::projects::{has_project_indicators, load_projects_with_storage};
 use crate::sessions::{

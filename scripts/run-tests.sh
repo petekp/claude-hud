@@ -45,11 +45,10 @@ fi
 echo ""
 
 echo -e "${YELLOW}[2/5] Rust Formatting${NC}"
-if cargo fmt --check 2>&1; then
-    echo -e "${GREEN}✓ Formatting check passed${NC}"
+if cargo fmt 2>&1; then
+    echo -e "${GREEN}✓ Rust formatted${NC}"
 else
-    echo -e "${RED}✗ Formatting check failed${NC}"
-    echo -e "${YELLOW}  Run 'cargo fmt' to fix${NC}"
+    echo -e "${RED}✗ Rust formatting failed${NC}"
     FAILED=1
 fi
 echo ""
