@@ -7,6 +7,7 @@ set -e
 
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
+RED='\033[0;31m'
 NC='\033[0m'
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -66,6 +67,14 @@ mkdir -p "$APP_BUNDLE/Contents/Resources"
 cp "$SWIFT_DIR/.build/release/ClaudeHUD" "$APP_BUNDLE/Contents/MacOS/ClaudeHUD"
 cp "$DYLIB_PATH" "$APP_BUNDLE/Contents/Frameworks/libhud_core.dylib"
 
+# Copy Sparkle framework
+SPARKLE_SRC=$(find "$SWIFT_DIR/.build" -path "*/release/Sparkle.framework" -type d -print -quit)
+if [ -z "$SPARKLE_SRC" ]; then
+    echo -e "${RED}ERROR: Sparkle.framework not found in build output${NC}"
+    exit 1
+fi
+cp -R "$SPARKLE_SRC" "$APP_BUNDLE/Contents/Frameworks/"
+
 # Add rpath to find dylib
 install_name_tool -add_rpath "@executable_path/../Frameworks" "$APP_BUNDLE/Contents/MacOS/ClaudeHUD"
 
@@ -98,6 +107,7 @@ echo ""
 
 # Code sign
 echo -e "${YELLOW}Code signing (ad-hoc for testing)...${NC}"
+codesign --force --sign "$SIGNING_IDENTITY" "$APP_BUNDLE/Contents/Frameworks/Sparkle.framework"
 codesign --force --sign "$SIGNING_IDENTITY" "$APP_BUNDLE/Contents/Frameworks/libhud_core.dylib"
 codesign --force --sign "$SIGNING_IDENTITY" "$APP_BUNDLE"
 echo -e "${GREEN}✓ Signed${NC}"

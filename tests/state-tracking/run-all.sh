@@ -74,7 +74,7 @@ fi
 
 if [ ! -f "$HOME/.claude/scripts/hud-state-tracker.sh" ]; then
     echo -e "${YELLOW}WARNING:${NC} Hook script not found at ~/.claude/scripts/hud-state-tracker.sh"
-    echo "Shell tests will be skipped"
+    echo "Lock system tests will be skipped"
 fi
 
 echo "Prerequisites OK"
@@ -86,16 +86,16 @@ echo ""
 
 log_header "Shell Script Tests"
 
-if [ -f "$HOME/.claude/scripts/hud-state-tracker.sh" ]; then
-    if [ -f "$SCRIPT_DIR/test-hook-events.sh" ]; then
-        run_suite "Hook Event Tests" "$SCRIPT_DIR/test-hook-events.sh"
-    fi
+if [ -f "$SCRIPT_DIR/test-hook-events.sh" ]; then
+    run_suite "Hook Event Tests" "$SCRIPT_DIR/test-hook-events.sh"
+fi
 
+if [ -f "$HOME/.claude/scripts/hud-state-tracker.sh" ]; then
     if [ -f "$SCRIPT_DIR/test-lock-system.sh" ]; then
         run_suite "Lock System Tests" "$SCRIPT_DIR/test-lock-system.sh"
     fi
 else
-    echo -e "${YELLOW}Skipping shell tests - hook script not found${NC}"
+    echo -e "${YELLOW}Skipping lock system tests - hook script not found${NC}"
     echo ""
 fi
 
