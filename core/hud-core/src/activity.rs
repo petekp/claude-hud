@@ -10,6 +10,7 @@
 //! - **Atomic writes**: Use temp file + rename for crash safety
 //! - **Graceful degradation**: Missing/corrupt files → empty state
 //! - **Conservative**: Prefer false negatives over false positives
+//! Activity is a secondary signal; lock/state data takes precedence when present.
 
 use crate::boundaries::{find_project_boundary, normalize_path};
 use crate::error::{HudError, Result};

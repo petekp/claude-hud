@@ -5,6 +5,7 @@
 //!
 //! Note: Session state files are stored in `~/.capacitor/` (Capacitor's namespace),
 //! while lock directories remain in `~/.claude/` (Claude Code's namespace).
+//! Locks indicate liveness; state records provide the last known state.
 
 use crate::activity::ActivityStore;
 use crate::state::{resolve_state_with_details, ClaudeState, StateStore};

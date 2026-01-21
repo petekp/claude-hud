@@ -1,3 +1,5 @@
+//! Debug utility for inspecting lock/state health in local environments.
+
 use hud_core::state::{get_lock_info, is_session_running, resolve_state, StateStore};
 use hud_core::storage::StorageConfig;
 

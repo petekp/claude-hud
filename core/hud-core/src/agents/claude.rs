@@ -1,3 +1,5 @@
+//! Claude Code adapter backed by lock liveness and the v2 state store.
+
 use std::path::PathBuf;
 use std::time::SystemTime;
 

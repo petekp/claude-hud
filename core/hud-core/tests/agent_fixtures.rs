@@ -1,3 +1,5 @@
+//! Fixture-driven tests for Claude adapter parsing and resilience.
+
 use hud_core::agents::{AgentAdapter, AgentState, AgentType, ClaudeAdapter};
 use hud_core::storage::StorageConfig;
 use std::path::PathBuf;

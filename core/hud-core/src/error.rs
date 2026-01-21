@@ -1,4 +1,5 @@
 //! Error types for hud-core operations.
+//! Keep HudFfiError minimal and stable to avoid breaking FFI clients.
 
 use std::path::PathBuf;
 

@@ -1,3 +1,5 @@
+//! Integration tests for registry ordering, filtering, and caching.
+
 use hud_core::agents::{AgentConfig, AgentRegistry};
 
 #[test]

@@ -3,6 +3,7 @@
 //! These patterns are compiled once on first use and reused throughout
 //! the application for efficient parsing of JSONL session files and
 //! markdown frontmatter.
+//! Update these when Claude log or plugin formats change.
 
 use once_cell::sync::Lazy;
 use regex::Regex;

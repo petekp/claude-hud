@@ -2,6 +2,7 @@
 //!
 //! Parses token usage and activity data from JSONL session files,
 //! with intelligent mtime-based caching to avoid re-parsing unchanged files.
+//! Parsing is best-effort; malformed lines simply do not contribute to totals.
 
 use crate::patterns::*;
 use crate::types::{CachedFileInfo, CachedProjectStats, ProjectStats, StatsCache};

@@ -1,3 +1,6 @@
+//! Resolves session state by combining lock liveness with stored records.
+//! Tie-breakers prefer newer updates and closer path matches.
+
 use std::path::Path;
 
 use super::lock::{

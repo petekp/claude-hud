@@ -1,3 +1,5 @@
+//! State resolution: hook events + lock liveness + store snapshots.
+
 pub(crate) mod lock;
 mod resolver;
 mod store;

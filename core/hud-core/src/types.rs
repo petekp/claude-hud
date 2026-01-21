@@ -6,6 +6,7 @@
 //! **FFI Support:** All types are annotated with UniFFI macros for Swift/Kotlin/Python bindings.
 //!
 //! **Note:** These types are exported via UniFFI for Swift consumption.
+//! Prefer additive changes; renames or removals are breaking for clients.
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;

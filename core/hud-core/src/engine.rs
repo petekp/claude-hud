@@ -5,6 +5,7 @@
 //! - **Synchronous**: No async runtime required
 //! - **Client-agnostic**: Works with Swift, TUI, mobile, etc.
 //! - **Stateless**: Each call is independent (caching happens at lower levels)
+//! - **Stable**: Prefer additive API changes to avoid breaking FFI clients
 //!
 //! ## Example Usage
 //!

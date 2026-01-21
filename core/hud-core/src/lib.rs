@@ -10,6 +10,7 @@
 //! - **Graceful degradation**: Missing files return empty/default values, not errors.
 //! - **Single source of truth**: All clients share these types and logic.
 //! - **FFI-ready**: UniFFI annotations enable Swift, Kotlin, Python bindings.
+//! Prefer additive public API changes; removing or renaming breaks FFI clients.
 //!
 //! ## Quick Start
 //!

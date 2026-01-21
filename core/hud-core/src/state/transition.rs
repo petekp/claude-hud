@@ -1,3 +1,6 @@
+//! Maps Claude hook events to state transitions.
+//! Conservative rules avoid false positives when events are ambiguous.
+
 use super::types::{ClaudeState, HookEvent};
 
 pub fn next_state(current: Option<ClaudeState>, event: HookEvent) -> Option<ClaudeState> {

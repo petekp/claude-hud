@@ -12,6 +12,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
+// Heuristic markers only; absence does not mean a directory is not a project.
 /// Project type indicators - files that suggest a directory is a code project.
 const PROJECT_INDICATORS: &[&str] = &[
     ".git",

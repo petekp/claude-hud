@@ -10,6 +10,7 @@
 //! - **Graceful degradation**: Missing files are created, missing fields use defaults
 //! - **Bidirectional sync**: HUD writes, Claude updates, HUD detects changes via file watcher
 //! - **Global storage**: All Capacitor data lives in `~/.capacitor/` for separation of concerns
+//! - **User-editable**: Parsing is best-effort to avoid breaking hand-edited markdown
 
 use crate::error::{HudError, Result};
 use crate::storage::StorageConfig;

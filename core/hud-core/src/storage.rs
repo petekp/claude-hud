@@ -12,6 +12,7 @@
 //! - **Single source of truth**: All path decisions centralized here
 //! - **Testable**: `StorageConfig::with_root()` enables test injection
 //! - **Forward-compatible**: Easy to add env var overrides, XDG support, etc.
+//! Keep callers path-agnostic; avoid hardcoding `~/.capacitor` or `~/.claude` elsewhere.
 
 use std::path::{Path, PathBuf};
 

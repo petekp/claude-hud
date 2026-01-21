@@ -6,6 +6,7 @@
 //!
 //! Note: This module uses `StorageConfig::default()` for paths. For testing
 //! with custom paths, use the `StorageConfig` struct directly.
+//! Reads are best-effort; malformed files return defaults to keep the app usable.
 
 use crate::types::{HudConfig, StatsCache};
 use std::fs;

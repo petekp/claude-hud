@@ -4,6 +4,7 @@
 //! - Counting artifacts (skills, commands, agents)
 //! - Parsing frontmatter from markdown files
 //! - Collecting artifact metadata
+//! Frontmatter parsing is best-effort; missing fields default to empty strings.
 
 use crate::patterns::{
     RE_FRONTMATTER, RE_FRONTMATTER_DESC, RE_FRONTMATTER_NAME, RE_MD_BOLD_ASTERISK,

@@ -1,3 +1,5 @@
+//! Coordinates agent adapters, user preferences, and session caching.
+
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 use std::time::SystemTime;

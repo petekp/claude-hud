@@ -1,3 +1,6 @@
+//! Serialized state types used by the hook/state pipeline.
+//! Keep changes backward-compatible to avoid breaking stored sessions.
+
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 

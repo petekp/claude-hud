@@ -9,6 +9,7 @@
 //!
 //! The setup module follows the sidecar principle - it reads Claude Code's settings
 //! but only modifies them to add our hooks, never removing or changing other settings.
+//! Installer writes are atomic (temp + rename) to avoid corrupting settings.
 
 use crate::error::HudFfiError;
 use crate::storage::StorageConfig;

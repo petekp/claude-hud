@@ -6,6 +6,7 @@
 //! This enables accurate attribution of file activity to projects,
 //! especially in monorepo scenarios where Claude runs from the repo
 //! root but edits files in specific packages.
+//! Boundary detection is intentionally conservative to avoid mis-attribution.
 
 use std::path::Path;
 

@@ -1,3 +1,6 @@
+//! Agent adapter interfaces and re-exports for CLI integrations.
+//! Add new adapters in `registry.rs` so they are discoverable by clients.
+
 mod claude;
 mod registry;
 mod stubs;

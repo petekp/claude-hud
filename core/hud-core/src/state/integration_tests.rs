@@ -1,3 +1,5 @@
+//! Integration coverage for lock/store/transition behavior.
+
 use super::lock::tests_helper::create_lock;
 use super::resolver::resolve_state;
 use super::store::StateStore;

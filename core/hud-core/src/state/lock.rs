@@ -1,3 +1,6 @@
+//! Lock inspection and PID verification for Claude sessions.
+//! Includes legacy compatibility checks to reduce PID reuse errors.
+
 use std::cell::RefCell;
 use std::fs;
 use std::path::Path;

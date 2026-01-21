@@ -1,3 +1,5 @@
+//! Stub adapters for unsupported CLIs; always report not installed.
+
 use super::types::AgentSession;
 use super::AgentAdapter;
 

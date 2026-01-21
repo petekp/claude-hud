@@ -1,3 +1,6 @@
+//! Shared agent DTOs for FFI and internal plumbing.
+//! Prefer additive changes to keep bindings stable.
+
 use serde::{Deserialize, Serialize};
 
 /// Universal agent states - maps to any CLI agent's activity
