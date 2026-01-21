@@ -539,6 +539,24 @@ public protocol HudEngineProtocol: AnyObject {
     func captureIdea(projectPath: String, ideaText: String) throws -> String
 
     /**
+     * Checks the status of a specific dependency.
+     *
+     * Supported dependencies: "jq", "tmux", "claude"
+     */
+    func checkDependency(name: String) -> DependencyStatus
+
+    /**
+     * Checks the overall setup status including dependencies and hooks.
+     *
+     * Returns a comprehensive status object indicating:
+     * - Which dependencies are installed (jq, tmux, claude)
+     * - Whether hooks are installed and up-to-date
+     * - Whether storage is ready
+     * - Any blocking issues preventing operation
+     */
+    func checkSetupStatus() -> SetupStatus
+
+    /**
      * Returns the path to the Claude directory as a string.
      * This is the Claude Code data directory (~/.claude by default).
      */
@@ -582,6 +600,13 @@ public protocol HudEngineProtocol: AnyObject {
     func getConfig() -> HudConfig
 
     /**
+     * Returns the current hook status without full setup check.
+     *
+     * Useful for quick hook status checks in the UI.
+     */
+    func getHookStatus() -> HookStatus
+
+    /**
      * Returns the file path where ideas are stored for a project.
      *
      * This is useful for mtime-based change detection in the UI.
@@ -612,6 +637,19 @@ public protocol HudEngineProtocol: AnyObject {
      * Discovers suggested projects based on activity in ~/.claude/projects.
      */
     func getSuggestedProjects() throws -> [SuggestedProject]
+
+    /**
+     * Installs the session tracking hooks.
+     *
+     * This will:
+     * 1. Create the hook script at ~/.claude/scripts/hud-state-tracker.sh
+     * 2. Register the hooks in ~/.claude/settings.json
+     *
+     * Returns an error if:
+     * - Hooks are disabled by policy (disableAllHooks or allowManagedHooksOnly)
+     * - File system operations fail
+     */
+    func installHooks() throws -> InstallResult
 
     /**
      * Invalidates the agent session cache.
@@ -833,6 +871,33 @@ open class HudEngine:
     }
 
     /**
+     * Checks the status of a specific dependency.
+     *
+     * Supported dependencies: "jq", "tmux", "claude"
+     */
+    open func checkDependency(name: String) -> DependencyStatus {
+        return try! FfiConverterTypeDependencyStatus.lift(try! rustCall {
+            uniffi_hud_core_fn_method_hudengine_check_dependency(self.uniffiClonePointer(),
+                                                                 FfiConverterString.lower(name), $0)
+        })
+    }
+
+    /**
+     * Checks the overall setup status including dependencies and hooks.
+     *
+     * Returns a comprehensive status object indicating:
+     * - Which dependencies are installed (jq, tmux, claude)
+     * - Whether hooks are installed and up-to-date
+     * - Whether storage is ready
+     * - Any blocking issues preventing operation
+     */
+    open func checkSetupStatus() -> SetupStatus {
+        return try! FfiConverterTypeSetupStatus.lift(try! rustCall {
+            uniffi_hud_core_fn_method_hudengine_check_setup_status(self.uniffiClonePointer(), $0)
+        })
+    }
+
+    /**
      * Returns the path to the Claude directory as a string.
      * This is the Claude Code data directory (~/.claude by default).
      */
@@ -902,6 +967,17 @@ open class HudEngine:
     }
 
     /**
+     * Returns the current hook status without full setup check.
+     *
+     * Useful for quick hook status checks in the UI.
+     */
+    open func getHookStatus() -> HookStatus {
+        return try! FfiConverterTypeHookStatus.lift(try! rustCall {
+            uniffi_hud_core_fn_method_hudengine_get_hook_status(self.uniffiClonePointer(), $0)
+        })
+    }
+
+    /**
      * Returns the file path where ideas are stored for a project.
      *
      * This is useful for mtime-based change detection in the UI.
@@ -954,6 +1030,23 @@ open class HudEngine:
     open func getSuggestedProjects() throws -> [SuggestedProject] {
         return try FfiConverterSequenceTypeSuggestedProject.lift(rustCallWithError(FfiConverterTypeHudFfiError.lift) {
             uniffi_hud_core_fn_method_hudengine_get_suggested_projects(self.uniffiClonePointer(), $0)
+        })
+    }
+
+    /**
+     * Installs the session tracking hooks.
+     *
+     * This will:
+     * 1. Create the hook script at ~/.claude/scripts/hud-state-tracker.sh
+     * 2. Register the hooks in ~/.claude/settings.json
+     *
+     * Returns an error if:
+     * - Hooks are disabled by policy (disableAllHooks or allowManagedHooksOnly)
+     * - File system operations fail
+     */
+    open func installHooks() throws -> InstallResult {
+        return try FfiConverterTypeInstallResult.lift(rustCallWithError(FfiConverterTypeHudFfiError.lift) {
+            uniffi_hud_core_fn_method_hudengine_install_hooks(self.uniffiClonePointer(), $0)
         })
     }
 
@@ -1831,6 +1924,91 @@ public func FfiConverterTypeDashboardData_lower(_ value: DashboardData) -> RustB
     return FfiConverterTypeDashboardData.lower(value)
 }
 
+public struct DependencyStatus {
+    public var name: String
+    public var required: Bool
+    public var found: Bool
+    public var path: String?
+    public var installHint: String?
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(name: String, required: Bool, found: Bool, path: String?, installHint: String?) {
+        self.name = name
+        self.required = required
+        self.found = found
+        self.path = path
+        self.installHint = installHint
+    }
+}
+
+extension DependencyStatus: Equatable, Hashable {
+    public static func == (lhs: DependencyStatus, rhs: DependencyStatus) -> Bool {
+        if lhs.name != rhs.name {
+            return false
+        }
+        if lhs.required != rhs.required {
+            return false
+        }
+        if lhs.found != rhs.found {
+            return false
+        }
+        if lhs.path != rhs.path {
+            return false
+        }
+        if lhs.installHint != rhs.installHint {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(name)
+        hasher.combine(required)
+        hasher.combine(found)
+        hasher.combine(path)
+        hasher.combine(installHint)
+    }
+}
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeDependencyStatus: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> DependencyStatus {
+        return
+            try DependencyStatus(
+                name: FfiConverterString.read(from: &buf),
+                required: FfiConverterBool.read(from: &buf),
+                found: FfiConverterBool.read(from: &buf),
+                path: FfiConverterOptionString.read(from: &buf),
+                installHint: FfiConverterOptionString.read(from: &buf)
+            )
+    }
+
+    public static func write(_ value: DependencyStatus, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.name, into: &buf)
+        FfiConverterBool.write(value.required, into: &buf)
+        FfiConverterBool.write(value.found, into: &buf)
+        FfiConverterOptionString.write(value.path, into: &buf)
+        FfiConverterOptionString.write(value.installHint, into: &buf)
+    }
+}
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+public func FfiConverterTypeDependencyStatus_lift(_ buf: RustBuffer) throws -> DependencyStatus {
+    return try FfiConverterTypeDependencyStatus.lift(buf)
+}
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+public func FfiConverterTypeDependencyStatus_lower(_ value: DependencyStatus) -> RustBuffer {
+    return FfiConverterTypeDependencyStatus.lower(value)
+}
+
 /**
  * Global Claude Code configuration and artifact counts.
  */
@@ -2177,6 +2355,75 @@ public func FfiConverterTypeIdea_lift(_ buf: RustBuffer) throws -> Idea {
 #endif
 public func FfiConverterTypeIdea_lower(_ value: Idea) -> RustBuffer {
     return FfiConverterTypeIdea.lower(value)
+}
+
+public struct InstallResult {
+    public var success: Bool
+    public var message: String
+    public var scriptPath: String?
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(success: Bool, message: String, scriptPath: String?) {
+        self.success = success
+        self.message = message
+        self.scriptPath = scriptPath
+    }
+}
+
+extension InstallResult: Equatable, Hashable {
+    public static func == (lhs: InstallResult, rhs: InstallResult) -> Bool {
+        if lhs.success != rhs.success {
+            return false
+        }
+        if lhs.message != rhs.message {
+            return false
+        }
+        if lhs.scriptPath != rhs.scriptPath {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(success)
+        hasher.combine(message)
+        hasher.combine(scriptPath)
+    }
+}
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeInstallResult: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> InstallResult {
+        return
+            try InstallResult(
+                success: FfiConverterBool.read(from: &buf),
+                message: FfiConverterString.read(from: &buf),
+                scriptPath: FfiConverterOptionString.read(from: &buf)
+            )
+    }
+
+    public static func write(_ value: InstallResult, into buf: inout [UInt8]) {
+        FfiConverterBool.write(value.success, into: &buf)
+        FfiConverterString.write(value.message, into: &buf)
+        FfiConverterOptionString.write(value.scriptPath, into: &buf)
+    }
+}
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+public func FfiConverterTypeInstallResult_lift(_ buf: RustBuffer) throws -> InstallResult {
+    return try FfiConverterTypeInstallResult.lift(buf)
+}
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+public func FfiConverterTypeInstallResult_lower(_ value: InstallResult) -> RustBuffer {
+    return FfiConverterTypeInstallResult.lower(value)
 }
 
 /**
@@ -3147,6 +3394,91 @@ public func FfiConverterTypeProjectStatus_lower(_ value: ProjectStatus) -> RustB
     return FfiConverterTypeProjectStatus.lower(value)
 }
 
+public struct SetupStatus {
+    public var dependencies: [DependencyStatus]
+    public var hooks: HookStatus
+    public var storageReady: Bool
+    public var allReady: Bool
+    public var blockingReason: String?
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(dependencies: [DependencyStatus], hooks: HookStatus, storageReady: Bool, allReady: Bool, blockingReason: String?) {
+        self.dependencies = dependencies
+        self.hooks = hooks
+        self.storageReady = storageReady
+        self.allReady = allReady
+        self.blockingReason = blockingReason
+    }
+}
+
+extension SetupStatus: Equatable, Hashable {
+    public static func == (lhs: SetupStatus, rhs: SetupStatus) -> Bool {
+        if lhs.dependencies != rhs.dependencies {
+            return false
+        }
+        if lhs.hooks != rhs.hooks {
+            return false
+        }
+        if lhs.storageReady != rhs.storageReady {
+            return false
+        }
+        if lhs.allReady != rhs.allReady {
+            return false
+        }
+        if lhs.blockingReason != rhs.blockingReason {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(dependencies)
+        hasher.combine(hooks)
+        hasher.combine(storageReady)
+        hasher.combine(allReady)
+        hasher.combine(blockingReason)
+    }
+}
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeSetupStatus: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SetupStatus {
+        return
+            try SetupStatus(
+                dependencies: FfiConverterSequenceTypeDependencyStatus.read(from: &buf),
+                hooks: FfiConverterTypeHookStatus.read(from: &buf),
+                storageReady: FfiConverterBool.read(from: &buf),
+                allReady: FfiConverterBool.read(from: &buf),
+                blockingReason: FfiConverterOptionString.read(from: &buf)
+            )
+    }
+
+    public static func write(_ value: SetupStatus, into buf: inout [UInt8]) {
+        FfiConverterSequenceTypeDependencyStatus.write(value.dependencies, into: &buf)
+        FfiConverterTypeHookStatus.write(value.hooks, into: &buf)
+        FfiConverterBool.write(value.storageReady, into: &buf)
+        FfiConverterBool.write(value.allReady, into: &buf)
+        FfiConverterOptionString.write(value.blockingReason, into: &buf)
+    }
+}
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+public func FfiConverterTypeSetupStatus_lift(_ buf: RustBuffer) throws -> SetupStatus {
+    return try FfiConverterTypeSetupStatus.lift(buf)
+}
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+public func FfiConverterTypeSetupStatus_lower(_ value: SetupStatus) -> RustBuffer {
+    return FfiConverterTypeSetupStatus.lower(value)
+}
+
 /**
  * The full stats cache, persisted to disk.
  */
@@ -3755,6 +4087,78 @@ public func FfiConverterTypeCreationStatus_lower(_ value: CreationStatus) -> Rus
 
 extension CreationStatus: Equatable, Hashable {}
 
+// Note that we don't yet support `indirect` for enums.
+// See https://github.com/mozilla/uniffi-rs/issues/396 for further discussion.
+
+public enum HookStatus {
+    case notInstalled
+    case outdated(current: String, latest: String)
+    case installed(version: String
+    )
+    case policyBlocked(reason: String
+    )
+}
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeHookStatus: FfiConverterRustBuffer {
+    typealias SwiftType = HookStatus
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> HookStatus {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        case 1: return .notInstalled
+
+        case 2: return try .outdated(current: FfiConverterString.read(from: &buf), latest: FfiConverterString.read(from: &buf))
+
+        case 3: return try .installed(version: FfiConverterString.read(from: &buf)
+            )
+
+        case 4: return try .policyBlocked(reason: FfiConverterString.read(from: &buf)
+            )
+
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: HookStatus, into buf: inout [UInt8]) {
+        switch value {
+        case .notInstalled:
+            writeInt(&buf, Int32(1))
+
+        case let .outdated(current, latest):
+            writeInt(&buf, Int32(2))
+            FfiConverterString.write(current, into: &buf)
+            FfiConverterString.write(latest, into: &buf)
+
+        case let .installed(version):
+            writeInt(&buf, Int32(3))
+            FfiConverterString.write(version, into: &buf)
+
+        case let .policyBlocked(reason):
+            writeInt(&buf, Int32(4))
+            FfiConverterString.write(reason, into: &buf)
+        }
+    }
+}
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHookStatus_lift(_ buf: RustBuffer) throws -> HookStatus {
+    return try FfiConverterTypeHookStatus.lift(buf)
+}
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHookStatus_lower(_ value: HookStatus) -> RustBuffer {
+    return FfiConverterTypeHookStatus.lower(value)
+}
+
+extension HookStatus: Equatable, Hashable {}
+
 /**
  * FFI-safe error type for use across language boundaries.
  *
@@ -4143,6 +4547,31 @@ private struct FfiConverterSequenceTypeArtifact: FfiConverterRustBuffer {
 #if swift(>=5.8)
     @_documentation(visibility: private)
 #endif
+private struct FfiConverterSequenceTypeDependencyStatus: FfiConverterRustBuffer {
+    typealias SwiftType = [DependencyStatus]
+
+    public static func write(_ value: [DependencyStatus], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeDependencyStatus.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [DependencyStatus] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [DependencyStatus]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            try seq.append(FfiConverterTypeDependencyStatus.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
 private struct FfiConverterSequenceTypeIdea: FfiConverterRustBuffer {
     typealias SwiftType = [Idea]
 
@@ -4368,6 +4797,12 @@ private var initializationResult: InitializationResult = {
     if uniffi_hud_core_checksum_method_hudengine_capture_idea() != 29080 {
         return InitializationResult.apiChecksumMismatch
     }
+    if uniffi_hud_core_checksum_method_hudengine_check_dependency() != 2911 {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if uniffi_hud_core_checksum_method_hudengine_check_setup_status() != 13902 {
+        return InitializationResult.apiChecksumMismatch
+    }
     if uniffi_hud_core_checksum_method_hudengine_claude_dir() != 58851 {
         return InitializationResult.apiChecksumMismatch
     }
@@ -4386,6 +4821,9 @@ private var initializationResult: InitializationResult = {
     if uniffi_hud_core_checksum_method_hudengine_get_config() != 46018 {
         return InitializationResult.apiChecksumMismatch
     }
+    if uniffi_hud_core_checksum_method_hudengine_get_hook_status() != 42858 {
+        return InitializationResult.apiChecksumMismatch
+    }
     if uniffi_hud_core_checksum_method_hudengine_get_ideas_file_path() != 48517 {
         return InitializationResult.apiChecksumMismatch
     }
@@ -4399,6 +4837,9 @@ private var initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if uniffi_hud_core_checksum_method_hudengine_get_suggested_projects() != 38527 {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if uniffi_hud_core_checksum_method_hudengine_install_hooks() != 49055 {
         return InitializationResult.apiChecksumMismatch
     }
     if uniffi_hud_core_checksum_method_hudengine_invalidate_agent_cache() != 27475 {

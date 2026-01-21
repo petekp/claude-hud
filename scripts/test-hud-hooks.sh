@@ -96,9 +96,9 @@ run_test "Stop transitions to ready" \
   "ready"
 
 # Test 6: PreCompact (manual)
-run_test "PreCompact (manual) transitions to compacting" \
+run_test "PreCompact (manual) leaves state unchanged" \
   '{"hook_event_name":"PreCompact","session_id":"'$TEST_SESSION_ID'","cwd":"'$TEST_CWD'","trigger":"manual"}' \
-  "compacting"
+  "ready"
 
 # Test 7: PreCompact (auto)
 run_test "PreCompact (auto) transitions to compacting" \
@@ -106,7 +106,7 @@ run_test "PreCompact (auto) transitions to compacting" \
   "compacting"
 
 # Test 8: PreCompact (no trigger field)
-run_test "PreCompact (no trigger) transitions to compacting" \
+run_test "PreCompact (no trigger) leaves state unchanged" \
   '{"hook_event_name":"PreCompact","session_id":"'$TEST_SESSION_ID'","cwd":"'$TEST_CWD'"}' \
   "compacting"
 

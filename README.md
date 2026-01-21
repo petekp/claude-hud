@@ -75,7 +75,8 @@ Claude HUD tracks session state via Claude Code hooks. To enable:
 
 1. Copy the hook script:
    ```bash
-   cp ~/.claude/scripts/hud-state-tracker.sh ~/.claude/scripts/
+   mkdir -p ~/.claude/scripts
+   cp scripts/hud-state-tracker.sh ~/.claude/scripts/
    chmod +x ~/.claude/scripts/hud-state-tracker.sh
    ```
 
@@ -83,10 +84,15 @@ Claude HUD tracks session state via Claude Code hooks. To enable:
    ```json
    {
      "hooks": {
-       "SessionStart": [{ "type": "command", "command": "~/.claude/scripts/hud-state-tracker.sh SessionStart" }],
-       "UserPromptSubmit": [{ "type": "command", "command": "~/.claude/scripts/hud-state-tracker.sh UserPromptSubmit" }],
-       "Stop": [{ "type": "command", "command": "~/.claude/scripts/hud-state-tracker.sh Stop" }],
-       "PreCompact": [{ "type": "command", "command": "~/.claude/scripts/hud-state-tracker.sh PreCompact" }]
+       "SessionStart": [{ "hooks": [{ "type": "command", "command": "$HOME/.claude/scripts/hud-state-tracker.sh" }] }],
+       "SessionEnd": [{ "hooks": [{ "type": "command", "command": "$HOME/.claude/scripts/hud-state-tracker.sh" }] }],
+       "UserPromptSubmit": [{ "hooks": [{ "type": "command", "command": "$HOME/.claude/scripts/hud-state-tracker.sh" }] }],
+       "PreToolUse": [{ "matcher": "*", "hooks": [{ "type": "command", "command": "$HOME/.claude/scripts/hud-state-tracker.sh" }] }],
+       "PostToolUse": [{ "matcher": "*", "hooks": [{ "type": "command", "command": "$HOME/.claude/scripts/hud-state-tracker.sh" }] }],
+       "PermissionRequest": [{ "matcher": "*", "hooks": [{ "type": "command", "command": "$HOME/.claude/scripts/hud-state-tracker.sh" }] }],
+       "Stop": [{ "hooks": [{ "type": "command", "command": "$HOME/.claude/scripts/hud-state-tracker.sh" }] }],
+       "PreCompact": [{ "hooks": [{ "type": "command", "command": "$HOME/.claude/scripts/hud-state-tracker.sh" }] }],
+       "Notification": [{ "hooks": [{ "type": "command", "command": "$HOME/.claude/scripts/hud-state-tracker.sh" }] }]
      }
    }
    ```

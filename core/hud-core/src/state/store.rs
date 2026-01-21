@@ -1,9 +1,11 @@
 use std::collections::HashMap;
 use std::fs;
+use std::io::Write;
 use std::path::{Path, PathBuf};
 
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
+use tempfile::NamedTempFile;
 
 use super::lock::is_pid_alive;
 use super::types::{ClaudeState, SessionRecord};
@@ -110,7 +112,20 @@ impl StateStore {
         let content = serde_json::to_string_pretty(&store_file)
             .map_err(|e| format!("Failed to serialize: {}", e))?;
 
-        fs::write(file_path, content).map_err(|e| format!("Failed to write state file: {}", e))?;
+        let parent_dir = file_path
+            .parent()
+            .ok_or_else(|| "State file path has no parent directory".to_string())?;
+        let mut temp_file =
+            NamedTempFile::new_in(parent_dir).map_err(|e| format!("Temp file error: {}", e))?;
+        temp_file
+            .write_all(content.as_bytes())
+            .map_err(|e| format!("Failed to write temp state file: {}", e))?;
+        temp_file
+            .flush()
+            .map_err(|e| format!("Failed to flush temp state file: {}", e))?;
+        temp_file
+            .persist(file_path)
+            .map_err(|e| format!("Failed to write state file: {}", e.error))?;
 
         Ok(())
     }

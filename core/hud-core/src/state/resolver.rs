@@ -86,6 +86,82 @@ fn find_session_for_lock(
     best.map(|(record, _)| record.state)
 }
 
+/// Find the best record that matches a lock path when PID is unavailable.
+/// Prefers fresher records, then match type (exact > child > parent).
+fn find_record_for_lock_path<'a>(
+    store: &'a StateStore,
+    lock_path: &str,
+) -> Option<&'a super::types::SessionRecord> {
+    #[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Copy)]
+    enum MatchType {
+        Parent = 0,
+        Child = 1,
+        Exact = 2,
+    }
+
+    let lock_path_normalized = if lock_path == "/" {
+        "/"
+    } else {
+        lock_path.trim_end_matches('/')
+    };
+
+    let mut best: Option<(&super::types::SessionRecord, MatchType)> = None;
+
+    for record in store.all_sessions() {
+        if record.is_stale() {
+            continue;
+        }
+
+        let record_cwd_normalized = if record.cwd == "/" {
+            "/"
+        } else {
+            record.cwd.trim_end_matches('/')
+        };
+
+        let match_type = if record_cwd_normalized == lock_path_normalized {
+            Some(MatchType::Exact)
+        } else if lock_path_normalized == "/" {
+            if record_cwd_normalized.starts_with("/") && record_cwd_normalized != "/" {
+                Some(MatchType::Child)
+            } else {
+                None
+            }
+        } else if record_cwd_normalized == "/" {
+            if lock_path_normalized.starts_with("/") && lock_path_normalized != "/" {
+                Some(MatchType::Parent)
+            } else {
+                None
+            }
+        } else if record_cwd_normalized.starts_with(&format!("{}/", lock_path_normalized)) {
+            Some(MatchType::Child)
+        } else if lock_path_normalized.starts_with(&format!("{}/", record_cwd_normalized)) {
+            Some(MatchType::Parent)
+        } else {
+            None
+        };
+
+        if let Some(current_match_type) = match_type {
+            match best {
+                None => best = Some((record, current_match_type)),
+                Some((current, current_type)) => {
+                    let should_replace = record.updated_at > current.updated_at
+                        || (record.updated_at == current.updated_at
+                            && current_match_type > current_type)
+                        || (record.updated_at == current.updated_at
+                            && current_match_type == current_type
+                            && record.session_id > current.session_id);
+
+                    if should_replace {
+                        best = Some((record, current_match_type));
+                    }
+                }
+            }
+        }
+    }
+
+    best.map(|(record, _)| record)
+}
+
 pub fn resolve_state(
     lock_dir: &Path,
     store: &StateStore,
@@ -135,8 +211,10 @@ pub fn resolve_state(
                         if lock_info.path == r.cwd {
                             Some(r.state)
                         } else {
-                            // Path doesn't match - search for correct session
-                            find_session_for_lock(store, &lock_info).or(Some(ClaudeState::Ready))
+                            // Path doesn't match - use best path-based match without PID
+                            find_record_for_lock_path(store, &lock_info.path)
+                                .map(|record| record.state)
+                                .or(Some(ClaudeState::Ready))
                         }
                     }
                 }
@@ -354,14 +432,18 @@ pub fn resolve_state_with_details(
                                 cwd: lock_info.path,
                             })
                         } else {
-                            // Path doesn't match - search for correct session
-                            find_session_for_lock_with_details(store, &lock_info).or(Some(
-                                ResolvedState {
+                            // Path doesn't match - use best path-based match without PID
+                            find_record_for_lock_path(store, &lock_info.path)
+                                .map(|record| ResolvedState {
+                                    state: record.state,
+                                    session_id: Some(record.session_id.clone()),
+                                    cwd: lock_info.path.clone(),
+                                })
+                                .or(Some(ResolvedState {
                                     state: ClaudeState::Ready,
                                     session_id: None,
                                     cwd: lock_info.path,
-                                },
-                            ))
+                                }))
                         }
                     }
                 }
@@ -723,6 +805,37 @@ mod tests {
         assert_eq!(res.state, ClaudeState::Working);
         assert_eq!(res.session_id, Some("session".to_string()));
         assert_eq!(res.cwd, "/project"); // Lock's path, not record's cwd
+    }
+
+    #[test]
+    fn test_resolver_matches_lock_without_pid_parent_record() {
+        // When PID is missing, use path-based matching between lock and record.
+        let temp = tempdir().unwrap();
+        let live_pid = std::process::id();
+
+        create_lock(temp.path(), live_pid, "/project/child");
+
+        let mut store = StateStore::new_in_memory();
+        store.update("session-parent", ClaudeState::Working, "/project");
+
+        let resolved = resolve_state(temp.path(), &store, "/project");
+        assert_eq!(resolved, Some(ClaudeState::Working));
+    }
+
+    #[test]
+    fn test_resolver_matches_lock_without_pid_details() {
+        let temp = tempdir().unwrap();
+        let live_pid = std::process::id();
+
+        create_lock(temp.path(), live_pid, "/project/child");
+
+        let mut store = StateStore::new_in_memory();
+        store.update("session-parent", ClaudeState::Working, "/project");
+
+        let resolved = resolve_state_with_details(temp.path(), &store, "/project").unwrap();
+        assert_eq!(resolved.state, ClaudeState::Working);
+        assert_eq!(resolved.session_id, Some("session-parent".to_string()));
+        assert_eq!(resolved.cwd, "/project/child");
     }
 
     #[test]

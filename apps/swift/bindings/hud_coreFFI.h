@@ -282,6 +282,16 @@ RustBuffer uniffi_hud_core_fn_method_hudengine_capacitor_dir(void*_Nonnull ptr, 
 RustBuffer uniffi_hud_core_fn_method_hudengine_capture_idea(void*_Nonnull ptr, RustBuffer project_path, RustBuffer idea_text, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_HUD_CORE_FN_METHOD_HUDENGINE_CHECK_DEPENDENCY
+#define UNIFFI_FFIDEF_UNIFFI_HUD_CORE_FN_METHOD_HUDENGINE_CHECK_DEPENDENCY
+RustBuffer uniffi_hud_core_fn_method_hudengine_check_dependency(void*_Nonnull ptr, RustBuffer name, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_HUD_CORE_FN_METHOD_HUDENGINE_CHECK_SETUP_STATUS
+#define UNIFFI_FFIDEF_UNIFFI_HUD_CORE_FN_METHOD_HUDENGINE_CHECK_SETUP_STATUS
+RustBuffer uniffi_hud_core_fn_method_hudengine_check_setup_status(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_HUD_CORE_FN_METHOD_HUDENGINE_CLAUDE_DIR
 #define UNIFFI_FFIDEF_UNIFFI_HUD_CORE_FN_METHOD_HUDENGINE_CLAUDE_DIR
 RustBuffer uniffi_hud_core_fn_method_hudengine_claude_dir(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
@@ -312,6 +322,11 @@ RustBuffer uniffi_hud_core_fn_method_hudengine_get_all_session_states(void*_Nonn
 RustBuffer uniffi_hud_core_fn_method_hudengine_get_config(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_HUD_CORE_FN_METHOD_HUDENGINE_GET_HOOK_STATUS
+#define UNIFFI_FFIDEF_UNIFFI_HUD_CORE_FN_METHOD_HUDENGINE_GET_HOOK_STATUS
+RustBuffer uniffi_hud_core_fn_method_hudengine_get_hook_status(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_HUD_CORE_FN_METHOD_HUDENGINE_GET_IDEAS_FILE_PATH
 #define UNIFFI_FFIDEF_UNIFFI_HUD_CORE_FN_METHOD_HUDENGINE_GET_IDEAS_FILE_PATH
 RustBuffer uniffi_hud_core_fn_method_hudengine_get_ideas_file_path(void*_Nonnull ptr, RustBuffer project_path, RustCallStatus *_Nonnull out_status
@@ -335,6 +350,11 @@ RustBuffer uniffi_hud_core_fn_method_hudengine_get_session_state(void*_Nonnull p
 #ifndef UNIFFI_FFIDEF_UNIFFI_HUD_CORE_FN_METHOD_HUDENGINE_GET_SUGGESTED_PROJECTS
 #define UNIFFI_FFIDEF_UNIFFI_HUD_CORE_FN_METHOD_HUDENGINE_GET_SUGGESTED_PROJECTS
 RustBuffer uniffi_hud_core_fn_method_hudengine_get_suggested_projects(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_HUD_CORE_FN_METHOD_HUDENGINE_INSTALL_HOOKS
+#define UNIFFI_FFIDEF_UNIFFI_HUD_CORE_FN_METHOD_HUDENGINE_INSTALL_HOOKS
+RustBuffer uniffi_hud_core_fn_method_hudengine_install_hooks(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_HUD_CORE_FN_METHOD_HUDENGINE_INVALIDATE_AGENT_CACHE
@@ -715,6 +735,18 @@ uint16_t uniffi_hud_core_checksum_method_hudengine_capture_idea(void
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_HUD_CORE_CHECKSUM_METHOD_HUDENGINE_CHECK_DEPENDENCY
+#define UNIFFI_FFIDEF_UNIFFI_HUD_CORE_CHECKSUM_METHOD_HUDENGINE_CHECK_DEPENDENCY
+uint16_t uniffi_hud_core_checksum_method_hudengine_check_dependency(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_HUD_CORE_CHECKSUM_METHOD_HUDENGINE_CHECK_SETUP_STATUS
+#define UNIFFI_FFIDEF_UNIFFI_HUD_CORE_CHECKSUM_METHOD_HUDENGINE_CHECK_SETUP_STATUS
+uint16_t uniffi_hud_core_checksum_method_hudengine_check_setup_status(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_HUD_CORE_CHECKSUM_METHOD_HUDENGINE_CLAUDE_DIR
 #define UNIFFI_FFIDEF_UNIFFI_HUD_CORE_CHECKSUM_METHOD_HUDENGINE_CLAUDE_DIR
 uint16_t uniffi_hud_core_checksum_method_hudengine_claude_dir(void
@@ -751,6 +783,12 @@ uint16_t uniffi_hud_core_checksum_method_hudengine_get_config(void
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_HUD_CORE_CHECKSUM_METHOD_HUDENGINE_GET_HOOK_STATUS
+#define UNIFFI_FFIDEF_UNIFFI_HUD_CORE_CHECKSUM_METHOD_HUDENGINE_GET_HOOK_STATUS
+uint16_t uniffi_hud_core_checksum_method_hudengine_get_hook_status(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_HUD_CORE_CHECKSUM_METHOD_HUDENGINE_GET_IDEAS_FILE_PATH
 #define UNIFFI_FFIDEF_UNIFFI_HUD_CORE_CHECKSUM_METHOD_HUDENGINE_GET_IDEAS_FILE_PATH
 uint16_t uniffi_hud_core_checksum_method_hudengine_get_ideas_file_path(void
@@ -778,6 +816,12 @@ uint16_t uniffi_hud_core_checksum_method_hudengine_get_session_state(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_HUD_CORE_CHECKSUM_METHOD_HUDENGINE_GET_SUGGESTED_PROJECTS
 #define UNIFFI_FFIDEF_UNIFFI_HUD_CORE_CHECKSUM_METHOD_HUDENGINE_GET_SUGGESTED_PROJECTS
 uint16_t uniffi_hud_core_checksum_method_hudengine_get_suggested_projects(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_HUD_CORE_CHECKSUM_METHOD_HUDENGINE_INSTALL_HOOKS
+#define UNIFFI_FFIDEF_UNIFFI_HUD_CORE_CHECKSUM_METHOD_HUDENGINE_INSTALL_HOOKS
+uint16_t uniffi_hud_core_checksum_method_hudengine_install_hooks(void
     
 );
 #endif

@@ -24,6 +24,7 @@ use crate::projects::{has_project_indicators, load_projects};
 use crate::sessions::{
     detect_session_state, get_all_session_states, read_project_status, ProjectStatus,
 };
+use crate::setup::{DependencyStatus, HookStatus, InstallResult, SetupChecker, SetupStatus};
 use crate::state::{reconcile_orphaned_lock, StateStore};
 use crate::storage::StorageConfig;
 use crate::types::{
@@ -640,5 +641,51 @@ impl HudEngine {
     /// Does NOT overwrite existing CLAUDE.md files.
     pub fn create_project_claude_md(&self, project_path: String) -> Result<(), HudFfiError> {
         create_claude_md(&project_path).map_err(HudFfiError::from)
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────────
+    // Setup API
+    // ─────────────────────────────────────────────────────────────────────────────
+
+    /// Checks the overall setup status including dependencies and hooks.
+    ///
+    /// Returns a comprehensive status object indicating:
+    /// - Which dependencies are installed (jq, tmux, claude)
+    /// - Whether hooks are installed and up-to-date
+    /// - Whether storage is ready
+    /// - Any blocking issues preventing operation
+    pub fn check_setup_status(&self) -> SetupStatus {
+        let checker = SetupChecker::new(self.storage.clone());
+        checker.check_setup_status()
+    }
+
+    /// Checks the status of a specific dependency.
+    ///
+    /// Supported dependencies: "jq", "tmux", "claude"
+    pub fn check_dependency(&self, name: String) -> DependencyStatus {
+        let checker = SetupChecker::new(self.storage.clone());
+        checker.check_dependency(&name)
+    }
+
+    /// Installs the session tracking hooks.
+    ///
+    /// This will:
+    /// 1. Create the hook script at ~/.claude/scripts/hud-state-tracker.sh
+    /// 2. Register the hooks in ~/.claude/settings.json
+    ///
+    /// Returns an error if:
+    /// - Hooks are disabled by policy (disableAllHooks or allowManagedHooksOnly)
+    /// - File system operations fail
+    pub fn install_hooks(&self) -> Result<InstallResult, HudFfiError> {
+        let checker = SetupChecker::new(self.storage.clone());
+        checker.install_hooks()
+    }
+
+    /// Returns the current hook status without full setup check.
+    ///
+    /// Useful for quick hook status checks in the UI.
+    pub fn get_hook_status(&self) -> HookStatus {
+        let checker = SetupChecker::new(self.storage.clone());
+        checker.check_setup_status().hooks
     }
 }
