@@ -646,7 +646,6 @@ struct WorkingStripeParameters {
     let stripeAngle: Double
     let scrollSpeed: Double
     let stripeOpacity: Double
-    let darkStripeOpacity: Double
     // Emissive glow parameters
     let glowIntensity: Double
     let glowBlurRadius: Double
@@ -847,7 +846,6 @@ struct WorkingStripeOverlay: View {
             stripeAngle: config.workingStripeAngle(for: layoutMode),
             scrollSpeed: config.workingScrollSpeed(for: layoutMode),
             stripeOpacity: config.workingStripeOpacity(for: layoutMode),
-            darkStripeOpacity: config.workingDarkStripeOpacity(for: layoutMode),
             glowIntensity: config.workingGlowIntensity(for: layoutMode),
             glowBlurRadius: config.workingGlowBlurRadius(for: layoutMode),
             coreBrightness: config.workingCoreBrightness(for: layoutMode),
@@ -866,7 +864,6 @@ struct WorkingStripeOverlay: View {
             stripeAngle: 41.30,
             scrollSpeed: 4.81,
             stripeOpacity: 0.50,
-            darkStripeOpacity: 0.0,
             glowIntensity: 1.50,
             glowBlurRadius: 11.46,
             coreBrightness: 0.71,

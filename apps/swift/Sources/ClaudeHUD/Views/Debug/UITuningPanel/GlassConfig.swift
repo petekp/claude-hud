@@ -211,7 +211,6 @@ class GlassConfig: ObservableObject {
     @Published var workingStripeAngle: Double = 41.30
     @Published var workingScrollSpeed: Double = 4.81
     @Published var workingStripeOpacity: Double = 0.50
-    @Published var workingDarkStripeOpacity: Double = 0.15
     @Published var workingGlowIntensity: Double = 1.50
     @Published var workingGlowBlurRadius: Double = 11.46
     @Published var workingCoreBrightness: Double = 0.71
@@ -233,32 +232,6 @@ class GlassConfig: ObservableObject {
     @Published var workingBorderPulseIntensity: Double = 0.50
     @Published var workingBorderPulseSpeed: Double = 2.21
     @Published var workingBorderBlurAmount: Double = 8.0
-
-    // MARK: - Caustic Underglow Effect
-    @Published var causticEnabled: Bool = false
-    @Published var causticSpeed: Double = 0.3
-    @Published var causticBlur: Double = 20.0
-    @Published var causticOpacity: Double = 0.4
-    @Published var causticBlendMode: BlendMode = .plusLighter
-    @Published var causticCellSize: Double = 8.0
-    @Published var causticThreshold: Double = 0.5
-    @Published var causticPointScale: Double = 1.5
-    @Published var causticScale1: Double = 40.0
-    @Published var causticScale2: Double = 60.0
-    @Published var causticScale3: Double = 80.0
-    @Published var causticOriginX: Double = 0.5
-    @Published var causticOriginY: Double = 0.5
-    @Published var causticRadialFalloff: Double = 0.8
-    @Published var causticConcentration: Double = 2.0
-    @Published var causticColor: Color = .white
-    @Published var causticRingCount: Int = 8
-    @Published var causticWaveAmplitude: Double = 10.0
-    @Published var causticRingOpacity: Double = 0.3
-    @Published var causticRingWidth: Double = 2.0
-    @Published var causticBrightCount: Int = 12
-    @Published var causticBrightSize: Double = 30.0
-    @Published var causticUseRings: Bool = true
-    @Published var causticColorHue: Double = 0.0
 
     // MARK: - Card Interaction (Per-Pointer-Event, tuned)
     // Idle state
@@ -299,34 +272,6 @@ class GlassConfig: ObservableObject {
 
     // State Preview
     @Published var previewState: PreviewState = .none
-
-    // Computed colors
-    var statusReadyColor: Color {
-        Color(hue: statusReadyHue, saturation: statusReadySaturation, brightness: statusReadyBrightness)
-    }
-    var statusWorkingColor: Color {
-        Color(hue: statusWorkingHue, saturation: statusWorkingSaturation, brightness: statusWorkingBrightness)
-    }
-    var statusWaitingColor: Color {
-        Color(hue: statusWaitingHue, saturation: statusWaitingSaturation, brightness: statusWaitingBrightness)
-    }
-    var statusCompactingColor: Color {
-        Color(hue: statusCompactingHue, saturation: statusCompactingSaturation, brightness: statusCompactingBrightness)
-    }
-    var statusIdleColor: Color {
-        Color.white.opacity(statusIdleOpacity)
-    }
-
-    func colorForState(_ state: PreviewState) -> Color {
-        switch state {
-        case .none: return .clear
-        case .ready: return statusReadyColor
-        case .working: return statusWorkingColor
-        case .waiting: return statusWaitingColor
-        case .compacting: return statusCompactingColor
-        case .idle: return statusIdleColor
-        }
-    }
 
     // MARK: - Layout-Aware Accessors (unified - layout param kept for API compatibility)
     func rippleSpeed(for layout: LayoutMode) -> Double { rippleSpeed }
@@ -376,7 +321,6 @@ class GlassConfig: ObservableObject {
     func workingStripeAngle(for layout: LayoutMode) -> Double { workingStripeAngle }
     func workingScrollSpeed(for layout: LayoutMode) -> Double { workingScrollSpeed }
     func workingStripeOpacity(for layout: LayoutMode) -> Double { workingStripeOpacity }
-    func workingDarkStripeOpacity(for layout: LayoutMode) -> Double { workingDarkStripeOpacity }
     func workingGlowIntensity(for layout: LayoutMode) -> Double { workingGlowIntensity }
     func workingGlowBlurRadius(for layout: LayoutMode) -> Double { workingGlowBlurRadius }
     func workingCoreBrightness(for layout: LayoutMode) -> Double { workingCoreBrightness }
@@ -657,6 +601,29 @@ class GlassConfig: ObservableObject {
             ("Waiting Border", "waitingBorderInnerWidth", 0.50, waitingBorderInnerWidth),
             ("Waiting Border", "waitingBorderOuterWidth", 1.86, waitingBorderOuterWidth),
             ("Waiting Border", "waitingBorderOuterBlur", 0.8, waitingBorderOuterBlur),
+            // Working Stripes
+            ("Working Stripes", "workingStripeWidth", 24.0, workingStripeWidth),
+            ("Working Stripes", "workingStripeSpacing", 38.49, workingStripeSpacing),
+            ("Working Stripes", "workingStripeAngle", 41.30, workingStripeAngle),
+            ("Working Stripes", "workingScrollSpeed", 4.81, workingScrollSpeed),
+            ("Working Stripes", "workingStripeOpacity", 0.50, workingStripeOpacity),
+            ("Working Stripes", "workingGlowIntensity", 1.50, workingGlowIntensity),
+            ("Working Stripes", "workingGlowBlurRadius", 11.46, workingGlowBlurRadius),
+            ("Working Stripes", "workingCoreBrightness", 0.71, workingCoreBrightness),
+            ("Working Stripes", "workingGradientFalloff", 0.32, workingGradientFalloff),
+            ("Working Stripes", "workingVignetteInnerRadius", 0.02, workingVignetteInnerRadius),
+            ("Working Stripes", "workingVignetteOuterRadius", 0.48, workingVignetteOuterRadius),
+            ("Working Stripes", "workingVignetteCenterOpacity", 0.03, workingVignetteCenterOpacity),
+            ("Working Stripes", "workingVignetteColorHue", 0.05, workingVignetteColorHue),
+            ("Working Stripes", "workingVignetteColorSaturation", 0.67, workingVignetteColorSaturation),
+            ("Working Stripes", "workingVignetteColorBrightness", 0.39, workingVignetteColorBrightness),
+            ("Working Stripes", "workingVignetteColorIntensity", 0.47, workingVignetteColorIntensity),
+            // Working Border
+            ("Working Border", "workingBorderWidth", 1.0, workingBorderWidth),
+            ("Working Border", "workingBorderBaseOpacity", 0.35, workingBorderBaseOpacity),
+            ("Working Border", "workingBorderPulseIntensity", 0.50, workingBorderPulseIntensity),
+            ("Working Border", "workingBorderPulseSpeed", 2.21, workingBorderPulseSpeed),
+            ("Working Border", "workingBorderBlurAmount", 8.0, workingBorderBlurAmount),
             // Compacting Text
             ("Compacting Text", "compactingCycleLength", 1.8, compactingCycleLength),
             ("Compacting Text", "compactingMinTracking", 0.0, compactingMinTracking),
