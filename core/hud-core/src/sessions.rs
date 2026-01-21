@@ -9,11 +9,62 @@
 
 use crate::activity::ActivityStore;
 use crate::boundaries::normalize_path;
-use crate::state::{resolve_state_with_details, ClaudeState, StateStore};
+use crate::state::{resolve_state_with_details, ClaudeState, SessionRecord, StateStore};
 use crate::storage::StorageConfig;
 use crate::types::{ProjectSessionState, SessionState};
+use chrono::Utc;
 use std::fs;
 use std::path::Path;
+use std::time::Duration;
+
+pub(crate) const NO_LOCK_STATE_TTL: Duration = Duration::from_secs(120);
+
+fn map_claude_state(state: ClaudeState) -> SessionState {
+    match state {
+        ClaudeState::Working => SessionState::Working,
+        ClaudeState::Ready => SessionState::Ready,
+        ClaudeState::Compacting => SessionState::Compacting,
+        ClaudeState::Blocked => SessionState::Waiting, // Map Blocked → Waiting
+    }
+}
+
+fn record_is_recent(record: &SessionRecord, threshold: Duration) -> bool {
+    let age_secs = Utc::now()
+        .signed_duration_since(record.updated_at)
+        .num_seconds();
+    if age_secs < 0 {
+        return true;
+    }
+    age_secs as u64 <= threshold.as_secs()
+}
+
+fn is_parent_fallback(record_cwd: &str, project_path: &str) -> bool {
+    let record_norm = normalize_path(record_cwd);
+    let project_norm = normalize_path(project_path);
+    if record_norm == project_norm {
+        return false;
+    }
+    if record_norm == "/" {
+        return project_norm != "/";
+    }
+    let prefix = format!("{}/", record_norm);
+    project_norm.starts_with(&prefix)
+}
+
+pub(crate) fn recent_session_record_for_project<'a>(
+    store: &'a StateStore,
+    project_path: &str,
+    threshold: Duration,
+) -> Option<&'a SessionRecord> {
+    let record = store.find_by_cwd(project_path)?;
+    if is_parent_fallback(&record.cwd, project_path) {
+        return None;
+    }
+    if !record_is_recent(record, threshold) {
+        return None;
+    }
+    Some(record)
+}
 
 /// Detects session state using the v2 state module.
 /// Uses session-ID keyed state file and lock detection for reliable state.
@@ -25,7 +76,7 @@ pub fn detect_session_state_with_storage(
     storage: &StorageConfig,
     project_path: &str,
 ) -> ProjectSessionState {
-    // Lock directories are in ~/.claude/sessions/ (Claude Code writes them)
+    // Lock directories are in ~/.claude/sessions/ (created by our hook script).
     let lock_dir = storage.claude_root().join("sessions");
     // State file is in ~/.capacitor/sessions.json (Capacitor's namespace)
     let state_file = storage.sessions_file();
@@ -37,23 +88,17 @@ pub fn detect_session_state_with_storage(
     match resolved {
         Some(details) => {
             let is_working = details.state == ClaudeState::Working;
-            let state = match details.state {
-                ClaudeState::Working => SessionState::Working,
-                ClaudeState::Ready => SessionState::Ready,
-                ClaudeState::Compacting => SessionState::Compacting,
-                ClaudeState::Blocked => SessionState::Waiting, // Map Blocked → Waiting
-            };
-
-            // Get working_on from v2 store
-            let working_on = details
+            let state = map_claude_state(details.state);
+            let record = details
                 .session_id
                 .as_ref()
-                .and_then(|sid| store.get_by_session_id(sid))
-                .and_then(|r| r.working_on.clone());
+                .and_then(|sid| store.get_by_session_id(sid));
+            let working_on = record.and_then(|r| r.working_on.clone());
+            let state_changed_at = record.map(|r| r.updated_at.to_rfc3339());
 
             ProjectSessionState {
                 state,
-                state_changed_at: None,
+                state_changed_at,
                 session_id: details.session_id,
                 working_on,
                 context: None,
@@ -62,6 +107,21 @@ pub fn detect_session_state_with_storage(
             }
         }
         None => {
+            if let Some(record) =
+                recent_session_record_for_project(&store, project_path, NO_LOCK_STATE_TTL)
+            {
+                let is_working = record.state == ClaudeState::Working;
+                return ProjectSessionState {
+                    state: map_claude_state(record.state),
+                    state_changed_at: Some(record.updated_at.to_rfc3339()),
+                    session_id: Some(record.session_id.clone()),
+                    working_on: record.working_on.clone(),
+                    context: None,
+                    thinking: Some(is_working),
+                    is_locked: false,
+                };
+            }
+
             // No direct session found - check for file activity in this project
             // This enables monorepo package tracking where cwd != project_path
             let activity_file = storage.file_activity_file();
@@ -145,7 +205,7 @@ pub fn read_project_status(project_path: &str) -> Option<ProjectStatus> {
 /// Checks if a Claude session is actively running for the given project path.
 ///
 /// This uses directory-based locking (mkdir is atomic) to reliably detect running sessions.
-/// A background process spawned by the UserPromptSubmit hook holds the lock directory
+/// A background process spawned by the hooks (SessionStart/UserPromptSubmit) holds the lock directory
 /// while Claude is running, and removes it when Claude exits.
 ///
 /// IMPORTANT: The lock is created for the cwd where Claude runs, which may be a
@@ -249,6 +309,7 @@ fn read_pid_from_lock(lock_dir: &Path) -> Option<u32> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use chrono::{Duration as ChronoDuration, Utc};
     use std::io::Write;
     use std::path::PathBuf;
     use tempfile::TempDir;
@@ -427,6 +488,76 @@ mod tests {
         assert_eq!(state.state, SessionState::Idle);
         assert!(state.session_id.is_none());
         assert!(state.working_on.is_none());
+    }
+
+    #[test]
+    fn test_detect_session_state_ready_without_lock_when_recent() {
+        let (_temp, storage) = setup_storage();
+        let project_path = "/tmp/hud-core-test-recent-ready";
+
+        let mut store = StateStore::new(&storage.sessions_file());
+        store.update("session-1", ClaudeState::Ready, project_path);
+        store.save().unwrap();
+
+        let state = detect_session_state_with_storage(&storage, project_path);
+
+        assert_eq!(state.state, SessionState::Ready);
+        assert!(!state.is_locked);
+        assert_eq!(state.session_id.as_deref(), Some("session-1"));
+        assert!(state.state_changed_at.is_some());
+    }
+
+    #[test]
+    fn test_detect_session_state_ignores_stale_record_without_lock() {
+        let (_temp, storage) = setup_storage();
+        let project_path = "/tmp/hud-core-test-stale-ready";
+
+        let mut store = StateStore::new(&storage.sessions_file());
+        store.update("session-1", ClaudeState::Ready, project_path);
+        store.set_timestamp_for_test("session-1", Utc::now() - ChronoDuration::minutes(10));
+        store.save().unwrap();
+
+        let state = detect_session_state_with_storage(&storage, project_path);
+
+        assert_eq!(state.state, SessionState::Idle);
+        assert!(state.session_id.is_none());
+    }
+
+    #[test]
+    fn test_detect_session_state_ignores_parent_state_without_lock() {
+        let (_temp, storage) = setup_storage();
+        let parent_path = "/tmp/hud-core-test-parent";
+        let child_path = "/tmp/hud-core-test-parent/child";
+
+        let mut store = StateStore::new(&storage.sessions_file());
+        store.update("session-1", ClaudeState::Ready, parent_path);
+        store.save().unwrap();
+
+        let state = detect_session_state_with_storage(&storage, child_path);
+
+        assert_eq!(state.state, SessionState::Idle);
+        assert!(state.session_id.is_none());
+    }
+
+    #[test]
+    fn test_detect_session_state_sets_state_changed_at_for_lock() {
+        use crate::state::lock::tests_helper::create_lock;
+
+        let (_temp, storage, sessions_dir) = setup_storage_with_sessions();
+        let project_path = "/tmp/hud-core-test-locked-ready";
+        create_lock(&sessions_dir, std::process::id(), project_path);
+
+        let mut store = StateStore::new(&storage.sessions_file());
+        store.update("session-1", ClaudeState::Working, project_path);
+        let expected = Utc::now() - ChronoDuration::minutes(2);
+        store.set_timestamp_for_test("session-1", expected);
+        store.save().unwrap();
+
+        let state = detect_session_state_with_storage(&storage, project_path);
+
+        assert_eq!(state.state, SessionState::Working);
+        assert!(state.is_locked);
+        assert_eq!(state.state_changed_at, Some(expected.to_rfc3339()));
     }
 
     #[test]

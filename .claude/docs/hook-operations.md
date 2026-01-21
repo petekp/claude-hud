@@ -20,7 +20,7 @@ PostToolUse          → depends on current state:
                        - blocked    → working (permission granted)
 Notification         → ready (only if notification_type="idle_prompt")
 Stop                 → ready
-PreCompact           → compacting (for ALL trigger values)
+PreCompact           → compacting (only when trigger="auto")
 SessionEnd           → REMOVED (session deleted from state file)
 ```
 
@@ -34,8 +34,8 @@ SessionEnd           → REMOVED (session deleted from state file)
 | **PostToolUse** | After tool execution | Update state based on current | session_id |
 | **Notification** | Claude notification | state=ready (only if idle_prompt) | session_id, cwd, notification_type |
 | **Stop** | Claude finishes responding | state=ready | session_id, cwd, stop_hook_active=false |
-| **PreCompact** | Before compaction | state=compacting | session_id, cwd |
-| **SessionEnd** | Session ends | Remove session, release lock | session_id, cwd |
+| **PreCompact** | Before compaction | state=compacting only when trigger="auto" | session_id, cwd |
+| **SessionEnd** | Session ends | Remove session (lock released when process exits) | session_id, cwd |
 
 ## Lock/State Relationship
 

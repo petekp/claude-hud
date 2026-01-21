@@ -52,6 +52,33 @@ check_json_parser() {
     fi
 }
 
+hash_path() {
+    local path="$1"
+    if command -v md5 >/dev/null 2>&1; then
+        md5 -q -s "$path"
+        return 0
+    fi
+    if command -v md5sum >/dev/null 2>&1; then
+        echo -n "$path" | md5sum | cut -d' ' -f1
+        return 0
+    fi
+    echo ""
+}
+
+wait_for_lock() {
+    local lock_path="$1"
+    local attempts=20
+    local i=0
+    while [ $i -lt $attempts ]; do
+        if [ -d "$lock_path" ]; then
+            return 0
+        fi
+        sleep 0.05
+        i=$((i + 1))
+    done
+    return 1
+}
+
 send_event() {
     local json="$1"
     echo "$json" | "$HOOK_SCRIPT"
@@ -138,6 +165,20 @@ if [ "$STATE" = "ready" ]; then
     pass "SessionStart → ready"
 else
     fail "SessionStart → ready" "ready" "$STATE"
+fi
+
+# Test 1b: SessionStart creates lock
+echo "Test 1b: SessionStart lock creation"
+LOCK_HASH=$(hash_path "/test/project")
+if [ -z "$LOCK_HASH" ]; then
+    echo -e "${YELLOW}Skipping lock test: md5 not available${NC}"
+else
+    LOCK_PATH="$HOME/.claude/sessions/${LOCK_HASH}.lock"
+    if wait_for_lock "$LOCK_PATH"; then
+        pass "SessionStart → lock created"
+    else
+        fail "SessionStart → lock created" "$LOCK_PATH exists" "missing"
+    fi
 fi
 
 # Test 2: Version is 2
@@ -264,13 +305,14 @@ else
     fail "Multiple sessions tracked independently" "session-a=working, session-b=ready" "session-a=$STATE_A, session-b=$STATE_B"
 fi
 
-# Test 14: No PID in output
-echo "Test 14: No PID field in session record"
+# Test 14: PID present in session record
+echo "Test 14: PID field present in session record"
 SESSION=$(get_session "session-a")
-if echo "$SESSION" | jq -e '.pid' > /dev/null 2>&1; then
-    fail "No PID field" "no pid field" "pid field present"
+PID=$(echo "$SESSION" | jq -r '.pid // empty')
+if [ -n "$PID" ] && echo "$PID" | grep -E '^[0-9]+$' >/dev/null 2>&1; then
+    pass "PID field present"
 else
-    pass "No PID field"
+    fail "PID field present" "numeric pid" "$PID"
 fi
 
 # Test 15: Missing session_id - should exit gracefully
@@ -286,13 +328,24 @@ else
     fail "Missing session_id handled gracefully" "exit 0" "exit $EXIT_CODE"
 fi
 
-# Test 16: Missing cwd with fallback
-echo "Test 16: Missing cwd uses PWD fallback"
+# Test 16: Missing cwd uses CLAUDE_PROJECT_DIR fallback
+echo "Test 16: Missing cwd uses CLAUDE_PROJECT_DIR fallback"
 export CLAUDE_PROJECT_DIR="/fallback/project"
 send_event '{"hook_event_name":"SessionStart","session_id":"fallback-test"}'
 SESSION=$(get_session "fallback-test")
 CWD=$(echo "$SESSION" | jq -r '.cwd')
 unset CLAUDE_PROJECT_DIR
+if [ "$CWD" = "/fallback/project" ]; then
+    pass "CLAUDE_PROJECT_DIR fallback works"
+else
+    fail "CLAUDE_PROJECT_DIR fallback" "/fallback/project" "$CWD"
+fi
+
+# Test 17: Missing cwd falls back to PWD when env is unset
+echo "Test 17: Missing cwd uses PWD fallback"
+send_event '{"hook_event_name":"SessionStart","session_id":"pwd-fallback"}'
+SESSION=$(get_session "pwd-fallback")
+CWD=$(echo "$SESSION" | jq -r '.cwd')
 if [ "$CWD" = "$PWD" ]; then
     pass "PWD fallback works"
 else

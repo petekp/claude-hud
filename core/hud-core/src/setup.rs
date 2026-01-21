@@ -21,7 +21,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use tempfile::NamedTempFile;
 
-const HOOK_SCRIPT_VERSION: &str = "2.1.0";
+const HOOK_SCRIPT_VERSION: &str = "2.2.0";
 const HOOK_COMMAND: &str = "$HOME/.claude/scripts/hud-state-tracker.sh";
 const HOOK_SCRIPT: &str = include_str!("../../../scripts/hud-state-tracker.sh");
 
