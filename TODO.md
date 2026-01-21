@@ -78,7 +78,6 @@ Flagship feature: go from project idea to working v1 with minimal friction.
 |----------|-------------|
 | `.claude/docs/agent-sdk-migration-guide.md` | Full SDK migration analysis and phases |
 | `.claude/docs/feature-idea-to-v1-launcher.md` | TDD spec for Idea → V1 feature |
-| `.claude/docs/status-sync-architecture.md` | Real-time status sync architecture |
 
 ---
 

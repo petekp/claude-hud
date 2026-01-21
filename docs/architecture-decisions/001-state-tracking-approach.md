@@ -39,12 +39,11 @@ User runs claude → Hooks fire → State file updated → Swift HUD reads
 
 ### Daemon Approach
 ```
-User runs hud-claude-daemon → Spawns Claude with stream-json → Parses messages → State file + Relay
+User runs hud-claude-daemon → Spawns Claude with stream-json → Parses messages → State file
 ```
 
 **Pros:**
 - Precise state tracking from message types
-- Can stream to remote relay
 - Better for programmatic use
 
 **Cons:**

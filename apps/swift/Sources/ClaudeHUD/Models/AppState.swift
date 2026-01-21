@@ -1,4 +1,3 @@
-import Combine
 import Foundation
 import SwiftUI
 
@@ -79,11 +78,6 @@ class AppState: ObservableObject {
         didSet { saveProjectOrder() }
     }
 
-    // MARK: - Relay client for remote state sync
-
-    @Published var relayClient = RelayClient()
-    @Published var isRemoteMode = false
-
     // MARK: - Modal State for Idea Capture
 
     @Published var showCaptureModal = false
@@ -102,7 +96,6 @@ class AppState: ObservableObject {
     private let projectOrderKey = "customProjectOrder"
     private let layoutModeKey = "layoutMode"
     private var engine: HudEngine?
-    private var cancellables = Set<AnyCancellable>()
     private var stalenessTimer: Timer?
 
     // MARK: - Computed Properties (bridging to managers)
@@ -157,7 +150,6 @@ class AppState: ObservableObject {
             sessionStateManager.configure(engine: engine)
             projectDetailsManager.configure(engine: engine)
             loadDashboard()
-            setupRelayObserver()
             setupStalenessTimer()
             startTerminalTracking()
         } catch {
@@ -176,32 +168,6 @@ class AppState: ObservableObject {
                 self.checkIdeasFileChanges()
             }
         }
-    }
-
-    private func setupRelayObserver() {
-        relayClient.$lastState
-            .compactMap { $0 }
-            .sink { [weak self] state in
-                self?.sessionStateManager.applyRelayState(state)
-                self?.objectWillChange.send()
-            }
-            .store(in: &cancellables)
-
-        relayClient.$isConnected
-            .sink { [weak self] _ in self?.objectWillChange.send() }
-            .store(in: &cancellables)
-
-        relayClient.$connectionError
-            .sink { [weak self] _ in self?.objectWillChange.send() }
-            .store(in: &cancellables)
-
-        relayClient.$projectHeartbeats
-            .sink { [weak self] _ in self?.objectWillChange.send() }
-            .store(in: &cancellables)
-
-        relayClient.$connectedAt
-            .sink { [weak self] _ in self?.objectWillChange.send() }
-            .store(in: &cancellables)
     }
 
     private func startTerminalTracking() {
@@ -284,7 +250,7 @@ class AppState: ObservableObject {
     // MARK: - Session State Access (delegating to manager)
 
     func getSessionState(for project: Project) -> ProjectSessionState? {
-        sessionStateManager.getSessionState(for: project, relayClient: relayClient, isRemoteMode: isRemoteMode)
+        sessionStateManager.getSessionState(for: project)
     }
 
     func isFlashing(_ project: Project) -> SessionState? {
@@ -327,18 +293,6 @@ class AppState: ObservableObject {
     func showProjectList() {
         selectedProject = nil
         projectView = .list
-    }
-
-    // MARK: - Relay
-
-    func connectRelay() {
-        isRemoteMode = true
-        relayClient.connect()
-    }
-
-    func disconnectRelay() {
-        isRemoteMode = false
-        relayClient.disconnect()
     }
 
     // MARK: - Layout Mode Persistence

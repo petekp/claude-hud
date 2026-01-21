@@ -114,7 +114,6 @@ Hooks track local Claude Code sessions → state file → HUD reads.
 | Detailed architecture | `.claude/docs/architecture-overview.md` |
 | Debugging procedures | `.claude/docs/debugging-guide.md` |
 | Hook operations | `.claude/docs/hook-operations.md` |
-| Status sync architecture | `.claude/docs/status-sync-architecture.md` |
 | Adding CLI agents | `.claude/docs/adding-new-cli-agent-guide.md` |
 | Idea capture specs | `.claude/docs/idea-capture-specs.md` |
 | Claude Code CLI reference | `docs/claude-code/` |

@@ -6,7 +6,6 @@ final class SessionStateManager {
         static let flashDurationSeconds: TimeInterval = 1.4
         static let readyStalenessThresholdSeconds: TimeInterval = 120
         static let thinkingStalenessThresholdSeconds: TimeInterval = 30
-        static let remoteStalenessThresholdSeconds: TimeInterval = 30
     }
 
     private(set) var sessionStates: [String: ProjectSessionState] = [:]
@@ -89,17 +88,13 @@ final class SessionStateManager {
 
     // MARK: - State Retrieval
 
-    func getSessionState(for project: Project, relayClient: RelayClient?, isRemoteMode: Bool) -> ProjectSessionState? {
+    func getSessionState(for project: Project) -> ProjectSessionState? {
         guard var state = findMostRecentState(for: project.path) else {
             return nil
         }
 
         state = inheritLockIfNeeded(state, projectPath: project.path)
         state = applyThinkingStateLogic(state)
-
-        if isRemoteMode, let relayClient {
-            state = applyRemoteStalenessLogic(state, project: project, relayClient: relayClient)
-        }
 
         return state
     }
@@ -131,26 +126,6 @@ final class SessionStateManager {
         return state
     }
 
-    private func applyRemoteStalenessLogic(_ state: ProjectSessionState, project: Project, relayClient: RelayClient) -> ProjectSessionState {
-        guard state.state == .working else { return state }
-
-        let lastHeartbeat = relayClient.projectHeartbeats
-            .filter { $0.key.hasPrefix(project.path) }
-            .map(\.value)
-            .max()
-
-        let isStale: Bool
-        if let heartbeat = lastHeartbeat {
-            isStale = Date().timeIntervalSince(heartbeat) > Constants.remoteStalenessThresholdSeconds
-        } else if let connectedAt = relayClient.connectedAt {
-            isStale = Date().timeIntervalSince(connectedAt) > Constants.remoteStalenessThresholdSeconds
-        } else {
-            isStale = false
-        }
-
-        return isStale ? state.with(state: .waiting) : state
-    }
-
     private func findMostRecentState(for projectPath: String) -> ProjectSessionState? {
         var bestState: ProjectSessionState?
         var bestTimestamp: Date?
@@ -174,38 +149,6 @@ final class SessionStateManager {
         return bestState
     }
 
-    // MARK: - Relay State
-
-    func applyRelayState(_ state: RelayHudState) {
-        for (path, projectState) in state.projects {
-            let sessionState = parseSessionState(projectState.state)
-
-            sessionStates[path] = ProjectSessionState(
-                state: sessionState,
-                stateChangedAt: projectState.lastUpdated,
-                sessionId: nil,
-                workingOn: projectState.workingOn,
-                context: nil,
-                thinking: nil,
-                isLocked: false
-            )
-
-            if let previous = previousSessionStates[path], previous != sessionState {
-                triggerFlashIfNeeded(for: path, state: sessionState)
-            }
-            previousSessionStates[path] = sessionState
-        }
-    }
-
-    private func parseSessionState(_ raw: String) -> SessionState {
-        switch raw {
-        case "working": return .working
-        case "ready": return .ready
-        case "compacting": return .compacting
-        case "waiting": return .waiting
-        default: return .idle
-        }
-    }
 }
 
 // MARK: - ProjectSessionState Extension

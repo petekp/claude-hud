@@ -32,8 +32,6 @@ Archive of completed features and improvements. See `TODO.md` for active work.
 - Replaced remote sync button with "Add Project" button in header
 - New button uses NSOpenPanel for native macOS folder picker
 - Projects can now be added anytime (not just from empty state)
-- Removed RelayStatusIndicator and associated relay UI from header
-- Remote sync features deprioritized; code remains in codebase for future use
 
 ### State Resolver Matching Logic Refinement (8 Iterations)
 **ADR:** `docs/architecture-decisions/002-state-resolver-matching-logic.md`
