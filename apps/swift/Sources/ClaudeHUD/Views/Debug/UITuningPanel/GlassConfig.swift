@@ -79,7 +79,7 @@ class GlassConfig: ObservableObject {
     // Logo letterpress effect (tuned)
     @Published var logoFontSize: Double = 14.55
     @Published var logoTracking: Double = 2.61
-    @Published var logoBaseOpacity: Double = 0.9
+    @Published var logoBaseOpacity: Double = 1.0
     @Published var logoShadowOpacity: Double = 0.01
     @Published var logoShadowOffsetX: Double = -2.96
     @Published var logoShadowOffsetY: Double = -2.93
@@ -130,7 +130,7 @@ class GlassConfig: ObservableObject {
     @Published var cardCornerRadius: Double = 13
     @Published var cardBorderOpacity: Double = 0.28
     @Published var cardHighlightOpacity: Double = 0.14
-    @Published var cardHoverBorderOpacity: Double = 0.37
+    @Published var cardHoverBorderOpacity: Double = 0.95
     @Published var cardHoverHighlightOpacity: Double = 0.16
 
     // Material settings
@@ -161,23 +161,23 @@ class GlassConfig: ObservableObject {
     @Published var statusIdleOpacity: Double = 0.40
 
     // Ready ripple effect (continuous)
-    @Published var rippleSpeed: Double = 4.9
-    @Published var rippleCount: Int = 4
+    @Published var rippleSpeed: Double = 4.73
+    @Published var rippleCount: Int = 3
     @Published var rippleMaxOpacity: Double = 1.00
-    @Published var rippleLineWidth: Double = 30.0
-    @Published var rippleBlurAmount: Double = 41.5
+    @Published var rippleLineWidth: Double = 45.15
+    @Published var rippleBlurAmount: Double = 29.62
     @Published var rippleOriginX: Double = 0.89
     @Published var rippleOriginY: Double = 0.00
-    @Published var rippleFadeInZone: Double = 0.10
-    @Published var rippleFadeOutPower: Double = 4.0
+    @Published var rippleFadeInZone: Double = 0.17
+    @Published var rippleFadeOutPower: Double = 3.29
 
     // Ready border glow effect
-    @Published var borderGlowInnerWidth: Double = 0.49
-    @Published var borderGlowOuterWidth: Double = 2.88
-    @Published var borderGlowInnerBlur: Double = 0.5
-    @Published var borderGlowOuterBlur: Double = 1.5
-    @Published var borderGlowBaseOpacity: Double = 0.30
-    @Published var borderGlowPulseIntensity: Double = 0.50
+    @Published var borderGlowInnerWidth: Double = 2.00
+    @Published var borderGlowOuterWidth: Double = 3.49
+    @Published var borderGlowInnerBlur: Double = 4.0
+    @Published var borderGlowOuterBlur: Double = 0.13
+    @Published var borderGlowBaseOpacity: Double = 0.50
+    @Published var borderGlowPulseIntensity: Double = 1.00
     @Published var borderGlowRotationMultiplier: Double = 0.50
 
     // MARK: - Waiting Pulse Effect
@@ -404,7 +404,7 @@ class GlassConfig: ObservableObject {
         // Logo letterpress (tuned)
         logoFontSize = 14.55
         logoTracking = 2.61
-        logoBaseOpacity = 0.9
+        logoBaseOpacity = 1.0
         logoShadowOpacity = 0.01
         logoShadowOffsetX = -2.96
         logoShadowOffsetY = -2.93
@@ -453,7 +453,7 @@ class GlassConfig: ObservableObject {
         cardCornerRadius = 13
         cardBorderOpacity = 0.28
         cardHighlightOpacity = 0.14
-        cardHoverBorderOpacity = 0.37
+        cardHoverBorderOpacity = 0.95
         cardHoverHighlightOpacity = 0.16
 
         useEmphasizedMaterial = true
@@ -477,22 +477,22 @@ class GlassConfig: ObservableObject {
 
         statusIdleOpacity = 0.40
 
-        rippleSpeed = 4.9
-        rippleCount = 4
+        rippleSpeed = 4.73
+        rippleCount = 3
         rippleMaxOpacity = 1.00
-        rippleLineWidth = 30.0
-        rippleBlurAmount = 41.5
+        rippleLineWidth = 45.15
+        rippleBlurAmount = 29.62
         rippleOriginX = 0.89
         rippleOriginY = 0.00
-        rippleFadeInZone = 0.10
-        rippleFadeOutPower = 4.0
+        rippleFadeInZone = 0.17
+        rippleFadeOutPower = 3.29
 
-        borderGlowInnerWidth = 0.49
-        borderGlowOuterWidth = 2.88
-        borderGlowInnerBlur = 0.5
-        borderGlowOuterBlur = 1.5
-        borderGlowBaseOpacity = 0.30
-        borderGlowPulseIntensity = 0.50
+        borderGlowInnerWidth = 2.00
+        borderGlowOuterWidth = 3.49
+        borderGlowInnerBlur = 4.0
+        borderGlowOuterBlur = 0.13
+        borderGlowBaseOpacity = 0.50
+        borderGlowPulseIntensity = 1.00
         borderGlowRotationMultiplier = 0.50
 
         // Waiting effect
@@ -565,7 +565,7 @@ class GlassConfig: ObservableObject {
             // Logo Letterpress (tuned)
             ("Logo Letterpress", "logoFontSize", 14.55, logoFontSize),
             ("Logo Letterpress", "logoTracking", 2.61, logoTracking),
-            ("Logo Letterpress", "logoBaseOpacity", 0.9, logoBaseOpacity),
+            ("Logo Letterpress", "logoBaseOpacity", 1.0, logoBaseOpacity),
             ("Logo Letterpress", "logoShadowOpacity", 0.01, logoShadowOpacity),
             ("Logo Letterpress", "logoShadowOffsetX", -2.96, logoShadowOffsetX),
             ("Logo Letterpress", "logoShadowOffsetY", -2.93, logoShadowOffsetY),
@@ -596,7 +596,7 @@ class GlassConfig: ObservableObject {
             ("Card", "cardCornerRadius", 13, cardCornerRadius),
             ("Card", "cardBorderOpacity", 0.28, cardBorderOpacity),
             ("Card", "cardHighlightOpacity", 0.14, cardHighlightOpacity),
-            ("Card", "cardHoverBorderOpacity", 0.37, cardHoverBorderOpacity),
+            ("Card", "cardHoverBorderOpacity", 0.95, cardHoverBorderOpacity),
             ("Card", "cardHoverHighlightOpacity", 0.16, cardHoverHighlightOpacity),
             // Status Colors - Ready
             ("Status Ready", "statusReadyHue", 0.406, statusReadyHue),
@@ -617,22 +617,22 @@ class GlassConfig: ObservableObject {
             // Status Colors - Idle
             ("Status Idle", "statusIdleOpacity", 0.40, statusIdleOpacity),
             // Ready Ripple
-            ("Ready Ripple", "rippleSpeed", 4.9, rippleSpeed),
-            ("Ready Ripple", "rippleCount", 4, Double(rippleCount)),
+            ("Ready Ripple", "rippleSpeed", 4.73, rippleSpeed),
+            ("Ready Ripple", "rippleCount", 3, Double(rippleCount)),
             ("Ready Ripple", "rippleMaxOpacity", 1.00, rippleMaxOpacity),
-            ("Ready Ripple", "rippleLineWidth", 30.0, rippleLineWidth),
-            ("Ready Ripple", "rippleBlurAmount", 41.5, rippleBlurAmount),
+            ("Ready Ripple", "rippleLineWidth", 45.15, rippleLineWidth),
+            ("Ready Ripple", "rippleBlurAmount", 29.62, rippleBlurAmount),
             ("Ready Ripple", "rippleOriginX", 0.89, rippleOriginX),
             ("Ready Ripple", "rippleOriginY", 0.00, rippleOriginY),
-            ("Ready Ripple", "rippleFadeInZone", 0.10, rippleFadeInZone),
-            ("Ready Ripple", "rippleFadeOutPower", 4.0, rippleFadeOutPower),
+            ("Ready Ripple", "rippleFadeInZone", 0.17, rippleFadeInZone),
+            ("Ready Ripple", "rippleFadeOutPower", 3.29, rippleFadeOutPower),
             // Border Glow
-            ("Border Glow", "borderGlowInnerWidth", 0.49, borderGlowInnerWidth),
-            ("Border Glow", "borderGlowOuterWidth", 2.88, borderGlowOuterWidth),
-            ("Border Glow", "borderGlowInnerBlur", 0.5, borderGlowInnerBlur),
-            ("Border Glow", "borderGlowOuterBlur", 1.5, borderGlowOuterBlur),
-            ("Border Glow", "borderGlowBaseOpacity", 0.30, borderGlowBaseOpacity),
-            ("Border Glow", "borderGlowPulseIntensity", 0.50, borderGlowPulseIntensity),
+            ("Border Glow", "borderGlowInnerWidth", 2.00, borderGlowInnerWidth),
+            ("Border Glow", "borderGlowOuterWidth", 3.49, borderGlowOuterWidth),
+            ("Border Glow", "borderGlowInnerBlur", 4.0, borderGlowInnerBlur),
+            ("Border Glow", "borderGlowOuterBlur", 0.13, borderGlowOuterBlur),
+            ("Border Glow", "borderGlowBaseOpacity", 0.50, borderGlowBaseOpacity),
+            ("Border Glow", "borderGlowPulseIntensity", 1.00, borderGlowPulseIntensity),
             ("Border Glow", "borderGlowRotationMultiplier", 0.50, borderGlowRotationMultiplier),
             // Waiting Pulse
             ("Waiting Pulse", "waitingCycleLength", 1.68, waitingCycleLength),
