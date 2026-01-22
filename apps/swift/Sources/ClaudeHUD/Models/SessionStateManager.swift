@@ -4,7 +4,7 @@ import Foundation
 final class SessionStateManager {
     private enum Constants {
         static let flashDurationSeconds: TimeInterval = 1.4
-        static let readyStalenessThresholdSeconds: TimeInterval = 120
+        static let readyStalenessThresholdSeconds: TimeInterval = 900
         static let thinkingStalenessThresholdSeconds: TimeInterval = 30
     }
 
@@ -39,9 +39,8 @@ final class SessionStateManager {
                 return state.with(state: .ready, thinking: nil, isLocked: true)
             }
         } else {
-            if state.state == .working || state.state == .compacting {
-                return state.with(state: .ready, thinking: false, isLocked: false)
-            } else if state.state == .ready {
+            // Trust Working/Compacting states even without locks (fresh records are valid)
+            if state.state == .ready {
                 if isStale(state.stateChangedAt, threshold: Constants.readyStalenessThresholdSeconds) {
                     return state.with(state: .idle, thinking: false, isLocked: false)
                 }

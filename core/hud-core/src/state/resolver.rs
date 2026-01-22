@@ -226,7 +226,7 @@ pub fn resolve_state(
                 Some(r.state)
             }
         }
-        (true, None) => Some(ClaudeState::Ready),
+        (true, None) => Some(ClaudeState::Working),
         (false, Some(r)) => {
             // Session found but no lock for queried path
             // Try to find matching child lock first
@@ -257,7 +257,12 @@ pub fn resolve_state(
                         // Lock at r.cwd belongs to different session
                         None
                     }
+                } else if !r.is_stale() {
+                    // Fresh record without lock - trust it
+                    // (Claude Code may not create locks in some scenarios)
+                    Some(r.state)
                 } else {
+                    // Stale record without lock - treat as not running
                     None
                 }
             }
@@ -460,7 +465,7 @@ pub fn resolve_state_with_details(
             }
         }
         (true, None) => Some(ResolvedState {
-            state: ClaudeState::Ready,
+            state: ClaudeState::Working,
             session_id: None,
             cwd: project_path.to_string(),
         }),
@@ -508,6 +513,8 @@ pub fn resolve_state_with_details(
                         None
                     }
                 } else {
+                    // No lock - let caller handle via recent_session_record_for_project
+                    // (preserves is_locked semantics in sessions.rs)
                     None
                 }
             }
@@ -554,29 +561,51 @@ mod tests {
     }
 
     #[test]
-    fn test_has_state_no_lock_returns_none() {
+    fn test_has_fresh_state_no_lock_returns_state() {
+        // Fresh records without locks should be trusted
         let temp = tempdir().unwrap();
         let mut store = StateStore::new_in_memory();
         store.update("s1", ClaudeState::Working, "/project");
-        assert!(resolve_state(temp.path(), &store, "/project").is_none());
+        assert_eq!(
+            resolve_state(temp.path(), &store, "/project"),
+            Some(ClaudeState::Working)
+        );
     }
 
     #[test]
-    fn test_has_lock_no_state_returns_ready() {
+    fn test_has_lock_no_state_returns_working() {
         let temp = tempdir().unwrap();
         create_lock(temp.path(), std::process::id(), "/project");
         let store = StateStore::new_in_memory();
         assert_eq!(
             resolve_state(temp.path(), &store, "/project"),
-            Some(ClaudeState::Ready)
+            Some(ClaudeState::Working)
         );
     }
 
     #[test]
-    fn test_state_ready_no_lock_returns_none() {
+    fn test_fresh_state_no_lock_returns_state() {
+        // Fresh records without locks should be trusted
+        // (Claude Code may not create locks in some scenarios)
         let temp = tempdir().unwrap();
         let mut store = StateStore::new_in_memory();
-        store.update("s1", ClaudeState::Ready, "/project");
+        store.update("s1", ClaudeState::Working, "/project");
+        assert_eq!(
+            resolve_state(temp.path(), &store, "/project"),
+            Some(ClaudeState::Working)
+        );
+    }
+
+    #[test]
+    fn test_stale_state_no_lock_returns_none() {
+        // Stale records without locks should return None
+        use chrono::{Duration, Utc};
+        let temp = tempdir().unwrap();
+        let mut store = StateStore::new_in_memory();
+        store.update("s1", ClaudeState::Working, "/project");
+        // Make the record stale (> 5 minutes old)
+        let stale_time = Utc::now() - Duration::minutes(10);
+        store.set_timestamp_for_test("s1", stale_time);
         assert!(resolve_state(temp.path(), &store, "/project").is_none());
     }
 

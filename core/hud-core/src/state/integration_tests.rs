@@ -154,15 +154,36 @@ fn test_interrupt_with_idle_prompt() {
 }
 
 #[test]
-fn test_crash_recovery_no_lock() {
+fn test_stale_crash_recovery_no_lock() {
+    // Stale records without locks should return None (crash recovery)
+    use chrono::{Duration, Utc};
     let temp = tempdir().unwrap();
     let mut store = StateStore::new_in_memory();
     let session_id = "crashed-session";
     let cwd = "/project";
 
     store.update(session_id, ClaudeState::Working, cwd);
+    // Make the record stale (> 5 minutes old)
+    let stale_time = Utc::now() - Duration::minutes(10);
+    store.set_timestamp_for_test(session_id, stale_time);
 
     assert_eq!(resolve_state(temp.path(), &store, cwd), None);
+}
+
+#[test]
+fn test_fresh_record_no_lock_returns_state() {
+    // Fresh records without locks should be trusted
+    let temp = tempdir().unwrap();
+    let mut store = StateStore::new_in_memory();
+    let session_id = "active-session";
+    let cwd = "/project";
+
+    store.update(session_id, ClaudeState::Working, cwd);
+
+    assert_eq!(
+        resolve_state(temp.path(), &store, cwd),
+        Some(ClaudeState::Working)
+    );
 }
 
 #[test]
@@ -225,7 +246,11 @@ fn test_sibling_projects_independent() {
         resolve_state(temp.path(), &store, "/projects/foo"),
         Some(ClaudeState::Working)
     );
-    assert_eq!(resolve_state(temp.path(), &store, "/projects/bar"), None);
+    // Fresh records without locks are now trusted
+    assert_eq!(
+        resolve_state(temp.path(), &store, "/projects/bar"),
+        Some(ClaudeState::Ready)
+    );
 }
 
 #[test]
