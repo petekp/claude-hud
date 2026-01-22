@@ -7,13 +7,147 @@ use serde::{Deserialize, Serialize};
 
 use crate::types::SessionState;
 
+// =============================================================================
+// Hook Input Types (JSON from Claude Code hooks)
+// =============================================================================
+
+/// Raw JSON input from Claude Code hooks.
+///
+/// This struct captures all fields that Claude Code might send. Fields are optional
+/// because different events include different data.
+#[derive(Debug, Clone, Deserialize)]
+pub struct HookInput {
+    pub hook_event_name: Option<String>,
+    pub session_id: Option<String>,
+    pub cwd: Option<String>,
+    pub trigger: Option<String>,
+    pub notification_type: Option<String>,
+    pub stop_hook_active: Option<bool>,
+    pub tool_name: Option<String>,
+    pub tool_use_id: Option<String>,
+    #[serde(default)]
+    pub tool_input: Option<ToolInput>,
+    #[serde(default)]
+    pub tool_response: Option<ToolResponse>,
+    pub source: Option<String>,
+    pub reason: Option<String>,
+    pub agent_id: Option<String>,
+    pub agent_transcript_path: Option<String>,
+}
+
+/// Tool input fields (file paths from Edit, Write, Read, etc.)
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct ToolInput {
+    pub file_path: Option<String>,
+    pub path: Option<String>,
+}
+
+/// Tool response fields
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct ToolResponse {
+    #[serde(rename = "filePath")]
+    pub file_path: Option<String>,
+}
+
+/// Parsed hook event with associated data.
+#[derive(Debug, Clone)]
+pub enum HookEvent {
+    SessionStart,
+    SessionEnd,
+    UserPromptSubmit,
+    PreToolUse {
+        tool_name: Option<String>,
+    },
+    PostToolUse {
+        tool_name: Option<String>,
+        file_path: Option<String>,
+    },
+    PermissionRequest,
+    PreCompact,
+    Notification {
+        notification_type: String,
+    },
+    Stop {
+        stop_hook_active: bool,
+    },
+    Unknown {
+        event_name: String,
+    },
+}
+
+impl HookInput {
+    /// Parse a HookEvent from the raw input.
+    pub fn to_event(&self) -> Option<HookEvent> {
+        let event_name = self.hook_event_name.as_deref()?;
+
+        Some(match event_name {
+            "SessionStart" => HookEvent::SessionStart,
+            "SessionEnd" => HookEvent::SessionEnd,
+            "UserPromptSubmit" => HookEvent::UserPromptSubmit,
+            "PreToolUse" => HookEvent::PreToolUse {
+                tool_name: self.tool_name.clone(),
+            },
+            "PostToolUse" => {
+                // Resolve file path from multiple possible locations
+                let file_path = self
+                    .tool_input
+                    .as_ref()
+                    .and_then(|ti| ti.file_path.clone().or_else(|| ti.path.clone()))
+                    .or_else(|| {
+                        self.tool_response
+                            .as_ref()
+                            .and_then(|tr| tr.file_path.clone())
+                    });
+
+                HookEvent::PostToolUse {
+                    tool_name: self.tool_name.clone(),
+                    file_path,
+                }
+            }
+            "PermissionRequest" => HookEvent::PermissionRequest,
+            "PreCompact" => HookEvent::PreCompact,
+            "Notification" => HookEvent::Notification {
+                notification_type: self.notification_type.clone().unwrap_or_default(),
+            },
+            "Stop" => HookEvent::Stop {
+                stop_hook_active: self.stop_hook_active.unwrap_or(false),
+            },
+            _ => HookEvent::Unknown {
+                event_name: event_name.to_string(),
+            },
+        })
+    }
+
+    /// Resolve the working directory, with fallbacks.
+    pub fn resolve_cwd(&self, current_cwd: Option<&str>) -> Option<String> {
+        // Priority: input cwd > env CLAUDE_PROJECT_DIR > existing cwd > env PWD
+        self.cwd
+            .clone()
+            .or_else(|| std::env::var("CLAUDE_PROJECT_DIR").ok())
+            .or_else(|| current_cwd.map(|s| s.to_string()))
+            .or_else(|| std::env::var("PWD").ok())
+            .map(|cwd| normalize_path(&cwd))
+    }
+}
+
+/// Normalize a path: strip trailing slashes (except for root "/").
+fn normalize_path(path: &str) -> String {
+    let trimmed = path.trim_end_matches('/');
+    if trimmed.is_empty() {
+        "/".to_string()
+    } else {
+        trimmed.to_string()
+    }
+}
+
 /// Records older than this are considered stale and untrusted without a lock.
 pub const STALE_THRESHOLD_SECS: i64 = 300; // 5 minutes
 
-/// Active states (Working, Waiting, Compacting) fall back to Ready after this threshold.
+/// Active states (Working, Waiting) fall back to Ready after this threshold.
 /// This handles user interruptions (Escape key, cancel) where no hook event fires.
-/// Aggressive threshold for fast recovery; false positives self-correct on next hook event.
-pub const ACTIVE_STATE_STALE_SECS: i64 = 5;
+/// 30 seconds balances interrupt recovery with accuracy during long generations
+/// (tool-free responses don't emit heartbeat events).
+pub const ACTIVE_STATE_STALE_SECS: i64 = 30;
 
 // -----------------------------------------------------------------------------
 // Canonical hook→state mapping (implemented in scripts/hud-state-tracker.sh)

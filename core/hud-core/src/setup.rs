@@ -21,7 +21,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use tempfile::NamedTempFile;
 
-const HOOK_SCRIPT_VERSION: &str = "2.2.0";
+const HOOK_SCRIPT_VERSION: &str = "4.0.0";
 const HOOK_COMMAND: &str = "$HOME/.claude/scripts/hud-state-tracker.sh";
 const HOOK_SCRIPT: &str = include_str!("../../../scripts/hud-state-tracker.sh");
 
@@ -135,18 +135,42 @@ impl SetupChecker {
     }
 
     fn check_all_dependencies(&self) -> Vec<DependencyStatus> {
-        vec![self.check_jq(), self.check_tmux(), self.check_claude()]
+        vec![
+            self.check_hud_hook(),
+            self.check_jq(),
+            self.check_tmux(),
+            self.check_claude(),
+        ]
+    }
+
+    fn check_hud_hook(&self) -> DependencyStatus {
+        // Check for the Rust hook handler binary
+        let path = which("hud-hook").or_else(|| {
+            // Also check the standard install location
+            dirs::home_dir()
+                .map(|h| h.join(".local/bin/hud-hook"))
+                .filter(|p| p.exists())
+                .map(|p| p.to_string_lossy().to_string())
+        });
+
+        DependencyStatus {
+            name: "hud-hook".to_string(),
+            required: true,
+            found: path.is_some(),
+            path,
+            install_hint: Some("Run: ./scripts/sync-hooks.sh".to_string()),
+        }
     }
 
     fn check_jq(&self) -> DependencyStatus {
+        // jq is no longer required - the Rust binary (hud-hook) handles all JSON processing
         let path = which("jq");
-        let has_python = which("python3").is_some();
         DependencyStatus {
             name: "jq".to_string(),
-            required: !has_python,
+            required: false,
             found: path.is_some(),
             path,
-            install_hint: Some("brew install jq (or ensure python3 is available)".to_string()),
+            install_hint: Some("brew install jq (optional, for debugging)".to_string()),
         }
     }
 
@@ -257,9 +281,11 @@ impl SetupChecker {
         let content = fs::read_to_string(script_path).ok()?;
         for line in content.lines().take(5) {
             if line.starts_with("# Claude HUD State Tracker Hook v") {
-                let version = line
+                let version_str = line
                     .strip_prefix("# Claude HUD State Tracker Hook v")?
                     .trim();
+                // Extract just the semver portion (e.g., "4.0.0" from "4.0.0 (Rust)")
+                let version = version_str.split_whitespace().next().unwrap_or(version_str);
                 return Some(version.to_string());
             }
         }
@@ -580,7 +606,7 @@ mod tests {
         assert!(script_path.exists());
 
         let content = fs::read_to_string(&script_path).unwrap();
-        assert!(content.contains("Claude HUD State Tracker Hook v3.1.2"));
+        assert!(content.contains("Claude HUD State Tracker Hook v4.0.0"));
     }
 
     #[test]
@@ -654,6 +680,37 @@ mod tests {
             }
             _ => panic!("Expected Outdated status"),
         }
+    }
+
+    #[test]
+    fn test_version_parsing_ignores_suffix() {
+        let (_temp, storage) = setup_test_env();
+
+        let scripts_dir = storage.claude_root().join("scripts");
+        fs::create_dir_all(&scripts_dir).unwrap();
+
+        // Version with suffix like "(Rust)" should be parsed as just the semver
+        let script_with_suffix =
+            format!("#!/bin/bash\n# Claude HUD State Tracker Hook v{} (Rust)\n", HOOK_SCRIPT_VERSION);
+        let script_path = scripts_dir.join("hud-state-tracker.sh");
+        fs::write(&script_path, script_with_suffix).unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mut perms = fs::metadata(&script_path).unwrap().permissions();
+            perms.set_mode(0o755);
+            fs::set_permissions(&script_path, perms).unwrap();
+        }
+
+        let checker = SetupChecker::new(storage.clone());
+
+        // Should extract "4.0.0" from "4.0.0 (Rust)" and match HOOK_SCRIPT_VERSION
+        // (Will still show NotInstalled because hooks aren't registered, but shouldn't show Outdated)
+        let status = checker.check_hooks_status();
+        assert!(
+            !matches!(status, HookStatus::Outdated { .. }),
+            "Should not be Outdated when version matches (ignoring suffix)"
+        );
     }
 
     #[test]

@@ -450,6 +450,146 @@ pub fn find_matching_child_lock(
     best_match
 }
 
+// =============================================================================
+// Lock Creation/Management (for hud-hook binary)
+// =============================================================================
+
+/// Create a lock directory for a session.
+///
+/// Returns the path to the created lock directory, or None if creation failed
+/// (e.g., another process already holds the lock).
+pub fn create_lock(lock_base: &Path, project_path: &str, pid: u32) -> Option<std::path::PathBuf> {
+    let hash = compute_lock_hash(project_path);
+    let lock_dir = lock_base.join(format!("{}.lock", hash));
+
+    // Ensure the parent lock directory exists
+    if !lock_base.exists() {
+        if let Err(e) = fs::create_dir_all(lock_base) {
+            eprintln!("Warning: Failed to create lock base directory: {}", e);
+            return None;
+        }
+    }
+
+    // Try to create the lock directory atomically
+    match fs::create_dir(&lock_dir) {
+        Ok(()) => {
+            // We created the lock, write metadata
+            if write_lock_metadata(&lock_dir, pid, project_path, None).is_ok() {
+                Some(lock_dir)
+            } else {
+                // Clean up on metadata write failure
+                let _ = fs::remove_dir_all(&lock_dir);
+                None
+            }
+        }
+        Err(ref e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
+            // Lock already exists - check if it's stale or owned by us
+            if let Some(info) = read_lock_info(&lock_dir) {
+                if info.pid == pid {
+                    // We already own this lock, refresh metadata
+                    let _ = write_lock_metadata(&lock_dir, pid, project_path, None);
+                    return Some(lock_dir);
+                }
+
+                // Check if the existing lock holder is still alive
+                if is_pid_alive_verified(info.pid, info.proc_started) {
+                    // Lock is held by another live process
+                    return None;
+                }
+
+                // Existing lock is stale, take it over
+                let _ = fs::remove_dir_all(&lock_dir);
+                if fs::create_dir(&lock_dir).is_ok()
+                    && write_lock_metadata(&lock_dir, pid, project_path, None).is_ok()
+                {
+                    return Some(lock_dir);
+                }
+            } else {
+                // Can't read existing lock, try to take it
+                let _ = fs::remove_dir_all(&lock_dir);
+                if fs::create_dir(&lock_dir).is_ok()
+                    && write_lock_metadata(&lock_dir, pid, project_path, None).is_ok()
+                {
+                    return Some(lock_dir);
+                }
+            }
+            None
+        }
+        Err(_) => None,
+    }
+}
+
+/// Release a lock directory.
+pub fn release_lock(lock_base: &Path, project_path: &str) -> bool {
+    let hash = compute_lock_hash(project_path);
+    let lock_dir = lock_base.join(format!("{}.lock", hash));
+
+    if lock_dir.exists() {
+        fs::remove_dir_all(&lock_dir).is_ok()
+    } else {
+        true // Already released
+    }
+}
+
+/// Update lock metadata to a new PID (for handoff).
+pub fn update_lock_pid(
+    lock_dir: &Path,
+    new_pid: u32,
+    project_path: &str,
+    handoff_from: Option<u32>,
+) -> bool {
+    write_lock_metadata(lock_dir, new_pid, project_path, handoff_from).is_ok()
+}
+
+/// Write lock metadata files (pid and meta.json).
+fn write_lock_metadata(
+    lock_dir: &Path,
+    pid: u32,
+    project_path: &str,
+    handoff_from: Option<u32>,
+) -> std::io::Result<()> {
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    // Write PID file
+    fs::write(lock_dir.join("pid"), pid.to_string())?;
+
+    // Get process start time
+    let proc_started = get_process_start_time(pid);
+
+    // Get current timestamp in milliseconds
+    let created_ms = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_millis() as u64;
+
+    // Build metadata JSON
+    let mut meta = serde_json::json!({
+        "pid": pid,
+        "path": project_path,
+        "created": created_ms,
+    });
+
+    if let Some(started) = proc_started {
+        meta["proc_started"] = serde_json::json!(started);
+    }
+
+    if let Some(from_pid) = handoff_from {
+        meta["handoff_from"] = serde_json::json!(from_pid);
+    }
+
+    // Write metadata file
+    let meta_content = serde_json::to_string_pretty(&meta).map_err(std::io::Error::other)?;
+    fs::write(lock_dir.join("meta.json"), meta_content)?;
+
+    Ok(())
+}
+
+/// Get the lock directory path for a project (without checking if it exists).
+pub fn get_lock_dir_path(lock_base: &Path, project_path: &str) -> std::path::PathBuf {
+    let hash = compute_lock_hash(project_path);
+    lock_base.join(format!("{}.lock", hash))
+}
+
 #[cfg(test)]
 pub mod tests_helper {
     use super::compute_lock_hash;

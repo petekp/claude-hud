@@ -1,11 +1,17 @@
 import Foundation
 
+/// Manages session state display for projects.
+///
+/// This is a "dumb" client that:
+/// - Caches states from the Rust engine
+/// - Detects state changes for flash animations
+/// - Provides state to views (direct passthrough)
+///
+/// All state logic (staleness, lock detection, resolution) lives in Rust.
 @MainActor
 final class SessionStateManager {
     private enum Constants {
         static let flashDurationSeconds: TimeInterval = 1.4
-        static let readyStalenessThresholdSeconds: TimeInterval = 900
-        static let thinkingStalenessThresholdSeconds: TimeInterval = 30
     }
 
     private(set) var sessionStates: [String: ProjectSessionState] = [:]
@@ -13,7 +19,6 @@ final class SessionStateManager {
     private var previousSessionStates: [String: SessionState] = [:]
 
     private weak var engine: HudEngine?
-    private let isoFormatter = ISO8601DateFormatter()
 
     func configure(engine: HudEngine?) {
         self.engine = engine
@@ -23,38 +28,10 @@ final class SessionStateManager {
 
     func refreshSessionStates(for projects: [Project]) {
         guard let engine else { return }
-        var states = engine.getAllSessionStates(projects: projects)
 
-        for (path, state) in states {
-            states[path] = reconcileStateWithLock(state, at: path)
-        }
-
-        sessionStates = states
+        // Direct passthrough from Rust - no client-side transformation
+        sessionStates = engine.getAllSessionStates(projects: projects)
         checkForStateChanges()
-    }
-
-    private func reconcileStateWithLock(_ state: ProjectSessionState, at path: String) -> ProjectSessionState {
-        if state.isLocked {
-            if state.state == .idle {
-                return state.with(state: .ready, thinking: nil, isLocked: true)
-            }
-        } else {
-            // Trust Working/Compacting states even without locks (fresh records are valid)
-            if state.state == .ready {
-                if isStale(state.stateChangedAt, threshold: Constants.readyStalenessThresholdSeconds) {
-                    return state.with(state: .idle, thinking: false, isLocked: false)
-                }
-            }
-        }
-        return state
-    }
-
-    private func isStale(_ timestamp: String?, threshold: TimeInterval) -> Bool {
-        guard let timestamp,
-              let date = isoFormatter.date(from: timestamp) else {
-            return false
-        }
-        return Date().timeIntervalSince(date) > threshold
     }
 
     // MARK: - Flash Animation
@@ -88,82 +65,6 @@ final class SessionStateManager {
     // MARK: - State Retrieval
 
     func getSessionState(for project: Project) -> ProjectSessionState? {
-        guard var state = findMostRecentState(for: project.path) else {
-            return nil
-        }
-
-        state = inheritLockIfNeeded(state, projectPath: project.path)
-        state = applyThinkingStateLogic(state)
-
-        return state
-    }
-
-    private func inheritLockIfNeeded(_ state: ProjectSessionState, projectPath: String) -> ProjectSessionState {
-        guard !state.isLocked else { return state }
-
-        if let parentState = sessionStates[projectPath], parentState.isLocked {
-            return state.with(isLocked: true)
-        }
-        return state
-    }
-
-    private func applyThinkingStateLogic(_ state: ProjectSessionState) -> ProjectSessionState {
-        guard let thinking = state.thinking else { return state }
-
-        let isThinkingStale = state.context?.updatedAt.flatMap { timestamp in
-            isStale(timestamp, threshold: Constants.thinkingStalenessThresholdSeconds)
-        } ?? false
-
-        let effectiveThinking = isThinkingStale ? false : thinking
-
-        if effectiveThinking {
-            return state.with(state: .working, thinking: true)
-        }
-
-        return state
-    }
-
-    private func findMostRecentState(for projectPath: String) -> ProjectSessionState? {
-        var bestState: ProjectSessionState?
-        var bestTimestamp: Date?
-
-        for (path, state) in sessionStates {
-            guard path == projectPath || path.hasPrefix(projectPath + "/") else { continue }
-
-            let stateTimestamp = state.context?.updatedAt.flatMap(isoFormatter.date(from:))
-                ?? state.stateChangedAt.flatMap(isoFormatter.date(from:))
-
-            if let current = stateTimestamp {
-                if bestTimestamp == nil || current > bestTimestamp! {
-                    bestState = state
-                    bestTimestamp = current
-                }
-            } else if bestState == nil {
-                bestState = state
-            }
-        }
-
-        return bestState
-    }
-
-}
-
-// MARK: - ProjectSessionState Extension
-
-private extension ProjectSessionState {
-    func with(
-        state: SessionState? = nil,
-        thinking: Bool?? = .none,
-        isLocked: Bool? = nil
-    ) -> ProjectSessionState {
-        ProjectSessionState(
-            state: state ?? self.state,
-            stateChangedAt: stateChangedAt,
-            sessionId: sessionId,
-            workingOn: workingOn,
-            context: context,
-            thinking: thinking == .none ? self.thinking : thinking!,
-            isLocked: isLocked ?? self.isLocked
-        )
+        sessionStates[project.path]
     }
 }

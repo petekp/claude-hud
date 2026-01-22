@@ -14,8 +14,14 @@ use crate::boundaries::normalize_path;
 use crate::state::{resolve_state_with_details, StateStore};
 use crate::storage::StorageConfig;
 use crate::types::{ProjectSessionState, SessionState};
+use chrono::Utc;
 use std::fs;
 use std::path::Path;
+
+/// Ready state becomes Idle after this many seconds without a lock.
+/// This handles abandoned sessions where Claude finished but the user never returned.
+/// 15 minutes matches the Swift threshold that was previously applied client-side.
+pub const READY_STALE_THRESHOLD_SECS: i64 = 900;
 
 /// Detects session state using the v3 state module.
 /// Uses session-ID keyed state file and lock detection for reliable state.
@@ -39,16 +45,35 @@ pub fn detect_session_state_with_storage(
 
     match resolved {
         Some(details) => {
-            let is_working = details.state == SessionState::Working;
             let record = details
                 .session_id
                 .as_ref()
                 .and_then(|sid| store.get_by_session_id(sid));
-            let working_on = record.and_then(|r| r.working_on.clone());
+
+            // Check if Ready state should become Idle (stale Ready without lock)
+            let final_state = if details.state == SessionState::Ready && !details.is_from_lock {
+                if let Some(rec) = record.as_ref() {
+                    let age = Utc::now()
+                        .signed_duration_since(rec.state_changed_at)
+                        .num_seconds();
+                    if age > READY_STALE_THRESHOLD_SECS {
+                        SessionState::Idle
+                    } else {
+                        details.state
+                    }
+                } else {
+                    details.state
+                }
+            } else {
+                details.state
+            };
+
+            let is_working = final_state == SessionState::Working;
+            let working_on = record.as_ref().and_then(|r| r.working_on.clone());
             let state_changed_at = record.map(|r| r.state_changed_at.to_rfc3339());
 
             ProjectSessionState {
-                state: details.state,
+                state: final_state,
                 state_changed_at,
                 session_id: details.session_id,
                 working_on,
@@ -817,6 +842,103 @@ mod tests {
             state.state,
             SessionState::Working,
             "Session with lock in capacitor namespace should be detected"
+        );
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────────
+    // Ready→Idle Staleness Tests (15 minute threshold)
+    // These tests verify that Ready state becomes Idle after 15 minutes without lock
+    // Previously handled in Swift, now moved to Rust for "dumb client" architecture
+    // ─────────────────────────────────────────────────────────────────────────────
+
+    /// Test: Fresh Ready state (< 15 min) without lock stays Ready
+    #[test]
+    fn test_ready_state_fresh_stays_ready() {
+        let (_temp, storage) = setup_storage();
+        let project_path = "/tmp/hud-core-test-ready-fresh";
+
+        let mut store = StateStore::new(&storage.sessions_file());
+        store.update("session-1", SessionState::Ready, project_path);
+        // Default timestamp is now, which is fresh
+        store.save().unwrap();
+
+        let state = detect_session_state_with_storage(&storage, project_path);
+
+        assert_eq!(state.state, SessionState::Ready);
+        assert!(!state.is_locked);
+    }
+
+    /// Test: Stale Ready state (> 15 min) without lock becomes Idle
+    #[test]
+    fn test_ready_state_stale_becomes_idle() {
+        let (_temp, storage) = setup_storage();
+        let project_path = "/tmp/hud-core-test-ready-stale";
+
+        let mut store = StateStore::new(&storage.sessions_file());
+        store.update("session-1", SessionState::Ready, project_path);
+        // Set state_changed_at to 16 minutes ago (beyond 15 min threshold)
+        let stale_time = Utc::now() - ChronoDuration::minutes(16);
+        store.set_state_changed_at_for_test("session-1", stale_time);
+        // Keep updated_at fresh so the record isn't filtered out by general staleness
+        store.set_timestamp_for_test("session-1", Utc::now() - ChronoDuration::seconds(30));
+        store.save().unwrap();
+
+        let state = detect_session_state_with_storage(&storage, project_path);
+
+        assert_eq!(
+            state.state,
+            SessionState::Idle,
+            "Ready state older than 15 minutes without lock should become Idle"
+        );
+    }
+
+    /// Test: Stale Ready state (> 15 min) WITH lock stays Ready (lock is authoritative)
+    #[test]
+    fn test_ready_state_stale_with_lock_stays_ready() {
+        use crate::state::lock::tests_helper::create_lock;
+
+        let (_temp, storage, sessions_dir) = setup_storage_with_sessions();
+        let project_path = "/tmp/hud-core-test-ready-stale-locked";
+        create_lock(&sessions_dir, std::process::id(), project_path);
+
+        let mut store = StateStore::new(&storage.sessions_file());
+        store.update("session-1", SessionState::Ready, project_path);
+        // Set state_changed_at to 16 minutes ago
+        let stale_time = Utc::now() - ChronoDuration::minutes(16);
+        store.set_state_changed_at_for_test("session-1", stale_time);
+        store.set_timestamp_for_test("session-1", Utc::now());
+        store.save().unwrap();
+
+        let state = detect_session_state_with_storage(&storage, project_path);
+
+        assert_eq!(
+            state.state,
+            SessionState::Ready,
+            "Ready state with active lock should stay Ready regardless of staleness"
+        );
+        assert!(state.is_locked);
+    }
+
+    /// Test: Ready state at exactly 15 min boundary stays Ready
+    #[test]
+    fn test_ready_state_at_boundary_stays_ready() {
+        let (_temp, storage) = setup_storage();
+        let project_path = "/tmp/hud-core-test-ready-boundary";
+
+        let mut store = StateStore::new(&storage.sessions_file());
+        store.update("session-1", SessionState::Ready, project_path);
+        // Set state_changed_at to exactly 15 minutes ago (at boundary, not past it)
+        let boundary_time = Utc::now() - ChronoDuration::seconds(900);
+        store.set_state_changed_at_for_test("session-1", boundary_time);
+        store.set_timestamp_for_test("session-1", Utc::now() - ChronoDuration::seconds(30));
+        store.save().unwrap();
+
+        let state = detect_session_state_with_storage(&storage, project_path);
+
+        assert_eq!(
+            state.state,
+            SessionState::Ready,
+            "Ready state at exactly 15 minutes should stay Ready (threshold is >15 min)"
         );
     }
 }

@@ -1,0 +1,21 @@
+[package]
+name = "hud-hook"
+description = "CLI hook handler for Claude HUD session state tracking"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[[bin]]
+name = "hud-hook"
+path = "src/main.rs"
+
+[dependencies]
+hud-core = { path = "../hud-core" }
+clap.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+chrono.workspace = true
+dirs.workspace = true
+libc = "0.2"
