@@ -17,13 +17,13 @@ echo '{"input_tokens":1234}' | rg 'input_tokens":(\d+)'
 
 ## Hook State Tracking
 
-See `.claude/docs/hook-operations.md` for complete hook debugging and troubleshooting.
+See `scripts/hud-state-tracker.sh` header for state machine, debugging, and troubleshooting.
 
 Quick commands:
 ```bash
-tail -f ~/.claude/hud-hook-debug.log           # Watch events
-~/.claude/scripts/test-hud-hooks.sh            # Run test suite
+tail -f ~/.capacitor/hud-hook-debug.log        # Watch events
 cat ~/.capacitor/sessions.json | jq .          # View states
+ls ~/.capacitor/sessions/                      # Check active locks
 ```
 
 ## Common Issues

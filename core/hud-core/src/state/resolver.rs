@@ -128,6 +128,12 @@ pub fn resolve_state(
 ///
 /// Returns `None` when no lock exists (neither exact nor child) for the query path,
 /// unless a fresh state record exists (fallback for edge cases where locks are missing).
+///
+/// # Staleness Recovery
+///
+/// Active states (Working, Waiting, Compacting) fall back to Ready when stale.
+/// This handles user interruptions (Escape key, cancel) where no hook event fires.
+/// See [`super::types::ACTIVE_STATE_STALE_SECS`] for the threshold.
 pub fn resolve_state_with_details(
     lock_dir: &Path,
     store: &StateStore,
@@ -138,7 +144,12 @@ pub fn resolve_state_with_details(
         let lock = find_matching_child_lock(lock_dir, project_path, None, None)?;
         let record = find_record_for_lock_path(store, &lock.path);
         let (state, session_id) = match record {
+            // General staleness - untrusted record
             Some(r) if r.is_stale() => (SessionState::Ready, Some(r.session_id.clone())),
+            // Active state staleness - likely user interrupted (Escape, cancel)
+            Some(r) if r.is_active_state_stale() => {
+                (SessionState::Ready, Some(r.session_id.clone()))
+            }
             Some(r) => (r.state, Some(r.session_id.clone())),
             None => (SessionState::Ready, None),
         };
@@ -155,8 +166,14 @@ pub fn resolve_state_with_details(
     // This handles edge cases where locks aren't created but state is written
     // We intentionally exclude parent matches to prevent child paths from inheriting parent state
     if let Some(record) = find_fresh_record_for_path(store, project_path) {
+        // Active state staleness - likely user interrupted
+        let state = if record.is_active_state_stale() {
+            SessionState::Ready
+        } else {
+            record.state
+        };
         return Some(ResolvedState {
-            state: record.state,
+            state,
             session_id: Some(record.session_id.clone()),
             cwd: record.cwd.clone(),
             is_from_lock: false,
@@ -316,5 +333,39 @@ mod tests {
         assert_eq!(resolved.state, SessionState::Ready);
         assert_eq!(resolved.session_id.as_deref(), Some("s1"));
         assert!(resolved.is_from_lock);
+    }
+
+    #[test]
+    fn resolve_ready_for_active_state_stale_with_lock() {
+        use crate::state::types::ACTIVE_STATE_STALE_SECS;
+
+        let temp = tempdir().unwrap();
+        create_lock(temp.path(), std::process::id(), "/project");
+        let mut store = StateStore::new_in_memory();
+        store.update("s1", SessionState::Working, "/project");
+        // Make record stale by active state threshold (15+ seconds)
+        let stale_time = Utc::now() - Duration::seconds(ACTIVE_STATE_STALE_SECS + 5);
+        store.set_timestamp_for_test("s1", stale_time);
+        // Lock exists but Working state is stale = Ready (user likely interrupted)
+        let resolved = resolve_state_with_details(temp.path(), &store, "/project").unwrap();
+        assert_eq!(resolved.state, SessionState::Ready);
+        assert_eq!(resolved.session_id.as_deref(), Some("s1"));
+        assert!(resolved.is_from_lock);
+    }
+
+    #[test]
+    fn resolve_working_when_fresh_active_state_with_lock() {
+        use crate::state::types::ACTIVE_STATE_STALE_SECS;
+
+        let temp = tempdir().unwrap();
+        create_lock(temp.path(), std::process::id(), "/project");
+        let mut store = StateStore::new_in_memory();
+        store.update("s1", SessionState::Working, "/project");
+        // Recent timestamp (within active state threshold)
+        let fresh_time = Utc::now() - Duration::seconds(ACTIVE_STATE_STALE_SECS - 5);
+        store.set_timestamp_for_test("s1", fresh_time);
+        // Lock exists and Working state is fresh = Working
+        let resolved = resolve_state_with_details(temp.path(), &store, "/project").unwrap();
+        assert_eq!(resolved.state, SessionState::Working);
     }
 }

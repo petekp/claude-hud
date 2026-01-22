@@ -5,7 +5,7 @@ Tests for the Claude Code session state tracking system. Run these tests wheneve
 ## Components Under Test
 
 1. **Hook Script** (`~/.claude/scripts/hud-state-tracker.sh`)
-2. **Lock System** (`~/.claude/sessions/*.lock/`)
+2. **Lock System** (`~/.capacitor/sessions/*.lock/`)
 3. **Rust Core** (`core/hud-core/src/sessions.rs`)
 
 ## Running Tests
@@ -31,7 +31,7 @@ cargo test -p hud-core sessions::tests          # Rust unit tests (14 tests)
 | Stop → thinking=false | ✓ | | |
 | SessionEnd → idle | ✓ | | |
 | PreCompact (auto) → compacting | ✓ | | |
-| PreCompact (manual) → no change | ✓ | | |
+| PreCompact (manual) → compacting | ✓ | | |
 | PostToolUse from compacting → working | ✓ | | |
 | Notification (idle_prompt) → ready | ✓ | | |
 | PermissionRequest → no change | ✓ | | |

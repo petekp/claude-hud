@@ -2,7 +2,7 @@
 
 > **Purpose:** Reference document for migrating Claude HUD features to use the Anthropic Agent SDK.
 > **Created:** 2025-01-11
-> **Status:** Research complete, ready for implementation planning
+> **Status:** Research complete (some paths may be outdated; see current architecture in code)
 
 ## Table of Contents
 
@@ -155,7 +155,7 @@ SDK Approach:
 │   ┌──────────────────────────┴───────────────────────────────────┐   │
 │   │                    ~/.claude/                                 │   │
 │   │  • Session files (JSONL transcripts)                         │   │
-│   │  • State files (hud-session-states-v2.json)                     │   │
+│   │  • State files (~/.capacitor/sessions.json)                     │   │
 │   │  • Hook outputs                                              │   │
 │   └──────────────────────────────────────────────────────────────┘   │
 │                                                                      │
@@ -386,11 +386,11 @@ The current system uses shell hooks configured in `~/.claude/settings.json`:
 }
 ```
 
-The shell script (`~/.claude/scripts/hud-state-tracker.sh`, ~246 lines):
-- Parses hook input JSON
-- Updates `~/.claude/hud-session-states-v2.json` with state changes
-- Spawns a background process holding a `flock` for session detection
-- On `Stop`: generates `working_on`/`next_step` summary via Haiku
+The shell script (`~/.claude/scripts/hud-state-tracker.sh`):
+- Parses hook input JSON via stdin
+- Updates `~/.capacitor/sessions.json` with state changes
+- Creates lock directories at `~/.capacitor/sessions/{hash}.lock/` with PID files
+- Handles state machine transitions (see script header for current state machine)
 
 This system works reliably and has been production-tested.
 
@@ -427,8 +427,8 @@ This system works reliably and has been production-tested.
 │                                                     │               │
 │                                                     ▼               │
 │                                           ┌─────────────────────┐   │
-│                                           │ hud-session-states  │   │
-│  PATH B: User clicks "Resume" in HUD      │ .json               │   │
+│                                           │ sessions.json       │   │
+│  PATH B: User clicks "Resume" in HUD      │ (in ~/.capacitor/)  │   │
 │  ─────────────────────────────────────    └─────────────────────┘   │
 │           │                                         ▲               │
 │           ▼                                         │               │
@@ -445,7 +445,7 @@ This system works reliably and has been production-tested.
 **What this means:**
 - CLI sessions continue using shell hooks (no change)
 - HUD-driven sessions use SDK hooks (native TypeScript callbacks)
-- Both write to the same `hud-session-states-v2.json` format
+- Both write to the same `~/.capacitor/sessions.json` format
 - HUD reads from one place regardless of session source
 
 **Effort required:**
@@ -493,7 +493,7 @@ For HUD-driven sessions only, here's what SDK hooks would look like:
 ```typescript
 // apps/sdk-bridge/src/state-hooks.ts
 
-const STATE_FILE = `${homedir()}/.claude/hud-session-states-v2.json`;
+const STATE_FILE = `${homedir()}/.capacitor/sessions.json`;
 
 function updateState(projectPath: string, updates: Partial<ProjectState>) {
   const stateFile = JSON.parse(readFileSync(STATE_FILE, "utf-8"));
@@ -896,7 +896,7 @@ async function resumeSession(project: Project): Promise<void> {
 
 **Replace shell hooks with SDK hooks:**
 
-**Current:** `~/.claude/scripts/hud-state-tracker.sh` writes to `~/.claude/hud-session-states-v2.json`
+**Current:** `~/.claude/scripts/hud-state-tracker.sh` writes to `~/.capacitor/sessions.json`
 
 **SDK approach:**
 ```typescript
@@ -1443,9 +1443,8 @@ type HookCallback = (
 
 ### Related HUD Documentation
 
-- [HUD State Tracking Architecture](../docs/architecture-decisions/001-state-tracking-approach.md)
-- [HUD Daemon Design](../../docs/hud-daemon-design.md)
-- [Claude Code Artifacts Reference](../../docs/claude-code-artifacts.md)
+- State tracking: See `core/hud-core/src/state/mod.rs` and `scripts/hud-state-tracker.sh` (docs are co-located with code)
+- Architecture decisions: `docs/architecture-decisions/`
 
 ---
 

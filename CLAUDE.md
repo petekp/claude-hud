@@ -83,7 +83,8 @@ claude-hud/
 
 **Claude HUD is a sidecar that powers up your existing Claude Code workflow—not a standalone app.**
 
-- Read from `~/.claude/` — session files, config, plugins, stats
+- Read from `~/.claude/` — config, plugins, transcripts (Claude's namespace)
+- Write to `~/.capacitor/` — session state, file activity (HUD's namespace)
 - Invoke the `claude` CLI — for AI features, call CLI rather than API directly
 - Respect existing workflows — HUD observes and surfaces, doesn't replace
 
@@ -104,14 +105,13 @@ See [ADR-003: Sidecar Architecture Pattern](docs/architecture-decisions/003-side
 Hooks track local Claude Code sessions → state file → HUD reads.
 
 **Paths:**
-- **State file:** `~/.capacitor/sessions.json` (written by hook script)
-- **Lock directory:** `~/.claude/sessions/` (created by Claude Code CLI)
+- **State file:** `~/.capacitor/sessions.json`
+- **Lock directory:** `~/.capacitor/sessions/`
 - **Hook script:** `~/.claude/scripts/hud-state-tracker.sh`
-- **Hook reference:** `.claude/docs/hook-operations.md`
 
-**Ownership:** Lock files are created by the hook script (`spawn_lock_holder`). The HUD reads both locks and state records to detect active sessions.
+**Docs live in code:** See `scripts/hud-state-tracker.sh` header for state machine, debugging commands, and troubleshooting. See `core/hud-core/src/state/` for architecture.
 
-**Hook Sync:** The installed hook at `~/.claude/scripts/` must match the repo version. Use `./scripts/sync-hooks.sh` to check/update. The `restart-app.sh` script automatically warns about mismatches.
+**Hook Sync:** The installed hook must match the repo version. Use `./scripts/sync-hooks.sh` to check/update. The `restart-app.sh` script warns about mismatches.
 
 ## Documentation Index
 
@@ -120,7 +120,6 @@ Hooks track local Claude Code sessions → state file → HUD reads.
 | Development workflows | `.claude/docs/development-workflows.md` |
 | Detailed architecture | `.claude/docs/architecture-overview.md` |
 | Debugging procedures | `.claude/docs/debugging-guide.md` |
-| Hook operations | `.claude/docs/hook-operations.md` |
 | Adding CLI agents | `.claude/docs/adding-new-cli-agent-guide.md` |
 | Idea capture specs | `.claude/docs/idea-capture-specs.md` |
 | Claude Code CLI reference | `docs/claude-code/` |

@@ -5,7 +5,8 @@
 //! # Architecture: Sidecar Pattern
 //!
 //! Claude HUD follows a **sidecar philosophy**: we observe Claude Code without interfering.
-//! The hook script is authoritative for state transitions; Rust is a passive reader.
+//! The hook script (`scripts/hud-state-tracker.sh`) is authoritative for state transitions;
+//! Rust is a passive reader that applies staleness heuristics.
 //!
 //! ```text
 //! Claude Code → Hook Script → State File + Lock Dir → This Module → Swift UI
@@ -16,19 +17,25 @@
 //!
 //! We use two signals to determine if a session is active:
 //!
-//! 1. **Lock files** (primary): Directories in `~/.claude/sessions/{hash}.lock/` indicate
-//!    a running session. The lock holder is a background process that monitors Claude
-//!    and releases the lock when it exits.
+//! 1. **Lock files** (primary): Directories in `~/.capacitor/sessions/{hash}.lock/`
+//!    indicate a running session. Created by `spawn_lock_holder()` in the hook script.
 //!
-//! 2. **Fresh record fallback**: If no lock exists but a state record was updated within
-//!    30 seconds, trust it. This handles race conditions during session startup.
+//! 2. **Fresh record fallback**: If no lock exists but a state record is fresh
+//!    (see [`types::STALE_THRESHOLD_SECS`]), trust it. Handles race conditions.
+//!
+//! # Active State Recovery
+//!
+//! When users interrupt Claude (Escape key, cancel), no hook event fires. To recover:
+//! - Active states (Working, Waiting, Compacting) fall back to Ready after
+//!   [`types::ACTIVE_STATE_STALE_SECS`] without updates.
+//! - This is aggressive (5 sec) for fast UX; false positives self-correct on next hook.
 //!
 //! # Module Structure
 //!
 //! - [`lock`]: Lock file detection and PID verification
 //! - [`resolver`]: Fuses lock + state data to answer "is Claude running here?"
 //! - [`store`]: Reads/writes the JSON state file (`~/.capacitor/sessions.json`)
-//! - [`types`]: Data structures for session records and lock metadata
+//! - [`types`]: Data structures, staleness thresholds, canonical state mapping
 //!
 //! # Key Entry Points
 //!

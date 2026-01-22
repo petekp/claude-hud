@@ -499,7 +499,8 @@ mod tests {
 
         let mut store = StateStore::new(&storage.sessions_file());
         store.update("session-1", SessionState::Working, project_path);
-        let expected = Utc::now() - ChronoDuration::minutes(2);
+        // Use a recent timestamp (within 15-sec active state threshold)
+        let expected = Utc::now() - ChronoDuration::seconds(5);
         // Set both updated_at and state_changed_at for the test
         store.set_timestamp_for_test("session-1", expected);
         store.set_state_changed_at_for_test("session-1", expected);

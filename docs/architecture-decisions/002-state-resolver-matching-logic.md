@@ -168,7 +168,7 @@ pub fn reconcile_orphaned_lock(lock_base, state_store, project_path) -> bool {
 
 A lock is considered **orphaned** when ALL conditions are met:
 
-1. Lock directory exists at `~/.claude/sessions/{hash}.lock`
+1. Lock directory exists at `~/.capacitor/sessions/{hash}.lock`
 2. Lock's PID is alive (verified with `proc_started` if available)
 3. **No state record exists** for that PID anywhere in the state file
 

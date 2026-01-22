@@ -1,11 +1,34 @@
 #!/bin/bash
-# Claude HUD State Tracker Hook v3.1.0
-# All session data lives in ~/.capacitor/ (sidecar purity):
-# - State file: ~/.capacitor/sessions.json
-# - Lock directories: ~/.capacitor/sessions/
-# - File activity: ~/.capacitor/file-activity.json
+# Claude HUD State Tracker Hook v3.1.1
 #
-# We never write to ~/.claude/ (Claude's namespace).
+# Tracks Claude Code session state for the HUD app. This script is the
+# authoritative source for state transitions—Rust just reads what we write.
+#
+# STORAGE (sidecar purity—we never write to ~/.claude/):
+#   ~/.capacitor/sessions.json      State file (session records)
+#   ~/.capacitor/sessions/          Lock directories (liveness detection)
+#   ~/.capacitor/file-activity.json File activity tracking
+#   ~/.capacitor/hud-hook-debug.log Debug log
+#
+# STATE MACHINE:
+#   SessionStart           → ready    (+ creates lock)
+#   UserPromptSubmit       → working  (+ creates lock if missing)
+#   PreToolUse/PostToolUse → working  (heartbeat)
+#   PermissionRequest      → waiting
+#   Notification           → ready    (only idle_prompt type)
+#   PreCompact             → compacting
+#   Stop                   → ready    (unless stop_hook_active=true)
+#   SessionEnd             → removes session record
+#
+# DEBUGGING:
+#   tail -f ~/.capacitor/hud-hook-debug.log     # Watch events live
+#   cat ~/.capacitor/sessions.json | jq .       # View session states
+#   ls ~/.capacitor/sessions/                   # Check active locks
+#
+# TROUBLESHOOTING:
+#   - States stuck on Ready? Check lock exists: ls ~/.capacitor/sessions/*.lock
+#   - No events firing? Check hook registered: jq '.hooks' ~/.claude/settings.json
+#   - Hook errors? Check log: grep ERROR ~/.capacitor/hud-hook-debug.log
 #
 # Requires jq or python3.
 
@@ -876,12 +899,8 @@ case "$EVENT" in
     NEW_STATE="waiting"
     ;;
   "PreCompact")
-    if [ "$TRIGGER" = "auto" ]; then
-      NEW_STATE="compacting"
-    else
-      log "PreCompact ignored (trigger=$TRIGGER)"
-      exit 0
-    fi
+    # All triggers (auto, manual, missing) show compacting state
+    NEW_STATE="compacting"
     ;;
   "Notification")
     if [ "$NOTIFICATION_TYPE" = "idle_prompt" ]; then

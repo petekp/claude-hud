@@ -250,19 +250,16 @@ User runs claude → Hooks fire → State file updated → Swift HUD reads
 - `PostToolUse` → state transitions + heartbeat updates
 - `Notification` (idle_prompt) → state: ready
 - `Stop` → state: ready
-- `PreCompact` → state: compacting (only when `trigger=auto`)
+- `PreCompact` → state: compacting
 - `SessionEnd` → removes session from state file
 
 **State file:** `~/.capacitor/sessions.json` (written by hook script, version 3)
 
-**Lock directory:** `~/.claude/sessions/{hash}.lock/` (created by hook script via `spawn_lock_holder`)
+**Lock directory:** `~/.capacitor/sessions/{hash}.lock/` (created by hook script via `spawn_lock_holder`)
 
 **Hook script:** `~/.claude/scripts/hud-state-tracker.sh`
 
-**Testing & Documentation:**
-- **State machine reference:** `.claude/docs/hook-state-machine.md`
-- **Prevention checklist:** `.claude/docs/hook-prevention-checklist.md`
-- **Test suite:** `~/.claude/scripts/test-hud-hooks.sh`
+**Docs live in code:** See hook script header for state machine and debugging. See `core/hud-core/src/state/types.rs` for canonical mapping.
 
 ## Runtime Configuration
 

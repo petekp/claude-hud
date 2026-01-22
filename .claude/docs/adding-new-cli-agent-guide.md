@@ -22,7 +22,7 @@ This tutorial will teach you how to add a new agent by implementing the `AgentAd
 
 Claude HUD tracks coding assistant sessions across multiple projects. Originally built for Claude Code, the system was refactored to support any CLI agent using a Starship-style adapter pattern.
 
-The key insight: every CLI agent tracks session state *somewhere*. Claude Code uses `~/.claude/hud-session-states-v2.json` and lock files. Aider might use `~/.aider/`. Codex might use a different approach entirely. The adapter pattern abstracts these differences.
+The key insight: every CLI agent tracks session state *somewhere*. Claude Code uses hooks that write to `~/.capacitor/sessions.json` plus lock directories. Aider might use `~/.aider/`. Codex might use a different approach entirely. The adapter pattern abstracts these differences.
 
 **Core files:**
 - `core/hud-core/src/agents/mod.rs:17-46` — The `AgentAdapter` trait definition

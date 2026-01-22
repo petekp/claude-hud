@@ -177,7 +177,7 @@ cd apps/swift && swift run
 
 1. **Hooks** — Claude Code fires events (SessionStart, Stop, etc.) that run a shell script
 2. **State file** — The script writes JSON to `~/.capacitor/sessions.json`
-3. **Lock files** — Claude Code creates locks at `~/.claude/sessions/{hash}.lock/`
+3. **Lock files** — The script creates locks at `~/.capacitor/sessions/{hash}.lock/`
 4. **HUD reads** — The app polls these files and resolves the current state
 
 The state resolver handles edge cases like:

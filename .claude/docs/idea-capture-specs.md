@@ -256,7 +256,7 @@ enum CLIError: Error {
 - Prevent nested invocation with `HUD_HOOK_RUNNING` env var
 - Check for pending ideas before invoking Claude
 - Use `--settings <(echo '{"hooks":{}}')` to isolate hook invocation
-- Log all activity to `~/.claude/hud-hook-debug.log`
+- Log all activity to `~/.capacitor/hud-hook-debug.log`
 
 ## Performance
 
@@ -279,7 +279,7 @@ enum CLIError: Error {
 ## Debugging
 
 Enable: `export HUD_CLI_DEBUG=1`
-Log: `~/.claude/hud-cli-debug.log`
+Log: `~/.capacitor/hud-cli-debug.log`
 
 ```bash
 # Test CLI integration

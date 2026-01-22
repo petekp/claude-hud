@@ -100,7 +100,7 @@ The checksums are embedded in both the dylib and Swift bindings. They must match
 
 4. **Test manually** with a real Claude session:
    - Trigger the specific event you modified
-   - Check debug log: `tail -20 ~/.claude/hud-hook-debug.log`
+   - Check debug log: `tail -20 ~/.capacitor/hud-hook-debug.log`
    - Verify state in HUD app
 
 5. **Update documentation** if behavior changed

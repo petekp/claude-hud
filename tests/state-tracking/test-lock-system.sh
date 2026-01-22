@@ -6,7 +6,7 @@
 # Note: We don't use set -e because test failures should be counted, not abort
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-SESSIONS_DIR="$HOME/.claude/sessions"
+SESSIONS_DIR="$HOME/.capacitor/sessions"
 HOOK_SCRIPT="$HOME/.claude/scripts/hud-state-tracker.sh"
 STATE_FILE="$HOME/.capacitor/sessions.json"
 

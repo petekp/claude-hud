@@ -72,7 +72,7 @@ For the current phase of Claude HUD development:
 
 1. **Local sessions**: Use regular `claude` command with hooks for state tracking
 2. **State file**: `~/.capacitor/sessions.json` updated by hooks
-3. **Lock files**: `~/.claude/sessions/{hash}.lock/` created by Claude Code CLI
+3. **Lock files**: `~/.capacitor/sessions/{hash}.lock/` created by hook script
 4. **Swift HUD**: Reads both to resolve current state
 
 ## File Structure
@@ -84,7 +84,6 @@ For the current phase of Claude HUD development:
 └── projects/{encoded}/     # Per-project ideas, order
 
 ~/.claude/                  # Claude Code namespace (read-only for Capacitor)
-├── sessions/               # Lock directories ({hash}.lock/)
 ├── projects/               # Session transcripts
 ├── settings.json           # Contains hook configuration
 └── scripts/
