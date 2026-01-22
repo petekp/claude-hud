@@ -19,7 +19,7 @@ CYAN='\033[0;36m'
 NC='\033[0m'
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
 VERSION_ARG=""
 SKIP_NOTARIZATION=false

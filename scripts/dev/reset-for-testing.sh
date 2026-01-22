@@ -15,12 +15,12 @@
 #   - Other ~/.claude/ config (Claude Code's own settings, other hooks)
 #   - Source code and git state
 #
-# Usage: ./scripts/reset-for-testing.sh
+# Usage: ./scripts/dev/reset-for-testing.sh
 
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(dirname "$SCRIPT_DIR")"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
 echo "╔══════════════════════════════════════════════════════════════╗"
 echo "║           Claude HUD - Complete Reset for Testing            ║"
@@ -129,7 +129,7 @@ fi
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""
 echo "→ Installing hud-hook binary..."
-"$SCRIPT_DIR/sync-hooks.sh" 2>&1 | grep -E "^(  ✓|  Building)" | head -5
+"$REPO_ROOT/scripts/sync-hooks.sh" 2>&1 | grep -E "^(  ✓|  Building)" | head -5
 echo "  ✓ Hook binary installed"
 
 # ─────────────────────────────────────────────────────────────────────────────

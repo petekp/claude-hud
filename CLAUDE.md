@@ -23,7 +23,7 @@ swift build                       # Debug build
 swift run                         # Run app
 
 # Restart app (use this script - pre-approved in permissions)
-/Users/petepetrash/Code/claude-hud/scripts/restart-app.sh
+/Users/petepetrash/Code/claude-hud/scripts/dev/restart-app.sh
 ```
 
 ## Distribution
@@ -33,10 +33,10 @@ Release builds require notarization for Gatekeeper approval. Scripts handle the 
 ### Quick Release
 
 ```bash
-./scripts/bump-version.sh patch          # Bump version
-./scripts/build-distribution.sh          # Build + sign + notarize ZIP
-./scripts/create-dmg.sh                  # Create + notarize DMG
-./scripts/generate-appcast.sh            # Update Sparkle feed
+./scripts/release/bump-version.sh patch          # Bump version
+./scripts/release/build-distribution.sh          # Build + sign + notarize ZIP
+./scripts/release/create-dmg.sh                  # Create + notarize DMG
+./scripts/release/generate-appcast.sh            # Update Sparkle feed
 
 gh release create v0.x.x \
   dist/ClaudeHUD-v0.x.x-arm64.dmg \
@@ -49,7 +49,7 @@ gh release create v0.x.x \
 ### First-Time Setup
 
 ```bash
-./scripts/setup-git-hooks.sh            # Git hooks (warns on branch switch if hook mismatches)
+./scripts/utils/setup-git-hooks.sh      # Git hooks (warns on branch switch if hook mismatches)
 ./scripts/sync-hooks.sh --force         # Install/update hook to ~/.claude/scripts/
 ```
 

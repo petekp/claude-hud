@@ -5,7 +5,7 @@
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 GIT_HOOKS_DIR="$PROJECT_ROOT/.git/hooks"
 
 mkdir -p "$GIT_HOOKS_DIR"

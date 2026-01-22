@@ -11,7 +11,7 @@ RED='\033[0;31m'
 NC='\033[0m'
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 SWIFT_DIR="$PROJECT_ROOT/apps/swift"
 APP_BUNDLE="$SWIFT_DIR/ClaudeHUD.app"
 
