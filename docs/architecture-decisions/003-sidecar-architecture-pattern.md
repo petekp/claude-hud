@@ -179,7 +179,6 @@ Review current features against sidecar principles:
 ## References
 
 - CLAUDE.md § Core Architectural Principle
-- `.claude/docs/agent-sdk-migration-guide.md` — Documents CLI/SDK coexistence
 - ADR-001 — State tracking via hooks (aligned with sidecar principle)
 
 ---

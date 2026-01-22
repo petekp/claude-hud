@@ -73,9 +73,10 @@ See `docs/NOTARIZATION_SETUP.md` for full guide.
 ```
 claude-hud/
 ├── core/hud-core/src/      # Rust: engine.rs, types.rs, stats.rs, projects.rs, sessions.rs
+├── core/hud-hook/src/      # Rust: CLI hook handler binary (replaces bash script logic)
 ├── apps/swift/Sources/     # Swift: App.swift, Models/, Views/, Theme/
 ├── .claude/docs/           # Architecture docs, feature specs
-└── docs/                   # Claude Code CLI docs, Agent SDK docs, ADRs
+└── docs/                   # Claude Code CLI docs, ADRs
 ```
 
 ## Core Principle: Sidecar Architecture
@@ -122,7 +123,6 @@ Hooks track local Claude Code sessions → state file → HUD reads.
 | Adding CLI agents | `.claude/docs/adding-new-cli-agent-guide.md` |
 | Idea capture specs | `.claude/docs/idea-capture-specs.md` |
 | Claude Code CLI reference | `docs/claude-code/` |
-| Agent SDK reference | `docs/agent-sdk/` |
 | Architecture decisions | `docs/architecture-decisions/` |
 
 ## Notes

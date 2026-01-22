@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Run all tests locally
-# Usage: ./scripts/run-tests.sh [--quick]
+# Usage: ./scripts/dev/run-tests.sh [--quick]
 #
 # Options:
 #   --quick    Skip Swift tests (faster, no Rust build needed)

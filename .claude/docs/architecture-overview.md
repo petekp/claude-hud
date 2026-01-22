@@ -283,7 +283,6 @@ The app uses two namespaces:
 ```
 ~/.claude/
 ├── settings.json                  # Global Claude Code config
-├── sessions/                      # Lock directories ({hash}.lock/)
 ├── projects/                      # Session files ({encoded-path}/{sessionid}.jsonl)
 └── plugins/installed_plugins.json # Plugin registry
 ```
