@@ -48,6 +48,11 @@ gh release create v0.x.x \
 
 ### First-Time Setup
 
+```bash
+./scripts/setup-git-hooks.sh            # Git hooks (warns on branch switch if hook mismatches)
+./scripts/sync-hooks.sh --force         # Install/update hook to ~/.claude/scripts/
+```
+
 Notarization credentials (one-time):
 ```bash
 xcrun notarytool store-credentials "ClaudeHUD" \
@@ -104,7 +109,9 @@ Hooks track local Claude Code sessions → state file → HUD reads.
 - **Hook script:** `~/.claude/scripts/hud-state-tracker.sh`
 - **Hook reference:** `.claude/docs/hook-operations.md`
 
-**Ownership:** Lock files are created by Claude Code CLI (not Capacitor). Capacitor only *reads* them to detect active sessions—following the sidecar principle of observe-don't-modify.
+**Ownership:** Lock files are created by the hook script (`spawn_lock_holder`). The HUD reads both locks and state records to detect active sessions.
+
+**Hook Sync:** The installed hook at `~/.claude/scripts/` must match the repo version. Use `./scripts/sync-hooks.sh` to check/update. The `restart-app.sh` script automatically warns about mismatches.
 
 ## Documentation Index
 

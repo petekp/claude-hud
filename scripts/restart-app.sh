@@ -4,6 +4,9 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 
+# Verify hook is in sync (warn only, don't block)
+"$SCRIPT_DIR/sync-hooks.sh" 2>/dev/null || true
+
 pkill -x ClaudeHUD 2>/dev/null || true
 sleep 0.3
 
