@@ -11,6 +11,16 @@ use super::lock::{find_matching_child_lock, is_session_running};
 use super::store::StateStore;
 use super::types::SessionRecord;
 
+/// Normalizes a path for consistent comparison.
+/// Strips trailing slashes except for root "/".
+fn normalize_path(path: &str) -> &str {
+    if path == "/" {
+        "/"
+    } else {
+        path.trim_end_matches('/')
+    }
+}
+
 /// A resolved state for a project query.
 #[derive(Debug, Clone)]
 pub struct ResolvedState {
@@ -35,11 +45,7 @@ fn find_record_for_lock_path<'a>(
         Exact = 2,
     }
 
-    let lock_path_normalized = if lock_path == "/" {
-        "/"
-    } else {
-        lock_path.trim_end_matches('/')
-    };
+    let lock_path_normalized = normalize_path(lock_path);
 
     let mut best: Option<(&SessionRecord, MatchType, bool)> = None;
 
@@ -53,11 +59,7 @@ fn find_record_for_lock_path<'a>(
             .into_iter()
             .flatten()
         {
-            let record_path_normalized = if candidate == "/" {
-                "/"
-            } else {
-                candidate.trim_end_matches('/')
-            };
+            let record_path_normalized = normalize_path(candidate);
 
             let match_type = if record_path_normalized == lock_path_normalized {
                 Some(MatchType::Exact)
@@ -171,11 +173,7 @@ fn find_fresh_record_for_path<'a>(
     store: &'a StateStore,
     project_path: &str,
 ) -> Option<&'a SessionRecord> {
-    let path_normalized = if project_path == "/" {
-        "/"
-    } else {
-        project_path.trim_end_matches('/')
-    };
+    let path_normalized = normalize_path(project_path);
 
     let mut best: Option<&SessionRecord> = None;
 
@@ -189,11 +187,7 @@ fn find_fresh_record_for_path<'a>(
             .into_iter()
             .flatten()
             .any(|record_path| {
-                let record_normalized = if record_path == "/" {
-                    "/"
-                } else {
-                    record_path.trim_end_matches('/')
-                };
+                let record_normalized = normalize_path(record_path);
 
                 // Exact match
                 if record_normalized == path_normalized {
@@ -306,5 +300,21 @@ mod tests {
         store.set_timestamp_for_test("s1", stale_time);
         // No lock and stale record = not running
         assert!(resolve_state_with_details(temp.path(), &store, "/project").is_none());
+    }
+
+    #[test]
+    fn resolve_ready_for_stale_record_with_lock() {
+        let temp = tempdir().unwrap();
+        create_lock(temp.path(), std::process::id(), "/project");
+        let mut store = StateStore::new_in_memory();
+        store.update("s1", SessionState::Working, "/project");
+        // Make record stale
+        let stale_time = Utc::now() - Duration::minutes(10);
+        store.set_timestamp_for_test("s1", stale_time);
+        // Lock exists but record is stale = Ready (not Working from stale record)
+        let resolved = resolve_state_with_details(temp.path(), &store, "/project").unwrap();
+        assert_eq!(resolved.state, SessionState::Ready);
+        assert_eq!(resolved.session_id.as_deref(), Some("s1"));
+        assert!(resolved.is_from_lock);
     }
 }

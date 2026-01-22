@@ -524,7 +524,15 @@ PY
              --arg tool "$tool_name" \
              '.version = 3
               | .sessions = (.sessions // {})
-              | .sessions[$sid] = ((.sessions[$sid] // {}) + {session_id: $sid, state: $state, updated_at: $ts, state_changed_at: $ts})
+              | .sessions[$sid] = ((.sessions[$sid] // {}) + {session_id: $sid, updated_at: $ts})
+              | if $state != "" then
+                  if .sessions[$sid].state != $state then
+                    .sessions[$sid].state = $state | .sessions[$sid].state_changed_at = $ts
+                  else
+                    .sessions[$sid].state = $state
+                  end
+                else . end
+              | if .sessions[$sid].state_changed_at == null then .sessions[$sid].state_changed_at = $ts else . end
               | if $cwd != "" then .sessions[$sid].cwd = $cwd else . end
               | if $event != "" then .sessions[$sid].last_event = ({event: $event, timestamp: $ts} + (if $tool != "" then {tool: $tool} else {} end)) else . end' \
              "$STATE_FILE" > "$tmp_file" && mv "$tmp_file" "$STATE_FILE"

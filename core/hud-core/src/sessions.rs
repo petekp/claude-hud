@@ -91,7 +91,7 @@ pub fn detect_session_state_with_storage(
     }
 }
 
-/// Gets all session states using v2 state resolution.
+/// Gets all session states using v3 state resolution.
 /// Uses session-ID keyed state file and lock detection for reliable state.
 /// Parent/child inheritance is handled by the resolver.
 pub fn get_all_session_states(
@@ -265,7 +265,7 @@ mod tests {
 
     /// Sets up storage with sessions dir in CAPACITOR namespace (correct location).
     fn setup_storage_with_sessions() -> (TempDir, StorageConfig, PathBuf) {
-        let (_temp, storage) = setup_storage();
+        let (temp, storage) = setup_storage();
         let sessions_dir = storage.sessions_dir(); // ~/.capacitor/sessions/
         fs::create_dir_all(&sessions_dir).unwrap();
         (temp, storage, sessions_dir)
@@ -273,7 +273,7 @@ mod tests {
 
     /// Sets up storage with sessions dir in CLAUDE namespace (for testing we ignore it).
     fn setup_storage_with_claude_sessions() -> (TempDir, StorageConfig, PathBuf) {
-        let (_temp, storage) = setup_storage();
+        let (temp, storage) = setup_storage();
         let sessions_dir = storage.claude_root().join("sessions");
         fs::create_dir_all(&sessions_dir).unwrap();
         (temp, storage, sessions_dir)

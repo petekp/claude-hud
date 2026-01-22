@@ -7,6 +7,9 @@ use serde::{Deserialize, Serialize};
 
 use crate::types::SessionState;
 
+/// Records older than this are considered stale and untrusted without a lock.
+pub const STALE_THRESHOLD_SECS: i64 = 300; // 5 minutes
+
 // -----------------------------------------------------------------------------
 // Canonical hook→state mapping (implemented in scripts/hud-state-tracker.sh)
 //
@@ -79,7 +82,7 @@ impl SessionRecord {
     pub fn is_stale(&self) -> bool {
         let now = Utc::now();
         let age = now.signed_duration_since(self.updated_at);
-        age.num_seconds() > 300 // 5 minutes
+        age.num_seconds() > STALE_THRESHOLD_SECS
     }
 }
 
@@ -100,6 +103,43 @@ pub struct LockInfo {
 
 #[cfg(test)]
 mod tests {
-    // Intentionally empty: state machine logic lives in hook scripts and is validated via
-    // shell-based integration tests in scripts/test-hook-events.sh.
+    use super::*;
+    use chrono::Duration;
+
+    fn make_record(updated_at: DateTime<Utc>) -> SessionRecord {
+        SessionRecord {
+            session_id: "test".to_string(),
+            state: crate::types::SessionState::Ready,
+            cwd: "/test".to_string(),
+            updated_at,
+            state_changed_at: updated_at,
+            working_on: None,
+            transcript_path: None,
+            permission_mode: None,
+            project_dir: None,
+            last_event: None,
+            active_subagent_count: 0,
+        }
+    }
+
+    #[test]
+    fn test_is_stale_fresh_record() {
+        let record = make_record(Utc::now());
+        assert!(!record.is_stale());
+    }
+
+    #[test]
+    fn test_is_stale_old_record() {
+        let old_time = Utc::now() - Duration::seconds(STALE_THRESHOLD_SECS + 1);
+        let record = make_record(old_time);
+        assert!(record.is_stale());
+    }
+
+    #[test]
+    fn test_is_stale_boundary() {
+        // Exactly at threshold should NOT be stale (uses >)
+        let boundary_time = Utc::now() - Duration::seconds(STALE_THRESHOLD_SECS);
+        let record = make_record(boundary_time);
+        assert!(!record.is_stale());
+    }
 }
