@@ -147,6 +147,13 @@ class AppState: ObservableObject {
         loadCreations()
         do {
             engine = try HudEngine()
+
+            // Run startup cleanup to remove stale locks and old session records
+            let cleanupStats = engine!.runStartupCleanup()
+            if cleanupStats.locksRemoved > 0 || cleanupStats.sessionsRemoved > 0 {
+                print("[Startup] Cleaned up \(cleanupStats.locksRemoved) stale locks, \(cleanupStats.sessionsRemoved) old sessions")
+            }
+
             sessionStateManager.configure(engine: engine)
             projectDetailsManager.configure(engine: engine)
             loadDashboard()

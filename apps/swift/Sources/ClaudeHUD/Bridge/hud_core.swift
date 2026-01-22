@@ -707,6 +707,17 @@ public protocol HudEngineProtocol: AnyObject {
     func removeProject(path: String) throws
 
     /**
+     * Performs startup cleanup of stale artifacts.
+     *
+     * Call this once when the app launches to clean up:
+     * - Lock directories with dead PIDs
+     * - Session records older than 24 hours
+     *
+     * Returns stats about what was cleaned up.
+     */
+    func runStartupCleanup() -> CleanupStats
+
+    /**
      * Saves the display order of ideas for a project.
      *
      * The order is stored separately from idea content in `~/.capacitor/projects/{encoded}/ideas-order.json`.
@@ -1140,6 +1151,21 @@ open class HudEngine:
         uniffi_hud_core_fn_method_hudengine_remove_project(self.uniffiClonePointer(),
                                                            FfiConverterString.lower(path), $0)
     }
+    }
+
+    /**
+     * Performs startup cleanup of stale artifacts.
+     *
+     * Call this once when the app launches to clean up:
+     * - Lock directories with dead PIDs
+     * - Session records older than 24 hours
+     *
+     * Returns stats about what was cleaned up.
+     */
+    open func runStartupCleanup() -> CleanupStats {
+        return try! FfiConverterTypeCleanupStats.lift(try! rustCall {
+            uniffi_hud_core_fn_method_hudengine_run_startup_cleanup(self.uniffiClonePointer(), $0)
+        })
     }
 
     /**
@@ -1618,6 +1644,97 @@ public func FfiConverterTypeCachedProjectStats_lift(_ buf: RustBuffer) throws ->
 #endif
 public func FfiConverterTypeCachedProjectStats_lower(_ value: CachedProjectStats) -> RustBuffer {
     return FfiConverterTypeCachedProjectStats.lower(value)
+}
+
+/**
+ * Results from a cleanup operation.
+ */
+public struct CleanupStats {
+    /**
+     * Number of stale lock directories removed.
+     */
+    public var locksRemoved: UInt32
+    /**
+     * Number of old session records removed.
+     */
+    public var sessionsRemoved: UInt32
+    /**
+     * Errors encountered during cleanup.
+     */
+    public var errors: [String]
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * Number of stale lock directories removed.
+         */ locksRemoved: UInt32,
+        /**
+            * Number of old session records removed.
+            */ sessionsRemoved: UInt32,
+        /**
+            * Errors encountered during cleanup.
+            */ errors: [String]
+    ) {
+        self.locksRemoved = locksRemoved
+        self.sessionsRemoved = sessionsRemoved
+        self.errors = errors
+    }
+}
+
+extension CleanupStats: Equatable, Hashable {
+    public static func == (lhs: CleanupStats, rhs: CleanupStats) -> Bool {
+        if lhs.locksRemoved != rhs.locksRemoved {
+            return false
+        }
+        if lhs.sessionsRemoved != rhs.sessionsRemoved {
+            return false
+        }
+        if lhs.errors != rhs.errors {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(locksRemoved)
+        hasher.combine(sessionsRemoved)
+        hasher.combine(errors)
+    }
+}
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeCleanupStats: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> CleanupStats {
+        return
+            try CleanupStats(
+                locksRemoved: FfiConverterUInt32.read(from: &buf),
+                sessionsRemoved: FfiConverterUInt32.read(from: &buf),
+                errors: FfiConverterSequenceString.read(from: &buf)
+            )
+    }
+
+    public static func write(_ value: CleanupStats, into buf: inout [UInt8]) {
+        FfiConverterUInt32.write(value.locksRemoved, into: &buf)
+        FfiConverterUInt32.write(value.sessionsRemoved, into: &buf)
+        FfiConverterSequenceString.write(value.errors, into: &buf)
+    }
+}
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+public func FfiConverterTypeCleanupStats_lift(_ buf: RustBuffer) throws -> CleanupStats {
+    return try FfiConverterTypeCleanupStats.lift(buf)
+}
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+public func FfiConverterTypeCleanupStats_lower(_ value: CleanupStats) -> RustBuffer {
+    return FfiConverterTypeCleanupStats.lower(value)
 }
 
 /**
@@ -4867,6 +4984,9 @@ private var initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if uniffi_hud_core_checksum_method_hudengine_remove_project() != 46288 {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if uniffi_hud_core_checksum_method_hudengine_run_startup_cleanup() != 39678 {
         return InitializationResult.apiChecksumMismatch
     }
     if uniffi_hud_core_checksum_method_hudengine_save_ideas_order() != 34756 {

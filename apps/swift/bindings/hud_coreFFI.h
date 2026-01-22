@@ -402,6 +402,11 @@ RustBuffer uniffi_hud_core_fn_method_hudengine_load_ideas_order(void*_Nonnull pt
 void uniffi_hud_core_fn_method_hudengine_remove_project(void*_Nonnull ptr, RustBuffer path, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_HUD_CORE_FN_METHOD_HUDENGINE_RUN_STARTUP_CLEANUP
+#define UNIFFI_FFIDEF_UNIFFI_HUD_CORE_FN_METHOD_HUDENGINE_RUN_STARTUP_CLEANUP
+RustBuffer uniffi_hud_core_fn_method_hudengine_run_startup_cleanup(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_HUD_CORE_FN_METHOD_HUDENGINE_SAVE_IDEAS_ORDER
 #define UNIFFI_FFIDEF_UNIFFI_HUD_CORE_FN_METHOD_HUDENGINE_SAVE_IDEAS_ORDER
 void uniffi_hud_core_fn_method_hudengine_save_ideas_order(void*_Nonnull ptr, RustBuffer project_path, RustBuffer idea_ids, RustCallStatus *_Nonnull out_status
@@ -876,6 +881,12 @@ uint16_t uniffi_hud_core_checksum_method_hudengine_load_ideas_order(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_HUD_CORE_CHECKSUM_METHOD_HUDENGINE_REMOVE_PROJECT
 #define UNIFFI_FFIDEF_UNIFFI_HUD_CORE_CHECKSUM_METHOD_HUDENGINE_REMOVE_PROJECT
 uint16_t uniffi_hud_core_checksum_method_hudengine_remove_project(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_HUD_CORE_CHECKSUM_METHOD_HUDENGINE_RUN_STARTUP_CLEANUP
+#define UNIFFI_FFIDEF_UNIFFI_HUD_CORE_CHECKSUM_METHOD_HUDENGINE_RUN_STARTUP_CLEANUP
+uint16_t uniffi_hud_core_checksum_method_hudengine_run_startup_cleanup(void
     
 );
 #endif

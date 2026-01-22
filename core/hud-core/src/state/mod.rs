@@ -43,11 +43,13 @@
 //! - [`resolve_state_with_details`]: Full resolution with session ID and cwd
 //! - [`StateStore`]: Low-level access to session records
 
+mod cleanup;
 pub(crate) mod lock;
 mod resolver;
 mod store;
 pub(crate) mod types;
 
+pub use cleanup::{run_startup_cleanup, CleanupStats};
 pub use lock::{
     create_lock, get_lock_dir_path, get_lock_info, is_session_running, release_lock,
     update_lock_pid,

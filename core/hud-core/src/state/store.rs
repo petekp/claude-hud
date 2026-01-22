@@ -222,6 +222,11 @@ impl StateStore {
         self.sessions.get(session_id)
     }
 
+    /// Returns an iterator over all session records.
+    pub fn sessions(&self) -> impl Iterator<Item = &SessionRecord> {
+        self.sessions.values()
+    }
+
     /// Finds a session record matching the given path.
     ///
     /// Searches in priority order:

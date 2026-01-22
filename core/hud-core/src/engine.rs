@@ -708,4 +708,22 @@ impl HudEngine {
         let checker = SetupChecker::new(self.storage.clone());
         checker.check_setup_status().hooks
     }
+
+    // ─────────────────────────────────────────────────────────────────────────────
+    // Cleanup API
+    // ─────────────────────────────────────────────────────────────────────────────
+
+    /// Performs startup cleanup of stale artifacts.
+    ///
+    /// Call this once when the app launches to clean up:
+    /// - Lock directories with dead PIDs
+    /// - Session records older than 24 hours
+    ///
+    /// Returns stats about what was cleaned up.
+    pub fn run_startup_cleanup(&self) -> crate::state::CleanupStats {
+        crate::state::run_startup_cleanup(
+            &self.storage.sessions_dir(),
+            &self.storage.sessions_file(),
+        )
+    }
 }

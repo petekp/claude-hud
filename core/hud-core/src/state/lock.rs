@@ -186,7 +186,7 @@ fn is_pid_alive_verified(pid: u32, expected_start: Option<u64>) -> bool {
     }
 }
 
-fn read_lock_info(lock_dir: &Path) -> Option<LockInfo> {
+pub(crate) fn read_lock_info(lock_dir: &Path) -> Option<LockInfo> {
     let pid_path = lock_dir.join("pid");
     let meta_path = lock_dir.join("meta.json");
 

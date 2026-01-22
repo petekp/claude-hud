@@ -45,6 +45,36 @@ See `.claude/docs/development-workflows.md` for the full regeneration procedure.
 2. Delete cache to force recomputation: `rm ~/.capacitor/stats-cache.json`
 3. Verify session files exist: `ls ~/.claude/projects/`
 
+### State Stuck on Working/Waiting (Session Actually Ended)
+
+**Symptoms:** Project shows Working or Waiting but Claude session has ended.
+
+**Root cause:** Lock holder didn't clean up (crashed, force-killed, or PID mismatch).
+
+**Debug:**
+```bash
+# Check if lock exists
+ls ~/.capacitor/sessions/
+
+# Check if lock holder PID is alive
+cat ~/.capacitor/sessions/*.lock/pid | xargs -I {} ps -p {}
+
+# If PID is dead, app cleanup should remove it on next launch
+# Force cleanup by restarting the app
+```
+
+**Fix:** App runs `runStartupCleanup()` on launch which removes locks with dead PIDs.
+
+### State Transitions to Ready Prematurely (Session Still Active)
+
+**Symptoms:** Project shows Ready but Claude is still generating a response. Typically happens ~30 seconds into a long generation without tool use.
+
+**Root cause (historical bug, now fixed):** The resolver applied `is_active_state_stale()` checks even when a lock existed. During tool-free text generation, no hook events fire to refresh `updated_at`, so after 30 seconds the state would fall back to Ready despite the lock proving Claude was still running.
+
+**Current behavior:** When a lock exists, the resolver trusts the recorded state unconditionally. The lock holder monitors Claude's PID and will release when Claude actually exits, so lock existence is authoritative.
+
+**Key insight:** Lock presence = Claude running. Trust the lock over timestamp freshness.
+
 ### SwiftUI Layout Broken (Gaps, Components Not Filling Space)
 
 **Symptoms:** Large gaps between header and content, tab bar floating in middle of window.

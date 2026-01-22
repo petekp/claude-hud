@@ -141,16 +141,14 @@ pub fn resolve_state_with_details(
 ) -> Option<ResolvedState> {
     if is_session_running(lock_dir, project_path) {
         // Lock exists - use it as primary source
+        // The lock proves Claude is running (lock holder monitors PID), so we trust the
+        // recorded state even if the timestamp is stale. Active state staleness checks
+        // are only for detecting user interrupts when NO lock exists.
         let lock = find_matching_child_lock(lock_dir, project_path, None, None)?;
         let record = find_record_for_lock_path(store, &lock.path);
         let (state, session_id) = match record {
-            // General staleness - untrusted record
-            Some(r) if r.is_stale() => (SessionState::Ready, Some(r.session_id.clone())),
-            // Active state staleness - likely user interrupted (Escape, cancel)
-            Some(r) if r.is_active_state_stale() => {
-                (SessionState::Ready, Some(r.session_id.clone()))
-            }
             Some(r) => (r.state, Some(r.session_id.clone())),
+            // No record but lock exists - session is active, just no state written yet
             None => (SessionState::Ready, None),
         };
 
@@ -400,35 +398,38 @@ mod tests {
     }
 
     #[test]
-    fn resolve_ready_for_stale_record_with_lock() {
+    fn resolve_working_for_stale_record_with_lock() {
         let temp = tempdir().unwrap();
         create_lock(temp.path(), std::process::id(), "/project");
         let mut store = StateStore::new_in_memory();
         store.update("s1", SessionState::Working, "/project");
-        // Make record stale
+        // Make record stale (10 minutes old)
         let stale_time = Utc::now() - Duration::minutes(10);
         store.set_timestamp_for_test("s1", stale_time);
-        // Lock exists but record is stale = Ready (not Working from stale record)
+        // Lock exists → trust the recorded state even if timestamp is stale
+        // The lock proves Claude is running; stale timestamp just means no tools used recently
         let resolved = resolve_state_with_details(temp.path(), &store, "/project").unwrap();
-        assert_eq!(resolved.state, SessionState::Ready);
+        assert_eq!(resolved.state, SessionState::Working);
         assert_eq!(resolved.session_id.as_deref(), Some("s1"));
         assert!(resolved.is_from_lock);
     }
 
     #[test]
-    fn resolve_ready_for_active_state_stale_with_lock() {
+    fn resolve_working_for_active_state_stale_with_lock() {
         use crate::state::types::ACTIVE_STATE_STALE_SECS;
 
         let temp = tempdir().unwrap();
         create_lock(temp.path(), std::process::id(), "/project");
         let mut store = StateStore::new_in_memory();
         store.update("s1", SessionState::Working, "/project");
-        // Make record stale by active state threshold (15+ seconds)
+        // Make record stale by active state threshold (35 seconds)
         let stale_time = Utc::now() - Duration::seconds(ACTIVE_STATE_STALE_SECS + 5);
         store.set_timestamp_for_test("s1", stale_time);
-        // Lock exists but Working state is stale = Ready (user likely interrupted)
+        // Lock exists → trust the recorded state
+        // During tool-free text generation, no hooks fire to refresh the timestamp,
+        // but the lock proves Claude is still actively generating
         let resolved = resolve_state_with_details(temp.path(), &store, "/project").unwrap();
-        assert_eq!(resolved.state, SessionState::Ready);
+        assert_eq!(resolved.state, SessionState::Working);
         assert_eq!(resolved.session_id.as_deref(), Some("s1"));
         assert!(resolved.is_from_lock);
     }
