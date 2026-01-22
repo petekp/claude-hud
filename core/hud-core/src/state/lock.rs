@@ -486,9 +486,9 @@ pub fn create_lock(lock_base: &Path, project_path: &str, pid: u32) -> Option<std
             // Lock already exists - check if it's stale or owned by us
             if let Some(info) = read_lock_info(&lock_dir) {
                 if info.pid == pid {
-                    // We already own this lock, refresh metadata
-                    let _ = write_lock_metadata(&lock_dir, pid, project_path, None);
-                    return Some(lock_dir);
+                    // We already own this lock - don't spawn another holder
+                    // The existing lock holder is already managing this lock
+                    return None;
                 }
 
                 // Check if the existing lock holder is still alive
@@ -712,5 +712,28 @@ mod tests {
         create_lock(temp.path(), std::process::id(), "/parent/child");
         let info = get_lock_info(temp.path(), "/parent").unwrap();
         assert_eq!(info.path, "/parent/child");
+    }
+
+    #[test]
+    fn test_create_lock_returns_none_when_already_owned() {
+        // This tests the production create_lock function (not the test helper)
+        // to ensure it returns None when we already own the lock,
+        // preventing duplicate lock holder processes from being spawned
+        let temp = tempdir().unwrap();
+        let pid = std::process::id();
+
+        // First call should succeed
+        let first = super::create_lock(temp.path(), "/project", pid);
+        assert!(first.is_some(), "First create_lock should succeed");
+
+        // Second call with same PID should return None (we already own it)
+        let second = super::create_lock(temp.path(), "/project", pid);
+        assert!(
+            second.is_none(),
+            "Second create_lock should return None to prevent duplicate lock holders"
+        );
+
+        // Lock should still be valid
+        assert!(is_session_running(temp.path(), "/project"));
     }
 }

@@ -483,19 +483,45 @@ mod tests {
     }
 
     #[test]
-    fn test_detect_session_state_ignores_stale_record_without_lock() {
+    fn test_detect_session_state_stale_ready_returns_ready_within_threshold() {
+        // Stale Ready records (5-15 min old) should return Ready, not Idle
         let (_temp, storage) = setup_storage();
         let project_path = "/tmp/hud-core-test-stale-ready";
 
         let mut store = StateStore::new(&storage.sessions_file());
         store.update("session-1", SessionState::Ready, project_path);
-        store.set_timestamp_for_test("session-1", Utc::now() - ChronoDuration::minutes(10));
+        // 10 minutes: stale (> 5 min) but within Ready→Idle threshold (< 15 min)
+        let ten_mins_ago = Utc::now() - ChronoDuration::minutes(10);
+        store.set_timestamp_for_test("session-1", ten_mins_ago);
+        store.set_state_changed_at_for_test("session-1", ten_mins_ago);
+        store.save().unwrap();
+
+        let state = detect_session_state_with_storage(&storage, project_path);
+
+        // Should still be Ready (within 15-min threshold)
+        assert_eq!(state.state, SessionState::Ready);
+        assert_eq!(state.session_id, Some("session-1".to_string()));
+    }
+
+    #[test]
+    fn test_detect_session_state_very_stale_ready_returns_idle() {
+        // Ready records older than 15 min without a lock should return Idle
+        let (_temp, storage) = setup_storage();
+        let project_path = "/tmp/hud-core-test-very-stale-ready";
+
+        let mut store = StateStore::new(&storage.sessions_file());
+        store.update("session-1", SessionState::Ready, project_path);
+        // 20 minutes: beyond Ready→Idle threshold (> 15 min)
+        let twenty_mins_ago = Utc::now() - ChronoDuration::minutes(20);
+        store.set_timestamp_for_test("session-1", twenty_mins_ago);
+        store.set_state_changed_at_for_test("session-1", twenty_mins_ago);
         store.save().unwrap();
 
         let state = detect_session_state_with_storage(&storage, project_path);
 
         assert_eq!(state.state, SessionState::Idle);
-        assert!(state.session_id.is_none());
+        // Session ID is still returned for reference
+        assert_eq!(state.session_id, Some("session-1".to_string()));
     }
 
     #[test]

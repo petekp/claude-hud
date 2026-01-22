@@ -180,6 +180,19 @@ pub fn resolve_state_with_details(
         });
     }
 
+    // Final fallback: check for stale Ready records
+    // These are sessions that were Ready but haven't had activity in 5+ minutes.
+    // We return them so sessions.rs can apply the 15-min Ready→Idle threshold.
+    // Without this, Ready sessions would immediately become Idle after 5 minutes.
+    if let Some(record) = find_stale_ready_record_for_path(store, project_path) {
+        return Some(ResolvedState {
+            state: SessionState::Ready,
+            session_id: Some(record.session_id.clone()),
+            cwd: record.cwd.clone(),
+            is_from_lock: false,
+        });
+    }
+
     None
 }
 
@@ -213,6 +226,56 @@ fn find_fresh_record_for_path<'a>(
 
                 // Child match: record is in a subdirectory of the query path
                 // e.g., query="/project", record.cwd="/project/src"
+                if path_normalized == "/" {
+                    record_normalized != "/" && record_normalized.starts_with("/")
+                } else {
+                    record_normalized.starts_with(&format!("{}/", path_normalized))
+                }
+            });
+
+        if is_match {
+            match best {
+                None => best = Some(record),
+                Some(current) if record.updated_at > current.updated_at => best = Some(record),
+                _ => {}
+            }
+        }
+    }
+
+    best
+}
+
+/// Find a stale Ready record that matches the given path.
+/// This is the final fallback for sessions that were Ready but haven't had activity recently.
+/// By returning these, we allow sessions.rs to apply the 15-minute Ready→Idle threshold
+/// instead of immediately treating them as Idle after 5 minutes.
+fn find_stale_ready_record_for_path<'a>(
+    store: &'a StateStore,
+    project_path: &str,
+) -> Option<&'a SessionRecord> {
+    let path_normalized = normalize_path(project_path);
+
+    let mut best: Option<&SessionRecord> = None;
+
+    for record in store.all_sessions() {
+        // Only consider stale Ready records
+        if !record.is_stale() || record.state != SessionState::Ready {
+            continue;
+        }
+
+        // Check both cwd and project_dir for matching
+        let is_match = [Some(record.cwd.as_str()), record.project_dir.as_deref()]
+            .into_iter()
+            .flatten()
+            .any(|record_path| {
+                let record_normalized = normalize_path(record_path);
+
+                // Exact match
+                if record_normalized == path_normalized {
+                    return true;
+                }
+
+                // Child match: record is in a subdirectory of the query path
                 if path_normalized == "/" {
                     record_normalized != "/" && record_normalized.starts_with("/")
                 } else {
@@ -308,15 +371,32 @@ mod tests {
     }
 
     #[test]
-    fn resolve_none_for_stale_record_without_lock() {
+    fn resolve_none_for_stale_working_record_without_lock() {
+        // Stale Working records without lock are not trusted
         let temp = tempdir().unwrap();
         let mut store = StateStore::new_in_memory();
         store.update("s1", SessionState::Working, "/project");
         // Make record stale
         let stale_time = Utc::now() - Duration::minutes(10);
         store.set_timestamp_for_test("s1", stale_time);
-        // No lock and stale record = not running
+        // No lock and stale Working record = not running
         assert!(resolve_state_with_details(temp.path(), &store, "/project").is_none());
+    }
+
+    #[test]
+    fn resolve_ready_for_stale_ready_record_without_lock() {
+        // Stale Ready records without lock are returned so the 15-min threshold can be applied
+        let temp = tempdir().unwrap();
+        let mut store = StateStore::new_in_memory();
+        store.update("s1", SessionState::Ready, "/project");
+        // Make record stale (> 5 min)
+        let stale_time = Utc::now() - Duration::minutes(10);
+        store.set_timestamp_for_test("s1", stale_time);
+        // No lock but stale Ready record = Ready (for 15-min threshold in sessions.rs)
+        let resolved = resolve_state_with_details(temp.path(), &store, "/project").unwrap();
+        assert_eq!(resolved.state, SessionState::Ready);
+        assert_eq!(resolved.session_id.as_deref(), Some("s1"));
+        assert!(!resolved.is_from_lock); // Not from lock - allows 15-min threshold
     }
 
     #[test]

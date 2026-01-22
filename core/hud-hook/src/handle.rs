@@ -146,15 +146,17 @@ pub fn run() -> Result<(), String> {
             store
                 .save()
                 .map_err(|e| format!("Failed to save state: {}", e))?;
-
-            // Spawn lock holder for certain events
-            if matches!(event, HookEvent::SessionStart | HookEvent::UserPromptSubmit) {
-                spawn_lock_holder(&lock_base, &cwd, ppid);
-            }
         }
         Action::Skip => {
-            // Nothing to do
+            // Nothing to do for state, but lock may still need spawning
         }
+    }
+
+    // Spawn lock holder for session-establishing events (even if state was skipped)
+    // This ensures locks are recreated after resets or when SessionStart is skipped
+    // for active sessions. create_lock() is idempotent - returns None if lock exists.
+    if matches!(event, HookEvent::SessionStart | HookEvent::UserPromptSubmit) {
+        spawn_lock_holder(&lock_base, &cwd, ppid);
     }
 
     // Record file activity if applicable

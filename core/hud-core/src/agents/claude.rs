@@ -3,9 +3,11 @@
 use std::path::PathBuf;
 use std::time::SystemTime;
 
+use crate::sessions::READY_STALE_THRESHOLD_SECS;
 use crate::state::{resolve_state_with_details, StateStore};
 use crate::storage::StorageConfig;
 use crate::types::SessionState;
+use chrono::Utc;
 
 use super::types::{AdapterError, AgentSession, AgentState, AgentType};
 use super::AgentAdapter;
@@ -125,6 +127,20 @@ impl AgentAdapter for ClaudeAdapter {
             .session_id
             .as_deref()
             .and_then(|id| store.get_by_session_id(id));
+
+        // Apply Ready→Idle threshold: stale Ready without lock should be treated as Idle
+        // This mirrors the logic in sessions.rs detect_session_state_with_storage
+        if details.state == SessionState::Ready && !details.is_from_lock {
+            if let Some(rec) = record.as_ref() {
+                let age = Utc::now()
+                    .signed_duration_since(rec.state_changed_at)
+                    .num_seconds();
+                if age > READY_STALE_THRESHOLD_SECS {
+                    // Idle sessions are not returned by detect_session
+                    return None;
+                }
+            }
+        }
 
         Some(AgentSession {
             agent_type: AgentType::Claude,
@@ -396,7 +412,8 @@ mod tests {
     }
 
     #[test]
-    fn test_detect_session_ignores_stale_state_without_lock() {
+    fn test_detect_session_stale_ready_returns_session_within_threshold() {
+        // Stale Ready records (5-15 min old) should still return a session
         let temp = tempdir().unwrap();
         let capacitor_root = temp.path().join("capacitor");
         let claude_root = temp.path().join("claude");
@@ -405,13 +422,43 @@ mod tests {
 
         let mut store = StateStore::new(&capacitor_root.join("sessions.json"));
         store.update("session-1", SessionState::Ready, "/project");
-        store.set_timestamp_for_test("session-1", Utc::now() - ChronoDuration::minutes(10));
+        // 10 minutes: stale but within Ready→Idle threshold
+        let ten_mins_ago = Utc::now() - ChronoDuration::minutes(10);
+        store.set_timestamp_for_test("session-1", ten_mins_ago);
+        store.set_state_changed_at_for_test("session-1", ten_mins_ago);
         store.save().unwrap();
 
         let storage = StorageConfig::with_roots(capacitor_root, claude_root);
         let adapter = ClaudeAdapter::with_storage(storage);
         let session = adapter.detect_session("/project");
 
+        // Should return session with Ready state (within 15-min threshold)
+        assert!(session.is_some());
+        assert_eq!(session.unwrap().state, AgentState::Ready);
+    }
+
+    #[test]
+    fn test_detect_session_very_stale_ready_returns_none() {
+        // Ready records older than 15 min without a lock should return None
+        let temp = tempdir().unwrap();
+        let capacitor_root = temp.path().join("capacitor");
+        let claude_root = temp.path().join("claude");
+        std::fs::create_dir_all(&capacitor_root).unwrap();
+        std::fs::create_dir_all(&claude_root).unwrap();
+
+        let mut store = StateStore::new(&capacitor_root.join("sessions.json"));
+        store.update("session-1", SessionState::Ready, "/project");
+        // 20 minutes: beyond Ready→Idle threshold
+        let twenty_mins_ago = Utc::now() - ChronoDuration::minutes(20);
+        store.set_timestamp_for_test("session-1", twenty_mins_ago);
+        store.set_state_changed_at_for_test("session-1", twenty_mins_ago);
+        store.save().unwrap();
+
+        let storage = StorageConfig::with_roots(capacitor_root, claude_root);
+        let adapter = ClaudeAdapter::with_storage(storage);
+        let session = adapter.detect_session("/project");
+
+        // Should return None (Idle sessions are not returned by detect_session)
         assert!(session.is_none());
     }
 
