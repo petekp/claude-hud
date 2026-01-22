@@ -41,7 +41,7 @@ ZIP_PATH="$DIST_DIR/$ZIP_NAME"
 
 if [ ! -f "$ZIP_PATH" ]; then
     echo -e "${RED}ERROR: ZIP not found at $ZIP_PATH${NC}"
-    echo "Run ./scripts/build-distribution.sh first"
+    echo "Run ./scripts/release/build-distribution.sh first"
     exit 1
 fi
 

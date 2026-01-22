@@ -81,21 +81,29 @@ The checksums are embedded in both the dylib and Swift bindings. They must match
 
 ## Modifying Hook State Tracking
 
-**IMPORTANT: Always test hooks before deploying changes!**
+Hook handling is implemented in Rust (`core/hud-hook/`) with a thin bash wrapper.
+
+**Architecture:**
+- `scripts/hud-state-tracker.sh` — Thin wrapper that delegates to Rust binary
+- `core/hud-hook/src/handle.rs` — Main hook handler (state transitions)
+- `core/hud-hook/src/lock_holder.rs` — Lock management daemon
+- `core/hud-core/src/state/` — Shared state types and resolution logic
+
+**To modify hook behavior:**
 
 1. **Read the docs first:**
-   - `.claude/docs/hook-state-machine.md` - Understand current behavior
-   - `.claude/docs/hook-prevention-checklist.md` - Follow prevention procedures
-   - `docs/claude-code/hooks.md` - Verify Claude Code event payloads
+   - `scripts/hud-state-tracker.sh` header — State machine overview
+   - `core/hud-core/src/state/types.rs` — Canonical hook→state mapping
+   - `docs/claude-code/hooks.md` — Claude Code event payloads
 
-2. **Make your changes** to `~/.claude/scripts/hud-state-tracker.sh`
-   - Add logging for all decision points
-   - Never exit silently without logging reason
-   - Don't assume fields exist - always validate
+2. **Make your changes** in the Rust crate (`core/hud-hook/src/`)
+   - State transitions: `handle.rs`
+   - Lock behavior: `lock_holder.rs`
 
-3. **Run the test suite (mandatory):**
+3. **Build and install:**
    ```bash
-   ~/.claude/scripts/test-hud-hooks.sh
+   cargo build -p hud-hook --release
+   cp target/release/hud-hook ~/.local/bin/
    ```
 
 4. **Test manually** with a real Claude session:
@@ -103,7 +111,10 @@ The checksums are embedded in both the dylib and Swift bindings. They must match
    - Check debug log: `tail -20 ~/.capacitor/hud-hook-debug.log`
    - Verify state in HUD app
 
-5. **Update documentation** if behavior changed
+5. **Sync hooks** to ensure installed version matches repo:
+   ```bash
+   ./scripts/sync-hooks.sh --force
+   ```
 
 ## Modifying Statistics Parsing
 

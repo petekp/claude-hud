@@ -69,10 +69,10 @@ If credentials are valid, you'll see your notarization history (or an empty list
 
 ```bash
 # Build with notarization (full release process)
-./scripts/build-distribution.sh
+./scripts/release/build-distribution.sh
 
 # Or skip notarization for faster local testing
-./scripts/build-distribution.sh --skip-notarization
+./scripts/release/build-distribution.sh --skip-notarization
 ```
 
 ## Troubleshooting

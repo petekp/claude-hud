@@ -150,16 +150,16 @@ cd apps/swift && swift run
 
 ```bash
 # Restart the app (rebuilds and relaunches)
-./scripts/restart-app.sh
+./scripts/dev/restart-app.sh
 
 # Run all tests (Rust + Swift + bash)
-./scripts/run-tests.sh
+./scripts/dev/run-tests.sh
 
 # Build distribution ZIP
-./scripts/build-distribution.sh
+./scripts/release/build-distribution.sh
 
 # Create DMG installer
-./scripts/create-dmg.sh
+./scripts/release/create-dmg.sh
 ```
 
 ### Project Structure

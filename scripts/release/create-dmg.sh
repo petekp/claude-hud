@@ -40,7 +40,7 @@ echo ""
 
 if [ ! -d "$APP_BUNDLE" ]; then
     echo -e "${RED}ERROR: App bundle not found at $APP_BUNDLE${NC}"
-    echo "Run ./scripts/build-distribution.sh first"
+    echo "Run ./scripts/release/build-distribution.sh first"
     exit 1
 fi
 

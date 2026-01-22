@@ -103,7 +103,7 @@ jobs:
           ORIGINAL=$(cat VERSION)
 
           # Test patch bump
-          ./scripts/bump-version.sh patch
+          ./scripts/release/bump-version.sh patch
           NEW=$(cat VERSION)
           echo "Bumped from $ORIGINAL to $NEW"
 
@@ -122,7 +122,7 @@ jobs:
           touch "dist/ClaudeHUD-v$VERSION-$ARCH.zip"
 
           # Run without --sign since we don't have keys in CI
-          ./scripts/generate-appcast.sh
+          ./scripts/release/generate-appcast.sh
 
           # Verify appcast was created
           if [ ! -f dist/appcast.xml ]; then

@@ -10,7 +10,7 @@ setup() {
 
     # Create a mock project structure
     mkdir -p "$TEST_DIR/scripts"
-    cp "$PROJECT_ROOT/scripts/bump-version.sh" "$TEST_DIR/scripts/"
+    cp "$PROJECT_ROOT/scripts/release/bump-version.sh" "$TEST_DIR/scripts/"
 
     # Create mock VERSION file
     echo "1.2.3" > "$TEST_DIR/VERSION"
