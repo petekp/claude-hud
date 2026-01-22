@@ -690,8 +690,10 @@ mod tests {
         fs::create_dir_all(&scripts_dir).unwrap();
 
         // Version with suffix like "(Rust)" should be parsed as just the semver
-        let script_with_suffix =
-            format!("#!/bin/bash\n# Claude HUD State Tracker Hook v{} (Rust)\n", HOOK_SCRIPT_VERSION);
+        let script_with_suffix = format!(
+            "#!/bin/bash\n# Claude HUD State Tracker Hook v{} (Rust)\n",
+            HOOK_SCRIPT_VERSION
+        );
         let script_path = scripts_dir.join("hud-state-tracker.sh");
         fs::write(&script_path, script_with_suffix).unwrap();
         #[cfg(unix)]

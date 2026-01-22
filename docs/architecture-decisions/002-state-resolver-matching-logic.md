@@ -233,9 +233,8 @@ A lock is considered **orphaned** when ALL conditions are met:
 
 ## Related Documents
 
-- `.claude/plans/gleaming-baking-wozniak.md` - Original plan (8 iterations)
 - `core/hud-core/src/state/resolver.rs` - Implementation
-- `.claude/docs/hook-state-machine.md` - Hook event flow
+- `core/hud-core/src/state/mod.rs` - State architecture overview (inline docs)
 - `ADR-001: State Tracking Approach` - Hooks vs daemon decision
 
 ## Review History

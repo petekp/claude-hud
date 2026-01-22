@@ -107,8 +107,8 @@ fn find_handoff_pid(state_file: &Path, cwd: &str, _exclude_pid: u32) -> Option<u
         // any session at this CWD is still active
         //
         // For now, we'll skip handoff since session records don't track PIDs.
-        // The bash script stored PIDs in session records, but the Rust StateStore
-        // doesn't currently expose this. We can add it later if needed.
+        // We rely on lock liveness detection instead. PID tracking could be added
+        // later if needed for handoff detection.
     }
 
     None

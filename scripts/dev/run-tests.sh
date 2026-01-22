@@ -31,7 +31,7 @@ echo ""
 
 FAILED=0
 
-echo -e "${YELLOW}[1/4] Version Bump Tests (bats)${NC}"
+echo -e "${YELLOW}[1/5] Version Bump Tests (bats)${NC}"
 if command -v bats &> /dev/null; then
     if bats tests/release-scripts/bump-version.bats; then
         echo -e "${GREEN}✓ Version bump tests passed${NC}"

@@ -150,7 +150,7 @@ pub const STALE_THRESHOLD_SECS: i64 = 300; // 5 minutes
 pub const ACTIVE_STATE_STALE_SECS: i64 = 30;
 
 // -----------------------------------------------------------------------------
-// Canonical hook→state mapping (implemented in scripts/hud-state-tracker.sh)
+// Canonical hook→state mapping (implemented in core/hud-hook/)
 //
 // SessionStart           → ready    (+ creates lock)
 // UserPromptSubmit       → working  (+ creates lock if missing)
