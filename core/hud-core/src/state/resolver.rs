@@ -39,12 +39,10 @@ fn find_record_for_lock_path<'a>(
         lock_path.trim_end_matches('/')
     };
 
-    let mut best: Option<(&SessionRecord, MatchType)> = None;
+    let mut best: Option<(&SessionRecord, MatchType, bool)> = None;
 
     for record in store.all_sessions() {
-        if record.is_stale() {
-            continue;
-        }
+        let record_is_stale = record.is_stale();
 
         // Consider both record.cwd and record.project_dir for matching.
         // Claude Code locks are keyed by a stable project path; some hook events may omit/shift cwd.
@@ -88,24 +86,30 @@ fn find_record_for_lock_path<'a>(
 
         if let Some(current_match_type) = best_match_for_record {
             match best {
-                None => best = Some((record, current_match_type)),
-                Some((current, current_type)) => {
-                    let should_replace = record.updated_at > current.updated_at
-                        || (record.updated_at == current.updated_at
-                            && current_match_type > current_type)
-                        || (record.updated_at == current.updated_at
-                            && current_match_type == current_type
-                            && record.session_id > current.session_id);
+                None => best = Some((record, current_match_type, record_is_stale)),
+                Some((current, current_type, current_is_stale)) => {
+                    let should_replace = if current_is_stale && !record_is_stale {
+                        true
+                    } else if !current_is_stale && record_is_stale {
+                        false
+                    } else {
+                        record.updated_at > current.updated_at
+                            || (record.updated_at == current.updated_at
+                                && current_match_type > current_type)
+                            || (record.updated_at == current.updated_at
+                                && current_match_type == current_type
+                                && record.session_id > current.session_id)
+                    };
 
                     if should_replace {
-                        best = Some((record, current_match_type));
+                        best = Some((record, current_match_type, record_is_stale));
                     }
                 }
             }
         }
     }
 
-    best.map(|(r, _)| r)
+    best.map(|(r, _, _)| r)
 }
 
 pub fn resolve_state(
@@ -131,10 +135,15 @@ pub fn resolve_state_with_details(
     // Pick the newest matching lock among exact + child locks.
     let lock = find_matching_child_lock(lock_dir, project_path, None, None)?;
     let record = find_record_for_lock_path(store, &lock.path);
+    let (state, session_id) = match record {
+        Some(r) if r.is_stale() => (SessionState::Ready, Some(r.session_id.clone())),
+        Some(r) => (r.state, Some(r.session_id.clone())),
+        None => (SessionState::Ready, None),
+    };
 
     Some(ResolvedState {
-        state: record.map_or(SessionState::Ready, |r| r.state),
-        session_id: record.map(|r| r.session_id.clone()),
+        state,
+        session_id,
         cwd: lock.path,
     })
 }

@@ -32,7 +32,7 @@ json_get() {
         return 0
     fi
     if [ -n "$HAVE_PY" ]; then
-        printf '%s' "$INPUT" | python3 -c $'import sys, json\nkey = sys.argv[1]\ntry:\n    data = json.load(sys.stdin)\nexcept Exception:\n    sys.exit(0)\nval = data.get(key, "")\nval = "" if val is None else val\nprint(json.dumps(val) if isinstance(val, (dict, list)) else val)' "$py_key"
+        printf '%s' "$INPUT" | python3 -c $'import sys, json\nkey = sys.argv[1]\ntry:\n    data = json.load(sys.stdin)\nexcept Exception:\n    sys.exit(0)\nval = data.get(key, "")\nval = "" if val is None else val\nif isinstance(val, bool):\n    print("true" if val else "false")\nelif isinstance(val, (dict, list)):\n    print(json.dumps(val))\nelse:\n    print(val)' "$py_key"
         return 0
     fi
     echo ""
@@ -125,44 +125,6 @@ fi
 [ -z "$SESSION_ID" ] && exit 0
 [ -z "$EVENT" ] && exit 0
 
-# If we have a stable project_dir and cwd is missing, fall back to project_dir
-if [ -z "$CWD" ] && [ -n "$PROJECT_DIR" ]; then
-    CWD="$PROJECT_DIR"
-fi
-
-# Some events (e.g. Stop with stop_hook_active=true) may omit cwd.
-# Only require cwd when we'd otherwise create a new session record via ACTION=upsert.
-if [ -z "$CWD" ] && [ "$ACTION" = "upsert" ]; then
-    # If we already have a record for this session_id, allow the upsert to proceed
-    # (jq/python writers will keep existing cwd). Otherwise, skip to avoid creating
-    # a record with an empty cwd.
-    if [ -f "$STATE_FILE" ]; then
-        if [ -n "$HAVE_JQ" ]; then
-            EXISTS=$(jq -r --arg sid "$SESSION_ID" '.sessions[$sid] != null' "$STATE_FILE" 2>/dev/null || echo "false")
-        else
-            EXISTS=$(python3 - "$STATE_FILE" "$SESSION_ID" <<'PY'
-import json, sys
-path, sid = sys.argv[1], sys.argv[2]
-try:
-    with open(path, "r", encoding="utf-8") as fh:
-        data = json.load(fh)
-    sessions = data.get("sessions", {}) if isinstance(data, dict) else {}
-    print("true" if isinstance(sessions, dict) and sid in sessions else "false")
-except Exception:
-    print("false")
-PY
-)
-        fi
-        if [ "$EXISTS" != "true" ]; then
-            exit 0
-        fi
-    else
-        exit 0
-    fi
-fi
-
-TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-
 # Map hook events to states (v3 canonical mapping; see core/hud-core/src/state/types.rs)
 ACTION="touch" # upsert|touch|delete
 STATE=""       # only used when ACTION=upsert
@@ -238,6 +200,39 @@ case "$EVENT" in
         ACTION="touch"
         ;;
 esac
+
+# Some events (e.g. Stop with stop_hook_active=true) may omit cwd.
+# Only require cwd when we'd otherwise create a new session record via ACTION=upsert.
+if [ -z "$CWD" ] && [ "$ACTION" = "upsert" ]; then
+    # If we already have a record for this session_id, allow the upsert to proceed
+    # (jq/python writers will keep existing cwd). Otherwise, skip to avoid creating
+    # a record with an empty cwd.
+    if [ -f "$STATE_FILE" ]; then
+        if [ -n "$HAVE_JQ" ]; then
+            EXISTS=$(jq -r --arg sid "$SESSION_ID" '.sessions[$sid] != null' "$STATE_FILE" 2>/dev/null || echo "false")
+        else
+            EXISTS=$(python3 - "$STATE_FILE" "$SESSION_ID" <<'PY'
+import json, sys
+path, sid = sys.argv[1], sys.argv[2]
+try:
+    with open(path, "r", encoding="utf-8") as fh:
+        data = json.load(fh)
+    sessions = data.get("sessions", {}) if isinstance(data, dict) else {}
+    print("true" if isinstance(sessions, dict) and sid in sessions else "false")
+except Exception:
+    print("false")
+PY
+)
+        fi
+        if [ "$EXISTS" != "true" ]; then
+            exit 0
+        fi
+    else
+        exit 0
+    fi
+fi
+
+TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 
 # Initialize or reset state file (no backward compatibility; enforce v3)
 if [ ! -f "$STATE_FILE" ]; then

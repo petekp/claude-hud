@@ -318,8 +318,18 @@ else
     fail "Missing session_id handled gracefully" "exit 0" "exit $EXIT_CODE"
 fi
 
-# Test 21: Missing cwd with fallback (PWD)
-echo "Test 21: Missing cwd uses CLAUDE_PROJECT_DIR fallback"
+# Test 21: Missing cwd with no fallback should not create a record
+echo "Test 21: Missing cwd without fallback skips upsert"
+unset CLAUDE_PROJECT_DIR
+send_event '{"hook_event_name":"SessionStart","session_id":"no-cwd","permission_mode":"default"}'
+if ! session_exists "no-cwd"; then
+    pass "Missing cwd without fallback skips upsert"
+else
+    fail "Missing cwd without fallback skips upsert" "session not created" "session exists"
+fi
+
+# Test 22: Missing cwd with fallback (PWD)
+echo "Test 22: Missing cwd uses CLAUDE_PROJECT_DIR fallback"
 export CLAUDE_PROJECT_DIR="/fallback/project"
 send_event '{"hook_event_name":"SessionStart","session_id":"fallback-test"}'
 CWD=$(get_field "fallback-test" "cwd")
@@ -341,4 +351,3 @@ if [ $FAILED -eq 0 ]; then
 else
     exit 1
 fi
-

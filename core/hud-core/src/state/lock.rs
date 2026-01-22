@@ -323,7 +323,7 @@ pub fn find_child_lock(lock_base: &Path, project_path: &str) -> Option<LockInfo>
 
 /// Find a lock that matches the given PID and/or path
 /// Checks both exact matches and child locks
-/// When multiple locks match, returns the one with the newest 'started' timestamp
+/// When multiple locks match, returns the one with the newest creation timestamp
 pub fn find_matching_child_lock(
     lock_base: &Path,
     project_path: &str,
@@ -365,15 +365,17 @@ pub fn find_matching_child_lock(
                         let path_matches = target_cwd.map_or(true, |cwd| cwd == info.path);
 
                         if pid_matches && path_matches {
-                            // Keep the match with the newest 'created' timestamp
+                            // Keep the match with the newest 'created' timestamp (normalized to ms)
                             // With path-based tie-breaking for deterministic ordering
                             match &best_match {
                                 None => best_match = Some(info),
                                 Some(current) => {
                                     // Compare creation timestamps (not process start time)
                                     // If either is None (legacy), compare as 0
-                                    let info_created = info.created.unwrap_or(0);
-                                    let current_created = current.created.unwrap_or(0);
+                                    let info_created =
+                                        info.created.map(normalize_to_ms).unwrap_or(0);
+                                    let current_created =
+                                        current.created.map(normalize_to_ms).unwrap_or(0);
 
                                     if info_created > current_created {
                                         best_match = Some(info);
@@ -447,7 +449,7 @@ pub mod tests_helper {
 
 #[cfg(test)]
 mod tests {
-    use super::tests_helper::{create_lock, create_lock_with_timestamp};
+    use super::tests_helper::{create_lock, create_lock_with_timestamp, create_lock_with_timestamps};
     use super::*;
     use tempfile::tempdir;
 
@@ -517,5 +519,33 @@ mod tests {
         create_lock(temp.path(), std::process::id(), "/parent/child");
         let info = get_lock_info(temp.path(), "/parent").unwrap();
         assert_eq!(info.path, "/parent/child");
+    }
+
+    #[test]
+    fn test_find_matching_child_lock_normalizes_created_units() {
+        let temp = tempdir().unwrap();
+        let pid = std::process::id();
+        let proc_started = get_process_start_time(pid).unwrap();
+
+        let created_old_ms = 1_500_000_000_000u64;
+        let created_new_sec = 2_000_000_000u64;
+
+        create_lock_with_timestamps(
+            temp.path(),
+            pid,
+            "/project/old",
+            proc_started,
+            created_old_ms,
+        );
+        create_lock_with_timestamps(
+            temp.path(),
+            pid,
+            "/project/new",
+            proc_started,
+            created_new_sec,
+        );
+
+        let info = find_matching_child_lock(temp.path(), "/project", Some(pid), None).unwrap();
+        assert_eq!(info.path, "/project/new");
     }
 }

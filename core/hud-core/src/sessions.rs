@@ -60,6 +60,19 @@ fn downshift_busy_if_transcript_quiet(
         return None;
     }
 
+    if record.active_subagent_count > 0 {
+        return None;
+    }
+
+    if record
+        .last_event
+        .as_ref()
+        .and_then(|event| event.hook_event_name.as_deref())
+        == Some("PreToolUse")
+    {
+        return None;
+    }
+
     let tp = effective_transcript_path(storage, record)?;
     match transcript_is_recent(&tp, threshold) {
         Some(true) => None,
@@ -97,7 +110,19 @@ pub(crate) fn recent_session_record_for_project<'a>(
     threshold: Duration,
 ) -> Option<&'a SessionRecord> {
     let record = store.find_by_cwd(project_path)?;
-    let record_path_for_fallback = record.project_dir.as_deref().unwrap_or(&record.cwd);
+    let record_cwd_norm = normalize_path(&record.cwd);
+    let project_norm = normalize_path(project_path);
+    let record_is_exact = record_cwd_norm == project_norm;
+    let record_is_child = if project_norm == "/" {
+        record_cwd_norm != "/" && record_cwd_norm.starts_with("/")
+    } else {
+        record_cwd_norm.starts_with(&format!("{}/", project_norm))
+    };
+    let record_path_for_fallback = if record_is_exact || record_is_child {
+        record.cwd.as_str()
+    } else {
+        record.project_dir.as_deref().unwrap_or(&record.cwd)
+    };
     if is_parent_fallback(record_path_for_fallback, project_path) {
         return None;
     }
@@ -132,7 +157,7 @@ pub fn detect_session_state_with_storage(
                 .session_id
                 .as_ref()
                 .and_then(|sid| store.get_by_session_id(sid));
-            let working_on = record.and_then(|r| r.working_on.clone());
+            let mut working_on = record.and_then(|r| r.working_on.clone());
             let mut state = details.state;
             let mut state_changed_at = record.map(|r| r.state_changed_at.to_rfc3339());
 
@@ -140,7 +165,11 @@ pub fn detect_session_state_with_storage(
             // (e.g. user interrupt/cancel), the state can get stuck in Working.
             // Use transcript activity as a lightweight, read-only signal of "still producing output".
             if let Some(r) = record {
-                if let Some(new_state) = downshift_busy_if_transcript_quiet(
+                if r.is_stale() {
+                    state = SessionState::Ready;
+                    state_changed_at = Some(Utc::now().to_rfc3339());
+                    working_on = None;
+                } else if let Some(new_state) = downshift_busy_if_transcript_quiet(
                     storage,
                     r,
                     state,
@@ -387,6 +416,63 @@ mod tests {
     }
 
     #[test]
+    fn test_detect_session_state_keeps_working_during_tool_use_when_transcript_quiet() {
+        let (_temp, storage, sessions_dir) = setup_storage_with_sessions_dir();
+        let project_path = "/tmp/hud-core-test-transcript-tool";
+
+        crate::state::lock::tests_helper::create_lock(
+            &sessions_dir,
+            std::process::id(),
+            project_path,
+        );
+
+        let transcript_path = storage
+            .claude_root()
+            .join("projects/-tmp-hud-core-test-transcript-tool/s1.jsonl");
+        fs::create_dir_all(transcript_path.parent().unwrap()).unwrap();
+        fs::write(&transcript_path, "hello\n").unwrap();
+
+        #[cfg(unix)]
+        {
+            set_mtime_seconds_ago(
+                &transcript_path,
+                ACTIVE_TRANSCRIPT_ACTIVITY_TTL.as_secs() + 5,
+            );
+        }
+
+        let now = Utc::now().to_rfc3339();
+        let state_json = format!(
+            r#"{{
+  "version": 3,
+  "sessions": {{
+    "s1": {{
+      "session_id": "s1",
+      "cwd": "{cwd}",
+      "state": "working",
+      "updated_at": "{now}",
+      "state_changed_at": "{now}",
+      "transcript_path": "{tp}",
+      "project_dir": "{cwd}",
+      "last_event": {{
+        "hook_event_name": "PreToolUse",
+        "at": "{now}",
+        "tool_name": "Bash"
+      }}
+    }}
+  }}
+}}"#,
+            cwd = project_path,
+            now = now,
+            tp = transcript_path.to_string_lossy()
+        );
+        fs::write(storage.sessions_file(), state_json).unwrap();
+
+        let state = detect_session_state_with_storage(&storage, project_path);
+        assert_eq!(state.state, SessionState::Working);
+        assert!(state.is_locked);
+    }
+
+    #[test]
     fn test_detect_session_state_downshifts_stale_working_without_lock_when_transcript_quiet() {
         let (_temp, storage) = setup_storage();
         let project_path = "/tmp/hud-core-test-transcript-quiet-unlocked";
@@ -477,6 +563,48 @@ mod tests {
 
         assert_eq!(state.state, SessionState::Idle);
         assert!(state.session_id.is_none());
+    }
+
+    #[test]
+    fn test_detect_session_state_ready_when_record_stale_with_lock() {
+        use crate::state::lock::tests_helper::create_lock;
+
+        let (_temp, storage, sessions_dir) = setup_storage_with_sessions_dir();
+        let project_path = "/tmp/hud-core-test-stale-locked";
+        create_lock(&sessions_dir, std::process::id(), project_path);
+
+        let mut store = StateStore::new(&storage.sessions_file());
+        store.update("session-1", SessionState::Waiting, project_path);
+        let stale_time = Utc::now() - ChronoDuration::minutes(10);
+        store.set_timestamp_for_test("session-1", stale_time);
+        store.set_state_changed_at_for_test("session-1", stale_time);
+        store.save().unwrap();
+
+        let state = detect_session_state_with_storage(&storage, project_path);
+
+        assert_eq!(state.state, SessionState::Ready);
+        assert!(state.is_locked);
+        assert_eq!(state.session_id.as_deref(), Some("session-1"));
+        assert!(state.working_on.is_none());
+        assert!(state.state_changed_at.is_some());
+    }
+
+    #[test]
+    fn test_detect_session_state_accepts_exact_cwd_when_project_dir_is_parent() {
+        let (_temp, storage) = setup_storage();
+        let parent_path = "/tmp/hud-core-test-parent-exact";
+        let project_path = "/tmp/hud-core-test-parent-exact/child";
+
+        let mut store = StateStore::new(&storage.sessions_file());
+        store.update("session-1", SessionState::Ready, project_path);
+        store.set_project_dir_for_test("session-1", Some(parent_path));
+        store.save().unwrap();
+
+        let state = detect_session_state_with_storage(&storage, project_path);
+
+        assert_eq!(state.state, SessionState::Ready);
+        assert!(!state.is_locked);
+        assert_eq!(state.session_id.as_deref(), Some("session-1"));
     }
 
     #[test]
