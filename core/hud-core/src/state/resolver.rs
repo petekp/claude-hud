@@ -1,10 +1,41 @@
-//! Resolves session state by combining lock liveness with stored records.
+//! Session state resolution: the core "is Claude running?" logic.
 //!
-//! v3: the state store is the source of truth for the last known state, and Claude Code lock
-//! directories indicate liveness. We do **not** rely on PIDs in the state store.
+//! This module answers the fundamental question: "Is there an active Claude Code session
+//! for this project, and if so, what is it doing?"
 //!
-//! Fresh record fallback: If no lock exists but a record is very recent (< 30s),
-//! trust the record. This handles edge cases where locks don't exist but records are fresh.
+//! # Resolution Algorithm
+//!
+//! ```text
+//! resolve_state(project_path):
+//!     1. Check for active lock at/under project_path
+//!        → If found: return state from matching record (or Ready if no record)
+//!
+//!     2. Check for fresh record (updated <30s ago) at exact/child path
+//!        → If found and not Idle: return that state (fresh record fallback)
+//!
+//!     3. Return None (no active session)
+//! ```
+//!
+//! # Two-Layer Detection
+//!
+//! We use two signals because neither is perfect alone:
+//!
+//! **Locks** (primary): Reliable indicator that Claude is running, but there's a race
+//! condition during session startup where the record exists before the lock is created.
+//!
+//! **Fresh records** (fallback): Handles the startup race and other edge cases where
+//! locks are absent but we know Claude just updated the state file.
+//!
+//! # Path Matching
+//!
+//! When querying for `/project`, we consider sessions at:
+//! - `/project` (exact match)
+//! - `/project/src` (child match - user cd'd into subdirectory)
+//! - `/` (parent match - only for lock-based resolution, not fresh record fallback)
+//!
+//! Fresh record fallback intentionally excludes parent matches to preserve expected
+//! behavior: a session at `/parent` shouldn't make `/parent/child` appear active
+//! without an actual lock.
 
 use std::path::Path;
 use std::time::Duration;
@@ -17,22 +48,46 @@ use super::lock::{find_matching_child_lock, is_session_running};
 use super::store::StateStore;
 use super::types::SessionRecord;
 
-/// How long to trust a record without a lock (handles transient lock absence)
+/// How long to trust a record without a lock.
+///
+/// 30 seconds is long enough to handle session startup race conditions
+/// but short enough that stale records don't persist.
 const FRESH_RECORD_TTL: Duration = Duration::from_secs(30);
 
-/// A resolved state for a project query.
+/// The result of resolving state for a project path.
+///
+/// Contains everything the UI needs to display session status.
 #[derive(Debug, Clone)]
 pub struct ResolvedState {
+    /// Current session state (working, ready, waiting, compacting).
     pub state: SessionState,
+
+    /// Session ID if known (may be None if lock exists but no matching record).
     pub session_id: Option<String>,
-    /// Effective cwd for the active session (from lock metadata or record cwd).
+
+    /// The actual path where Claude is running.
+    /// May differ from the query path if we found a child session.
     pub cwd: String,
-    /// Whether this resolution came from a lock (true) or fresh record fallback (false).
+
+    /// True if resolution came from a lock, false if from fresh record fallback.
+    ///
+    /// The Swift UI uses this to distinguish between:
+    /// - Lock-based (high confidence, process is definitely running)
+    /// - Fresh record (medium confidence, might be startup race condition)
     pub is_from_lock: bool,
 }
 
-/// Find the best record to associate with a given lock path.
-/// Prefers fresher records, then closer path match (exact > child > parent), then session_id.
+/// Finds the best session record to associate with a lock.
+///
+/// When a lock exists at a path, we need to find the corresponding session record
+/// to get the actual state (working, ready, etc.). This function handles the matching.
+///
+/// # Priority Order
+///
+/// 1. Fresh records over stale records
+/// 2. Exact path match > child match > parent match
+/// 3. More recently updated
+/// 4. Session ID (deterministic tie-breaker)
 fn find_record_for_lock_path<'a>(
     store: &'a StateStore,
     lock_path: &str,
@@ -123,8 +178,18 @@ fn find_record_for_lock_path<'a>(
     best.map(|(r, _, _)| r)
 }
 
-/// Find an exact or child record (NOT parent) for the fresh record fallback.
-/// This is more restrictive than `store.find_by_cwd()` which allows parent matching.
+/// Finds a session record for fresh record fallback (exact or child matches only).
+///
+/// This is intentionally more restrictive than `store.find_by_cwd()`:
+/// - ✓ Exact match: query="/project", record.cwd="/project"
+/// - ✓ Child match: query="/project", record.cwd="/project/src"
+/// - ✗ Parent match: query="/project/src", record.cwd="/project"
+///
+/// # Why No Parent Matching?
+///
+/// Without a lock, we shouldn't assume a session at `/parent` applies to `/parent/child`.
+/// The user might have multiple projects, and parent matching would cause false positives.
+/// Lock-based resolution allows parent matching because the lock proves Claude is running.
 fn find_exact_or_child_record<'a>(
     store: &'a StateStore,
     project_path: &str,
@@ -175,7 +240,11 @@ fn find_exact_or_child_record<'a>(
     best
 }
 
-/// Check if a record is fresh enough to trust without a lock
+/// Returns true if the record was updated recently enough to trust without a lock.
+///
+/// "Fresh" means updated within [`FRESH_RECORD_TTL`] (30 seconds). This handles:
+/// - Session startup (hook fires before lock holder spawns)
+/// - Lock cleanup timing (lock released but record not yet stale)
 fn is_record_fresh(record: &SessionRecord) -> bool {
     let age_secs = Utc::now()
         .signed_duration_since(record.updated_at)
@@ -186,6 +255,9 @@ fn is_record_fresh(record: &SessionRecord) -> bool {
     (age_secs as u64) <= FRESH_RECORD_TTL.as_secs()
 }
 
+/// Simple state query—returns just the state enum.
+///
+/// Use [`resolve_state_with_details`] if you need session ID, cwd, or lock info.
 pub fn resolve_state(
     lock_dir: &Path,
     store: &StateStore,
@@ -194,10 +266,15 @@ pub fn resolve_state(
     resolve_state_with_details(lock_dir, store, project_path).map(|r| r.state)
 }
 
-/// Resolve state for a project path.
+/// Full state resolution with all metadata.
 ///
-/// Returns `None` when no lock exists (neither exact nor child) for the query path
-/// AND no fresh record exists as a fallback.
+/// Returns `None` when no active session is detected (no lock AND no fresh record).
+///
+/// # Arguments
+///
+/// - `lock_dir`: Directory containing lock files (`~/.claude/sessions/`)
+/// - `store`: Session records loaded from `~/.capacitor/sessions.json`
+/// - `project_path`: The project path to query (e.g., `/Users/me/project`)
 pub fn resolve_state_with_details(
     lock_dir: &Path,
     store: &StateStore,

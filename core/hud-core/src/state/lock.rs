@@ -1,5 +1,37 @@
-//! Lock inspection and PID verification for Claude sessions.
-//! Includes legacy compatibility checks to reduce PID reuse errors.
+//! Lock file detection for Claude Code sessions.
+//!
+//! Lock directories indicate that a Claude Code process is actively running for a project.
+//! The hook script creates these when a session starts; the lock holder (a background process)
+//! releases them when Claude exits.
+//!
+//! # Lock Directory Structure
+//!
+//! Location: `~/.claude/sessions/{hash}.lock/` where `{hash}` is MD5 of the project path.
+//!
+//! ```text
+//! {hash}.lock/
+//! ├── pid          # Plain text: the Claude process ID
+//! └── meta.json    # { pid, path, proc_started, created }
+//! ```
+//!
+//! # PID Verification
+//!
+//! Operating systems reuse PIDs. A lock with PID 12345 might refer to a Claude process
+//! that exited, and a new unrelated process might now have that PID. We handle this:
+//!
+//! 1. **Modern locks** (have `proc_started`): Compare process start time. If it differs,
+//!    the PID was recycled → lock is stale.
+//!
+//! 2. **Legacy locks** (no `proc_started`): Check if the process name contains "claude".
+//!    Also reject locks older than 24 hours as a safety measure.
+//!
+//! # Path Matching
+//!
+//! A lock at `/project/src` makes `/project` appear active (child → parent inheritance).
+//! But a lock at `/project` does NOT make `/project/src` appear active.
+//!
+//! Why? Common scenario: user pins `/project` but runs Claude from `/project/src`.
+//! We want the HUD to show activity for the pinned project.
 
 use std::cell::RefCell;
 use std::fs;
@@ -8,8 +40,8 @@ use std::time::Instant;
 
 use super::types::LockInfo;
 
-// Thread-local cache for sysinfo System
-// Using per-PID refresh (O(1)) instead of full process list refresh (O(n))
+// Thread-local sysinfo cache. We use per-PID refresh (O(1)) instead of scanning
+// all processes (O(n)). This matters because lock checks happen on every UI refresh.
 thread_local! {
     static SYSTEM_CACHE: RefCell<Option<(sysinfo::System, Instant)>> = const { RefCell::new(None) };
 }
@@ -27,6 +59,10 @@ fn normalize_path(path: &str) -> String {
     }
 }
 
+/// Computes the lock directory name for a project path.
+///
+/// Lock directories are named `{hash}.lock` where hash is MD5 of the normalized path.
+/// This allows O(1) lookup by path.
 fn compute_lock_hash(path: &str) -> String {
     let normalized = normalize_path(path);
     format!("{:x}", md5::compute(normalized))
@@ -266,6 +302,13 @@ fn check_lock_for_path(lock_base: &Path, project_path: &str) -> Option<LockInfo>
     Some(info)
 }
 
+/// Returns true if there's an active lock at or under the given path.
+///
+/// Checks:
+/// 1. Exact lock at `project_path`
+/// 2. Child locks (e.g., `/project/src` lock makes `/project` active)
+///
+/// Does NOT check parent paths. A lock at `/project` doesn't make `/project/src` active.
 pub fn is_session_running(lock_base: &Path, project_path: &str) -> bool {
     // Check for exact lock match at this path
     if check_lock_for_path(lock_base, project_path).is_some() {
@@ -273,10 +316,13 @@ pub fn is_session_running(lock_base: &Path, project_path: &str) -> bool {
     }
 
     // Check if any CHILD path has a lock (child makes parent active)
-    // Do NOT check parent paths (parent lock should not make child active)
     find_child_lock(lock_base, project_path).is_some()
 }
 
+/// Returns lock metadata for the given path (exact or child match).
+///
+/// Returns `None` if no active lock exists. Use [`is_session_running`] for a simple
+/// yes/no check without the metadata.
 pub fn get_lock_info(lock_base: &Path, project_path: &str) -> Option<LockInfo> {
     // Check for exact lock match at this path
     if let Some(info) = check_lock_for_path(lock_base, project_path) {
@@ -287,6 +333,10 @@ pub fn get_lock_info(lock_base: &Path, project_path: &str) -> Option<LockInfo> {
     find_child_lock(lock_base, project_path)
 }
 
+/// Scans for locks in child directories of the given path.
+///
+/// Example: If `project_path` is `/project`, this finds locks at `/project/src`,
+/// `/project/apps/swift`, etc.
 pub fn find_child_lock(lock_base: &Path, project_path: &str) -> Option<LockInfo> {
     let normalized = normalize_path(project_path);
     // Special case for root: children of "/" are paths starting with "/" (not "//")
@@ -321,9 +371,13 @@ pub fn find_child_lock(lock_base: &Path, project_path: &str) -> Option<LockInfo>
     None
 }
 
-/// Find a lock that matches the given PID and/or path
-/// Checks both exact matches and child locks
-/// When multiple locks match, returns the one with the newest 'started' timestamp
+/// Finds the best matching lock for resolver use.
+///
+/// Checks exact and child matches, optionally filtered by PID or path.
+/// When multiple locks match, returns the one with the newest `created` timestamp
+/// (tie-broken by path for determinism).
+///
+/// This is used by the resolver to associate a lock with a state record.
 pub fn find_matching_child_lock(
     lock_base: &Path,
     project_path: &str,

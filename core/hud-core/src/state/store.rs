@@ -1,4 +1,42 @@
-//! File-backed session store with defensive parsing and atomic writes.
+//! File-backed session state persistence.
+//!
+//! Reads session records from `~/.capacitor/sessions.json` (written by the hook script).
+//! The hook script is the authoritative writer; this module only reads.
+//!
+//! # File Format
+//!
+//! ```json
+//! {
+//!   "version": 3,
+//!   "sessions": {
+//!     "session-abc": { ... SessionRecord fields ... }
+//!   }
+//! }
+//! ```
+//!
+//! # Path Matching
+//!
+//! When looking up sessions by path, we check three relationship types:
+//!
+//! 1. **Exact match**: Query path equals session's `cwd` or `project_dir`
+//! 2. **Child match**: Session is in a subdirectory of the query path
+//!    (e.g., query="/project", session.cwd="/project/src")
+//! 3. **Parent match**: Session is in a parent directory of the query path
+//!    (e.g., query="/project/src", session.cwd="/project")
+//!
+//! Priority: Exact/Child (prefer fresher) > Parent
+//!
+//! # Defensive Design
+//!
+//! Since the hook script writes this file asynchronously, we handle:
+//! - Empty files (return empty store)
+//! - Corrupt JSON (return empty store, log warning)
+//! - Version mismatches (return empty store for incompatible versions)
+//! - Missing fields (serde defaults)
+//!
+//! # Atomic Writes
+//!
+//! Uses temp file + rename to prevent partial writes from crashing the app.
 
 use std::collections::HashMap;
 use std::fs;
@@ -13,8 +51,10 @@ use crate::types::SessionState;
 
 use super::types::SessionRecord;
 
-/// Normalize a path for consistent comparison.
-/// Strips trailing slashes except for root "/".
+/// Normalizes a path for consistent comparison.
+///
+/// Strips trailing slashes (except for root "/") so that "/project" and "/project/"
+/// match the same session.
 fn normalize_path(path: &str) -> String {
     if path == "/" {
         "/".to_string()
@@ -23,15 +63,23 @@ fn normalize_path(path: &str) -> String {
     }
 }
 
+/// Returns paths that should be considered for matching this record.
+///
+/// A session can match on either `cwd` (where Claude is running) or `project_dir`
+/// (the stable project root). This handles cases where the user cd'd into a subdirectory
+/// but the pinned project is the parent.
 fn record_match_paths(record: &SessionRecord) -> impl Iterator<Item = &str> {
     [Some(record.cwd.as_str()), record.project_dir.as_deref()]
         .into_iter()
         .flatten()
 }
 
+/// The on-disk JSON structure for the state file.
 #[derive(Debug, Serialize, Deserialize)]
 struct StoreFile {
+    /// Schema version. We only load files with version == 3.
     version: u32,
+    /// Session ID → record map.
     sessions: HashMap<String, SessionRecord>,
 }
 
@@ -44,6 +92,10 @@ impl Default for StoreFile {
     }
 }
 
+/// In-memory cache of session records, optionally backed by a file.
+///
+/// Create with [`StateStore::load`] to read from the state file,
+/// or [`StateStore::new_in_memory`] for tests.
 pub struct StateStore {
     sessions: HashMap<String, SessionRecord>,
     file_path: Option<PathBuf>,
@@ -170,13 +222,25 @@ impl StateStore {
         self.sessions.get(session_id)
     }
 
+    /// Finds a session record matching the given path.
+    ///
+    /// Searches in priority order:
+    /// 1. Exact match (cwd or project_dir equals query path)
+    /// 2. Child match (session is in a subdirectory of query path)
+    /// 3. Parent match (session is in a parent directory of query path)
+    ///
+    /// Within each priority level, returns the most recently updated record.
+    ///
+    /// # Why Child Matches Matter
+    ///
+    /// Common scenario: Project is pinned at `/project` but user cd'd to `/project/src`
+    /// before running Claude. We want the HUD to show that session for `/project`.
     pub fn find_by_cwd(&self, cwd: &str) -> Option<&SessionRecord> {
         let mut best: Option<&SessionRecord> = None;
 
-        // Normalize query path for consistent comparison
         let cwd_normalized = normalize_path(cwd);
 
-        // 1. Exact match - collect all, don't return early
+        // Priority 1: Exact match on cwd or project_dir
         for record in self.sessions.values() {
             let is_exact = record_match_paths(record).any(|p| normalize_path(p) == cwd_normalized);
             if !is_exact {
