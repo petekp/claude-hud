@@ -49,8 +49,7 @@ gh release create v0.x.x \
 ### First-Time Setup
 
 ```bash
-./scripts/utils/setup-git-hooks.sh      # Git hooks (warns on branch switch if hook mismatches)
-./scripts/sync-hooks.sh --force         # Install/update hook to ~/.claude/scripts/
+./scripts/sync-hooks.sh --force         # Install hook binary and wrapper script
 ```
 
 Notarization credentials (one-time):
