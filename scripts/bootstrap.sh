@@ -18,6 +18,21 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 echo "=== Claude HUD Bootstrap ==="
 
 # -----------------------------------------------------------------------------
+# Architecture validation
+# This project targets Apple Silicon only. Building on Intel or under Rosetta
+# produces non-functional artifacts.
+# -----------------------------------------------------------------------------
+
+if [ "$(uname -m)" != "arm64" ]; then
+    echo "Error: This project requires Apple Silicon (arm64)." >&2
+    echo "Detected architecture: $(uname -m)" >&2
+    if [ "$(sysctl -n sysctl.proc_translated 2>/dev/null)" = "1" ]; then
+        echo "You appear to be running under Rosetta. Run natively instead." >&2
+    fi
+    exit 1
+fi
+
+# -----------------------------------------------------------------------------
 # Platform validation
 # SwiftUI features (Observable macro, etc.) require macOS 14+
 # -----------------------------------------------------------------------------
@@ -92,6 +107,9 @@ echo "Building Swift app..."
 cd apps/swift
 swift build
 
+# Get the actual build directory (portable across toolchain/layout changes)
+SWIFT_DEBUG_DIR=$(swift build --show-bin-path)
+
 # -----------------------------------------------------------------------------
 # Pre-commit hooks
 # Ensures formatting and tests run before each commit. Symlinks to the repo
@@ -109,8 +127,7 @@ ln -sf ../../scripts/dev/pre-commit .git/hooks/pre-commit
 # "Library not loaded: @rpath/libhud_core.dylib"
 # -----------------------------------------------------------------------------
 
-cp "$PROJECT_ROOT/target/release/libhud_core.dylib" \
-   "$PROJECT_ROOT/apps/swift/.build/arm64-apple-macosx/debug/"
+cp "$PROJECT_ROOT/target/release/libhud_core.dylib" "$SWIFT_DEBUG_DIR/"
 
 echo ""
 echo "=== Bootstrap complete! ==="

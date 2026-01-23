@@ -15,6 +15,16 @@ NC='\033[0m'
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+
+# Architecture validation - Apple Silicon only
+if [ "$(uname -m)" != "arm64" ]; then
+    echo -e "${RED}Error: This project requires Apple Silicon (arm64).${NC}" >&2
+    echo "Detected architecture: $(uname -m)" >&2
+    if [ "$(sysctl -n sysctl.proc_translated 2>/dev/null)" = "1" ]; then
+        echo "You appear to be running under Rosetta. Run natively instead." >&2
+    fi
+    exit 1
+fi
 APP_BUNDLE="${1:-$PROJECT_ROOT/apps/swift/ClaudeHUD.app}"
 
 echo -e "${GREEN}========================================${NC}"
@@ -158,37 +168,43 @@ sleep 0.5
 # Launch the app and capture any immediate crash
 echo "  Launching app from bundle (not via swift run)..."
 
-# Use open with wait to detect immediate crashes
+# Launch the app in background (portable - no GNU timeout required)
 LAUNCH_LOG=$(mktemp)
-if timeout 5 open -W "$APP_BUNDLE" 2>"$LAUNCH_LOG" &
-then
-    OPEN_PID=$!
-    sleep 3
+open "$APP_BUNDLE" 2>"$LAUNCH_LOG" &
+OPEN_PID=$!
 
-    # Check if the process is still running
+# Wait for app to start with retry loop (handles Gatekeeper checks, cold starts)
+MAX_ATTEMPTS=6
+ATTEMPT=1
+APP_PID=""
+
+while [ $ATTEMPT -le $MAX_ATTEMPTS ]; do
+    sleep 1
     APP_PID=$(pgrep -f "ClaudeHUD.app/Contents/MacOS/ClaudeHUD" || echo "")
-
     if [ -n "$APP_PID" ]; then
-        pass "App launched successfully (PID: $APP_PID)"
-
-        # Clean up - quit the app
-        kill "$APP_PID" 2>/dev/null || true
-    else
-        # Check for crash
-        if [ -f "$HOME/Library/Logs/DiagnosticReports/"*"ClaudeHUD"* ]; then
-            LATEST_CRASH=$(ls -t "$HOME/Library/Logs/DiagnosticReports/"*"ClaudeHUD"* 2>/dev/null | head -1)
-            fail "App CRASHED on launch! Check: $LATEST_CRASH"
-        else
-            fail "App did not stay running (may have crashed silently)"
-        fi
+        break
     fi
+    echo "  Waiting for app to start... (attempt $ATTEMPT/$MAX_ATTEMPTS)"
+    ATTEMPT=$((ATTEMPT + 1))
+done
 
-    # Kill the open command if still waiting
-    kill "$OPEN_PID" 2>/dev/null || true
+if [ -n "$APP_PID" ]; then
+    pass "App launched successfully (PID: $APP_PID)"
+
+    # Clean up - quit the app
+    kill "$APP_PID" 2>/dev/null || true
 else
-    fail "Failed to launch app"
+    # Check for crash reports
+    CRASH_REPORT=$(ls -t "$HOME/Library/Logs/DiagnosticReports/"*"ClaudeHUD"* 2>/dev/null | head -1 || echo "")
+    if [ -n "$CRASH_REPORT" ]; then
+        fail "App CRASHED on launch! Check: $CRASH_REPORT"
+    else
+        fail "App did not stay running after ${MAX_ATTEMPTS}s (may have crashed silently)"
+    fi
 fi
 
+# Clean up the open command if still running
+kill "$OPEN_PID" 2>/dev/null || true
 rm -f "$LAUNCH_LOG"
 
 echo ""

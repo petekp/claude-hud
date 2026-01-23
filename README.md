@@ -41,6 +41,7 @@ Capture ideas without breaking your flow:
 
 ## Requirements
 
+- **Apple Silicon Mac** (M1/M2/M3/M4) — Intel Macs are not supported
 - **macOS 14.0+** (Sonoma or later)
 - **Claude Code** installed and configured
 - **Rust 1.77+** and **Swift 5.9+** (for building from source)

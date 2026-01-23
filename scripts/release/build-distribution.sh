@@ -27,6 +27,16 @@ NC='\033[0m' # No Color
 # Configuration
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+
+# Architecture validation - Apple Silicon only
+if [ "$(uname -m)" != "arm64" ]; then
+    echo -e "${RED}Error: This project requires Apple Silicon (arm64).${NC}" >&2
+    echo "Detected architecture: $(uname -m)" >&2
+    if [ "$(sysctl -n sysctl.proc_translated 2>/dev/null)" = "1" ]; then
+        echo "You appear to be running under Rosetta. Run natively instead." >&2
+    fi
+    exit 1
+fi
 SWIFT_DIR="$PROJECT_ROOT/apps/swift"
 APP_BUNDLE="$SWIFT_DIR/ClaudeHUD.app"
 DIST_DIR="$PROJECT_ROOT/dist"
@@ -108,7 +118,10 @@ echo -e "${YELLOW}Step 4/8: Building Swift app...${NC}"
 cd "$SWIFT_DIR"
 rm -rf .build ClaudeHUD.app 2>/dev/null || true
 swift build -c release
-echo -e "${GREEN}✓ Swift app built${NC}"
+
+# Get the actual build directory (portable across toolchain/layout changes)
+SWIFT_BUILD_DIR=$(swift build --show-bin-path -c release)
+echo -e "${GREEN}✓ Swift app built (at $SWIFT_BUILD_DIR)${NC}"
 echo ""
 
 # Step 5: Create app bundle structure
@@ -123,13 +136,13 @@ mkdir -p "$APP_BUNDLE/Contents/Frameworks"
 mkdir -p "$APP_BUNDLE/Contents/Resources"
 
 # Copy executable
-cp "$SWIFT_DIR/.build/release/ClaudeHUD" "$APP_BUNDLE/Contents/MacOS/ClaudeHUD"
+cp "$SWIFT_BUILD_DIR/ClaudeHUD" "$APP_BUNDLE/Contents/MacOS/ClaudeHUD"
 
 # Copy dylib to Frameworks
 cp "$DYLIB_PATH" "$APP_BUNDLE/Contents/Frameworks/libhud_core.dylib"
 
 # Copy Sparkle.framework to Frameworks
-SPARKLE_FRAMEWORK="$SWIFT_DIR/.build/arm64-apple-macosx/release/Sparkle.framework"
+SPARKLE_FRAMEWORK="$SWIFT_BUILD_DIR/Sparkle.framework"
 if [ -d "$SPARKLE_FRAMEWORK" ]; then
     cp -R "$SPARKLE_FRAMEWORK" "$APP_BUNDLE/Contents/Frameworks/"
     echo -e "${GREEN}✓ Sparkle.framework copied${NC}"
@@ -148,7 +161,7 @@ if [ -f "$PROJECT_ROOT/assets/AppIcon.icns" ]; then
 fi
 
 # Copy SPM resource bundle (contains logomark.pdf and other assets)
-RESOURCE_BUNDLE="$SWIFT_DIR/.build/arm64-apple-macosx/release/ClaudeHUD_ClaudeHUD.bundle"
+RESOURCE_BUNDLE="$SWIFT_BUILD_DIR/ClaudeHUD_ClaudeHUD.bundle"
 if [ -d "$RESOURCE_BUNDLE" ]; then
     cp -R "$RESOURCE_BUNDLE" "$APP_BUNDLE/Contents/Resources/"
     echo -e "${GREEN}✓ Resource bundle copied${NC}"
@@ -236,7 +249,7 @@ codesign --force --sign "$SIGNING_IDENTITY" \
     "$APP_BUNDLE/Contents/Frameworks/Sparkle.framework"
 
 # Sign the app bundle
-ENTITLEMENTS_FILE="$SWIFT_DIR/.build/arm64-apple-macosx/release/ClaudeHUD-entitlement.plist"
+ENTITLEMENTS_FILE="$SWIFT_BUILD_DIR/ClaudeHUD-entitlement.plist"
 if [ -f "$ENTITLEMENTS_FILE" ]; then
     codesign --force --sign "$SIGNING_IDENTITY" \
         --options runtime \

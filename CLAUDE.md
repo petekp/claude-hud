@@ -4,7 +4,8 @@ Native macOS dashboard for Claude Code—displays project statistics, session st
 
 ## Stack
 
-- **Swift App** (`apps/swift/`) — SwiftUI, macOS 14+, 120Hz ProMotion
+- **Platform** — Apple Silicon only (M1/M2/M3/M4), macOS 14+
+- **Swift App** (`apps/swift/`) — SwiftUI, 120Hz ProMotion
 - **Rust Core** (`core/hud-core/`) — Business logic via UniFFI bindings
 
 ## Commands

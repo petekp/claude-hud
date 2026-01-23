@@ -6,6 +6,16 @@ set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+
+# Architecture validation - Apple Silicon only
+if [ "$(uname -m)" != "arm64" ]; then
+    echo "Error: This project requires Apple Silicon (arm64)." >&2
+    echo "Detected architecture: $(uname -m)" >&2
+    if [ "$(sysctl -n sysctl.proc_translated 2>/dev/null)" = "1" ]; then
+        echo "You appear to be running under Rosetta. Run natively instead." >&2
+    fi
+    exit 1
+fi
 INSTALLED_BINARY="$HOME/.local/bin/hud-hook"
 
 # Verify binary actually runs (not just exists)

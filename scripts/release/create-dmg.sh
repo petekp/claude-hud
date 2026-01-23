@@ -17,6 +17,16 @@ NC='\033[0m'
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+
+# Architecture validation - Apple Silicon only
+if [ "$(uname -m)" != "arm64" ]; then
+    echo -e "${RED}Error: This project requires Apple Silicon (arm64).${NC}" >&2
+    echo "Detected architecture: $(uname -m)" >&2
+    if [ "$(sysctl -n sysctl.proc_translated 2>/dev/null)" = "1" ]; then
+        echo "You appear to be running under Rosetta. Run natively instead." >&2
+    fi
+    exit 1
+fi
 SWIFT_DIR="$PROJECT_ROOT/apps/swift"
 APP_BUNDLE="$SWIFT_DIR/ClaudeHUD.app"
 DIST_DIR="$PROJECT_ROOT/dist"

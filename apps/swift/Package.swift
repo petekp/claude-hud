@@ -1,4 +1,15 @@
 // swift-tools-version: 5.9
+//
+// IMPORTANT: Before running `swift build`, you must build the Rust core library:
+//   cd <project-root> && cargo build -p hud-core --release
+//
+// The linkerSettings below reference ../../target/release/ where cargo places
+// the libhud_core.dylib. Running swift build without the Rust build will fail
+// with "library not found for -lhud_core".
+//
+// For first-time setup, run: ./scripts/dev/setup.sh
+// For normal dev iteration: ./scripts/dev/restart-app.sh
+//
 import PackageDescription
 
 let package = Package(
