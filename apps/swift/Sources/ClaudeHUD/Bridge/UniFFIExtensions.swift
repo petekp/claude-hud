@@ -112,9 +112,3 @@ extension ProjectCreation {
     }
 }
 
-extension HookHealthStatus {
-    var isHealthy: Bool {
-        if case .healthy = self { return true }
-        return false
-    }
-}

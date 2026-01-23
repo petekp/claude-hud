@@ -66,9 +66,9 @@ class AppState: ObservableObject {
     @Published var devServerPorts: [String: UInt16] = [:]
     @Published var devServerBrowsers: [String: String] = [:]
 
-    // MARK: - Hook Health
+    // MARK: - Hook Diagnostic
 
-    @Published var hookHealth: HookHealthReport?
+    @Published var hookDiagnostic: HookDiagnosticReport?
 
     // MARK: - Manual dormant overrides
 
@@ -161,7 +161,7 @@ class AppState: ObservableObject {
             sessionStateManager.configure(engine: engine)
             projectDetailsManager.configure(engine: engine)
             loadDashboard()
-            checkHookHealth()
+            checkHookDiagnostic()
             setupStalenessTimer()
             startTerminalTracking()
         } catch {
@@ -181,11 +181,11 @@ class AppState: ObservableObject {
                 self.refreshSessionStates()
                 self.checkIdeasFileChanges()
 
-                // Check hook health every 10 seconds
+                // Check hook diagnostic every 10 seconds
                 self.hookHealthCheckCounter += 1
                 if self.hookHealthCheckCounter >= 10 {
                     self.hookHealthCheckCounter = 0
-                    self.checkHookHealth()
+                    self.checkHookDiagnostic()
                 }
             }
         }
@@ -227,7 +227,7 @@ class AppState: ObservableObject {
         objectWillChange.send()
     }
 
-    // MARK: - Hook Health
+    // MARK: - Hook Diagnostic
 
     var hasActiveSessions: Bool {
         sessionStates.values.contains { state in
@@ -235,9 +235,23 @@ class AppState: ObservableObject {
         }
     }
 
-    func checkHookHealth() {
+    func checkHookDiagnostic() {
         guard let engine = engine else { return }
-        hookHealth = engine.checkHookHealth()
+        hookDiagnostic = engine.getHookDiagnostic()
+    }
+
+    func fixHooks() {
+        guard let engine = engine else { return }
+        do {
+            let result = try engine.installHooks()
+            if result.success {
+                checkHookDiagnostic()
+            } else {
+                error = result.message
+            }
+        } catch {
+            self.error = error.localizedDescription
+        }
     }
 
     // MARK: - Project Management

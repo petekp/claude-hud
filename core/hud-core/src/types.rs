@@ -340,6 +340,46 @@ pub struct HookHealthReport {
     pub last_heartbeat_age_secs: Option<u64>,
 }
 
+/// The primary issue preventing hooks from working correctly.
+///
+/// Issues are prioritized: policy blocks are shown first (can't auto-fix),
+/// then installation issues, then runtime issues.
+#[derive(Debug, Clone, PartialEq, uniffi::Enum)]
+pub enum HookIssue {
+    /// Hooks disabled by policy (disableAllHooks or allowManagedHooksOnly)
+    PolicyBlocked { reason: String },
+    /// The hud-hook binary is not installed
+    BinaryMissing,
+    /// The hud-hook binary exists but crashes (e.g., macOS codesigning)
+    BinaryBroken { reason: String },
+    /// Hook configuration missing or incomplete in settings.json
+    ConfigMissing,
+    /// Hook script/binary version is outdated
+    ConfigOutdated { current: String, latest: String },
+    /// Hooks are installed but not firing (heartbeat stale or missing)
+    NotFiring { last_seen_secs: Option<u64> },
+}
+
+/// Unified diagnostic report combining installation status and runtime health.
+///
+/// This provides a single source of truth for the UI to determine what to show
+/// and whether auto-fix is available.
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct HookDiagnosticReport {
+    /// True if everything is working correctly
+    pub is_healthy: bool,
+    /// The most critical issue to display (if any)
+    pub primary_issue: Option<HookIssue>,
+    /// True if "Fix All" can resolve the issue
+    pub can_auto_fix: bool,
+    /// Whether this appears to be a first-time setup (no heartbeat ever seen)
+    pub is_first_run: bool,
+    /// Detailed status for checklist display
+    pub binary_ok: bool,
+    pub config_ok: bool,
+    pub firing_ok: bool,
+}
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // Idea Capture Types
 // ═══════════════════════════════════════════════════════════════════════════════

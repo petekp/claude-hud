@@ -50,12 +50,16 @@ struct ProjectsView: View {
     var body: some View {
         ScrollView {
             LazyVStack(spacing: 8) {
-                // Hook health banner - show regardless of project state
-                if let health = appState.hookHealth, !health.status.isHealthy {
-                    HookHealthBanner(health: health) {
-                        appState.checkHookHealth()
-                        appState.refreshSessionStates()
-                    }
+                // Setup status card - show regardless of project state
+                if let diagnostic = appState.hookDiagnostic, !diagnostic.isHealthy {
+                    SetupStatusCard(
+                        diagnostic: diagnostic,
+                        onFix: { appState.fixHooks() },
+                        onRefresh: {
+                            appState.checkHookDiagnostic()
+                            appState.refreshSessionStates()
+                        }
+                    )
                     .padding(.bottom, 4)
                 }
 

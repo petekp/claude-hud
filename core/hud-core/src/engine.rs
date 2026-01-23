@@ -29,8 +29,8 @@ use crate::sessions::{
 use crate::setup::{DependencyStatus, HookStatus, InstallResult, SetupChecker, SetupStatus};
 use crate::storage::StorageConfig;
 use crate::types::{
-    Artifact, DashboardData, GlobalConfig, HudConfig, Plugin, PluginManifest, Project,
-    ProjectSessionState, SuggestedProject,
+    Artifact, DashboardData, GlobalConfig, HookDiagnosticReport, HookIssue, HudConfig, Plugin,
+    PluginManifest, Project, ProjectSessionState, SuggestedProject,
 };
 use crate::validation::{create_claude_md, validate_project_path, ValidationResultFfi};
 use std::collections::HashMap;
@@ -791,6 +791,85 @@ impl HudEngine {
             heartbeat_path: heartbeat_path.display().to_string(),
             threshold_secs,
             last_heartbeat_age_secs: age,
+        }
+    }
+
+    /// Returns a unified diagnostic report for hook status.
+    ///
+    /// This combines setup status (is everything installed?) with health status
+    /// (are hooks actually firing?) into a single report for the UI.
+    ///
+    /// The report provides:
+    /// - `is_healthy`: True if everything is working
+    /// - `primary_issue`: The most critical issue to display (prioritized)
+    /// - `can_auto_fix`: True if "Fix All" can resolve the issue
+    /// - Individual status flags for checklist display
+    pub fn get_hook_diagnostic(&self) -> HookDiagnosticReport {
+        let setup_status = self.check_setup_status();
+        let health = self.check_hook_health();
+
+        // Determine individual status flags
+        let binary_ok = setup_status
+            .dependencies
+            .iter()
+            .find(|d| d.name == "hud-hook")
+            .map(|d| d.found)
+            .unwrap_or(false);
+
+        let config_ok = matches!(setup_status.hooks, HookStatus::Installed { .. });
+
+        let firing_ok = matches!(health.status, crate::types::HookHealthStatus::Healthy);
+
+        // Determine if this is first-run (no heartbeat file ever created)
+        let is_first_run = matches!(health.status, crate::types::HookHealthStatus::Unknown);
+
+        // Prioritize issues: policy > binary > config > firing
+        let primary_issue: Option<HookIssue> = match &setup_status.hooks {
+            HookStatus::PolicyBlocked { reason } => Some(HookIssue::PolicyBlocked {
+                reason: reason.clone(),
+            }),
+            HookStatus::BinaryBroken { reason } => Some(HookIssue::BinaryBroken {
+                reason: reason.clone(),
+            }),
+            _ if !binary_ok => Some(HookIssue::BinaryMissing),
+            HookStatus::Outdated { current, latest } => Some(HookIssue::ConfigOutdated {
+                current: current.clone(),
+                latest: latest.clone(),
+            }),
+            HookStatus::NotInstalled => Some(HookIssue::ConfigMissing),
+            HookStatus::Installed { .. } => {
+                // Hooks are installed, check if they're firing
+                match &health.status {
+                    crate::types::HookHealthStatus::Healthy => None,
+                    crate::types::HookHealthStatus::Unknown => Some(HookIssue::NotFiring {
+                        last_seen_secs: None,
+                    }),
+                    crate::types::HookHealthStatus::Stale { last_seen_secs } => {
+                        Some(HookIssue::NotFiring {
+                            last_seen_secs: Some(*last_seen_secs),
+                        })
+                    }
+                    crate::types::HookHealthStatus::Unreadable { .. } => {
+                        // Can't check, assume firing is OK
+                        None
+                    }
+                }
+            }
+        };
+
+        // Can auto-fix everything except policy blocks
+        let can_auto_fix = !matches!(primary_issue, Some(HookIssue::PolicyBlocked { .. }));
+
+        let is_healthy = primary_issue.is_none();
+
+        HookDiagnosticReport {
+            is_healthy,
+            primary_issue,
+            can_auto_fix,
+            is_first_run,
+            binary_ok,
+            config_ok,
+            firing_ok,
         }
     }
 }

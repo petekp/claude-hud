@@ -615,6 +615,20 @@ public protocol HudEngineProtocol: AnyObject {
     func getConfig() -> HudConfig
 
     /**
+     * Returns a unified diagnostic report for hook status.
+     *
+     * This combines setup status (is everything installed?) with health status
+     * (are hooks actually firing?) into a single report for the UI.
+     *
+     * The report provides:
+     * - `is_healthy`: True if everything is working
+     * - `primary_issue`: The most critical issue to display (prioritized)
+     * - `can_auto_fix`: True if "Fix All" can resolve the issue
+     * - Individual status flags for checklist display
+     */
+    func getHookDiagnostic() -> HookDiagnosticReport
+
+    /**
      * Returns the current hook status without full setup check.
      *
      * Useful for quick hook status checks in the UI.
@@ -1008,6 +1022,24 @@ open class HudEngine:
     open func getConfig() -> HudConfig {
         return try! FfiConverterTypeHudConfig.lift(try! rustCall {
             uniffi_hud_core_fn_method_hudengine_get_config(self.uniffiClonePointer(), $0)
+        })
+    }
+
+    /**
+     * Returns a unified diagnostic report for hook status.
+     *
+     * This combines setup status (is everything installed?) with health status
+     * (are hooks actually firing?) into a single report for the UI.
+     *
+     * The report provides:
+     * - `is_healthy`: True if everything is working
+     * - `primary_issue`: The most critical issue to display (prioritized)
+     * - `can_auto_fix`: True if "Fix All" can resolve the issue
+     * - Individual status flags for checklist display
+     */
+    open func getHookDiagnostic() -> HookDiagnosticReport {
+        return try! FfiConverterTypeHookDiagnosticReport.lift(try! rustCall {
+            uniffi_hud_core_fn_method_hudengine_get_hook_diagnostic(self.uniffiClonePointer(), $0)
         })
     }
 
@@ -2292,6 +2324,144 @@ public func FfiConverterTypeGlobalConfig_lift(_ buf: RustBuffer) throws -> Globa
 #endif
 public func FfiConverterTypeGlobalConfig_lower(_ value: GlobalConfig) -> RustBuffer {
     return FfiConverterTypeGlobalConfig.lower(value)
+}
+
+/**
+ * Unified diagnostic report combining installation status and runtime health.
+ *
+ * This provides a single source of truth for the UI to determine what to show
+ * and whether auto-fix is available.
+ */
+public struct HookDiagnosticReport {
+    /**
+     * True if everything is working correctly
+     */
+    public var isHealthy: Bool
+    /**
+     * The most critical issue to display (if any)
+     */
+    public var primaryIssue: HookIssue?
+    /**
+     * True if "Fix All" can resolve the issue
+     */
+    public var canAutoFix: Bool
+    /**
+     * Whether this appears to be a first-time setup (no heartbeat ever seen)
+     */
+    public var isFirstRun: Bool
+    /**
+     * Detailed status for checklist display
+     */
+    public var binaryOk: Bool
+    public var configOk: Bool
+    public var firingOk: Bool
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * True if everything is working correctly
+         */ isHealthy: Bool,
+        /**
+            * The most critical issue to display (if any)
+            */ primaryIssue: HookIssue?,
+        /**
+            * True if "Fix All" can resolve the issue
+            */ canAutoFix: Bool,
+        /**
+            * Whether this appears to be a first-time setup (no heartbeat ever seen)
+            */ isFirstRun: Bool,
+        /**
+            * Detailed status for checklist display
+            */ binaryOk: Bool, configOk: Bool, firingOk: Bool
+    ) {
+        self.isHealthy = isHealthy
+        self.primaryIssue = primaryIssue
+        self.canAutoFix = canAutoFix
+        self.isFirstRun = isFirstRun
+        self.binaryOk = binaryOk
+        self.configOk = configOk
+        self.firingOk = firingOk
+    }
+}
+
+extension HookDiagnosticReport: Equatable, Hashable {
+    public static func == (lhs: HookDiagnosticReport, rhs: HookDiagnosticReport) -> Bool {
+        if lhs.isHealthy != rhs.isHealthy {
+            return false
+        }
+        if lhs.primaryIssue != rhs.primaryIssue {
+            return false
+        }
+        if lhs.canAutoFix != rhs.canAutoFix {
+            return false
+        }
+        if lhs.isFirstRun != rhs.isFirstRun {
+            return false
+        }
+        if lhs.binaryOk != rhs.binaryOk {
+            return false
+        }
+        if lhs.configOk != rhs.configOk {
+            return false
+        }
+        if lhs.firingOk != rhs.firingOk {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(isHealthy)
+        hasher.combine(primaryIssue)
+        hasher.combine(canAutoFix)
+        hasher.combine(isFirstRun)
+        hasher.combine(binaryOk)
+        hasher.combine(configOk)
+        hasher.combine(firingOk)
+    }
+}
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeHookDiagnosticReport: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> HookDiagnosticReport {
+        return
+            try HookDiagnosticReport(
+                isHealthy: FfiConverterBool.read(from: &buf),
+                primaryIssue: FfiConverterOptionTypeHookIssue.read(from: &buf),
+                canAutoFix: FfiConverterBool.read(from: &buf),
+                isFirstRun: FfiConverterBool.read(from: &buf),
+                binaryOk: FfiConverterBool.read(from: &buf),
+                configOk: FfiConverterBool.read(from: &buf),
+                firingOk: FfiConverterBool.read(from: &buf)
+            )
+    }
+
+    public static func write(_ value: HookDiagnosticReport, into buf: inout [UInt8]) {
+        FfiConverterBool.write(value.isHealthy, into: &buf)
+        FfiConverterOptionTypeHookIssue.write(value.primaryIssue, into: &buf)
+        FfiConverterBool.write(value.canAutoFix, into: &buf)
+        FfiConverterBool.write(value.isFirstRun, into: &buf)
+        FfiConverterBool.write(value.binaryOk, into: &buf)
+        FfiConverterBool.write(value.configOk, into: &buf)
+        FfiConverterBool.write(value.firingOk, into: &buf)
+    }
+}
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHookDiagnosticReport_lift(_ buf: RustBuffer) throws -> HookDiagnosticReport {
+    return try FfiConverterTypeHookDiagnosticReport.lift(buf)
+}
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHookDiagnosticReport_lower(_ value: HookDiagnosticReport) -> RustBuffer {
+    return FfiConverterTypeHookDiagnosticReport.lower(value)
 }
 
 /**
@@ -4419,6 +4589,117 @@ extension HookHealthStatus: Equatable, Hashable {}
 
 // Note that we don't yet support `indirect` for enums.
 // See https://github.com/mozilla/uniffi-rs/issues/396 for further discussion.
+/**
+ * The primary issue preventing hooks from working correctly.
+ *
+ * Issues are prioritized: policy blocks are shown first (can't auto-fix),
+ * then installation issues, then runtime issues.
+ */
+
+public enum HookIssue {
+    /**
+     * Hooks disabled by policy (disableAllHooks or allowManagedHooksOnly)
+     */
+    case policyBlocked(reason: String
+    )
+    /**
+     * The hud-hook binary is not installed
+     */
+    case binaryMissing
+    /**
+     * The hud-hook binary exists but crashes (e.g., macOS codesigning)
+     */
+    case binaryBroken(reason: String
+    )
+    /**
+     * Hook configuration missing or incomplete in settings.json
+     */
+    case configMissing
+    /**
+     * Hook script/binary version is outdated
+     */
+    case configOutdated(current: String, latest: String)
+    /**
+     * Hooks are installed but not firing (heartbeat stale or missing)
+     */
+    case notFiring(lastSeenSecs: UInt64?
+    )
+}
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeHookIssue: FfiConverterRustBuffer {
+    typealias SwiftType = HookIssue
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> HookIssue {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        case 1: return try .policyBlocked(reason: FfiConverterString.read(from: &buf)
+            )
+
+        case 2: return .binaryMissing
+
+        case 3: return try .binaryBroken(reason: FfiConverterString.read(from: &buf)
+            )
+
+        case 4: return .configMissing
+
+        case 5: return try .configOutdated(current: FfiConverterString.read(from: &buf), latest: FfiConverterString.read(from: &buf))
+
+        case 6: return try .notFiring(lastSeenSecs: FfiConverterOptionUInt64.read(from: &buf)
+            )
+
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: HookIssue, into buf: inout [UInt8]) {
+        switch value {
+        case let .policyBlocked(reason):
+            writeInt(&buf, Int32(1))
+            FfiConverterString.write(reason, into: &buf)
+
+        case .binaryMissing:
+            writeInt(&buf, Int32(2))
+
+        case let .binaryBroken(reason):
+            writeInt(&buf, Int32(3))
+            FfiConverterString.write(reason, into: &buf)
+
+        case .configMissing:
+            writeInt(&buf, Int32(4))
+
+        case let .configOutdated(current, latest):
+            writeInt(&buf, Int32(5))
+            FfiConverterString.write(current, into: &buf)
+            FfiConverterString.write(latest, into: &buf)
+
+        case let .notFiring(lastSeenSecs):
+            writeInt(&buf, Int32(6))
+            FfiConverterOptionUInt64.write(lastSeenSecs, into: &buf)
+        }
+    }
+}
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHookIssue_lift(_ buf: RustBuffer) throws -> HookIssue {
+    return try FfiConverterTypeHookIssue.lift(buf)
+}
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHookIssue_lower(_ value: HookIssue) -> RustBuffer {
+    return FfiConverterTypeHookIssue.lower(value)
+}
+
+extension HookIssue: Equatable, Hashable {}
+
+// Note that we don't yet support `indirect` for enums.
+// See https://github.com/mozilla/uniffi-rs/issues/396 for further discussion.
 
 public enum HookStatus {
     case notInstalled
@@ -4835,6 +5116,30 @@ private struct FfiConverterOptionTypeProjectStatus: FfiConverterRustBuffer {
 #if swift(>=5.8)
     @_documentation(visibility: private)
 #endif
+private struct FfiConverterOptionTypeHookIssue: FfiConverterRustBuffer {
+    typealias SwiftType = HookIssue?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeHookIssue.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeHookIssue.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
 private struct FfiConverterSequenceString: FfiConverterRustBuffer {
     typealias SwiftType = [String]
 
@@ -5185,6 +5490,9 @@ private var initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if uniffi_hud_core_checksum_method_hudengine_get_config() != 46018 {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if uniffi_hud_core_checksum_method_hudengine_get_hook_diagnostic() != 34425 {
         return InitializationResult.apiChecksumMismatch
     }
     if uniffi_hud_core_checksum_method_hudengine_get_hook_status() != 42858 {
