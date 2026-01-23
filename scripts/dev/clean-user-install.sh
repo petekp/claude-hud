@@ -70,6 +70,16 @@ if pgrep -f "ClaudeHUD" > /dev/null 2>&1; then
     ITEMS_TO_CLEAN+=("running-process")
 fi
 
+# 6. Check for UserDefaults (setupComplete flag)
+# UserDefaults may be stored under different bundle identifiers depending on version
+for prefs in "$HOME/Library/Preferences/com.claudehud.app.plist" \
+             "$HOME/Library/Preferences/ClaudeHUD.plist"; do
+    if [[ -f "$prefs" ]]; then
+        echo -e "${YELLOW}Found:${NC} App preferences: $(basename "$prefs")"
+        ITEMS_TO_CLEAN+=("$prefs")
+    fi
+done
+
 echo ""
 
 if [[ ${#ITEMS_TO_CLEAN[@]} -eq 0 ]]; then
