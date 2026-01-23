@@ -164,6 +164,17 @@ final class TerminalIntegration {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/bin/bash")
         process.arguments = ["-c", script]
+
+        // GUI apps don't inherit shell PATH - ensure common install locations are available
+        var env = ProcessInfo.processInfo.environment
+        let homebrewPaths = "/opt/homebrew/bin:/usr/local/bin"
+        if let existingPath = env["PATH"] {
+            env["PATH"] = "\(homebrewPaths):\(existingPath)"
+        } else {
+            env["PATH"] = homebrewPaths
+        }
+        process.environment = env
+
         try? process.run()
     }
 
