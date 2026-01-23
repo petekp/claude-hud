@@ -180,8 +180,8 @@ final class SetupRequirementsManager {
     private func installHooks() async {
         updateStep("hooks", status: .checking)
 
-        // First, install the bundled hook binary if needed
-        if let installError = installBundledHookBinary() {
+        // First, install the bundled hook binary using the shared helper
+        if let installError = HookInstaller.installBundledBinary(using: engine) {
             updateStep("hooks", status: .error(message: installError))
             return
         }
@@ -198,69 +198,5 @@ final class SetupRequirementsManager {
         } catch {
             updateStep("hooks", status: .error(message: "Installation failed: \(error.localizedDescription)"))
         }
-    }
-
-    /// Installs the bundled hud-hook binary to ~/.local/bin/hud-hook
-    /// Returns an error message if installation fails, nil on success
-    private func installBundledHookBinary() -> String? {
-        let fileManager = FileManager.default
-        let destDir = fileManager.homeDirectoryForCurrentUser
-            .appendingPathComponent(".local/bin")
-        let destPath = destDir.appendingPathComponent("hud-hook")
-
-        // Skip if already exists and is executable
-        if fileManager.fileExists(atPath: destPath.path) {
-            if fileManager.isExecutableFile(atPath: destPath.path) {
-                return nil // Already installed
-            }
-            // Exists but not executable - try to fix permissions
-            do {
-                try fileManager.setAttributes([.posixPermissions: 0o755], ofItemAtPath: destPath.path)
-                return nil
-            } catch {
-                return "Failed to set permissions on existing hud-hook: \(error.localizedDescription)"
-            }
-        }
-
-        // Find the bundled binary in our app bundle
-        guard let bundledBinary = Bundle.main.url(forResource: "hud-hook", withExtension: nil) else {
-            // Try Resources subdirectory
-            if let resourcesPath = Bundle.main.resourcePath {
-                let resourcesBinary = URL(fileURLWithPath: resourcesPath).appendingPathComponent("hud-hook")
-                if fileManager.fileExists(atPath: resourcesBinary.path) {
-                    return copyHookBinary(from: resourcesBinary, to: destPath, destDir: destDir)
-                }
-            }
-            return "Hook binary not bundled with this app. Please reinstall Claude HUD."
-        }
-
-        return copyHookBinary(from: bundledBinary, to: destPath, destDir: destDir)
-    }
-
-    private func copyHookBinary(from source: URL, to dest: URL, destDir: URL) -> String? {
-        let fileManager = FileManager.default
-
-        // Create ~/.local/bin if needed
-        do {
-            try fileManager.createDirectory(at: destDir, withIntermediateDirectories: true)
-        } catch {
-            return "Failed to create ~/.local/bin: \(error.localizedDescription)"
-        }
-
-        // Copy the binary
-        do {
-            try fileManager.copyItem(at: source, to: dest)
-        } catch {
-            return "Failed to copy hook binary: \(error.localizedDescription)"
-        }
-
-        // Make it executable
-        do {
-            try fileManager.setAttributes([.posixPermissions: 0o755], ofItemAtPath: dest.path)
-        } catch {
-            return "Failed to set hook binary permissions: \(error.localizedDescription)"
-        }
-
-        return nil // Success
     }
 }

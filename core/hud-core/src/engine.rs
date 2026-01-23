@@ -687,6 +687,27 @@ impl HudEngine {
         checker.check_dependency(&name)
     }
 
+    /// Installs the hook binary from a source path to ~/.local/bin/hud-hook.
+    ///
+    /// This is the platform-agnostic installation logic. The client is responsible
+    /// for finding the source binary (e.g., from macOS app bundle, Linux package, etc.).
+    ///
+    /// Returns success if:
+    /// - Binary already installed and executable
+    /// - Binary successfully copied and permissions set
+    ///
+    /// Returns error if:
+    /// - Source path doesn't exist
+    /// - Cannot create ~/.local/bin
+    /// - Cannot copy or set permissions
+    pub fn install_hook_binary_from_path(
+        &self,
+        source_path: String,
+    ) -> Result<InstallResult, HudFfiError> {
+        let checker = SetupChecker::new(self.storage.clone());
+        checker.install_binary_from_path(&source_path)
+    }
+
     /// Installs the session tracking hooks.
     ///
     /// This will:

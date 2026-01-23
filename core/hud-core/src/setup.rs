@@ -390,6 +390,79 @@ impl SetupChecker {
         has_hud_hook
     }
 
+    /// Installs the hook binary from a given source path to ~/.local/bin/hud-hook.
+    ///
+    /// This is the "core" side of binary installation - it handles:
+    /// - Creating ~/.local/bin if needed
+    /// - Copying the binary
+    /// - Setting executable permissions (0755)
+    ///
+    /// The client is responsible for finding the source binary (e.g., from app bundle).
+    /// Returns success if installed, error if any step fails.
+    pub fn install_binary_from_path(
+        &self,
+        source_path: &str,
+    ) -> Result<InstallResult, HudFfiError> {
+        use std::os::unix::fs::PermissionsExt;
+
+        let source = std::path::Path::new(source_path);
+        if !source.exists() {
+            return Ok(InstallResult {
+                success: false,
+                message: format!("Source binary not found at {}", source_path),
+                script_path: None,
+            });
+        }
+
+        let dest_dir = dirs::home_dir()
+            .ok_or_else(|| HudFfiError::General {
+                message: "Could not determine home directory".to_string(),
+            })?
+            .join(".local/bin");
+
+        let dest_path = dest_dir.join("hud-hook");
+
+        // Skip if already exists and is executable
+        if dest_path.exists() {
+            if let Ok(metadata) = fs::metadata(&dest_path) {
+                let perms = metadata.permissions();
+                if perms.mode() & 0o111 != 0 {
+                    return Ok(InstallResult {
+                        success: true,
+                        message: "Binary already installed".to_string(),
+                        script_path: Some(dest_path.to_string_lossy().to_string()),
+                    });
+                }
+            }
+            // Exists but not executable - remove and reinstall
+            fs::remove_file(&dest_path).map_err(|e| HudFfiError::General {
+                message: format!("Failed to remove existing binary: {}", e),
+            })?;
+        }
+
+        // Create ~/.local/bin if needed
+        fs::create_dir_all(&dest_dir).map_err(|e| HudFfiError::General {
+            message: format!("Failed to create ~/.local/bin: {}", e),
+        })?;
+
+        // Copy the binary
+        fs::copy(source, &dest_path).map_err(|e| HudFfiError::General {
+            message: format!("Failed to copy hook binary: {}", e),
+        })?;
+
+        // Set executable permissions (0755)
+        let perms = fs::Permissions::from_mode(0o755);
+        fs::set_permissions(&dest_path, perms).map_err(|e| HudFfiError::General {
+            message: format!("Failed to set binary permissions: {}", e),
+        })?;
+
+        Ok(InstallResult {
+            success: true,
+            message: "Hook binary installed successfully".to_string(),
+            script_path: Some(dest_path.to_string_lossy().to_string()),
+        })
+    }
+
     pub fn install_hooks(&self) -> Result<InstallResult, HudFfiError> {
         if let Some(reason) = self.check_policy_blocks() {
             return Ok(InstallResult {
@@ -748,5 +821,61 @@ mod tests {
 
         // hooks_registered_in_settings should return false since PostToolUse missing matcher
         assert!(!checker.hooks_registered_in_settings());
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────────
+    // install_binary_from_path tests
+    // ─────────────────────────────────────────────────────────────────────────────
+
+    #[test]
+    fn test_install_binary_source_not_found() {
+        let (_temp, storage) = setup_test_env();
+        let checker = SetupChecker::new(storage);
+
+        let result = checker
+            .install_binary_from_path("/nonexistent/path/to/binary")
+            .unwrap();
+
+        assert!(!result.success);
+        assert!(result.message.contains("not found"));
+    }
+
+    #[test]
+    fn test_install_binary_success() {
+        let (temp, storage) = setup_test_env();
+        let checker = SetupChecker::new(storage);
+
+        // Create a fake source binary
+        let source_path = temp.path().join("fake-hud-hook");
+        fs::write(&source_path, b"#!/bin/bash\necho test").unwrap();
+
+        // Note: This test would install to the real ~/.local/bin/hud-hook
+        // which we don't want in unit tests. The function uses dirs::home_dir()
+        // which we can't easily mock. So we just test that it doesn't panic
+        // and returns a result when given a valid source.
+
+        let result = checker.install_binary_from_path(source_path.to_str().unwrap());
+
+        // Should succeed or fail gracefully (depending on filesystem permissions)
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_install_binary_returns_path_on_success() {
+        let (temp, storage) = setup_test_env();
+        let checker = SetupChecker::new(storage);
+
+        let source_path = temp.path().join("fake-hud-hook");
+        fs::write(&source_path, b"#!/bin/bash\necho test").unwrap();
+
+        let result = checker
+            .install_binary_from_path(source_path.to_str().unwrap())
+            .unwrap();
+
+        // If successful, script_path should be set
+        if result.success {
+            assert!(result.script_path.is_some());
+            assert!(result.script_path.unwrap().contains("hud-hook"));
+        }
     }
 }

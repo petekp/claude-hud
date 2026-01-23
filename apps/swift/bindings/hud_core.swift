@@ -668,6 +668,23 @@ public protocol HudEngineProtocol: AnyObject {
     func getSuggestedProjects() throws -> [SuggestedProject]
 
     /**
+     * Installs the hook binary from a source path to ~/.local/bin/hud-hook.
+     *
+     * This is the platform-agnostic installation logic. The client is responsible
+     * for finding the source binary (e.g., from macOS app bundle, Linux package, etc.).
+     *
+     * Returns success if:
+     * - Binary already installed and executable
+     * - Binary successfully copied and permissions set
+     *
+     * Returns error if:
+     * - Source path doesn't exist
+     * - Cannot create ~/.local/bin
+     * - Cannot copy or set permissions
+     */
+    func installHookBinaryFromPath(sourcePath: String) throws -> InstallResult
+
+    /**
      * Installs the session tracking hooks.
      *
      * This will:
@@ -1108,6 +1125,28 @@ open class HudEngine:
     open func getSuggestedProjects() throws -> [SuggestedProject] {
         return try FfiConverterSequenceTypeSuggestedProject.lift(rustCallWithError(FfiConverterTypeHudFfiError.lift) {
             uniffi_hud_core_fn_method_hudengine_get_suggested_projects(self.uniffiClonePointer(), $0)
+        })
+    }
+
+    /**
+     * Installs the hook binary from a source path to ~/.local/bin/hud-hook.
+     *
+     * This is the platform-agnostic installation logic. The client is responsible
+     * for finding the source binary (e.g., from macOS app bundle, Linux package, etc.).
+     *
+     * Returns success if:
+     * - Binary already installed and executable
+     * - Binary successfully copied and permissions set
+     *
+     * Returns error if:
+     * - Source path doesn't exist
+     * - Cannot create ~/.local/bin
+     * - Cannot copy or set permissions
+     */
+    open func installHookBinaryFromPath(sourcePath: String) throws -> InstallResult {
+        return try FfiConverterTypeInstallResult.lift(rustCallWithError(FfiConverterTypeHudFfiError.lift) {
+            uniffi_hud_core_fn_method_hudengine_install_hook_binary_from_path(self.uniffiClonePointer(),
+                                                                              FfiConverterString.lower(sourcePath), $0)
         })
     }
 
@@ -5513,6 +5552,9 @@ private var initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if uniffi_hud_core_checksum_method_hudengine_get_suggested_projects() != 38527 {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if uniffi_hud_core_checksum_method_hudengine_install_hook_binary_from_path() != 61995 {
         return InitializationResult.apiChecksumMismatch
     }
     if uniffi_hud_core_checksum_method_hudengine_install_hooks() != 3648 {
