@@ -76,9 +76,7 @@ struct ClaudeHUDApp: App {
                 }
             }
 
-            CommandGroup(after: .toolbar) {
-                Divider()
-
+            CommandMenu("Window") {
                 Button("Vertical Layout") {
                     layoutMode = "vertical"
                     appState.layoutMode = .vertical
