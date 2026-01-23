@@ -56,15 +56,13 @@ The app includes Sparkle for automatic updates.
 ### Building from Source
 
 ```bash
-# Clone the repository
+# Clone and setup (installs toolchains, builds everything, configures hooks)
 git clone https://github.com/petekp/claude-hud.git
 cd claude-hud
+./scripts/dev/setup.sh
 
-# Build Rust core and Swift app
-cargo build -p hud-core --release
-cd apps/swift
-swift build -c release
-swift run
+# Run the app
+./scripts/dev/restart-app.sh
 ```
 
 ## Setup
@@ -167,11 +165,19 @@ cd apps/swift && swift run
 | Directory | Purpose |
 |-----------|---------|
 | `core/hud-core/` | Rust library with business logic |
+| `core/hud-hook/` | Rust CLI hook handler binary |
 | `apps/swift/` | SwiftUI application |
-| `.claude/docs/` | Internal documentation |
-| `docs/architecture-decisions/` | ADRs |
 | `scripts/` | Build, test, and release automation |
 | `tests/` | Integration tests |
+
+### Documentation
+
+| Location | What's There |
+|----------|--------------|
+| `CLAUDE.md` | Project context, commands, gotchas — **start here** |
+| `.claude/docs/` | Development workflows, architecture deep-dives, debugging |
+| `.claude/plans/` | Implementation plans for features |
+| `docs/` | Release procedures, ADRs, Claude Code CLI reference |
 
 ## How Session Tracking Works
 

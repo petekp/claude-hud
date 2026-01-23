@@ -31,13 +31,13 @@ swift run                         # Run app
 
 ## First-Time Setup
 
-New to the project? Run the bootstrap script to validate your environment and build:
+New to the project? Run the setup script to validate your environment and build:
 
 ```bash
-./scripts/bootstrap.sh
+./scripts/dev/setup.sh
 ```
 
-This checks macOS 14+, installs Xcode CLI tools and Rust if missing, builds the Rust core with proper dylib linkage, generates UniFFI bindings, and builds the Swift app.
+This checks macOS 14+, installs Xcode CLI tools and Rust if missing, builds the Rust core with proper dylib linkage, generates UniFFI bindings, builds the Swift app, and installs pre-commit hooks.
 
 **When to use:** Fresh clone, new machine, or after major dependency changes. For normal development iteration, use `./scripts/dev/restart-app.sh` instead.
 

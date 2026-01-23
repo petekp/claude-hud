@@ -93,6 +93,16 @@ cd apps/swift
 swift build
 
 # -----------------------------------------------------------------------------
+# Pre-commit hooks
+# Ensures formatting and tests run before each commit. Symlinks to the repo
+# script so updates propagate automatically.
+# -----------------------------------------------------------------------------
+
+echo "Installing pre-commit hooks..."
+cd "$PROJECT_ROOT"
+ln -sf ../../scripts/dev/pre-commit .git/hooks/pre-commit
+
+# -----------------------------------------------------------------------------
 # Copy dylib to debug build directory
 # Swift's debug build looks for the dylib at @loader_path (next to the
 # executable). Without this copy, the app crashes on launch with:
