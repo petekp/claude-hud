@@ -2,7 +2,7 @@ import SwiftUI
 
 struct SettingsView: View {
     @ObservedObject var updaterController: UpdaterController
-    @AppStorage("floatingMode") private var floatingMode = false
+    @AppStorage("floatingMode") private var floatingMode = true
     @AppStorage("alwaysOnTop") private var alwaysOnTop = false
     @AppStorage("playReadyChime") private var playReadyChime = true
 

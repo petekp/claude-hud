@@ -6,7 +6,7 @@ struct ClaudeHUDApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
     @StateObject private var appState = AppState()
     @StateObject private var updaterController = UpdaterController()
-    @AppStorage("floatingMode") private var floatingMode = false
+    @AppStorage("floatingMode") private var floatingMode = true
     @AppStorage("alwaysOnTop") private var alwaysOnTop = false
     @AppStorage("layoutMode") private var layoutMode = "vertical"
     @AppStorage("setupComplete") private var setupComplete = false
