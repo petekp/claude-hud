@@ -111,3 +111,10 @@ extension ProjectCreation {
         completedAt.flatMap { ISO8601DateFormatter().date(from: $0) }
     }
 }
+
+extension HookHealthStatus {
+    var isHealthy: Bool {
+        if case .healthy = self { return true }
+        return false
+    }
+}

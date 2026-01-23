@@ -268,6 +268,19 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Ensure the app can be activated and receive focus
         NSApp.setActivationPolicy(.regular)
+
+        // Re-validate hook setup on every launch
+        // If hooks aren't configured, reset setupComplete to show WelcomeView
+        validateHookSetup()
+    }
+
+    private func validateHookSetup() {
+        guard let engine = try? HudEngine() else { return }
+
+        let hookStatus = engine.getHookStatus()
+        if case .notInstalled = hookStatus {
+            UserDefaults.standard.set(false, forKey: "setupComplete")
+        }
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {

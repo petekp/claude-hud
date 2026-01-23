@@ -50,6 +50,15 @@ struct ProjectsView: View {
     var body: some View {
         ScrollView {
             LazyVStack(spacing: 8) {
+                // Hook health banner - show regardless of project state
+                if let health = appState.hookHealth, !health.status.isHealthy {
+                    HookHealthBanner(health: health) {
+                        appState.checkHookHealth()
+                        appState.refreshSessionStates()
+                    }
+                    .padding(.bottom, 4)
+                }
+
                 if appState.isLoading {
                     VStack(spacing: 8) {
                         SkeletonCard()
@@ -60,16 +69,6 @@ struct ProjectsView: View {
                 } else if appState.projects.isEmpty && appState.activeCreations.isEmpty {
                     EmptyProjectsView()
                 } else {
-                    // Hook health banner when hooks stop responding
-                    if let health = appState.hookHealth,
-                       case .stale = health.status {
-                        HookHealthBanner(health: health) {
-                            appState.checkHookHealth()
-                            appState.refreshSessionStates()
-                        }
-                        .padding(.bottom, 4)
-                    }
-
                     ActivityPanel()
 
                     if !activeProjects.isEmpty {

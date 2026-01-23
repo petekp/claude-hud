@@ -9,8 +9,15 @@ struct HookHealthBanner: View {
 
     var body: some View {
         switch health.status {
-        case .healthy, .unknown:
+        case .healthy:
             EmptyView()
+
+        case .unknown:
+            warningBanner(
+                icon: "questionmark.circle.fill",
+                message: "No hook activity detected yet",
+                showRetry: true
+            )
 
         case .stale(let lastSeenSecs):
             warningBanner(

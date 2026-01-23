@@ -161,6 +161,7 @@ class AppState: ObservableObject {
             sessionStateManager.configure(engine: engine)
             projectDetailsManager.configure(engine: engine)
             loadDashboard()
+            checkHookHealth()
             setupStalenessTimer()
             startTerminalTracking()
         } catch {
@@ -180,13 +181,11 @@ class AppState: ObservableObject {
                 self.refreshSessionStates()
                 self.checkIdeasFileChanges()
 
-                // Check hook health every 10 seconds when there are active sessions
+                // Check hook health every 10 seconds
                 self.hookHealthCheckCounter += 1
                 if self.hookHealthCheckCounter >= 10 {
                     self.hookHealthCheckCounter = 0
-                    if self.hasActiveSessions {
-                        self.checkHookHealth()
-                    }
+                    self.checkHookHealth()
                 }
             }
         }
