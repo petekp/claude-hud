@@ -29,6 +29,18 @@ swift run                         # Run app
 /Users/petepetrash/Code/claude-hud/scripts/dev/restart-app.sh
 ```
 
+## First-Time Setup
+
+New to the project? Run the bootstrap script to validate your environment and build:
+
+```bash
+./scripts/bootstrap.sh
+```
+
+This checks macOS 14+, installs Xcode CLI tools and Rust if missing, builds the Rust core with proper dylib linkage, generates UniFFI bindings, and builds the Swift app.
+
+**When to use:** Fresh clone, new machine, or after major dependency changes. For normal development iteration, use `./scripts/dev/restart-app.sh` instead.
+
 ## Distribution
 
 Release builds require notarization for Gatekeeper approval. Scripts handle the full workflow.
@@ -37,7 +49,9 @@ Release builds require notarization for Gatekeeper approval. Scripts handle the 
 
 ```bash
 ./scripts/release/bump-version.sh patch          # Bump version
-./scripts/release/build-distribution.sh          # Build + sign + notarize ZIP
+./scripts/release/build-distribution.sh --skip-notarization  # Build without notarize
+./scripts/release/verify-app-bundle.sh           # VERIFY before release!
+./scripts/release/build-distribution.sh          # Full build + notarize
 ./scripts/release/create-dmg.sh                  # Create + notarize DMG
 ./scripts/release/generate-appcast.sh            # Update Sparkle feed
 
@@ -49,13 +63,15 @@ gh release create v0.x.x \
   --notes "Release notes"
 ```
 
-### First-Time Setup
+**IMPORTANT:** See `docs/PRE_RELEASE_CHECKLIST.md` for the full verification checklist. Test from an isolated location (`/tmp`) before releasing—dev environment masks issues.
+
+### Release Setup (One-Time)
 
 ```bash
 ./scripts/sync-hooks.sh --force         # Install hook binary and wrapper script
 ```
 
-Notarization credentials (one-time):
+Notarization credentials:
 ```bash
 xcrun notarytool store-credentials "ClaudeHUD" \
   --apple-id "your@email.com" \
@@ -70,6 +86,10 @@ See `docs/NOTARIZATION_SETUP.md` for full guide.
 - **Sparkle.framework must be bundled** — Swift Package Manager links but doesn't embed frameworks. The build script copies it to `Contents/Frameworks/` and signs it.
 - **Private repos break auto-updates** — Sparkle fetches appcast.xml anonymously; private GitHub repos return 404. Repo must be public for updates to work.
 - **Always run `cargo fmt`** — CI enforces formatting; commit will fail otherwise.
+- **UniFFI bindings must be regenerated for releases** — The build script auto-regenerates Swift bindings from the Rust dylib. If you see "UniFFI API checksum mismatch" crashes, the bindings are stale. The script handles this, but manual builds need: `cargo run --bin uniffi-bindgen generate --library target/release/libhud_core.dylib --language swift --out-dir apps/swift/bindings/` then copy to `Sources/ClaudeHUD/Bridge/`.
+- **SPM resource bundle must be copied** — `Bundle.module` only works when running via SPM. The build script copies `ClaudeHUD_ClaudeHUD.bundle` to `Contents/Resources/` so resources load correctly in distributed builds.
+- **Never use `Bundle.module` directly** — Use `ResourceBundle.url(forResource:withExtension:)` instead. `Bundle.module` is SPM-generated code that crashes in distributed builds. The `ResourceBundle` helper finds resources in both dev and release contexts.
+- **ZIP archives must exclude AppleDouble files** — macOS extended attributes create `._*` files that break code signatures. The build script uses `ditto --norsrc --noextattr` to prevent this. If users see "app is damaged", check for `._*` files in the extracted ZIP.
 
 ## Structure
 
