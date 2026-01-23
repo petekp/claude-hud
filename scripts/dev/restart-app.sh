@@ -13,6 +13,19 @@ sleep 0.3
 cd "$PROJECT_ROOT"
 cargo build -p hud-core --release || { echo "Rust build failed"; exit 1; }
 
+# Always regenerate UniFFI bindings to prevent checksum mismatch crashes
+cargo run --bin uniffi-bindgen generate \
+    --library target/release/libhud_core.dylib \
+    --language swift \
+    --out-dir apps/swift/bindings/ 2>/dev/null
+
+# Copy bindings to Bridge directory
+cp apps/swift/bindings/hud_core.swift apps/swift/Sources/ClaudeHUD/Bridge/
+
+# Copy dylib to Swift build directory
+mkdir -p apps/swift/.build/arm64-apple-macosx/debug
+cp target/release/libhud_core.dylib apps/swift/.build/arm64-apple-macosx/debug/
+
 cd "$PROJECT_ROOT/apps/swift"
 swift build || { echo "Swift build failed"; exit 1; }
 
