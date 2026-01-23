@@ -76,11 +76,11 @@ echo -e "${GREEN}✓ Found certificate: $SIGNING_NAME${NC}"
 echo -e "${GREEN}  Identity: $SIGNING_IDENTITY${NC}"
 echo ""
 
-# Step 1: Build Rust library (release mode)
-echo -e "${YELLOW}Step 1/7: Building Rust library...${NC}"
+# Step 1: Build Rust libraries (release mode)
+echo -e "${YELLOW}Step 1/8: Building Rust libraries...${NC}"
 cd "$PROJECT_ROOT"
-cargo build -p hud-core --release
-echo -e "${GREEN}✓ Rust library built${NC}"
+cargo build -p hud-core -p hud-hook --release
+echo -e "${GREEN}✓ Rust libraries built (hud-core + hud-hook)${NC}"
 echo ""
 
 # Step 2: Regenerate UniFFI Swift bindings
@@ -156,6 +156,16 @@ else
     echo -e "${YELLOW}Warning: Resource bundle not found at $RESOURCE_BUNDLE${NC}"
 fi
 
+# Copy hud-hook binary (for auto-installation on first run)
+HUD_HOOK_BINARY="$PROJECT_ROOT/target/release/hud-hook"
+if [ -f "$HUD_HOOK_BINARY" ]; then
+    cp "$HUD_HOOK_BINARY" "$APP_BUNDLE/Contents/Resources/hud-hook"
+    echo -e "${GREEN}✓ hud-hook binary copied${NC}"
+else
+    echo -e "${RED}ERROR: hud-hook binary not found at $HUD_HOOK_BINARY${NC}"
+    exit 1
+fi
+
 # Copy Info.plist (using variables for version)
 cat > "$APP_BUNDLE/Contents/Info.plist" << EOF
 <?xml version="1.0" encoding="UTF-8"?>
@@ -211,6 +221,12 @@ codesign --force --sign "$SIGNING_IDENTITY" \
     --options runtime \
     --timestamp \
     "$APP_BUNDLE/Contents/Frameworks/libhud_core.dylib"
+
+# Sign the hud-hook binary (critical for Gatekeeper approval when copied to ~/.local/bin)
+codesign --force --sign "$SIGNING_IDENTITY" \
+    --options runtime \
+    --timestamp \
+    "$APP_BUNDLE/Contents/Resources/hud-hook"
 
 # Sign Sparkle.framework (must sign before the app bundle)
 codesign --force --sign "$SIGNING_IDENTITY" \
