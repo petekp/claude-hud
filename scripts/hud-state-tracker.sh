@@ -4,11 +4,13 @@
 # Thin wrapper that delegates to the Rust binary for Claude Code hook handling.
 # The Rust binary handles all state tracking, lock management, and file activity.
 #
-# STORAGE (unchanged):
-#   ~/.capacitor/sessions.json      State file (session records)
-#   ~/.capacitor/sessions/          Lock directories (liveness detection)
-#   ~/.capacitor/file-activity.json File activity tracking
-#   ~/.capacitor/hud-hook-debug.log Debug log
+# STORAGE:
+#   ~/.capacitor/sessions.json        State file (session records)
+#   ~/.capacitor/sessions/            Lock directories (liveness detection)
+#   ~/.capacitor/ended-sessions/      Tombstones (prevents post-end event races)
+#   ~/.capacitor/file-activity.json   File activity tracking
+#   ~/.capacitor/hud-hook-heartbeat   Health monitoring (touched on every event)
+#   ~/.capacitor/hud-hook-debug.log   Debug log
 #
 # STATE MACHINE (handled by Rust binary):
 #   SessionStart           → ready    (+ creates lock)
