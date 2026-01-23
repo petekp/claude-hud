@@ -92,6 +92,16 @@ echo "Building Swift app..."
 cd apps/swift
 swift build
 
+# -----------------------------------------------------------------------------
+# Copy dylib to debug build directory
+# Swift's debug build looks for the dylib at @loader_path (next to the
+# executable). Without this copy, the app crashes on launch with:
+# "Library not loaded: @rpath/libhud_core.dylib"
+# -----------------------------------------------------------------------------
+
+cp "$PROJECT_ROOT/target/release/libhud_core.dylib" \
+   "$PROJECT_ROOT/apps/swift/.build/arm64-apple-macosx/debug/"
+
 echo ""
 echo "=== Bootstrap complete! ==="
 echo "Run: ./scripts/dev/restart-app.sh"

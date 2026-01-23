@@ -83,6 +83,7 @@ See `docs/NOTARIZATION_SETUP.md` for full guide.
 
 ### Gotchas
 
+- **Dev builds need dylib copied** — After bootstrap or Rust rebuilds, run `cp target/release/libhud_core.dylib apps/swift/.build/arm64-apple-macosx/debug/`. Without this, the app crashes with "Library not loaded: @rpath/libhud_core.dylib". The bootstrap script handles this automatically.
 - **Sparkle.framework must be bundled** — Swift Package Manager links but doesn't embed frameworks. The build script copies it to `Contents/Frameworks/` and signs it.
 - **Private repos break auto-updates** — Sparkle fetches appcast.xml anonymously; private GitHub repos return 404. Repo must be public for updates to work.
 - **Always run `cargo fmt`** — CI enforces formatting; commit will fail otherwise.
