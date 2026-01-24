@@ -116,28 +116,50 @@ else
 fi
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Step 5: Install hud-hook binary
+# Step 5: Remove installed hud-hook binary
 #
-# The Rust hook handler binary must be installed for hooks to work.
+# For true first-time experience testing, we remove the binary from ~/.local/bin.
+# The app's onboarding flow should install it from the bundled copy.
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""
-echo "→ Installing hud-hook binary..."
-"$REPO_ROOT/scripts/sync-hooks.sh" 2>&1 | grep -E "^(  ✓|  Building)" | head -5
-echo "  ✓ Hook binary installed"
+echo "→ Removing installed hud-hook binary (for true first-time experience)..."
+if [ -f "$HOME/.local/bin/hud-hook" ]; then
+    rm "$HOME/.local/bin/hud-hook"
+    echo "  ✓ Removed ~/.local/bin/hud-hook"
+else
+    echo "  ✓ ~/.local/bin/hud-hook already removed"
+fi
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Step 6: Rebuild Swift app
+# Step 6: Build and bundle hud-hook for development
+#
+# In release builds, hud-hook is bundled in Contents/Resources/. For dev builds,
+# we copy it to the Swift build directory so Bundle.main can find it.
+# ─────────────────────────────────────────────────────────────────────────────
+echo ""
+echo "→ Building hud-hook for development bundle..."
+cd "$REPO_ROOT"
+cargo build -p hud-hook --release 2>&1 | tail -3
+echo "  ✓ hud-hook built"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Step 7: Rebuild Swift app and bundle hud-hook
 #
 # Ensures we're testing the current code, not a stale build.
+# Copy hud-hook to Swift build directory so Bundle.main can find it.
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""
 echo "→ Building Swift app..."
 cd "$REPO_ROOT/apps/swift"
 swift build 2>&1 | tail -3
-echo "  ✓ Swift build complete"
+
+# Copy hud-hook to Swift build directory (mimics release bundle structure)
+SWIFT_DEBUG_DIR=$(swift build --show-bin-path)
+cp "$REPO_ROOT/target/release/hud-hook" "$SWIFT_DEBUG_DIR/"
+echo "  ✓ Swift build complete (hud-hook bundled)"
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Step 7: Launch the app
+# Step 8: Launch the app
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""
 echo "╔══════════════════════════════════════════════════════════════╗"

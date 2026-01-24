@@ -43,6 +43,13 @@ SWIFT_DEBUG_DIR=$(swift build --show-bin-path)
 mkdir -p "$SWIFT_DEBUG_DIR"
 cp "$PROJECT_ROOT/target/release/libhud_core.dylib" "$SWIFT_DEBUG_DIR/"
 
+# Copy hud-hook binary so Bundle.main can find it (matches release bundle structure)
+if [ -f "$HOME/.local/bin/hud-hook" ]; then
+    cp "$HOME/.local/bin/hud-hook" "$SWIFT_DEBUG_DIR/"
+elif [ -f "$PROJECT_ROOT/target/release/hud-hook" ]; then
+    cp "$PROJECT_ROOT/target/release/hud-hook" "$SWIFT_DEBUG_DIR/"
+fi
+
 swift build || { echo "Swift build failed"; exit 1; }
 
 swift run 2>&1 &

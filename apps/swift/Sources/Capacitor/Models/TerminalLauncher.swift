@@ -43,60 +43,18 @@ enum TerminalApp: CaseIterable {
 }
 
 @MainActor
-final class TerminalIntegration {
+final class TerminalLauncher {
     private enum Constants {
-        static let pollingIntervalNanos: UInt64 = 500_000_000
-        static let trackerPauseSeconds: TimeInterval = 2.0
         static let activationDelaySeconds: Double = 0.3
     }
 
-    private let terminalTracker = TerminalTracker()
-    private var trackerUpdateTask: _Concurrency.Task<Void, Never>?
-
-    private(set) var activeProjectPath: String?
-    private var ignoreTrackerUpdatesUntil: Date?
-
-    // MARK: - Tracking
-
-    func startTracking(projects: [Project]) async {
-        await terminalTracker.startTracking(projects: projects)
-        startTrackerPolling()
-    }
-
-    func updateProjectMapping(_ projects: [Project]) {
+    func launchTerminal(for project: Project) {
         _Concurrency.Task {
-            await terminalTracker.updateProjectMapping(projects)
+            let claudePath = await getClaudePath()
+            runBashScript(TerminalScripts.launch(project: project, claudePath: claudePath))
+            scheduleTerminalActivation()
         }
     }
-
-    private func startTrackerPolling() {
-        trackerUpdateTask = _Concurrency.Task { @MainActor [weak self] in
-            while !_Concurrency.Task.isCancelled {
-                guard let self else { break }
-
-                if let pauseUntil = self.ignoreTrackerUpdatesUntil {
-                    if Date() < pauseUntil {
-                        try? await _Concurrency.Task.sleep(nanoseconds: Constants.pollingIntervalNanos)
-                        continue
-                    }
-                    self.ignoreTrackerUpdatesUntil = nil
-                }
-
-                if let path = await self.terminalTracker.getActiveProjectPath() {
-                    self.activeProjectPath = path
-                }
-
-                try? await _Concurrency.Task.sleep(nanoseconds: Constants.pollingIntervalNanos)
-            }
-        }
-    }
-
-    private func setActiveProject(_ path: String) {
-        activeProjectPath = path
-        ignoreTrackerUpdatesUntil = Date().addingTimeInterval(Constants.trackerPauseSeconds)
-    }
-
-    // MARK: - Terminal Activation
 
     func activateTerminalApp() {
         if let frontmost = NSWorkspace.shared.frontmostApplication,
@@ -105,6 +63,13 @@ final class TerminalIntegration {
             return
         }
         activateTerminalInPriorityOrder()
+    }
+
+    private func getClaudePath() async -> String {
+        if let path = await CapacitorConfig.shared.getClaudePath() {
+            return path
+        }
+        return "/opt/homebrew/bin/claude"
     }
 
     private func isTerminalApp(_ app: NSRunningApplication) -> Bool {
@@ -132,30 +97,11 @@ final class TerminalIntegration {
         }
     }
 
-    // MARK: - Terminal Launch
-
-    func launchTerminal(for project: Project) {
-        setActiveProject(project.path)
-        _Concurrency.Task {
-            let claudePath = await getClaudePath()
-            runBashScript(TerminalScripts.launch(project: project, claudePath: claudePath))
-            scheduleTerminalActivation()
-        }
-    }
-
-    private func getClaudePath() async -> String {
-        if let path = await CapacitorConfig.shared.getClaudePath() {
-            return path
-        }
-        return "/opt/homebrew/bin/claude"
-    }
-
     private func runBashScript(_ script: String) {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/bin/bash")
         process.arguments = ["-c", script]
 
-        // GUI apps don't inherit shell PATH - ensure common install locations are available
         var env = ProcessInfo.processInfo.environment
         let homebrewPaths = "/opt/homebrew/bin:/usr/local/bin"
         if let existingPath = env["PATH"] {
@@ -174,8 +120,6 @@ final class TerminalIntegration {
         }
     }
 }
-
-// MARK: - Terminal Scripts
 
 private enum TerminalScripts {
     static func launch(project: Project, claudePath: String) -> String {

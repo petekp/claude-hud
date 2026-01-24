@@ -24,6 +24,7 @@ struct SetupStep: Identifiable {
     let title: String
     let description: String
     var status: SetupStepStatus
+    var isOptional: Bool = false
 
     var statusDetail: String {
         switch status {
@@ -48,10 +49,12 @@ final class SetupRequirementsManager {
     private(set) var claudePath: String?
     private(set) var tmuxPath: String?
     private(set) var isRunningChecks = false
+    var showShellInstructions = false
     private let engine: HudEngine
+    private weak var shellStateStore: ShellStateStore?
 
     var allComplete: Bool {
-        steps.allSatisfy { $0.status.isComplete }
+        steps.filter { !$0.isOptional }.allSatisfy { $0.status.isComplete }
     }
 
     var hasBlockingError: Bool {
@@ -62,10 +65,11 @@ final class SetupRequirementsManager {
         steps.firstIndex { !$0.status.isComplete }
     }
 
-    init(engine: HudEngine? = nil) {
+    init(engine: HudEngine? = nil, shellStateStore: ShellStateStore? = nil) {
         self.engine = engine ?? (try? HudEngine()) ?? {
             fatalError("Failed to create HudEngine")
         }()
+        self.shellStateStore = shellStateStore
         setupSteps()
     }
 
@@ -82,6 +86,13 @@ final class SetupRequirementsManager {
                 title: "Session hooks",
                 description: "Required for live state tracking",
                 status: .pending
+            ),
+            SetupStep(
+                id: "shell",
+                title: "Shell integration",
+                description: "Track active project across terminals",
+                status: .pending,
+                isOptional: true
             )
         ]
     }
@@ -98,6 +109,25 @@ final class SetupRequirementsManager {
         }
 
         await updateHookStatus(setupStatus.hooks)
+        updateShellStatus()
+    }
+
+    private func updateShellStatus() {
+        updateStep("shell", status: .checking)
+
+        let shellType = ShellType.current
+
+        if let store = shellStateStore, ShellIntegrationChecker.isConfigured(shellStateStore: store) {
+            updateStep("shell", status: .completed(detail: "Receiving shell events"))
+        } else if ShellIntegrationChecker.stateFileExists() {
+            updateStep("shell", status: .completed(detail: "Receiving shell events"))
+        } else if shellType.isSnippetInstalled {
+            updateStep("shell", status: .completed(detail: "\(shellType.configFile) configured"))
+        } else if shellType == .unsupported {
+            updateStep("shell", status: .completed(detail: "Skipped: unsupported shell"))
+        } else {
+            updateStep("shell", status: .actionNeeded(message: "Optional: add to \(shellType.configFile)"))
+        }
     }
 
     private func updateDependencyStatus(_ dep: DependencyStatus) async {
@@ -153,6 +183,8 @@ final class SetupRequirementsManager {
         switch stepId {
         case "hooks":
             await installHooks()
+        case "shell":
+            showShellInstructions = true
         default:
             break
         }
@@ -166,9 +198,16 @@ final class SetupRequirementsManager {
         case "hooks":
             let status = engine.getHookStatus()
             await updateHookStatus(status)
+        case "shell":
+            updateShellStatus()
         default:
             break
         }
+    }
+
+    func dismissShellInstructions() {
+        showShellInstructions = false
+        updateShellStatus()
     }
 
     private func updateStep(_ id: String, status: SetupStepStatus) {

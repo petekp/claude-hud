@@ -4,6 +4,7 @@ import AppKit
 struct WelcomeView: View {
     @State private var manager = SetupRequirementsManager()
     @State private var checkID = UUID()
+    var shellStateStore: ShellStateStore?
     var onComplete: () -> Void
 
     private var logomarkImage: NSImage? {
@@ -41,8 +42,19 @@ struct WelcomeView: View {
             await manager.runChecks()
         }
         .onAppear {
-            manager = SetupRequirementsManager()
+            manager = SetupRequirementsManager(shellStateStore: shellStateStore)
             checkID = UUID()
+        }
+        .onChange(of: shellStateStore?.state?.shells.count) { _, _ in
+            _Concurrency.Task {
+                await manager.retryStep("shell")
+            }
+        }
+        .sheet(isPresented: $manager.showShellInstructions) {
+            ShellInstructionsSheet(
+                isPresented: $manager.showShellInstructions,
+                onDismiss: { manager.dismissShellInstructions() }
+            )
         }
     }
 
@@ -78,6 +90,7 @@ struct WelcomeView: View {
                 SetupStepRow(
                     step: step,
                     isCurrentStep: manager.currentStepIndex == index,
+                    actionLabel: step.id == "shell" ? "Setup" : "Install",
                     onAction: {
                         _Concurrency.Task {
                             await manager.executeStep(step.id)

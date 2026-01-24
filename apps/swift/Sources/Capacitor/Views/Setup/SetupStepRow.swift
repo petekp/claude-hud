@@ -3,6 +3,7 @@ import SwiftUI
 struct SetupStepRow: View {
     let step: SetupStep
     let isCurrentStep: Bool
+    var actionLabel: String = "Install"
     var onAction: (() -> Void)?
     var onRetry: (() -> Void)?
 
@@ -69,7 +70,7 @@ struct SetupStepRow: View {
         switch step.status {
         case .actionNeeded:
             if let onAction {
-                Button("Install", action: onAction)
+                Button(actionLabel, action: onAction)
                     .buttonStyle(.bordered)
                     .controlSize(.small)
             }

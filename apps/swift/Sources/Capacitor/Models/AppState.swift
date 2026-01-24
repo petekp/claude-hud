@@ -80,9 +80,12 @@ class AppState: ObservableObject {
 
     // MARK: - Managers (extracted for cleaner architecture)
 
-    let terminalIntegration = TerminalIntegration()
+    let shellStateStore = ShellStateStore()
+    let terminalLauncher = TerminalLauncher()
     let sessionStateManager = SessionStateManager()
     let projectDetailsManager = ProjectDetailsManager()
+
+    private(set) var activeProjectResolver: ActiveProjectResolver!
 
     // MARK: - Private State
 
@@ -95,7 +98,11 @@ class AppState: ObservableObject {
     // MARK: - Computed Properties (bridging to managers)
 
     var activeProjectPath: String? {
-        terminalIntegration.activeProjectPath
+        activeProjectResolver?.activeProject?.path
+    }
+
+    var activeSource: ActiveSource {
+        activeProjectResolver?.activeSource ?? .none
     }
 
     // MARK: - Initialization
@@ -105,10 +112,15 @@ class AppState: ObservableObject {
         loadDormantOverrides()
         loadProjectOrder()
         loadCreations()
+
+        activeProjectResolver = ActiveProjectResolver(
+            sessionStateManager: sessionStateManager,
+            shellStateStore: shellStateStore
+        )
+
         do {
             engine = try HudEngine()
 
-            // Run startup cleanup to remove stale locks and old session records
             let cleanupStats = engine!.runStartupCleanup()
             if cleanupStats.locksRemoved > 0 || cleanupStats.sessionsRemoved > 0 {
                 print("[Startup] Cleaned up \(cleanupStats.locksRemoved) stale locks, \(cleanupStats.sessionsRemoved) old sessions")
@@ -119,7 +131,7 @@ class AppState: ObservableObject {
             loadDashboard()
             checkHookDiagnostic()
             setupStalenessTimer()
-            startTerminalTracking()
+            startShellTracking()
         } catch {
             self.error = error.localizedDescription
             self.isLoading = false
@@ -147,10 +159,9 @@ class AppState: ObservableObject {
         }
     }
 
-    private func startTerminalTracking() {
-        _Concurrency.Task {
-            await terminalIntegration.startTracking(projects: projects)
-        }
+    private func startShellTracking() {
+        shellStateStore.startPolling()
+        activeProjectResolver.updateProjects(projects)
     }
 
     // MARK: - Data Loading
@@ -162,7 +173,7 @@ class AppState: ObservableObject {
         do {
             dashboard = try engine.loadDashboard()
             projects = dashboard?.projects ?? []
-            terminalIntegration.updateProjectMapping(projects)
+            activeProjectResolver.updateProjects(projects)
             refreshSessionStates()
             refreshProjectStatuses()
             projectDetailsManager.loadAllIdeas(for: projects)
@@ -175,6 +186,7 @@ class AppState: ObservableObject {
 
     func refreshSessionStates() {
         sessionStateManager.refreshSessionStates(for: projects)
+        activeProjectResolver.resolve()
         objectWillChange.send()
     }
 
@@ -376,10 +388,10 @@ class AppState: ObservableObject {
         engine?.getProjectStatus(projectPath: project.path)
     }
 
-    // MARK: - Terminal Operations (delegating to TerminalIntegration)
+    // MARK: - Terminal Operations
 
     func launchTerminal(for project: Project) {
-        terminalIntegration.launchTerminal(for: project)
+        terminalLauncher.launchTerminal(for: project)
         objectWillChange.send()
     }
 

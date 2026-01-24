@@ -93,6 +93,7 @@ See `docs/NOTARIZATION_SETUP.md` for full guide.
 - **SPM resource bundle must be copied** — `Bundle.module` only works when running via SPM. The build script copies `Capacitor_Capacitor.bundle` to `Contents/Resources/` so resources load correctly in distributed builds.
 - **Never use `Bundle.module` directly** — Use `ResourceBundle.url(forResource:withExtension:)` instead. `Bundle.module` is SPM-generated code that crashes in distributed builds. The `ResourceBundle` helper finds resources in both dev and release contexts.
 - **ZIP archives must exclude AppleDouble files** — macOS extended attributes create `._*` files that break code signatures. The build script uses `ditto --norsrc --noextattr` to prevent this. If users see "app is damaged", check for `._*` files in the extracted ZIP.
+- **Rust ISO8601 timestamps need custom Swift decoder** — Rust's `chrono` writes timestamps with microsecond precision (`2026-01-24T22:34:54.629248Z`), but Swift's default `.iso8601` decoder only handles second-precision. Use a custom decoder with `ISO8601DateFormatter` configured with `.withFractionalSeconds`. See `ShellStateStore.swift` for the pattern.
 
 ## Structure
 
