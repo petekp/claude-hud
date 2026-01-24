@@ -69,11 +69,14 @@ struct ProjectCardView: View {
     }
 
     private var displaySummary: String? {
-        // If there's a current summary, use it. Otherwise fall back to last known summary.
+        // Priority: live session summary > cached summary > stats summary from JSONL
         if let current = sessionState?.workingOn, !current.isEmpty {
             return current
         }
-        return lastKnownSummary
+        if let cached = lastKnownSummary, !cached.isEmpty {
+            return cached
+        }
+        return project.stats?.latestSummary
     }
 
     private var glassConfigForHandlers: GlassConfig? {

@@ -47,10 +47,14 @@ struct DockProjectCard: View {
     }
 
     private var displaySummary: String? {
+        // Priority: live session summary > cached summary > stats summary from JSONL
         if let current = sessionState?.workingOn, !current.isEmpty {
             return current
         }
-        return lastKnownSummary
+        if let cached = lastKnownSummary, !cached.isEmpty {
+            return cached
+        }
+        return project.stats?.latestSummary
     }
 
     private var glassConfigForHandlers: GlassConfig? {
