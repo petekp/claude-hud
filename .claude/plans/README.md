@@ -13,9 +13,7 @@ Implementation plans for Capacitor. Files are prefixed by status.
 
 ## Active Plans
 
-| Plan | Description |
-|------|-------------|
-| `ACTIVE-state-detection-simplification.md` | Simplify state detection architecture. Phase 1 done (locks in `~/.capacitor/`), Phases 2-4 pending (eliminate sessions.json, add flock, unify binaries). |
+None currently.
 
 ## Done
 
