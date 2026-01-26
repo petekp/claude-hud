@@ -24,8 +24,6 @@ struct DockProjectCard: View {
     @State private var flashOpacity: Double = 0
     @State private var previousState: SessionState?
     @State private var lastChimeTime: Date?
-    @State private var lastKnownSummary: String?
-    @State private var summaryHighlighted = false
 
     private let cornerRadius: CGFloat = 10
     private let chimeCooldown: TimeInterval = 3.0
@@ -44,20 +42,6 @@ struct DockProjectCard: View {
 
     private var isWorking: Bool {
         currentState == .working
-    }
-
-    /// Three-tier fallback ensures cards always show meaningful context:
-    /// 1. Live session summary (workingOn) — updated by hooks during active sessions
-    /// 2. Cached summary (lastKnownSummary) — retained after session ends, before next refresh
-    /// 3. Stats summary (latestSummary) — parsed from JSONL transcript history
-    private var displaySummary: String? {
-        if let current = sessionState?.workingOn, !current.isEmpty {
-            return current
-        }
-        if let cached = lastKnownSummary, !cached.isEmpty {
-            return cached
-        }
-        return project.stats?.latestSummary
     }
 
     private var glassConfigForHandlers: GlassConfig? {
@@ -149,17 +133,6 @@ struct DockProjectCard: View {
             .accessibilityElement(children: .combine)
             .accessibilityLabel(project.name)
             .accessibilityValue(statusDescription)
-            .onChange(of: sessionState?.workingOn) { oldValue, newValue in
-                if let summary = newValue, !summary.isEmpty {
-                    lastKnownSummary = summary
-                    if oldValue != newValue {
-                        summaryHighlighted = true
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
-                            summaryHighlighted = false
-                        }
-                    }
-                }
-            }
     }
 
     private var cardContent: some View {
@@ -177,33 +150,21 @@ struct DockProjectCard: View {
                 Spacer(minLength: 0)
             }
 
-            if let state = currentState {
-                StatusIndicator(state: state)
-                    .padding(.top, 4)
-            }
+            StatusChipsRow(sessionState: sessionState, style: .compact)
+                .padding(.top, 4)
 
             Spacer(minLength: 0)
 
-            if let summary = displaySummary, !summary.isEmpty {
-                Text(summary)
-                    .font(AppTypography.body)
-                    .foregroundColor(.white.opacity(summaryHighlighted ? 0.9 : 0.55))
-                    .lineLimit(2)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .contentTransition(reduceMotion ? .identity : .interpolate)
-                    .animation(reduceMotion ? nil : .easeInOut(duration: 0.3), value: displaySummary)
-                    .animation(reduceMotion ? nil : .easeOut(duration: 0.8), value: summaryHighlighted)
-            }
-
-            if projectStatus?.blocker != nil || isStale {
-                HStack(spacing: 6) {
-                    if let blocker = projectStatus?.blocker, !blocker.isEmpty {
-                        BlockerBadge(style: .compact)
-                    }
-                    if isStale {
-                        StaleBadge(style: .compact)
-                    }
+            if let blocker = projectStatus?.blocker, !blocker.isEmpty {
+                HStack(spacing: 4) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .font(AppTypography.captionSmall)
+                    Text(blocker)
+                        .font(AppTypography.label)
+                        .lineLimit(1)
                 }
+                .foregroundColor(Color(hue: 0, saturation: 0.7, brightness: 0.85))
+                .padding(.top, 4)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)

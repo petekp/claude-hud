@@ -142,6 +142,7 @@ class AppState: ObservableObject {
     // MARK: - Setup
 
     private var hookHealthCheckCounter = 0
+    private var statsRefreshCounter = 0
 
     private func setupStalenessTimer() {
         stalenessTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
@@ -155,6 +156,13 @@ class AppState: ObservableObject {
                 if self.hookHealthCheckCounter >= 10 {
                     self.hookHealthCheckCounter = 0
                     self.checkHookDiagnostic()
+                }
+
+                // Refresh stats (including latestSummary from JSONL) every 30 seconds
+                self.statsRefreshCounter += 1
+                if self.statsRefreshCounter >= 30 {
+                    self.statsRefreshCounter = 0
+                    self.loadDashboard()
                 }
             }
         }

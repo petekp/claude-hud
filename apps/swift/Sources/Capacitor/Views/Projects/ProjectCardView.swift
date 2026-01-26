@@ -35,7 +35,6 @@ struct ProjectCardView: View {
     @State private var flashOpacity: Double = 0
     @State private var previousState: SessionState?
     @State private var lastChimeTime: Date?
-    @State private var lastKnownSummary: String?
 
     private let chimeCooldown: TimeInterval = 3.0
 
@@ -66,20 +65,6 @@ struct ProjectCardView: View {
 
     private var nameColor: Color {
         project.isMissing ? .white.opacity(0.5) : .white.opacity(0.9)
-    }
-
-    /// Three-tier fallback ensures cards always show meaningful context:
-    /// 1. Live session summary (workingOn) — updated by hooks during active sessions
-    /// 2. Cached summary (lastKnownSummary) — retained after session ends, before next refresh
-    /// 3. Stats summary (latestSummary) — parsed from JSONL transcript history
-    private var displaySummary: String? {
-        if let current = sessionState?.workingOn, !current.isEmpty {
-            return current
-        }
-        if let cached = lastKnownSummary, !cached.isEmpty {
-            return cached
-        }
-        return project.stats?.latestSummary
     }
 
     private var glassConfigForHandlers: GlassConfig? {
@@ -162,16 +147,11 @@ struct ProjectCardView: View {
             .contextMenu { cardContextMenu }
             .accessibilityElement(children: .combine)
             .accessibilityLabel(project.name)
-            .accessibilityValue(accessibilityStatusDescription + (displaySummary.map { ". \($0)" } ?? ""))
+            .accessibilityValue(accessibilityStatusDescription)
             .accessibilityHint("Double-tap to open in terminal. Use actions menu for more options.")
             .accessibilityAction(named: "Open in Terminal", onTap)
             .accessibilityAction(named: "View Details", onInfoTap)
             .accessibilityAction(named: "Move to Paused", onMoveToDormant)
-            .onChange(of: sessionState?.workingOn) { _, newValue in
-                if let summary = newValue, !summary.isEmpty {
-                    lastKnownSummary = summary
-                }
-            }
     }
 
     // MARK: - Card Content
@@ -180,20 +160,16 @@ struct ProjectCardView: View {
         VStack(alignment: .leading, spacing: 6) {
             ProjectCardHeader(
                 project: project,
-                isStale: isStale,
-                currentState: currentState,
                 nameColor: nameColor,
                 onInfoTap: onInfoTap
             )
 
             ProjectCardContent(
-                workingOn: displaySummary,
-                blocker: projectStatus?.blocker,
-                isWorking: currentState == .working
+                sessionState: sessionState,
+                blocker: projectStatus?.blocker
             )
         }
         .padding(12)
-        .animation(.spring(response: 0.4, dampingFraction: 0.8), value: displaySummary)
         .animation(.spring(response: 0.4, dampingFraction: 0.8), value: projectStatus?.blocker)
         .overlay(alignment: .trailing) {
             if let onCaptureIdea = onCaptureIdea {
@@ -281,8 +257,6 @@ struct ProjectCardView: View {
 
 private struct ProjectCardHeader: View {
     let project: Project
-    let isStale: Bool
-    let currentState: SessionState?
     let nameColor: Color
     let onInfoTap: () -> Void
 
@@ -301,15 +275,7 @@ private struct ProjectCardHeader: View {
                 action: onInfoTap
             )
 
-            if isStale {
-                StaleBadge()
-            }
-
             Spacer()
-
-            if let state = currentState {
-                StatusIndicator(state: state)
-            }
         }
     }
 }
@@ -317,20 +283,12 @@ private struct ProjectCardHeader: View {
 // MARK: - Card Content Component
 
 private struct ProjectCardContent: View {
-    let workingOn: String?
+    let sessionState: ProjectSessionState?
     let blocker: String?
-    let isWorking: Bool
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            // Description - always visible
-            if let workingOn = workingOn, !workingOn.isEmpty {
-                TickerText(text: workingOn, isShimmering: isWorking)
-            } else {
-                Text("No recent activity")
-                    .font(AppTypography.body)
-                    .foregroundColor(.white.opacity(0.35))
-            }
+            StatusChipsRow(sessionState: sessionState)
 
             if let blocker = blocker, !blocker.isEmpty {
                 HStack(spacing: 4) {
@@ -341,7 +299,6 @@ private struct ProjectCardContent: View {
                         .lineLimit(1)
                 }
                 .foregroundColor(Color(hue: 0, saturation: 0.7, brightness: 0.85))
-                .transition(.opacity.combined(with: .move(edge: .bottom)))
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)

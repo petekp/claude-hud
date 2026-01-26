@@ -149,7 +149,7 @@ None currently. Last audit: 2026-01-25.
 
 **Why:** Claude Code no longer uses extended thinking in a way that needs separate UI state.
 
-**Agent impact:** Session states are: Idle, Active, Working, Compacting, Error. No "Thinking" state.
+**Agent impact:** Session states are: `Working`, `Ready`, `Idle`, `Compacting`, `Waiting`. No "Thinking" state.
 
 **Commit:** `500ae3f`
 
@@ -234,7 +234,7 @@ None currently. Last audit: 2026-01-25.
 | Write to `~/.claude/` | Write to `~/.capacitor/` | 2026-01-16 |
 | Use bash for hook handling | Use Rust `hud-hook` binary | 2026-01-20 |
 | Use wrapper scripts for hooks | Use binary-only architecture | 2026-01-21 |
-| Track "Thinking" state | Use: Idle, Active, Working, Compacting, Error | 2026-01-15 |
+| Track "Thinking" state | Use: Working, Ready, Idle, Compacting, Waiting | 2026-01-15 |
 | Add daemon/background service | Use foreground app with file-based state | 2026-01-13 |
 | Use Tauri or web technologies | Use SwiftUI only | 2026-01-07 |
 | Run AI directly in app | Call Claude Code CLI instead | 2026-01-17 |
@@ -245,8 +245,9 @@ None currently. Last audit: 2026-01-25.
 
 The project is moving toward:
 
-1. **Multi-agent CLI support** — Starship-style adapters for Claude, Codex, Aider, Amp (plan completed)
-2. **Enhanced shell integration** — Ambient project awareness via precmd hooks (just completed)
-3. **Idea capture with LLM sensemaking** — Fast capture flow with AI-powered expansion (plan completed)
+1. **Parallel workstreams** — One-click git worktree creation for isolated parallel work (brainstorm complete, ready for planning)
+2. **Project context signals** — Replace prose summaries with scannable status chips (brainstorm complete, ready for planning)
+3. **Multi-agent CLI support** — Starship-style adapters for Claude, Codex, Aider, Amp (plan completed)
+4. **Idea capture with LLM sensemaking** — Fast capture flow with AI-powered expansion (plan completed)
 
-The core sidecar architecture is stable. Focus is on refinement, not architectural changes.
+The core sidecar architecture is stable. Recent focus: terminal integration, async hooks, and UX refinements for rapid context-switching.
