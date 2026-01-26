@@ -111,6 +111,16 @@ private struct ShellMatch {
     let shell: ShellEntry
 }
 
+// MARK: - Strategy Execution Context
+
+private struct ActivationContext {
+    let shell: ShellEntry
+    let pid: String
+    let projectPath: String
+    let scenario: ShellScenario
+    let shellState: ShellCwdState?
+}
+
 // MARK: - Terminal Launcher
 
 @MainActor
@@ -120,11 +130,13 @@ final class TerminalLauncher {
         static let homebrewPaths = "/opt/homebrew/bin:/usr/local/bin"
     }
 
+    private let configStore = ActivationConfigStore.shared
+
     // MARK: - Public API
 
     func launchTerminal(for project: Project, shellState: ShellCwdState? = nil) {
         if let match = findExistingShell(for: project, in: shellState) {
-            activateExistingTerminal(shell: match.shell, pid: match.pid, projectPath: project.path)
+            activateExistingTerminal(shell: match.shell, pid: match.pid, projectPath: project.path, shellState: shellState)
         } else {
             launchNewTerminal(for: project)
         }
@@ -142,9 +154,6 @@ final class TerminalLauncher {
 
     // MARK: - Shell Lookup
 
-    /// Finds a shell whose CWD matches the project path.
-    /// Prefers non-tmux shells over tmux shells—direct terminal sessions are
-    /// easier to activate (no session switching required).
     private func findExistingShell(for project: Project, in state: ShellCwdState?) -> ShellMatch? {
         guard let shells = state?.shells else { return nil }
 
@@ -194,7 +203,173 @@ final class TerminalLauncher {
     }
 
     private func isTmuxShell(_ shell: ShellEntry) -> Bool {
-        shell.parentApp?.lowercased() == "tmux"
+        shell.tmuxSession != nil
+    }
+
+    // MARK: - Strategy-Based Activation
+
+    private func activateExistingTerminal(shell: ShellEntry, pid: String, projectPath: String, shellState: ShellCwdState?) {
+        let shellCount = shellState?.shells.count ?? 1
+        let scenario = ShellScenario(
+            parentApp: ParentAppType(fromString: shell.parentApp),
+            context: ShellContext(hasTmuxSession: shell.tmuxSession != nil),
+            multiplicity: TerminalMultiplicity(shellCount: shellCount)
+        )
+
+        let behavior = configStore.behavior(for: scenario)
+        let context = ActivationContext(
+            shell: shell,
+            pid: pid,
+            projectPath: projectPath,
+            scenario: scenario,
+            shellState: shellState
+        )
+
+        let primarySuccess = executeStrategy(behavior.primaryStrategy, context: context)
+
+        if !primarySuccess, let fallback = behavior.fallbackStrategy {
+            _ = executeStrategy(fallback, context: context)
+        }
+    }
+
+    @discardableResult
+    private func executeStrategy(_ strategy: ActivationStrategy, context: ActivationContext) -> Bool {
+        switch strategy {
+        case .activateByTTY:
+            return activateByTTY(context: context)
+        case .activateByApp:
+            return activateByApp(context: context)
+        case .activateKittyRemote:
+            return activateKittyRemote(context: context)
+        case .activateIDEWindow:
+            return activateIDEWindow(context: context)
+        case .switchTmuxSession:
+            return switchTmuxSession(context: context)
+        case .activateHostFirst:
+            return activateHostFirst(context: context)
+        case .launchNewTerminal:
+            launchNewTerminalForContext(context: context)
+            return true
+        case .priorityFallback:
+            return activatePriorityFallback(context: context)
+        case .skip:
+            return true
+        }
+    }
+
+    // MARK: - Strategy Implementations
+
+    private func activateByTTY(context: ActivationContext) -> Bool {
+        let tty = context.shell.tty
+
+        if let parentApp = context.shell.parentApp, let terminal = TerminalApp(fromParentApp: parentApp) {
+            switch terminal {
+            case .iTerm:
+                activateITermSession(tty: tty)
+                return true
+            case .terminal:
+                activateTerminalAppSession(tty: tty)
+                return true
+            default:
+                break
+            }
+        }
+
+        if let owningTerminal = discoverTerminalOwningTTY(tty: tty) {
+            switch owningTerminal {
+            case .iTerm:
+                activateITermSession(tty: tty)
+                return true
+            case .terminal:
+                activateTerminalAppSession(tty: tty)
+                return true
+            default:
+                activateAppByName(owningTerminal.displayName)
+                return true
+            }
+        }
+
+        return false
+    }
+
+    private func activateByApp(context: ActivationContext) -> Bool {
+        guard let parentApp = context.shell.parentApp else { return false }
+
+        if let ide = IDEApp(fromParentApp: parentApp) {
+            if let app = findRunningIDE(ide) {
+                app.activate()
+                return true
+            }
+        }
+
+        if let terminal = TerminalApp(fromParentApp: parentApp) {
+            if let app = findRunningApp(terminal) {
+                app.activate()
+                return true
+            }
+        }
+
+        if activateAppByName(parentApp) {
+            return true
+        }
+
+        return false
+    }
+
+    private func activateKittyRemote(context: ActivationContext) -> Bool {
+        activateAppByName("kitty")
+        runBashScript("kitty @ focus-window --match pid:\(context.pid) 2>/dev/null")
+        return true
+    }
+
+    private func activateIDEWindow(context: ActivationContext) -> Bool {
+        guard let parentApp = context.shell.parentApp,
+              let ide = IDEApp(fromParentApp: parentApp),
+              findRunningIDE(ide) != nil
+        else { return false }
+
+        activateIDEWindowInternal(ide: ide, projectPath: context.projectPath)
+        return true
+    }
+
+    private func switchTmuxSession(context: ActivationContext) -> Bool {
+        guard let session = context.shell.tmuxSession else { return false }
+        runBashScript("tmux switch-client -t '\(session)' 2>/dev/null")
+        return true
+    }
+
+    private func activateHostFirst(context: ActivationContext) -> Bool {
+        let hostTTY = context.shell.tmuxClientTty ?? context.shell.tty
+
+        let ttyActivated = activateTerminalByTTYDiscovery(tty: hostTTY)
+
+        if let session = context.shell.tmuxSession {
+            runBashScript("tmux switch-client -t '\(session)' 2>/dev/null")
+        }
+
+        return ttyActivated
+    }
+
+    private func launchNewTerminalForContext(context: ActivationContext) {
+        let projectName = URL(fileURLWithPath: context.projectPath).lastPathComponent
+        let project = Project(
+            name: projectName,
+            path: context.projectPath,
+            displayPath: context.projectPath,
+            lastActive: nil,
+            claudeMdPath: nil,
+            claudeMdPreview: nil,
+            hasLocalSettings: false,
+            taskCount: 0,
+            stats: nil,
+            isMissing: false
+        )
+        launchNewTerminal(for: project)
+    }
+
+    private func activatePriorityFallback(context: ActivationContext) -> Bool {
+        activateFirstRunningTerminal()
+        return true
     }
 
     // MARK: - IDE Activation
@@ -205,7 +380,7 @@ final class TerminalLauncher {
         }
     }
 
-    private func activateIDEWindow(ide: IDEApp, projectPath: String) {
+    private func activateIDEWindowInternal(ide: IDEApp, projectPath: String) {
         guard let app = findRunningIDE(ide) else { return }
 
         app.activate()
@@ -221,65 +396,10 @@ final class TerminalLauncher {
         try? process.run()
     }
 
-    // MARK: - Terminal Activation
-
-    private func activateExistingTerminal(shell: ShellEntry, pid: String, projectPath: String) {
-        if let parentApp = shell.parentApp, let ide = IDEApp(fromParentApp: parentApp) {
-            if findRunningIDE(ide) != nil {
-                activateIDEWindow(ide: ide, projectPath: projectPath)
-                if isTmuxShell(shell), let session = shell.tmuxSession {
-                    switchTmuxSession(to: session)
-                }
-                return
-            }
-        }
-
-        if isTmuxShell(shell), let session = shell.tmuxSession {
-            activateTmuxSession(shell: shell, session: session)
-            return
-        }
-
-        if let parentApp = shell.parentApp, let terminal = TerminalApp(fromParentApp: parentApp) {
-            activateTerminal(terminal, tty: shell.tty, pid: pid)
-        } else {
-            activateTerminalByTTYDiscovery(tty: shell.tty)
-        }
-    }
-
-    private func activateTerminal(_ terminal: TerminalApp, tty: String, pid: String) {
-        switch terminal {
-        case .iTerm:
-            activateITermSession(tty: tty)
-        case .terminal:
-            activateTerminalAppSession(tty: tty)
-        case .kitty:
-            activateKittyWindow(shellPid: pid)
-        case .ghostty, .alacritty, .warp:
-            activateAppByName(terminal.displayName)
-        }
-    }
-
-    // MARK: - Tmux Activation
-
-    /// Activates the terminal hosting a tmux session, then switches to that session.
-    /// Uses tmux_client_tty (the host terminal's TTY) rather than the shell's TTY,
-    /// since the shell runs inside a tmux pseudo-terminal.
-    private func activateTmuxSession(shell: ShellEntry, session: String) {
-        let hostTTY = shell.tmuxClientTty ?? shell.tty
-        activateTerminalByTTYDiscovery(tty: hostTTY)
-        switchTmuxSession(to: session)
-    }
-
-    private func switchTmuxSession(to session: String) {
-        runBashScript("tmux switch-client -t '\(session)' 2>/dev/null")
-    }
-
     // MARK: - TTY Discovery
 
-    /// Finds which terminal owns a TTY by querying each running terminal via AppleScript.
-    /// Used when parent_app is unknown—asks iTerm and Terminal.app which one owns
-    /// the TTY, rather than guessing based on which terminals are running.
-    private func activateTerminalByTTYDiscovery(tty: String) {
+    @discardableResult
+    private func activateTerminalByTTYDiscovery(tty: String) -> Bool {
         if let owningTerminal = discoverTerminalOwningTTY(tty: tty) {
             switch owningTerminal {
             case .iTerm:
@@ -289,8 +409,10 @@ final class TerminalLauncher {
             default:
                 activateAppByName(owningTerminal.displayName)
             }
+            return true
         } else {
             activateFirstRunningTerminal()
+            return false
         }
     }
 
@@ -379,27 +501,19 @@ final class TerminalLauncher {
         runAppleScript(script)
     }
 
-    // MARK: - kitty Remote Control
-
-    /// Uses kitty's remote control API to focus the window containing a specific shell.
-    /// Requires `allow_remote_control yes` in the user's kitty.conf.
-    private func activateKittyWindow(shellPid: String) {
-        activateAppByName("kitty")
-        runBashScript("kitty @ focus-window --match pid:\(shellPid) 2>/dev/null")
-    }
-
     // MARK: - App Activation Helpers
 
-    private func activateAppByName(_ name: String?) {
+    @discardableResult
+    private func activateAppByName(_ name: String?) -> Bool {
         guard let name = name,
               let app = NSWorkspace.shared.runningApplications.first(where: {
                   $0.localizedName?.lowercased().contains(name.lowercased()) == true
               })
         else {
-            activateFirstRunningTerminal()
-            return
+            return false
         }
         app.activate()
+        return true
     }
 
     private func activateFirstRunningTerminal() {

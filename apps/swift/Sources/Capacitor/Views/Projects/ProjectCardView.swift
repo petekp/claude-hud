@@ -157,28 +157,28 @@ struct ProjectCardView: View {
     // MARK: - Card Content
 
     private var cardContent: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            ProjectCardHeader(
-                project: project,
-                nameColor: nameColor,
-                onInfoTap: onInfoTap
-            )
+        HStack(spacing: 12) {
+            VStack(alignment: .leading, spacing: 6) {
+                ProjectCardHeader(
+                    project: project,
+                    nameColor: nameColor,
+                    onInfoTap: onInfoTap
+                )
 
-            ProjectCardContent(
-                sessionState: sessionState,
-                blocker: projectStatus?.blocker
+                ProjectCardContent(
+                    sessionState: sessionState,
+                    blocker: projectStatus?.blocker
+                )
+            }
+
+            CardActionButtons(
+                isCardHovered: isHovered,
+                onCaptureIdea: onCaptureIdea,
+                onDetails: onInfoTap
             )
         }
         .padding(12)
         .animation(.spring(response: 0.4, dampingFraction: 0.8), value: projectStatus?.blocker)
-        .overlay(alignment: .trailing) {
-            if let onCaptureIdea = onCaptureIdea {
-                PeekCaptureButton(isCardHovered: isHovered, action: onCaptureIdea)
-                    .padding(.vertical, 7)
-                    .padding(.trailing, 7)
-            }
-        }
-        .clipped()
     }
 
     // MARK: - Context Menu
@@ -305,72 +305,114 @@ private struct ProjectCardContent: View {
     }
 }
 
-// MARK: - Peek Capture Button
+// MARK: - Card Action Buttons
 
-private struct PeekCaptureButton: View {
+/// Container for action buttons that appear on card hover with staggered animation
+struct CardActionButtons: View {
     let isCardHovered: Bool
+    var onCaptureIdea: ((CGRect) -> Void)?
+    let onDetails: () -> Void
+    var style: VibrancyActionButton.Style = .normal
+
+    var body: some View {
+        HStack(spacing: 0) {
+            if let onCaptureIdea = onCaptureIdea {
+                VibrancyActionButton(
+                    icon: "lightbulb",
+                    action: { frame in onCaptureIdea(frame) },
+                    isVisible: isCardHovered,
+                    entranceDelay: 0,
+                    style: style
+                )
+                .help("Capture idea")
+                .accessibilityLabel("Capture idea for this project")
+            }
+
+            VibrancyActionButton(
+                icon: "chevron.right",
+                action: { _ in onDetails() },
+                isVisible: isCardHovered,
+                entranceDelay: 0.03,
+                style: style
+            )
+            .help("View details")
+            .accessibilityLabel("View project details")
+        }
+    }
+}
+
+// MARK: - Vibrancy Action Button
+
+/// Rounded button with native macOS vibrancy and entrance animation
+struct VibrancyActionButton: View {
+    let icon: String
     let action: (CGRect) -> Void
+    var isVisible: Bool = true
+    var entranceDelay: Double = 0
+    var style: Style = .normal
 
-    @State private var isButtonHovered = false
-    @State private var buttonFrame: CGRect = .zero
-    @Environment(\.prefersReducedMotion) private var reduceMotion
-
-    private var isVisible: Bool {
-        isCardHovered || isButtonHovered
+    enum Style {
+        case normal
+        case compact
     }
 
-    private var accentColor: Color {
-        Color(hue: 0.13, saturation: 0.65, brightness: 0.95) // Warm amber
+    @State private var isHovered = false
+    @State private var buttonFrame: CGRect = .zero
+
+    private var size: CGFloat {
+        style == .compact ? 32 : 40
+    }
+
+    private var iconSize: CGFloat {
+        style == .compact ? 13 : 15
+    }
+
+    private var entranceAnimation: Animation {
+        .spring(response: 0.25, dampingFraction: 0.7)
+            .delay(entranceDelay)
     }
 
     var body: some View {
         Button(action: { action(buttonFrame) }) {
-            VStack(spacing: 6) {
-                Image(systemName: "lightbulb")
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(isButtonHovered ? accentColor : .white.opacity(0.8))
+            ZStack {
+                // Vibrancy background (only on hover)
+                if isHovered {
+                    Circle()
+                        .fill(.clear)
+                        .background(
+                            VibrancyView(
+                                material: .hudWindow,
+                                blendingMode: .behindWindow,
+                                isEmphasized: true,
+                                forceDarkAppearance: true
+                            )
+                        )
+                        .clipShape(Circle())
 
-                Text("idea")
-                    .font(.system(size: 9, weight: .semibold, design: .rounded))
-                    .textCase(.uppercase)
-                    .tracking(0.5)
-                    .foregroundStyle(.white.opacity(isButtonHovered ? 0.9 : 0.5))
-            }
-            .frame(width: 46)
-            .frame(maxHeight: .infinity)
-            .background(
-                ZStack {
-                    // Base material
-                    RoundedRectangle(cornerRadius: 8, style: .continuous)
-                        .fill(.ultraThinMaterial)
+                    // Light tint overlay
+                    Circle()
+                        .fill(Color.black.opacity(0.15))
 
-                    // Dark overlay for depth (more opaque for visibility)
-                    RoundedRectangle(cornerRadius: 8, style: .continuous)
-                        .fill(Color.black.opacity(isButtonHovered ? 0.45 : 0.6))
-
-                    // Hover highlight
-                    if isButtonHovered {
-                        RoundedRectangle(cornerRadius: 8, style: .continuous)
-                            .fill(accentColor.opacity(0.1))
-                    }
+                    // Subtle border
+                    Circle()
+                        .strokeBorder(
+                            Color.white.opacity(0.15),
+                            lineWidth: 0.5
+                        )
                 }
-            )
-            .overlay {
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .strokeBorder(
-                        LinearGradient(
-                            colors: [
-                                .white.opacity(isButtonHovered ? 0.35 : 0.2),
-                                .white.opacity(isButtonHovered ? 0.15 : 0.08)
-                            ],
-                            startPoint: .top,
-                            endPoint: .bottom
-                        ),
-                        lineWidth: 1
-                    )
+
+                // Icon
+                Image(systemName: icon)
+                    .font(.system(size: iconSize, weight: .medium))
+                    .foregroundStyle(.white.opacity(isHovered ? 0.95 : 0.5))
             }
+            .frame(width: size, height: size)
         }
         .buttonStyle(.plain)
+        .scaleEffect(isVisible ? 1.0 : 0.9)
+        .blur(radius: isVisible ? 0 : 4)
+        .opacity(isVisible ? 1.0 : 0)
+        .animation(entranceAnimation, value: isVisible)
         .background(
             GeometryReader { geo in
                 Color.clear.preference(
@@ -382,15 +424,11 @@ private struct PeekCaptureButton: View {
         .onPreferenceChange(FramePreferenceKey.self) { frame in
             buttonFrame = frame
         }
-        .offset(x: isVisible ? 0 : 60)
-        .animation(
-            reduceMotion ? AppMotion.reducedMotionFallback : .spring(response: 0.3, dampingFraction: 0.8),
-            value: isVisible
-        )
         .onHover { hovering in
-            isButtonHovered = hovering
+            withAnimation(.easeInOut(duration: 0.15)) {
+                isHovered = hovering
+            }
         }
-        .accessibilityLabel("Capture idea for this project")
     }
 }
 

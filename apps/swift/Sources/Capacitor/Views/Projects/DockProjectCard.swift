@@ -136,38 +136,47 @@ struct DockProjectCard: View {
     }
 
     private var cardContent: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            HStack(spacing: 6) {
-                ClickableProjectTitle(
-                    name: project.name,
-                    nameColor: .white.opacity(0.9),
-                    isMissing: project.isMissing,
-                    action: onInfoTap,
-                    font: AppTypography.sectionTitle.monospaced()
-                )
-                .lineLimit(1)
+        HStack(spacing: 10) {
+            VStack(alignment: .leading, spacing: 0) {
+                HStack(spacing: 6) {
+                    ClickableProjectTitle(
+                        name: project.name,
+                        nameColor: .white.opacity(0.9),
+                        isMissing: project.isMissing,
+                        action: onInfoTap,
+                        font: AppTypography.sectionTitle.monospaced()
+                    )
+                    .lineLimit(1)
+
+                    Spacer(minLength: 0)
+                }
+
+                StatusChipsRow(sessionState: sessionState, style: .compact)
+                    .padding(.top, 4)
 
                 Spacer(minLength: 0)
-            }
 
-            StatusChipsRow(sessionState: sessionState, style: .compact)
-                .padding(.top, 4)
-
-            Spacer(minLength: 0)
-
-            if let blocker = projectStatus?.blocker, !blocker.isEmpty {
-                HStack(spacing: 4) {
-                    Image(systemName: "exclamationmark.triangle.fill")
-                        .font(AppTypography.captionSmall)
-                    Text(blocker)
-                        .font(AppTypography.label)
-                        .lineLimit(1)
+                if let blocker = projectStatus?.blocker, !blocker.isEmpty {
+                    HStack(spacing: 4) {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .font(AppTypography.captionSmall)
+                        Text(blocker)
+                            .font(AppTypography.label)
+                            .lineLimit(1)
+                    }
+                    .foregroundColor(Color(hue: 0, saturation: 0.7, brightness: 0.85))
+                    .padding(.top, 4)
                 }
-                .foregroundColor(Color(hue: 0, saturation: 0.7, brightness: 0.85))
-                .padding(.top, 4)
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            CardActionButtons(
+                isCardHovered: isHovered,
+                onCaptureIdea: onCaptureIdea,
+                onDetails: onInfoTap,
+                style: .compact
+            )
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
         .padding(14)
     }
 
