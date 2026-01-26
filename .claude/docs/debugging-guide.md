@@ -65,6 +65,70 @@ cat ~/.capacitor/sessions/*.lock/pid | xargs -I {} ps -p {}
 
 **Fix:** App runs `runStartupCleanup()` on launch which removes locks with dead PIDs.
 
+### Stale or Legacy Locks (Wrong Project State)
+
+**Symptoms:** Project shows wrong state (e.g., Ready when should be Idle), multiple projects show same state, or clicking different projects opens the same session.
+
+**Root cause:** Legacy path-based locks (v3) or stale session-based locks polluting the lock directory.
+
+**Diagnosis:**
+```bash
+# List all locks with their format
+for lock in ~/.capacitor/sessions/*.lock; do
+  name=$(basename "$lock" .lock)
+  if [[ "$name" =~ ^[a-f0-9]{32}$ ]]; then
+    echo "LEGACY (delete): $name"
+  else
+    echo "SESSION-BASED: $name"
+  fi
+  cat "$lock/meta.json" 2>/dev/null | jq -c '{path, pid, session_id}'
+done
+
+# Check if lock PIDs are alive
+for lock in ~/.capacitor/sessions/*.lock; do
+  pid=$(cat "$lock/pid" 2>/dev/null)
+  name=$(basename "$lock")
+  if ps -p "$pid" > /dev/null 2>&1; then
+    echo "$name: PID $pid ALIVE"
+  else
+    echo "$name: PID $pid DEAD (stale)"
+  fi
+done
+```
+
+**Fix:**
+1. Delete legacy locks (32-char hex names like `abc123...def.lock`)
+2. Delete session-based locks where PID is dead
+3. Verify `hud-hook` symlink points to current build (see below)
+
+### hud-hook Binary Out of Date
+
+**Symptoms:** New lock/state features not working, old lock format still being created, hooks not firing correctly.
+
+**Root cause:** The `~/.local/bin/hud-hook` symlink points to old binary (app bundle instead of dev build).
+
+**Diagnosis:**
+```bash
+# Check symlink target
+ls -la ~/.local/bin/hud-hook
+
+# Compare timestamps
+ls -la ~/.local/bin/hud-hook
+ls -la /Users/$USER/Code/capacitor/target/release/hud-hook
+```
+
+**Fix:**
+```bash
+# Update symlink to dev build
+rm ~/.local/bin/hud-hook
+ln -s /path/to/capacitor/target/release/hud-hook ~/.local/bin/hud-hook
+
+# Rebuild if needed
+cargo build -p hud-hook --release
+```
+
+**Prevention:** After any Rust changes to `hud-hook`, rebuild and verify symlink points to `target/release/hud-hook`.
+
 ### State Transitions to Ready Prematurely (Session Still Active)
 
 **Symptoms:** Project shows Ready but Claude is still generating a response. Typically happens ~30 seconds into a long generation without tool use.

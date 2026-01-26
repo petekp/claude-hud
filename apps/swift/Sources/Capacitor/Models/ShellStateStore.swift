@@ -27,6 +27,9 @@ struct ShellCwdState: Codable {
 final class ShellStateStore {
     private enum Constants {
         static let pollingIntervalNanoseconds: UInt64 = 500_000_000
+        /// Shells not updated within this threshold are considered stale and won't be used for focus detection.
+        /// 10 minutes allows for typical idle periods while filtering out truly abandoned shells.
+        static let shellStalenessThresholdSeconds: TimeInterval = 10 * 60
     }
 
     private let stateURL: URL
@@ -77,14 +80,21 @@ final class ShellStateStore {
         state = decoded
     }
 
+    /// Returns the most recently updated non-stale shell.
+    /// Shells that haven't been updated within the staleness threshold are filtered out
+    /// to prevent old, abandoned shell sessions from affecting focus detection.
     var mostRecentShell: (pid: String, entry: ShellEntry)? {
-        state?.shells
+        let threshold = Date().addingTimeInterval(-Constants.shellStalenessThresholdSeconds)
+        return state?.shells
+            .filter { $0.value.updatedAt > threshold }
             .max(by: { $0.value.updatedAt < $1.value.updatedAt })
             .map { ($0.key, $0.value) }
     }
 
+    /// Returns true if there are any non-stale active shells.
     var hasActiveShells: Bool {
         guard let shells = state?.shells else { return false }
-        return !shells.isEmpty
+        let threshold = Date().addingTimeInterval(-Constants.shellStalenessThresholdSeconds)
+        return shells.values.contains { $0.updatedAt > threshold }
     }
 }

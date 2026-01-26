@@ -7,18 +7,15 @@ use std::path::Path;
 
 use crate::types::SessionState;
 
-use super::lock::{find_matching_child_lock, is_session_running};
+use super::lock::{find_all_locks_for_path, find_matching_child_lock};
+use super::path_utils::normalize_path_for_comparison;
 use super::store::StateStore;
 use super::types::SessionRecord;
 
 /// Normalizes a path for consistent comparison.
-/// Strips trailing slashes except for root "/".
-fn normalize_path(path: &str) -> &str {
-    if path == "/" {
-        "/"
-    } else {
-        path.trim_end_matches('/')
-    }
+/// Handles trailing slashes, case sensitivity (macOS), and symlinks.
+fn normalize_path(path: &str) -> String {
+    normalize_path_for_comparison(path)
 }
 
 /// A resolved state for a project query.
@@ -139,6 +136,13 @@ pub fn resolve_state(
 /// Returns `None` when no lock exists (neither exact nor child) for the query path,
 /// unless a fresh state record exists (fallback for edge cases where locks are missing).
 ///
+/// # v4 Session-Based Lock Resolution
+///
+/// With session-based locks, multiple concurrent sessions can exist for the same path.
+/// `find_all_locks_for_path` returns all active locks; we use the best matching one.
+/// When a session ends (SessionEnd event), its lock is released by session ID.
+/// No "stale Ready fallback" is needed - if there's no lock, the session has ended.
+///
 /// # Staleness Recovery
 ///
 /// Active states (Working, Waiting, Compacting) fall back to Ready when stale.
@@ -149,17 +153,19 @@ pub fn resolve_state_with_details(
     store: &StateStore,
     project_path: &str,
 ) -> Option<ResolvedState> {
-    if is_session_running(lock_dir, project_path) {
-        // Lock exists - use it as primary source
+    // Check for any active locks for this path (supports multiple concurrent sessions)
+    let active_locks = find_all_locks_for_path(lock_dir, project_path);
+
+    if !active_locks.is_empty() {
+        // Lock(s) exist - find the best matching one
         // The lock proves Claude is running (lock holder monitors PID), so we trust the
-        // recorded state even if the timestamp is stale. Active state staleness checks
-        // are only for detecting user interrupts when NO lock exists.
+        // recorded state even if the timestamp is stale.
         let lock = find_matching_child_lock(lock_dir, project_path, None, None)?;
         let record = find_record_for_lock_path(store, &lock.path);
         let (state, session_id) = match record {
             Some(r) => (r.state, Some(r.session_id.clone())),
             // No record but lock exists - session is active, just no state written yet
-            None => (SessionState::Ready, None),
+            None => (SessionState::Ready, lock.session_id),
         };
 
         return Some(ResolvedState {
@@ -170,7 +176,7 @@ pub fn resolve_state_with_details(
         });
     }
 
-    // No lock - check for fresh state record as fallback (exact or child matches only)
+    // No locks - check for fresh state record as fallback (exact or child matches only)
     // This handles edge cases where locks aren't created but state is written
     // We intentionally exclude parent matches to prevent child paths from inheriting parent state
     if let Some(record) = find_fresh_record_for_path(store, project_path) {
@@ -188,25 +194,16 @@ pub fn resolve_state_with_details(
         });
     }
 
-    // Final fallback: check for stale Ready records
-    // These are sessions that were Ready but haven't had activity in 5+ minutes.
-    // We return them so sessions.rs can apply the 15-min Ready→Idle threshold.
-    // Without this, Ready sessions would immediately become Idle after 5 minutes.
-    if let Some(record) = find_stale_ready_record_for_path(store, project_path) {
-        return Some(ResolvedState {
-            state: SessionState::Ready,
-            session_id: Some(record.session_id.clone()),
-            cwd: record.cwd.clone(),
-            is_from_lock: false,
-        });
-    }
-
+    // No lock and no fresh record = session has ended or doesn't exist
+    // With session-based locks, we no longer fall back to stale Ready records.
+    // When a session ends, its lock is released by session ID, and the session
+    // should transition to Idle based on the standard staleness threshold.
     None
 }
 
-/// Find a fresh (non-stale) record that matches the given path.
-/// Only considers exact matches and child matches, NOT parent matches.
-/// This prevents child paths from incorrectly inheriting parent session state.
+/// Find a fresh (non-stale) record that exactly matches the given path.
+/// Only considers exact matches - no child inheritance.
+/// Each project shows only sessions started at that exact path.
 fn find_fresh_record_for_path<'a>(
     store: &'a StateStore,
     project_path: &str,
@@ -220,78 +217,13 @@ fn find_fresh_record_for_path<'a>(
             continue;
         }
 
-        // Check both cwd and project_dir for matching
-        let is_match = [Some(record.cwd.as_str()), record.project_dir.as_deref()]
+        // Check both cwd and project_dir for exact matching
+        let is_exact_match = [Some(record.cwd.as_str()), record.project_dir.as_deref()]
             .into_iter()
             .flatten()
-            .any(|record_path| {
-                let record_normalized = normalize_path(record_path);
+            .any(|record_path| normalize_path(record_path) == path_normalized);
 
-                // Exact match
-                if record_normalized == path_normalized {
-                    return true;
-                }
-
-                // Child match: record is in a subdirectory of the query path
-                // e.g., query="/project", record.cwd="/project/src"
-                if path_normalized == "/" {
-                    record_normalized != "/" && record_normalized.starts_with("/")
-                } else {
-                    record_normalized.starts_with(&format!("{}/", path_normalized))
-                }
-            });
-
-        if is_match {
-            match best {
-                None => best = Some(record),
-                Some(current) if record.updated_at > current.updated_at => best = Some(record),
-                _ => {}
-            }
-        }
-    }
-
-    best
-}
-
-/// Find a stale Ready record that matches the given path.
-/// This is the final fallback for sessions that were Ready but haven't had activity recently.
-/// By returning these, we allow sessions.rs to apply the 15-minute Ready→Idle threshold
-/// instead of immediately treating them as Idle after 5 minutes.
-fn find_stale_ready_record_for_path<'a>(
-    store: &'a StateStore,
-    project_path: &str,
-) -> Option<&'a SessionRecord> {
-    let path_normalized = normalize_path(project_path);
-
-    let mut best: Option<&SessionRecord> = None;
-
-    for record in store.all_sessions() {
-        // Only consider stale Ready records
-        if !record.is_stale() || record.state != SessionState::Ready {
-            continue;
-        }
-
-        // Check both cwd and project_dir for matching
-        let is_match = [Some(record.cwd.as_str()), record.project_dir.as_deref()]
-            .into_iter()
-            .flatten()
-            .any(|record_path| {
-                let record_normalized = normalize_path(record_path);
-
-                // Exact match
-                if record_normalized == path_normalized {
-                    return true;
-                }
-
-                // Child match: record is in a subdirectory of the query path
-                if path_normalized == "/" {
-                    record_normalized != "/" && record_normalized.starts_with("/")
-                } else {
-                    record_normalized.starts_with(&format!("{}/", path_normalized))
-                }
-            });
-
-        if is_match {
+        if is_exact_match {
             match best {
                 None => best = Some(record),
                 Some(current) if record.updated_at > current.updated_at => best = Some(record),
@@ -342,15 +274,25 @@ mod tests {
     }
 
     #[test]
-    fn parent_query_inherits_child_lock_and_child_record() {
+    fn parent_query_does_not_inherit_child_lock() {
+        // With exact-match-only policy, parent paths don't inherit child session state.
+        // This enables monorepos and packages to be tracked independently.
         let temp = tempdir().unwrap();
         create_lock(temp.path(), std::process::id(), "/project/apps/swift");
         let mut store = StateStore::new_in_memory();
         store.update("child", SessionState::Working, "/project/apps/swift");
-        let resolved = resolve_state_with_details(temp.path(), &store, "/project").unwrap();
-        assert_eq!(resolved.state, SessionState::Working);
-        assert_eq!(resolved.session_id.as_deref(), Some("child"));
-        assert_eq!(resolved.cwd, "/project/apps/swift");
+
+        // Query parent path - should return None (no exact match)
+        let resolved = resolve_state_with_details(temp.path(), &store, "/project");
+        assert!(
+            resolved.is_none(),
+            "Parent path should not inherit child session state"
+        );
+
+        // Query child path - should work (exact match)
+        let resolved = resolve_state_with_details(temp.path(), &store, "/project/apps/swift");
+        assert!(resolved.is_some());
+        assert_eq!(resolved.as_ref().unwrap().state, SessionState::Working);
     }
 
     #[test]
@@ -392,19 +334,18 @@ mod tests {
     }
 
     #[test]
-    fn resolve_ready_for_stale_ready_record_without_lock() {
-        // Stale Ready records without lock are returned so the 15-min threshold can be applied
+    fn resolve_none_for_stale_ready_record_without_lock() {
+        // v4 behavior: Stale Ready records without lock return None (session has ended)
+        // With session-based locks, when a session ends its lock is released by session ID.
+        // No fallback to stale Ready records - if there's no lock, the session is gone.
         let temp = tempdir().unwrap();
         let mut store = StateStore::new_in_memory();
         store.update("s1", SessionState::Ready, "/project");
         // Make record stale (> 5 min)
         let stale_time = Utc::now() - Duration::minutes(10);
         store.set_timestamp_for_test("s1", stale_time);
-        // No lock but stale Ready record = Ready (for 15-min threshold in sessions.rs)
-        let resolved = resolve_state_with_details(temp.path(), &store, "/project").unwrap();
-        assert_eq!(resolved.state, SessionState::Ready);
-        assert_eq!(resolved.session_id.as_deref(), Some("s1"));
-        assert!(!resolved.is_from_lock); // Not from lock - allows 15-min threshold
+        // No lock and stale Ready record = None (session has ended)
+        assert!(resolve_state_with_details(temp.path(), &store, "/project").is_none());
     }
 
     #[test]
@@ -502,11 +443,12 @@ mod tests {
     }
 
     #[test]
-    fn child_match_beats_parent_match_regardless_of_timestamp() {
-        // Similar to exact_match test but for child matches
+    fn no_inheritance_between_parent_and_child_paths() {
+        // With exact-match-only policy, neither parent nor child sessions
+        // affect each other. Each path is independent.
         let temp = tempdir().unwrap();
 
-        // Lock exists for parent project (querying from parent)
+        // Lock exists for child path
         create_lock(
             temp.path(),
             std::process::id(),
@@ -515,28 +457,27 @@ mod tests {
 
         let mut store = StateStore::new_in_memory();
 
-        // Child match record (stale) - this should win
+        // Record for child path
         store.update(
             "child-session",
-            SessionState::Ready,
+            SessionState::Working,
             "/Users/pete/Code/project/apps",
         );
-        let stale_time = Utc::now() - Duration::minutes(10);
-        store.set_timestamp_for_test("child-session", stale_time);
 
-        // Parent match record (fresh) - should NOT win
-        store.update("parent-session", SessionState::Working, "/Users/pete");
-        // parent-session has default "now" timestamp, so it's fresher
+        // Query parent path - should return None (no exact match)
+        let resolved = resolve_state_with_details(temp.path(), &store, "/Users/pete/Code/project");
+        assert!(
+            resolved.is_none(),
+            "Parent path should not see child session"
+        );
 
-        // Query from parent path
+        // Query child path - should work (exact match)
         let resolved =
-            resolve_state_with_details(temp.path(), &store, "/Users/pete/Code/project").unwrap();
-
-        // The child match should be selected (child of the query path), not the parent match
+            resolve_state_with_details(temp.path(), &store, "/Users/pete/Code/project/apps");
+        assert!(resolved.is_some());
         assert_eq!(
-            resolved.session_id.as_deref(),
-            Some("child-session"),
-            "Child match should beat parent match regardless of timestamp"
+            resolved.as_ref().unwrap().session_id.as_deref(),
+            Some("child-session")
         );
     }
 }

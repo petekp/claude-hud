@@ -62,7 +62,7 @@ capacitor/
 Hooks → `~/.capacitor/sessions.json` → Capacitor reads
 
 - **State file:** `~/.capacitor/sessions.json`
-- **Locks:** `~/.capacitor/sessions/{hash}.lock/`
+- **Locks:** `~/.capacitor/sessions/{session_id}-{pid}.lock/`
 - **Shell CWD:** `~/.capacitor/shell-cwd.json`
 - **Hook binary:** `~/.local/bin/hud-hook`
 
@@ -76,8 +76,10 @@ Hooks → `~/.capacitor/sessions.json` → Capacitor reads
 - **SwiftUI view reuse** — Use `.id(uniqueValue)` to force fresh instances for toasts/alerts
 - **Swift 6 concurrency** — Views initializing `@MainActor` types need `@MainActor` on the view struct
 - **Rust↔Swift timestamps** — Use custom decoder with `.withFractionalSeconds` (see `ShellStateStore.swift`)
-- **Hierarchical matching: specificity > freshness** — When matching paths (locks or session records), exact matches must beat child matches regardless of timestamp. Priority order: (1) match type (exact > child > parent), (2) timestamp, (3) path tie-breaker. See `find_matching_child_lock` in `lock.rs` and comparison logic in `resolver.rs`.
-- **Lock takeover: most recent wins** — When multiple Claude sessions exist in the same directory, the most recent session takes over the lock. The lock system uses path-based hashing (one lock per path), so `create_lock()` will update an existing lock's metadata to point to the new PID, recording `handoff_from` for debugging. Old lock holders detect takeover via PID mismatch and exit gracefully. See `create_lock()` in `lock.rs` and takeover detection in `lock_holder.rs`.
+- **Session-based locks (v4)** — Locks are keyed by `{session_id}-{pid}`, NOT path hash. This allows multiple concurrent sessions in the same directory. Each process gets its own lock. Legacy MD5-hash locks (`{hash}.lock`) are stale and should be deleted. See `create_session_lock()` in `lock.rs`.
+- **Exact-match-only for state resolution** — Lock and session record matching uses exact path comparison only. No child→parent inheritance. A lock at `/project/src` does NOT make `/project` show as active. Monorepo packages track state independently from their parent.
+- **hud-hook must point to dev build during development** — The symlink at `~/.local/bin/hud-hook` must point to `target/release/hud-hook` (not the app bundle) to pick up code changes. After Rust changes: rebuild (`cargo build -p hud-hook --release`) then verify symlink target. Stale hooks create stale locks.
+- **Diagnosing stale locks** — If projects show wrong state, check `~/.capacitor/sessions/*.lock`. Session-based locks have UUID format (`{session_id}-{pid}.lock`). MD5-hash locks (32 hex chars like `abc123...def.lock`) are legacy/stale—delete them. Use `ps -p {pid}` to verify lock holder is alive.
 - **Hook binary must be symlinked, not copied** — Copying adhoc-signed Rust binaries to `~/.local/bin/` triggers macOS Gatekeeper SIGKILL (exit 137). The binary works fine when run from `target/release/` but dies when copied. Fix: use symlink (`ln -s target/release/hud-hook ~/.local/bin/hud-hook`). See `scripts/sync-hooks.sh`.
 
 ## Documentation

@@ -47,6 +47,10 @@ enum Commands {
 
     /// Lock holder daemon (spawned by handle command)
     LockHolder {
+        /// Session ID for this lock (v4 session-based locking)
+        #[arg(long)]
+        session_id: String,
+
         /// Working directory to monitor
         #[arg(long)]
         cwd: String,
@@ -78,11 +82,12 @@ fn main() {
             }
         }
         Commands::LockHolder {
+            session_id,
             cwd: cwd_path,
             pid,
             lock_dir,
         } => {
-            lock_holder::run(&cwd_path, pid, &lock_dir);
+            lock_holder::run(&session_id, &cwd_path, pid, &lock_dir);
         }
     }
 }

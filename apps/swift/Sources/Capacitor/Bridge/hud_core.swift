@@ -1762,7 +1762,11 @@ public struct CleanupStats {
      */
     public var locksRemoved: UInt32
     /**
-     * Number of old session records removed.
+     * Number of orphaned session records removed (no active lock).
+     */
+    public var orphanedSessionsRemoved: UInt32
+    /**
+     * Number of old session records removed (> 24 hours).
      */
     public var sessionsRemoved: UInt32
     /**
@@ -1781,7 +1785,10 @@ public struct CleanupStats {
          * Number of stale lock directories removed.
          */ locksRemoved: UInt32,
         /**
-            * Number of old session records removed.
+            * Number of orphaned session records removed (no active lock).
+            */ orphanedSessionsRemoved: UInt32,
+        /**
+            * Number of old session records removed (> 24 hours).
             */ sessionsRemoved: UInt32,
         /**
             * Number of old tombstone files removed.
@@ -1791,6 +1798,7 @@ public struct CleanupStats {
             */ errors: [String]
     ) {
         self.locksRemoved = locksRemoved
+        self.orphanedSessionsRemoved = orphanedSessionsRemoved
         self.sessionsRemoved = sessionsRemoved
         self.tombstonesRemoved = tombstonesRemoved
         self.errors = errors
@@ -1800,6 +1808,9 @@ public struct CleanupStats {
 extension CleanupStats: Equatable, Hashable {
     public static func == (lhs: CleanupStats, rhs: CleanupStats) -> Bool {
         if lhs.locksRemoved != rhs.locksRemoved {
+            return false
+        }
+        if lhs.orphanedSessionsRemoved != rhs.orphanedSessionsRemoved {
             return false
         }
         if lhs.sessionsRemoved != rhs.sessionsRemoved {
@@ -1816,6 +1827,7 @@ extension CleanupStats: Equatable, Hashable {
 
     public func hash(into hasher: inout Hasher) {
         hasher.combine(locksRemoved)
+        hasher.combine(orphanedSessionsRemoved)
         hasher.combine(sessionsRemoved)
         hasher.combine(tombstonesRemoved)
         hasher.combine(errors)
@@ -1830,6 +1842,7 @@ public struct FfiConverterTypeCleanupStats: FfiConverterRustBuffer {
         return
             try CleanupStats(
                 locksRemoved: FfiConverterUInt32.read(from: &buf),
+                orphanedSessionsRemoved: FfiConverterUInt32.read(from: &buf),
                 sessionsRemoved: FfiConverterUInt32.read(from: &buf),
                 tombstonesRemoved: FfiConverterUInt32.read(from: &buf),
                 errors: FfiConverterSequenceString.read(from: &buf)
@@ -1838,6 +1851,7 @@ public struct FfiConverterTypeCleanupStats: FfiConverterRustBuffer {
 
     public static func write(_ value: CleanupStats, into buf: inout [UInt8]) {
         FfiConverterUInt32.write(value.locksRemoved, into: &buf)
+        FfiConverterUInt32.write(value.orphanedSessionsRemoved, into: &buf)
         FfiConverterUInt32.write(value.sessionsRemoved, into: &buf)
         FfiConverterUInt32.write(value.tombstonesRemoved, into: &buf)
         FfiConverterSequenceString.write(value.errors, into: &buf)
@@ -3511,6 +3525,11 @@ public func FfiConverterTypeProjectDetails_lower(_ value: ProjectDetails) -> Rus
 public struct ProjectSessionState {
     public var state: SessionState
     public var stateChangedAt: String?
+    /**
+     * Timestamp of last hook event (more recent than state_changed_at).
+     * Use this for activity comparison between sessions.
+     */
+    public var updatedAt: String?
     public var sessionId: String?
     public var workingOn: String?
     public var context: ContextInfo?
@@ -3527,7 +3546,11 @@ public struct ProjectSessionState {
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
-    public init(state: SessionState, stateChangedAt: String?, sessionId: String?, workingOn: String?, context: ContextInfo?,
+    public init(state: SessionState, stateChangedAt: String?,
+                /**
+                    * Timestamp of last hook event (more recent than state_changed_at).
+                    * Use this for activity comparison between sessions.
+                    */ updatedAt: String?, sessionId: String?, workingOn: String?, context: ContextInfo?,
                 /**
                     * Whether Claude is currently "thinking" (API call in flight).
                     * This provides real-time status when using the fetch-intercepting launcher.
@@ -3539,6 +3562,7 @@ public struct ProjectSessionState {
     {
         self.state = state
         self.stateChangedAt = stateChangedAt
+        self.updatedAt = updatedAt
         self.sessionId = sessionId
         self.workingOn = workingOn
         self.context = context
@@ -3553,6 +3577,9 @@ extension ProjectSessionState: Equatable, Hashable {
             return false
         }
         if lhs.stateChangedAt != rhs.stateChangedAt {
+            return false
+        }
+        if lhs.updatedAt != rhs.updatedAt {
             return false
         }
         if lhs.sessionId != rhs.sessionId {
@@ -3576,6 +3603,7 @@ extension ProjectSessionState: Equatable, Hashable {
     public func hash(into hasher: inout Hasher) {
         hasher.combine(state)
         hasher.combine(stateChangedAt)
+        hasher.combine(updatedAt)
         hasher.combine(sessionId)
         hasher.combine(workingOn)
         hasher.combine(context)
@@ -3593,6 +3621,7 @@ public struct FfiConverterTypeProjectSessionState: FfiConverterRustBuffer {
             try ProjectSessionState(
                 state: FfiConverterTypeSessionState.read(from: &buf),
                 stateChangedAt: FfiConverterOptionString.read(from: &buf),
+                updatedAt: FfiConverterOptionString.read(from: &buf),
                 sessionId: FfiConverterOptionString.read(from: &buf),
                 workingOn: FfiConverterOptionString.read(from: &buf),
                 context: FfiConverterOptionTypeContextInfo.read(from: &buf),
@@ -3604,6 +3633,7 @@ public struct FfiConverterTypeProjectSessionState: FfiConverterRustBuffer {
     public static func write(_ value: ProjectSessionState, into buf: inout [UInt8]) {
         FfiConverterTypeSessionState.write(value.state, into: &buf)
         FfiConverterOptionString.write(value.stateChangedAt, into: &buf)
+        FfiConverterOptionString.write(value.updatedAt, into: &buf)
         FfiConverterOptionString.write(value.sessionId, into: &buf)
         FfiConverterOptionString.write(value.workingOn, into: &buf)
         FfiConverterOptionTypeContextInfo.write(value.context, into: &buf)

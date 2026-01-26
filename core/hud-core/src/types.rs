@@ -240,6 +240,9 @@ pub struct ContextInfo {
 pub struct ProjectSessionState {
     pub state: SessionState,
     pub state_changed_at: Option<String>,
+    /// Timestamp of last hook event (more recent than state_changed_at).
+    /// Use this for activity comparison between sessions.
+    pub updated_at: Option<String>,
     pub session_id: Option<String>,
     pub working_on: Option<String>,
     pub context: Option<ContextInfo>,

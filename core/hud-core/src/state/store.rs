@@ -49,18 +49,13 @@ use tempfile::NamedTempFile;
 
 use crate::types::SessionState;
 
+use super::path_utils::normalize_path_for_comparison;
 use super::types::SessionRecord;
 
 /// Normalizes a path for consistent comparison.
-///
-/// Strips trailing slashes (except for root "/") so that "/project" and "/project/"
-/// match the same session.
+/// Handles trailing slashes, case sensitivity (macOS), and symlinks.
 fn normalize_path(path: &str) -> String {
-    if path == "/" {
-        "/".to_string()
-    } else {
-        path.trim_end_matches('/').to_string()
-    }
+    normalize_path_for_comparison(path)
 }
 
 /// Returns paths that should be considered for matching this record.

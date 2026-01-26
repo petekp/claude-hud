@@ -21,11 +21,6 @@ final class ActiveProjectResolver {
 
     private var projects: [Project] = []
     private var manualOverride: Project?
-    private var overrideExpiry: Date?
-
-    private enum Constants {
-        static let overrideDurationSeconds: TimeInterval = 10
-    }
 
     init(sessionStateManager: SessionStateManager, shellStateStore: ShellStateStore) {
         self.sessionStateManager = sessionStateManager
@@ -38,36 +33,48 @@ final class ActiveProjectResolver {
         self.projects = projects
     }
 
+    /// Set a manual override for the active project.
+    /// The override persists until the user clicks on a different project
+    /// or the overridden project's session ends.
     func setManualOverride(_ project: Project) {
         manualOverride = project
-        overrideExpiry = Date().addingTimeInterval(Constants.overrideDurationSeconds)
     }
 
     func resolve() {
-        // Priority 0: Manual override (from clicking a project, expires after 10s)
-        if let override = manualOverride,
-           let expiry = overrideExpiry,
-           Date() < expiry
-        {
+        // Priority 0: Manual override (from clicking a project)
+        // Persists until user clicks a different project.
+        // This prevents auto-switching between multiple active sessions.
+        if let override = manualOverride {
+            // If the override project has an active session, use it
+            if let sessionState = sessionStateManager.getSessionState(for: override),
+               sessionState.isLocked {
+                activeProject = override
+                activeSource = .none
+                return
+            }
+            // No active session for override project - still honor the override
+            // but show as "manual" source. This lets users pin a project even without
+            // an active session. Override clears when user clicks different project.
             activeProject = override
             activeSource = .none
             return
-        } else {
-            manualOverride = nil
-            overrideExpiry = nil
         }
 
-        // Priority 1: Shell CWD (terminal navigation is most immediate signal)
-        if let (project, pid, app) = findActiveShellProject() {
-            activeProject = project
-            activeSource = .shell(pid: pid, app: app)
-            return
-        }
-
-        // Priority 2: Most recent Claude session (fallback when not in a tracked project dir)
+        // Priority 1: Most recent Claude session (accurate timestamps from hook events)
+        // Claude sessions update their timestamp on every hook event, making them
+        // the most reliable signal for which project is actively being worked on.
         if let (project, sessionId) = findActiveClaudeSession() {
             activeProject = project
             activeSource = .claude(sessionId: sessionId)
+            return
+        }
+
+        // Priority 2: Shell CWD (fallback when no Claude sessions are running)
+        // Shell timestamps only update on prompt display, which doesn't happen
+        // during long-running Claude sessions.
+        if let (project, pid, app) = findActiveShellProject() {
+            activeProject = project
+            activeSource = .shell(pid: pid, app: app)
             return
         }
 
@@ -78,7 +85,8 @@ final class ActiveProjectResolver {
     // MARK: - Private Resolution
 
     private func findActiveClaudeSession() -> (Project, String)? {
-        var mostRecent: (Project, String, Date)?
+        var activeSessions: [(Project, String, Date)] = []
+        var readySessions: [(Project, String, Date)] = []
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
 
@@ -89,20 +97,36 @@ final class ActiveProjectResolver {
                 continue
             }
 
-            let stateChangedAt: Date
-            if let dateStr = sessionState.stateChangedAt,
+            // Use updated_at (updates on every hook event) for accurate activity tracking.
+            // Falls back to stateChangedAt, then Date.distantPast.
+            let updatedAt: Date
+            if let dateStr = sessionState.updatedAt,
                let parsed = formatter.date(from: dateStr) {
-                stateChangedAt = parsed
+                updatedAt = parsed
+            } else if let dateStr = sessionState.stateChangedAt,
+                      let parsed = formatter.date(from: dateStr) {
+                updatedAt = parsed
             } else {
-                stateChangedAt = Date.distantPast
+                updatedAt = Date.distantPast
             }
 
-            if mostRecent == nil || stateChangedAt > mostRecent!.2 {
-                mostRecent = (project, sessionId, stateChangedAt)
+            // Separate active (Working/Waiting/Compacting) from passive (Ready) sessions.
+            // Active sessions always take priority - a session you're using shouldn't
+            // lose focus to one that just finished.
+            let isActive = sessionState.state == .working ||
+                           sessionState.state == .waiting ||
+                           sessionState.state == .compacting
+
+            if isActive {
+                activeSessions.append((project, sessionId, updatedAt))
+            } else {
+                readySessions.append((project, sessionId, updatedAt))
             }
         }
 
-        return mostRecent.map { ($0.0, $0.1) }
+        // Prefer active sessions over ready sessions, then sort by recency
+        let candidates = activeSessions.isEmpty ? readySessions : activeSessions
+        return candidates.max(by: { $0.2 < $1.2 }).map { ($0.0, $0.1) }
     }
 
     private func findActiveShellProject() -> (Project, String, String?)? {

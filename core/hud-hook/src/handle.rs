@@ -16,7 +16,10 @@
 //! ```
 
 use chrono::Utc;
-use hud_core::state::{create_lock, HookEvent, HookInput, StateStore};
+use hud_core::state::{
+    count_other_session_locks, create_session_lock, release_lock_by_session, HookEvent, HookInput,
+    StateStore,
+};
 use hud_core::types::SessionState;
 use std::env;
 use std::io::{self, Read};
@@ -154,17 +157,36 @@ pub fn run() -> Result<(), String> {
     // Apply the state change
     match action {
         Action::Delete => {
-            // Create tombstone BEFORE deleting to prevent race conditions
-            // where other events arrive after SessionEnd
-            create_tombstone(&tombstones_dir, &session_id);
+            // Release the session-based lock FIRST
+            // This directly removes the lock for this specific session/PID
+            if release_lock_by_session(&lock_base, &session_id, ppid) {
+                log(&format!(
+                    "Released lock for session {} (PID {})",
+                    session_id, ppid
+                ));
+            }
 
-            store.remove(&session_id);
-            store
-                .save()
-                .map_err(|e| format!("Failed to save state: {}", e))?;
+            // Check if OTHER processes are still using this session_id
+            // (can happen when Claude resumes the same session in multiple terminals)
+            let other_locks = count_other_session_locks(&lock_base, &session_id, ppid);
+            if other_locks > 0 {
+                log(&format!(
+                    "Session {} has {} other active locks, preserving session record",
+                    session_id, other_locks
+                ));
+                // Don't create tombstone or delete session record - other processes need it
+            } else {
+                // Create tombstone to prevent race conditions with late-arriving events
+                create_tombstone(&tombstones_dir, &session_id);
 
-            // Also remove from activity file
-            remove_session_activity(&activity_file, &session_id);
+                store.remove(&session_id);
+                store
+                    .save()
+                    .map_err(|e| format!("Failed to save state: {}", e))?;
+
+                // Also remove from activity file
+                remove_session_activity(&activity_file, &session_id);
+            }
         }
         Action::Upsert | Action::Heartbeat => {
             // Determine the target state
@@ -185,9 +207,9 @@ pub fn run() -> Result<(), String> {
 
     // Spawn lock holder for session-establishing events (even if state was skipped)
     // This ensures locks are recreated after resets or when SessionStart is skipped
-    // for active sessions. create_lock() is idempotent - returns None if lock exists.
+    // for active sessions. create_session_lock() is idempotent - returns None if lock exists.
     if matches!(event, HookEvent::SessionStart | HookEvent::UserPromptSubmit) {
-        spawn_lock_holder(&lock_base, &cwd, ppid);
+        spawn_lock_holder(&lock_base, &session_id, &cwd, ppid);
     }
 
     // Record file activity if applicable
@@ -282,9 +304,9 @@ fn process_event(
     }
 }
 
-fn spawn_lock_holder(lock_base: &Path, cwd: &str, pid: u32) {
-    // Try to create the lock
-    let lock_dir = match create_lock(lock_base, cwd, pid) {
+fn spawn_lock_holder(lock_base: &Path, session_id: &str, cwd: &str, pid: u32) {
+    // Try to create the session-based lock
+    let lock_dir = match create_session_lock(lock_base, session_id, cwd, pid) {
         Some(dir) => dir,
         None => {
             // Lock already held or creation failed
@@ -301,6 +323,8 @@ fn spawn_lock_holder(lock_base: &Path, cwd: &str, pid: u32) {
     let result = Command::new(current_exe)
         .args([
             "lock-holder",
+            "--session-id",
+            session_id,
             "--cwd",
             cwd,
             "--pid",
@@ -314,7 +338,10 @@ fn spawn_lock_holder(lock_base: &Path, cwd: &str, pid: u32) {
         .spawn();
 
     match result {
-        Ok(_) => log(&format!("Lock holder spawned for {} (PID {})", cwd, pid)),
+        Ok(_) => log(&format!(
+            "Lock holder spawned for session {} at {} (PID {})",
+            session_id, cwd, pid
+        )),
         Err(e) => log(&format!("Failed to spawn lock holder: {}", e)),
     }
 }

@@ -412,8 +412,9 @@ mod tests {
     }
 
     #[test]
-    fn test_detect_session_stale_ready_returns_session_within_threshold() {
-        // Stale Ready records (5-15 min old) should still return a session
+    fn test_detect_session_stale_ready_without_lock_returns_none() {
+        // v4: Stale Ready records without a lock should return None (session has ended)
+        // With session-based locks, if there's no lock, the session has been released.
         let temp = tempdir().unwrap();
         let capacitor_root = temp.path().join("capacitor");
         let claude_root = temp.path().join("claude");
@@ -422,7 +423,7 @@ mod tests {
 
         let mut store = StateStore::new(&capacitor_root.join("sessions.json"));
         store.update("session-1", SessionState::Ready, "/project");
-        // 10 minutes: stale but within Ready→Idle threshold
+        // 10 minutes: stale (> 5 min threshold)
         let ten_mins_ago = Utc::now() - ChronoDuration::minutes(10);
         store.set_timestamp_for_test("session-1", ten_mins_ago);
         store.set_state_changed_at_for_test("session-1", ten_mins_ago);
@@ -432,9 +433,8 @@ mod tests {
         let adapter = ClaudeAdapter::with_storage(storage);
         let session = adapter.detect_session("/project");
 
-        // Should return session with Ready state (within 15-min threshold)
-        assert!(session.is_some());
-        assert_eq!(session.unwrap().state, AgentState::Ready);
+        // v4: Without a lock, stale records indicate the session has ended
+        assert!(session.is_none());
     }
 
     #[test]

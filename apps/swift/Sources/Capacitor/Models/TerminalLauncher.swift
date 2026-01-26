@@ -178,12 +178,11 @@ final class TerminalLauncher {
         let liveShells = shells.filter { isLiveShell($0) }
         let (nonTmuxShells, tmuxShells) = partitionByTmux(liveShells)
 
-        let projectPrefix = project.path.hasSuffix("/") ? project.path : project.path + "/"
-
         // Prefer tmux shells over non-tmux shells since tmux session switching is more reliable
         // than TTY-based activation (which often fails for tmux client TTYs)
-        return findMatchingShell(in: tmuxShells, projectPath: project.path, projectPrefix: projectPrefix)
-            ?? findMatchingShell(in: nonTmuxShells, projectPath: project.path, projectPrefix: projectPrefix)
+        // Uses exact path matching only - no child path inheritance.
+        return findMatchingShell(in: tmuxShells, projectPath: project.path)
+            ?? findMatchingShell(in: nonTmuxShells, projectPath: project.path)
     }
 
     /// Query tmux directly for a session matching the project path.
@@ -239,14 +238,11 @@ final class TerminalLauncher {
 
     private func findMatchingShell(
         in shells: [String: ShellEntry],
-        projectPath: String,
-        projectPrefix: String
+        projectPath: String
     ) -> ShellMatch? {
+        // Exact match only - no child path inheritance.
+        // Monorepo packages should launch their own sessions, not reuse parent's.
         if let match = shells.first(where: { $0.value.cwd == projectPath }) {
-            return ShellMatch(pid: match.key, shell: match.value)
-        }
-
-        if let match = shells.first(where: { $0.value.cwd.hasPrefix(projectPrefix) }) {
             return ShellMatch(pid: match.key, shell: match.value)
         }
 

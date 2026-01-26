@@ -45,14 +45,21 @@
 
 mod cleanup;
 pub(crate) mod lock;
+mod path_utils;
 mod resolver;
 mod store;
 pub(crate) mod types;
 
+// Re-export path utilities for use across the crate
+pub use path_utils::{
+    normalize_path_for_comparison, normalize_path_for_hashing, normalize_path_simple,
+};
+
 pub use cleanup::{run_startup_cleanup, CleanupStats};
 pub use lock::{
-    create_lock, get_lock_dir_path, get_lock_info, is_session_running, release_lock,
-    update_lock_pid,
+    count_other_session_locks, create_lock, create_session_lock, find_all_locks_for_path,
+    get_lock_dir_path, get_lock_info, get_session_lock_dir_path, is_session_running, release_lock,
+    release_lock_by_session, update_lock_pid,
 };
 pub use resolver::{resolve_state, resolve_state_with_details, ResolvedState};
 pub use store::StateStore;

@@ -244,6 +244,10 @@ impl SessionRecord {
 pub struct LockInfo {
     pub pid: u32,
     pub path: String,
+    /// Session ID that owns this lock (v4 session-based locks).
+    /// None for legacy path-based locks created before session-based locking.
+    #[serde(default)]
+    pub session_id: Option<String>,
     /// Process start time (Unix timestamp) for PID identity verification.
     /// None for legacy locks created before PID verification was added.
     #[serde(default)]

@@ -2,11 +2,13 @@
 //!
 //! Performs housekeeping when the HUD app launches:
 //! 1. **Lock cleanup**: Removes locks with dead PIDs
-//! 2. **Session cleanup**: Removes records older than 24 hours
+//! 2. **Orphaned session cleanup**: Removes session records without active locks
+//! 3. **Session cleanup**: Removes records older than 24 hours
 //!
 //! This runs once per app launch — frequent enough to prevent cruft accumulation,
 //! infrequent enough to not impact performance.
 
+use std::collections::HashSet;
 use std::fs;
 use std::path::Path;
 
@@ -27,7 +29,9 @@ const TOMBSTONE_MAX_AGE_SECS: u64 = 60;
 pub struct CleanupStats {
     /// Number of stale lock directories removed.
     pub locks_removed: u32,
-    /// Number of old session records removed.
+    /// Number of orphaned session records removed (no active lock).
+    pub orphaned_sessions_removed: u32,
+    /// Number of old session records removed (> 24 hours).
     pub sessions_removed: u32,
     /// Number of old tombstone files removed.
     pub tombstones_removed: u32,
@@ -41,17 +45,25 @@ pub struct CleanupStats {
 pub fn run_startup_cleanup(lock_base: &Path, state_file: &Path) -> CleanupStats {
     let mut stats = CleanupStats::default();
 
-    // 1. Clean up stale locks
+    // 1. Clean up stale locks (dead PIDs)
     let lock_stats = cleanup_stale_locks(lock_base);
     stats.locks_removed = lock_stats.locks_removed;
     stats.errors.extend(lock_stats.errors);
 
-    // 2. Clean up old session records
+    // 2. Clean up orphaned session records (no active lock)
+    // This is important for v4 session-based locks: when a session ends,
+    // its lock is released but the record may linger. Without the stale Ready
+    // fallback, these orphaned records should be cleaned up.
+    let orphan_stats = cleanup_orphaned_sessions(lock_base, state_file);
+    stats.orphaned_sessions_removed = orphan_stats.orphaned_sessions_removed;
+    stats.errors.extend(orphan_stats.errors);
+
+    // 3. Clean up old session records (> 24 hours)
     let session_stats = cleanup_old_sessions(state_file);
     stats.sessions_removed = session_stats.sessions_removed;
     stats.errors.extend(session_stats.errors);
 
-    // 3. Clean up old tombstones
+    // 4. Clean up old tombstones
     // Tombstones dir is sibling to lock_base: ~/.capacitor/ended-sessions/
     if let Some(capacitor_dir) = lock_base.parent() {
         let tombstones_dir = capacitor_dir.join("ended-sessions");
@@ -108,6 +120,96 @@ fn cleanup_stale_locks(lock_base: &Path) -> CleanupStats {
     }
 
     stats
+}
+
+/// Removes session records that don't have an active lock.
+///
+/// With v4 session-based locks, when a session ends its lock is released
+/// by session ID. Session records without active locks are orphaned and
+/// should be removed to prevent state pollution.
+///
+/// Note: This only removes records that are stale (> 5 minutes old) to avoid
+/// race conditions where a record exists but the lock hasn't been created yet.
+fn cleanup_orphaned_sessions(lock_base: &Path, state_file: &Path) -> CleanupStats {
+    let mut stats = CleanupStats::default();
+
+    let mut store = match StateStore::load(state_file) {
+        Ok(s) => s,
+        Err(e) => {
+            stats
+                .errors
+                .push(format!("Failed to load state file: {}", e));
+            return stats;
+        }
+    };
+
+    // Collect all active session IDs from locks
+    let active_session_ids: HashSet<String> = collect_active_session_ids(lock_base);
+
+    // Find orphaned session records (stale records with no active lock)
+    let orphaned_session_ids: Vec<String> = store
+        .sessions()
+        .filter(|r| {
+            // Only consider stale records to avoid race conditions
+            if !r.is_stale() {
+                return false;
+            }
+
+            // Check if this session has an active lock
+            // For session-based locks (v4), we look for {session_id}.lock
+            // For legacy path-based locks (v3), we'd need path matching
+            !active_session_ids.contains(&r.session_id)
+        })
+        .map(|r| r.session_id.clone())
+        .collect();
+
+    if orphaned_session_ids.is_empty() {
+        return stats;
+    }
+
+    for session_id in &orphaned_session_ids {
+        store.remove(session_id);
+        stats.orphaned_sessions_removed += 1;
+    }
+
+    if let Err(e) = store.save() {
+        stats
+            .errors
+            .push(format!("Failed to save cleaned state file: {}", e));
+    }
+
+    stats
+}
+
+/// Collects all session IDs from active locks.
+fn collect_active_session_ids(lock_base: &Path) -> HashSet<String> {
+    let mut session_ids = HashSet::new();
+
+    let entries = match fs::read_dir(lock_base) {
+        Ok(e) => e,
+        Err(_) => return session_ids,
+    };
+
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if !path.is_dir() || !path.extension().is_some_and(|e| e == "lock") {
+            continue;
+        }
+
+        if let Some(info) = read_lock_info(&path) {
+            // Only consider alive locks
+            if is_pid_alive(info.pid) {
+                // For session-based locks, session_id is in meta.json
+                if let Some(sid) = info.session_id {
+                    session_ids.insert(sid);
+                }
+                // For legacy path-based locks, we can extract from lock dir name
+                // but those don't have session_id, so we skip them
+            }
+        }
+    }
+
+    session_ids
 }
 
 /// Removes tombstone files older than 1 minute.
@@ -368,7 +470,81 @@ mod tests {
         let stats = run_startup_cleanup(&lock_base, &state_file);
 
         assert_eq!(stats.locks_removed, 1);
-        assert_eq!(stats.sessions_removed, 1);
+        // v4: The old session is first cleaned up by orphaned session cleanup
+        // (stale record without a lock), so sessions_removed may be 0
+        // The total removed should be 1 (either as orphaned or old)
+        let total_sessions_removed = stats.orphaned_sessions_removed + stats.sessions_removed;
+        assert_eq!(total_sessions_removed, 1, "Old session should be removed");
         assert!(stats.errors.is_empty());
+    }
+
+    #[test]
+    fn cleanup_orphaned_sessions_removes_stale_records_without_locks() {
+        let temp = tempdir().unwrap();
+        let lock_base = temp.path().join("sessions");
+        let state_file = temp.path().join("sessions.json");
+        fs::create_dir_all(&lock_base).unwrap();
+
+        // Create state file with a stale session that has no lock
+        let stale_time = Utc::now() - Duration::minutes(10);
+        let content = serde_json::json!({
+            "version": 3,
+            "sessions": {
+                "orphaned-session": {
+                    "session_id": "orphaned-session",
+                    "state": "ready",
+                    "cwd": "/orphaned/project",
+                    "updated_at": stale_time.to_rfc3339(),
+                    "state_changed_at": stale_time.to_rfc3339()
+                }
+            }
+        });
+        fs::write(&state_file, serde_json::to_string_pretty(&content).unwrap()).unwrap();
+
+        let stats = cleanup_orphaned_sessions(&lock_base, &state_file);
+
+        assert_eq!(
+            stats.orphaned_sessions_removed, 1,
+            "Should remove orphaned session"
+        );
+        assert!(stats.errors.is_empty());
+
+        // Verify the session was removed
+        let store = StateStore::load(&state_file).unwrap();
+        assert!(store.get_by_session_id("orphaned-session").is_none());
+    }
+
+    #[test]
+    fn cleanup_orphaned_sessions_keeps_fresh_records() {
+        let temp = tempdir().unwrap();
+        let lock_base = temp.path().join("sessions");
+        let state_file = temp.path().join("sessions.json");
+        fs::create_dir_all(&lock_base).unwrap();
+
+        // Create state file with a fresh session (no lock, but not stale)
+        let content = serde_json::json!({
+            "version": 3,
+            "sessions": {
+                "fresh-session": {
+                    "session_id": "fresh-session",
+                    "state": "working",
+                    "cwd": "/fresh/project",
+                    "updated_at": Utc::now().to_rfc3339(),
+                    "state_changed_at": Utc::now().to_rfc3339()
+                }
+            }
+        });
+        fs::write(&state_file, serde_json::to_string_pretty(&content).unwrap()).unwrap();
+
+        let stats = cleanup_orphaned_sessions(&lock_base, &state_file);
+
+        assert_eq!(
+            stats.orphaned_sessions_removed, 0,
+            "Should not remove fresh records"
+        );
+
+        // Verify the session still exists
+        let store = StateStore::load(&state_file).unwrap();
+        assert!(store.get_by_session_id("fresh-session").is_some());
     }
 }

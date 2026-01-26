@@ -70,11 +70,13 @@ pub fn detect_session_state_with_storage(
 
             let is_working = final_state == SessionState::Working;
             let working_on = record.as_ref().and_then(|r| r.working_on.clone());
-            let state_changed_at = record.map(|r| r.state_changed_at.to_rfc3339());
+            let state_changed_at = record.as_ref().map(|r| r.state_changed_at.to_rfc3339());
+            let updated_at = record.map(|r| r.updated_at.to_rfc3339());
 
             ProjectSessionState {
                 state: final_state,
                 state_changed_at,
+                updated_at,
                 session_id: details.session_id,
                 working_on,
                 context: None,
@@ -95,6 +97,7 @@ pub fn detect_session_state_with_storage(
                 ProjectSessionState {
                     state: SessionState::Working,
                     state_changed_at: None,
+                    updated_at: None,
                     session_id: None, // We don't know which session (could track in activity)
                     working_on: None,
                     context: None,
@@ -105,6 +108,7 @@ pub fn detect_session_state_with_storage(
                 ProjectSessionState {
                     state: SessionState::Idle,
                     state_changed_at: None,
+                    updated_at: None,
                     session_id: None,
                     working_on: None,
                     context: None,
@@ -483,14 +487,15 @@ mod tests {
     }
 
     #[test]
-    fn test_detect_session_state_stale_ready_returns_ready_within_threshold() {
-        // Stale Ready records (5-15 min old) should return Ready, not Idle
+    fn test_detect_session_state_stale_ready_without_lock_returns_idle() {
+        // v4: Stale Ready records without a lock should return Idle (session has ended)
+        // With session-based locks, if there's no lock, the session has been released.
         let (_temp, storage) = setup_storage();
         let project_path = "/tmp/hud-core-test-stale-ready";
 
         let mut store = StateStore::new(&storage.sessions_file());
         store.update("session-1", SessionState::Ready, project_path);
-        // 10 minutes: stale (> 5 min) but within Ready→Idle threshold (< 15 min)
+        // 10 minutes: stale (> 5 min threshold)
         let ten_mins_ago = Utc::now() - ChronoDuration::minutes(10);
         store.set_timestamp_for_test("session-1", ten_mins_ago);
         store.set_state_changed_at_for_test("session-1", ten_mins_ago);
@@ -498,20 +503,21 @@ mod tests {
 
         let state = detect_session_state_with_storage(&storage, project_path);
 
-        // Should still be Ready (within 15-min threshold)
-        assert_eq!(state.state, SessionState::Ready);
-        assert_eq!(state.session_id, Some("session-1".to_string()));
+        // v4: Without a lock, stale records indicate the session has ended → Idle
+        assert_eq!(state.state, SessionState::Idle);
+        // No session_id when resolver returns None
+        assert!(state.session_id.is_none());
     }
 
     #[test]
     fn test_detect_session_state_very_stale_ready_returns_idle() {
-        // Ready records older than 15 min without a lock should return Idle
+        // Very stale Ready records (> 5 min) without a lock should return Idle
         let (_temp, storage) = setup_storage();
         let project_path = "/tmp/hud-core-test-very-stale-ready";
 
         let mut store = StateStore::new(&storage.sessions_file());
         store.update("session-1", SessionState::Ready, project_path);
-        // 20 minutes: beyond Ready→Idle threshold (> 15 min)
+        // 20 minutes: very stale
         let twenty_mins_ago = Utc::now() - ChronoDuration::minutes(20);
         store.set_timestamp_for_test("session-1", twenty_mins_ago);
         store.set_state_changed_at_for_test("session-1", twenty_mins_ago);
@@ -520,8 +526,8 @@ mod tests {
         let state = detect_session_state_with_storage(&storage, project_path);
 
         assert_eq!(state.state, SessionState::Idle);
-        // Session ID is still returned for reference
-        assert_eq!(state.session_id, Some("session-1".to_string()));
+        // v4: No session_id when resolver returns None (session has ended)
+        assert!(state.session_id.is_none());
     }
 
     #[test]
