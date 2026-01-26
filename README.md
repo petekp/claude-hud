@@ -39,6 +39,61 @@ Capture ideas without breaking your flow:
 - Model distribution (Opus/Sonnet/Haiku)
 - Session history and activity timeline
 
+## Supported Workflows
+
+Capacitor works best when you run Claude Code in standalone terminal apps. IDE integrated terminals work for session tracking, but have limitations for project switching.
+
+### Terminals ✅
+
+These terminal emulators are fully supported with one-click project activation:
+
+| Terminal | Session Tracking | Project Switching | Notes |
+|----------|-----------------|-------------------|-------|
+| **Ghostty** | ✅ | ✅ | Recommended — fast, modern |
+| **iTerm2** | ✅ | ✅ | Full tab selection via AppleScript |
+| **Terminal.app** | ✅ | ✅ | Full tab selection via AppleScript |
+| **Alacritty** | ✅ | ✅ | Window activation |
+| **kitty** | ✅ | ✅ | Requires `allow_remote_control yes` in config |
+| **Warp** | ✅ | ⚠️ | No tab selection API — activates app only |
+
+### Shells ✅
+
+Shell integration tracks your current working directory for ambient project awareness:
+
+| Shell | Support | Setup |
+|-------|---------|-------|
+| **Zsh** | ✅ | Via `precmd_functions` |
+| **Bash** | ✅ | Via `PROMPT_COMMAND` |
+| **Fish** | ✅ | Via `fish_postexec` event |
+
+Shell setup snippets are provided in the app's Setup card.
+
+### IDEs ⚠️
+
+Claude Code sessions in IDE integrated terminals are tracked, but project switching has limitations:
+
+| IDE | Session Tracking | Project Switching | Notes |
+|-----|-----------------|-------------------|-------|
+| **Cursor** | ✅ | ⚠️ | Opens project, but can't focus terminal panel |
+| **VS Code** | ✅ | ⚠️ | Opens project, but can't focus terminal panel |
+| **VS Code Insiders** | ✅ | ⚠️ | Same as VS Code |
+
+**Why the limitation?** IDEs don't expose APIs to focus the integrated terminal programmatically. Capacitor can open the correct project window, but you'll need to manually focus the terminal panel (usually `Ctrl+\``).
+
+### Terminal Multiplexers
+
+| Multiplexer | Support | Notes |
+|-------------|---------|-------|
+| **tmux** | ✅ | Full support — detects sessions, switches clients, tracks host terminal |
+| **screen** | ❌ | Not yet implemented |
+
+### What Doesn't Work Yet
+
+- **IDE terminal focus** — Can't programmatically focus the terminal panel within Cursor/VS Code
+- **Warp/Ghostty tab selection** — These terminals don't expose tab selection APIs
+- **GNU Screen** — Only tmux is supported for multiplexer workflows
+- **SSH sessions** — Remote sessions aren't detected or tracked
+
 ## Requirements
 
 - **Apple Silicon Mac** (M1/M2/M3/M4) — Intel Macs are not supported
