@@ -1,7 +1,7 @@
 # Agent Changelog
 
 > This file helps coding agents understand project evolution, key decisions,
-> and deprecated patterns. Updated: 2026-01-25
+> and deprecated patterns. Updated: 2026-01-26
 
 ## Current State Summary
 
@@ -12,6 +12,24 @@ Capacitor is a native macOS SwiftUI app (Apple Silicon, macOS 14+) that acts as 
 None currently. Last audit: 2026-01-25.
 
 ## Timeline
+
+### 2026-01-25 — Status Chips Replace Prose Summaries
+
+**What changed:** Replaced three-tier prose summary system (`workingOn` → `lastKnownSummary` → `latestSummary`) with compact status chips showing session state and recency.
+
+**Why:** Prose summaries required reading and parsing. For rapid context-switching between projects, users need **scannable signals**, not narratives. A chip showing "🟡 Waiting · 2h ago" is instantly parseable.
+
+**Agent impact:**
+- Don't implement prose summary features—the pattern is deprecated
+- Status chips are the canonical way to show project context
+- Stats now refresh every 30 seconds to keep recency accurate
+- Summary caching logic removed from project cards
+
+**Deprecated:** Three-tier summary fallback, `workingOn` field, prose-based project context display.
+
+**Commits:** `e1b8ed5`, `cca2c28`
+
+---
 
 ### 2026-01-25 — Async Hooks and IDE Terminal Activation
 
@@ -240,14 +258,22 @@ None currently. Last audit: 2026-01-25.
 | Run AI directly in app | Call Claude Code CLI instead | 2026-01-17 |
 | Check timestamp freshness for session liveness | Check lock file existence + PID validity | 2026-01-19 |
 | Use `Bundle.module` directly | Use `ResourceBundle.url(forResource:)` | 2026-01-23 |
+| Implement prose summaries | Use status chips for project context | 2026-01-25 |
 
 ## Trajectory
 
 The project is moving toward:
 
-1. **Parallel workstreams** — One-click git worktree creation for isolated parallel work (brainstorm complete, ready for planning)
-2. **Project context signals** — Replace prose summaries with scannable status chips (brainstorm complete, ready for planning)
+1. **Parallel workstreams** — One-click git worktree creation for isolated parallel work
+   - Architecture decisions locked: worktrees at `{repo}/.capacitor/worktrees/{name}/`
+   - Identity model: workstreams are child entities under parent project (not top-level projects)
+   - Source of truth: `git worktree list --porcelain`
+   - Ready for implementation planning
+
+2. **Project context signals** — ✅ Implemented as status chips (2026-01-25)
+
 3. **Multi-agent CLI support** — Starship-style adapters for Claude, Codex, Aider, Amp (plan completed)
+
 4. **Idea capture with LLM sensemaking** — Fast capture flow with AI-powered expansion (plan completed)
 
 The core sidecar architecture is stable. Recent focus: terminal integration, async hooks, and UX refinements for rapid context-switching.
