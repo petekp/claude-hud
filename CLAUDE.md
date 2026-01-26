@@ -19,6 +19,10 @@ cargo fmt                         # Format (required before commits)
 cargo clippy -- -D warnings       # Lint
 cargo test                        # Test
 
+# Bats tests (shell integration tests)
+bats tests/hud-hook/tombstone.bats   # Hook race condition tests
+bats tests/release-scripts/          # Release script tests
+
 # Pre-commit hook (one-time setup)
 ln -sf ../../scripts/dev/pre-commit .git/hooks/pre-commit
 
@@ -94,6 +98,9 @@ See `docs/NOTARIZATION_SETUP.md` for full guide.
 - **Never use `Bundle.module` directly** — Use `ResourceBundle.url(forResource:withExtension:)` instead. `Bundle.module` is SPM-generated code that crashes in distributed builds. The `ResourceBundle` helper finds resources in both dev and release contexts.
 - **ZIP archives must exclude AppleDouble files** — macOS extended attributes create `._*` files that break code signatures. The build script uses `ditto --norsrc --noextattr` to prevent this. If users see "app is damaged", check for `._*` files in the extracted ZIP.
 - **Rust ISO8601 timestamps need custom Swift decoder** — Rust's `chrono` writes timestamps with microsecond precision (`2026-01-24T22:34:54.629248Z`), but Swift's default `.iso8601` decoder only handles second-precision. Use a custom decoder with `ISO8601DateFormatter` configured with `.withFractionalSeconds`. See `ShellStateStore.swift` for the pattern.
+- **SwiftUI views initializing `@MainActor` types need `@MainActor`** — If a view has `@State private var store = SomeMainActorType()`, Swift 6 strict concurrency will fail because `@State` initializers run in a nonisolated context. Fix by adding `@MainActor` to the view struct itself. This affects `ShellMatrixPanel`, `WelcomeView`, and any view initializing `ShellStateStore`, `SetupRequirementsManager`, or `ShellMatrixConfig`.
+- **CI uses stricter Swift concurrency than local** — GitHub's `macos-14` runner enforces Swift 6 strict concurrency. Code that builds locally may fail in CI with "call to main actor-isolated initializer in a synchronous nonisolated context". Always test with `swift build` before pushing.
+- **Mutable captures across `DispatchQueue` boundaries** — Swift 6 errors on `var` captures in nested async closures. Fix by copying to `let` before the inner closure: `let finalCount = count` then use `finalCount` inside `DispatchQueue.main.async { }`.
 
 ## Structure
 
