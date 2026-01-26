@@ -320,9 +320,9 @@ else
     echo -e "${YELLOW}Stapling notarization ticket...${NC}"
     xcrun stapler staple "$APP_BUNDLE"
 
-    # Recreate zip with stapled app
+    # Recreate zip with stapled app (must use same flags to prevent AppleDouble files)
     rm "$DIST_DIR/$ZIP_NAME"
-    ditto -c -k --keepParent "$APP_BUNDLE" "$DIST_DIR/$ZIP_NAME"
+    ditto -c -k --norsrc --noextattr --keepParent "$APP_BUNDLE" "$DIST_DIR/$ZIP_NAME"
 
     echo -e "${GREEN}✓ Notarization complete and stapled${NC}"
     echo ""
