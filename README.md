@@ -138,18 +138,20 @@ Capacitor tracks session state via Claude Code hooks. To enable:
    ```json
    {
      "hooks": {
-       "SessionStart": [{ "hooks": [{ "type": "command", "command": "$HOME/.local/bin/hud-hook handle" }] }],
+       "SessionStart": [{ "hooks": [{ "type": "command", "command": "$HOME/.local/bin/hud-hook handle", "async": true, "timeout": 30 }] }],
        "SessionEnd": [{ "hooks": [{ "type": "command", "command": "$HOME/.local/bin/hud-hook handle" }] }],
-       "UserPromptSubmit": [{ "hooks": [{ "type": "command", "command": "$HOME/.local/bin/hud-hook handle" }] }],
-       "PreToolUse": [{ "matcher": "*", "hooks": [{ "type": "command", "command": "$HOME/.local/bin/hud-hook handle" }] }],
-       "PostToolUse": [{ "matcher": "*", "hooks": [{ "type": "command", "command": "$HOME/.local/bin/hud-hook handle" }] }],
-       "PermissionRequest": [{ "matcher": "*", "hooks": [{ "type": "command", "command": "$HOME/.local/bin/hud-hook handle" }] }],
-       "Stop": [{ "hooks": [{ "type": "command", "command": "$HOME/.local/bin/hud-hook handle" }] }],
-       "PreCompact": [{ "hooks": [{ "type": "command", "command": "$HOME/.local/bin/hud-hook handle" }] }],
-       "Notification": [{ "hooks": [{ "type": "command", "command": "$HOME/.local/bin/hud-hook handle" }] }]
+       "UserPromptSubmit": [{ "hooks": [{ "type": "command", "command": "$HOME/.local/bin/hud-hook handle", "async": true, "timeout": 30 }] }],
+       "PreToolUse": [{ "matcher": "*", "hooks": [{ "type": "command", "command": "$HOME/.local/bin/hud-hook handle", "async": true, "timeout": 30 }] }],
+       "PostToolUse": [{ "matcher": "*", "hooks": [{ "type": "command", "command": "$HOME/.local/bin/hud-hook handle", "async": true, "timeout": 30 }] }],
+       "PermissionRequest": [{ "matcher": "*", "hooks": [{ "type": "command", "command": "$HOME/.local/bin/hud-hook handle", "async": true, "timeout": 30 }] }],
+       "Stop": [{ "hooks": [{ "type": "command", "command": "$HOME/.local/bin/hud-hook handle", "async": true, "timeout": 30 }] }],
+       "PreCompact": [{ "hooks": [{ "type": "command", "command": "$HOME/.local/bin/hud-hook handle", "async": true, "timeout": 30 }] }],
+       "Notification": [{ "hooks": [{ "type": "command", "command": "$HOME/.local/bin/hud-hook handle", "async": true, "timeout": 30 }] }]
      }
    }
    ```
+
+   Note: `SessionEnd` runs synchronously (no `async`/`timeout`) to ensure cleanup completes before the session exits.
 
 3. Restart any active Claude Code sessions.
 
@@ -164,7 +166,7 @@ Click the **+** button in Capacitor to add project folders. Capacitor will detec
 ## Architecture
 
 ```
-claude-hud/
+capacitor/
 ├── core/hud-core/       # Rust business logic
 │   └── src/
 │       ├── engine.rs    # FFI facade (UniFFI)
@@ -172,6 +174,11 @@ claude-hud/
 │       ├── projects.rs  # Project management
 │       ├── ideas.rs     # Idea capture system
 │       └── stats.rs     # Token usage parsing
+│
+├── core/hud-hook/       # Rust CLI hook handler
+│   └── src/
+│       ├── handle.rs    # Hook event processing
+│       └── cwd.rs       # Shell CWD tracking
 │
 ├── apps/swift/          # SwiftUI macOS app
 │   └── Sources/Capacitor/
@@ -237,9 +244,9 @@ cd apps/swift && swift run
 
 ## How Session Tracking Works
 
-1. **Hooks** — Claude Code fires events (SessionStart, Stop, etc.) that run a shell script
-2. **State file** — The script writes JSON to `~/.capacitor/sessions.json`
-3. **Lock files** — The script creates locks at `~/.capacitor/sessions/{hash}.lock/`
+1. **Hooks** — Claude Code fires events (SessionStart, Stop, etc.) that run the `hud-hook` binary
+2. **State file** — The hook writes JSON to `~/.capacitor/sessions.json`
+3. **Lock files** — The hook creates locks at `~/.capacitor/sessions/{hash}.lock/`
 4. **Capacitor reads** — The app polls these files and resolves the current state
 
 The state resolver handles edge cases like:
@@ -254,17 +261,21 @@ Capacitor uses two namespaces:
 **`~/.capacitor/`** — owned by Capacitor:
 ```
 ~/.capacitor/
-├── config.json                 # Pinned projects
+├── config.json                 # App preferences
+├── projects.json               # Tracked projects list
 ├── sessions.json               # Current session states
+├── sessions/                   # Lock directories ({hash}.lock/)
 ├── stats-cache.json            # Token usage cache
 ├── summaries.json              # Session summaries
+├── shell-cwd.json              # Active shell CWD tracking
+├── shell-history.jsonl         # CWD change history (30-day retention)
 └── projects/{encoded-path}/    # Per-project data (ideas, order)
 ```
 
-**`~/.claude/`** — owned by Claude Code CLI (read-only for Capacitor, we never write here):
+**`~/.claude/`** — owned by Claude Code CLI (read-only for Capacitor):
 ```
 ~/.claude/
-├── sessions/                   # Lock directories (created by Claude)
+├── settings.json               # Hooks configuration
 └── projects/                   # Session transcripts
 ```
 
