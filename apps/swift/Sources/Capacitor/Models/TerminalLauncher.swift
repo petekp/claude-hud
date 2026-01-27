@@ -1,27 +1,9 @@
 import AppKit
 import Foundation
 
-// MARK: - Terminal App Definition
+// MARK: - ParentApp Terminal Extensions
 
-enum TerminalApp: CaseIterable {
-    case ghostty
-    case iTerm
-    case alacritty
-    case kitty
-    case warp
-    case terminal
-
-    var displayName: String {
-        switch self {
-        case .ghostty: return "Ghostty"
-        case .iTerm: return "iTerm"
-        case .alacritty: return "Alacritty"
-        case .kitty: return "kitty"
-        case .warp: return "Warp"
-        case .terminal: return "Terminal"
-        }
-    }
-
+extension ParentApp {
     var bundlePath: String? {
         switch self {
         case .ghostty: return "/Applications/Ghostty.app"
@@ -29,76 +11,38 @@ enum TerminalApp: CaseIterable {
         case .alacritty: return "/Applications/Alacritty.app"
         case .warp: return "/Applications/Warp.app"
         case .kitty, .terminal: return nil
+        default: return nil
         }
     }
 
     var isInstalled: Bool {
+        guard category == .terminal else { return false }
         guard let path = bundlePath else {
             return self == .kitty || self == .terminal
         }
         return FileManager.default.fileExists(atPath: path)
     }
 
-    static let priorityOrder: [TerminalApp] = [
-        .ghostty, .iTerm, .alacritty, .kitty, .warp, .terminal,
+    static let terminalPriorityOrder: [ParentApp] = [
+        .ghostty, .iTerm, .alacritty, .kitty, .warp, .terminal
     ]
 
-    init?(fromParentApp app: String) {
-        let lowercased = app.lowercased()
-        if lowercased.contains("iterm") {
-            self = .iTerm
-        } else if lowercased == "terminal" {
-            self = .terminal
-        } else if lowercased.contains("ghostty") {
-            self = .ghostty
-        } else if lowercased.contains("kitty") {
-            self = .kitty
-        } else if lowercased.contains("alacritty") {
-            self = .alacritty
-        } else if lowercased.contains("warp") {
-            self = .warp
-        } else {
-            return nil
-        }
-    }
-}
-
-// MARK: - IDE App Definition
-
-enum IDEApp {
-    case cursor
-    case vscode
-    case vscodeInsiders
-
-    var displayName: String {
+    var processName: String? {
         switch self {
         case .cursor: return "Cursor"
-        case .vscode: return "Visual Studio Code"
-        case .vscodeInsiders: return "Visual Studio Code - Insiders"
+        case .vsCode: return "Code"
+        case .vsCodeInsiders: return "Code - Insiders"
+        case .zed: return "Zed"
+        default: return nil
         }
     }
 
-    var processName: String {
-        switch self {
-        case .cursor: return "Cursor"
-        case .vscode: return "Code"
-        case .vscodeInsiders: return "Code - Insiders"
-        }
-    }
-
-    var cliBinary: String {
+    var cliBinary: String? {
         switch self {
         case .cursor: return "cursor"
-        case .vscode: return "code"
-        case .vscodeInsiders: return "code-insiders"
-        }
-    }
-
-    init?(fromParentApp app: String) {
-        switch app.lowercased() {
-        case "cursor": self = .cursor
-        case "vscode": self = .vscode
-        case "vscode-insiders": self = .vscodeInsiders
+        case .vsCode: return "code"
+        case .vsCodeInsiders: return "code-insiders"
+        case .zed: return "zed"
         default: return nil
         }
     }
@@ -151,13 +95,65 @@ final class TerminalLauncher {
     }
 
     private func switchToTmuxSessionAndActivate(session: String) {
-        // Switch tmux to the target session
-        runBashScript("tmux switch-client -t '\(session)' 2>/dev/null")
-
-        // Activate the terminal app (whichever one is running the tmux client)
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
-            self?.activateTerminalApp()
+        // Check if there's an attached tmux client
+        if hasTmuxClientAttached() {
+            // Switch the existing client to the target session
+            runBashScript("tmux switch-client -t '\(session)' 2>/dev/null")
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
+                self?.activateTerminalApp()
+            }
+        } else {
+            // No client attached - launch a new terminal window that attaches to the session
+            launchTerminalWithTmuxSession(session)
         }
+    }
+
+    private func hasTmuxClientAttached() -> Bool {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
+        process.arguments = ["tmux", "list-clients"]
+
+        let pipe = Pipe()
+        process.standardOutput = pipe
+        process.standardError = FileHandle.nullDevice
+
+        do {
+            try process.run()
+            process.waitUntilExit()
+
+            guard process.terminationStatus == 0 else { return false }
+
+            let data = pipe.fileHandleForReading.readDataToEndOfFile()
+            guard let output = String(data: data, encoding: .utf8) else { return false }
+
+            return !output.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        } catch {
+            return false
+        }
+    }
+
+    private func launchTerminalWithTmuxSession(_ session: String) {
+        let tmuxCmd = "tmux attach-session -t '\(session)'"
+
+        // Launch terminal with tmux attach command
+        let script = """
+            if [ -d "/Applications/Ghostty.app" ]; then
+                open -na "Ghostty.app" --args -e sh -c "\(tmuxCmd)"
+            elif [ -d "/Applications/iTerm.app" ]; then
+                osascript -e "tell application \\"iTerm\\" to create window with default profile command \\"\(tmuxCmd)\\""
+                osascript -e 'tell application "iTerm" to activate'
+            elif [ -d "/Applications/Alacritty.app" ]; then
+                open -na "Alacritty.app" --args -e sh -c "\(tmuxCmd)"
+            elif command -v kitty &>/dev/null; then
+                kitty sh -c "\(tmuxCmd)" &
+            elif [ -d "/Applications/Warp.app" ]; then
+                open -a "Warp"
+            else
+                osascript -e "tell application \\"Terminal\\" to do script \\"\(tmuxCmd)\\""
+                osascript -e 'tell application "Terminal" to activate'
+            fi
+            """
+        runBashScript(script)
     }
 
     func activateTerminalApp() {
@@ -263,7 +259,7 @@ final class TerminalLauncher {
     private func activateExistingTerminal(shell: ShellEntry, pid: String, projectPath: String, shellState: ShellCwdState?) {
         let shellCount = shellState?.shells.count ?? 1
         let scenario = ShellScenario(
-            parentApp: ParentAppType(fromString: shell.parentApp),
+            parentApp: ParentApp(fromString: shell.parentApp),
             context: ShellContext(hasTmuxSession: shell.tmuxSession != nil),
             multiplicity: TerminalMultiplicity(shellCount: shellCount)
         )
@@ -313,9 +309,10 @@ final class TerminalLauncher {
 
     private func activateByTTY(context: ActivationContext) -> Bool {
         let tty = context.shell.tty
+        let parentApp = ParentApp(fromString: context.shell.parentApp)
 
-        if let parentApp = context.shell.parentApp, let terminal = TerminalApp(fromParentApp: parentApp) {
-            switch terminal {
+        if parentApp.category == .terminal {
+            switch parentApp {
             case .iTerm:
                 activateITermSession(tty: tty)
                 return true
@@ -345,23 +342,24 @@ final class TerminalLauncher {
     }
 
     private func activateByApp(context: ActivationContext) -> Bool {
-        guard let parentApp = context.shell.parentApp else { return false }
+        let parentApp = ParentApp(fromString: context.shell.parentApp)
+        guard parentApp != .unknown else { return false }
 
-        if let ide = IDEApp(fromParentApp: parentApp) {
-            if let app = findRunningIDE(ide) {
+        if parentApp.category == .ide {
+            if let app = findRunningIDE(parentApp) {
                 app.activate()
                 return true
             }
         }
 
-        if let terminal = TerminalApp(fromParentApp: parentApp) {
-            if let app = findRunningApp(terminal) {
+        if parentApp.category == .terminal {
+            if let app = findRunningApp(parentApp) {
                 app.activate()
                 return true
             }
         }
 
-        if activateAppByName(parentApp) {
+        if activateAppByName(parentApp.displayName) {
             return true
         }
 
@@ -375,12 +373,12 @@ final class TerminalLauncher {
     }
 
     private func activateIDEWindow(context: ActivationContext) -> Bool {
-        guard let parentApp = context.shell.parentApp,
-              let ide = IDEApp(fromParentApp: parentApp),
-              findRunningIDE(ide) != nil
+        let parentApp = ParentApp(fromString: context.shell.parentApp)
+        guard parentApp.category == .ide,
+              findRunningIDE(parentApp) != nil
         else { return false }
 
-        activateIDEWindowInternal(ide: ide, projectPath: context.projectPath)
+        activateIDEWindowInternal(app: parentApp, projectPath: context.projectPath)
         return true
     }
 
@@ -426,20 +424,23 @@ final class TerminalLauncher {
 
     // MARK: - IDE Activation
 
-    private func findRunningIDE(_ ide: IDEApp) -> NSRunningApplication? {
-        NSWorkspace.shared.runningApplications.first {
-            $0.localizedName == ide.processName
+    private func findRunningIDE(_ app: ParentApp) -> NSRunningApplication? {
+        guard let processName = app.processName else { return nil }
+        return NSWorkspace.shared.runningApplications.first {
+            $0.localizedName == processName
         }
     }
 
-    private func activateIDEWindowInternal(ide: IDEApp, projectPath: String) {
-        guard let app = findRunningIDE(ide) else { return }
+    private func activateIDEWindowInternal(app: ParentApp, projectPath: String) {
+        guard let runningApp = findRunningIDE(app),
+              let cliBinary = app.cliBinary
+        else { return }
 
-        app.activate()
+        runningApp.activate()
 
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
-        process.arguments = [ide.cliBinary, projectPath]
+        process.arguments = [cliBinary, projectPath]
 
         var env = ProcessInfo.processInfo.environment
         env["PATH"] = Constants.homebrewPaths + ":" + (env["PATH"] ?? "")
@@ -468,7 +469,7 @@ final class TerminalLauncher {
         }
     }
 
-    private func discoverTerminalOwningTTY(tty: String) -> TerminalApp? {
+    private func discoverTerminalOwningTTY(tty: String) -> ParentApp? {
         if findRunningApp(.iTerm) != nil, queryITermForTTY(tty) {
             return .iTerm
         }
@@ -569,7 +570,7 @@ final class TerminalLauncher {
     }
 
     private func activateFirstRunningTerminal() {
-        for terminal in TerminalApp.priorityOrder where terminal.isInstalled {
+        for terminal in ParentApp.terminalPriorityOrder where terminal.isInstalled {
             if let app = findRunningApp(terminal) {
                 app.activate()
                 return
@@ -577,7 +578,7 @@ final class TerminalLauncher {
         }
     }
 
-    private func findRunningApp(_ terminal: TerminalApp) -> NSRunningApplication? {
+    private func findRunningApp(_ terminal: ParentApp) -> NSRunningApplication? {
         let name = terminal.displayName.lowercased()
         return NSWorkspace.shared.runningApplications.first {
             $0.localizedName?.lowercased().contains(name) == true
@@ -586,7 +587,7 @@ final class TerminalLauncher {
 
     private func isTerminalApp(_ app: NSRunningApplication) -> Bool {
         guard let name = app.localizedName else { return false }
-        return TerminalApp.priorityOrder.contains { name.contains($0.displayName) }
+        return ParentApp.terminalPriorityOrder.contains { name.contains($0.displayName) }
     }
 
     // MARK: - New Terminal Launch

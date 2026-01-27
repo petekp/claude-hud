@@ -21,6 +21,7 @@ use std::io::{BufRead, BufReader, BufWriter, Write};
 use std::path::Path;
 
 use chrono::{DateTime, Duration, Utc};
+use hud_core::ParentApp;
 use rand::Rng;
 use serde::{Deserialize, Serialize};
 use tempfile::NamedTempFile;
@@ -64,8 +65,8 @@ impl Default for ShellCwdState {
 pub struct ShellEntry {
     pub cwd: String,
     pub tty: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub parent_app: Option<String>,
+    #[serde(default)]
+    pub parent_app: ParentApp,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tmux_session: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -74,8 +75,8 @@ pub struct ShellEntry {
 }
 
 impl ShellEntry {
-    fn new(cwd: String, tty: String, parent_app: Option<String>) -> Self {
-        let (tmux_session, tmux_client_tty) = if parent_app.as_deref() == Some("tmux") {
+    fn new(cwd: String, tty: String, parent_app: ParentApp) -> Self {
+        let (tmux_session, tmux_client_tty) = if parent_app == ParentApp::Tmux {
             detect_tmux_context().map_or((None, None), |(s, t)| (Some(s), Some(t)))
         } else {
             (None, None)
@@ -109,7 +110,7 @@ pub fn run(path: &str, pid: u32, tty: &str) -> Result<(), CwdError> {
 
     state.shells.insert(
         pid.to_string(),
-        ShellEntry::new(normalized_path.clone(), tty.to_string(), parent_app.clone()),
+        ShellEntry::new(normalized_path.clone(), tty.to_string(), parent_app),
     );
 
     cleanup_dead_pids(&mut state);
@@ -121,7 +122,7 @@ pub fn run(path: &str, pid: u32, tty: &str) -> Result<(), CwdError> {
             &normalized_path,
             pid,
             tty,
-            parent_app.as_deref(),
+            parent_app,
         ));
     }
 
@@ -198,7 +199,7 @@ fn append_history(
     cwd: &str,
     pid: u32,
     tty: &str,
-    parent_app: Option<&str>,
+    parent_app: ParentApp,
 ) -> Result<(), CwdError> {
     let entry = serde_json::json!({
         "cwd": cwd,
@@ -338,51 +339,55 @@ fn run_tmux_command(args: &[&str]) -> Option<String> {
 
 // MARK: - Parent App Detection
 
-const KNOWN_APPS: &[(&str, &str)] = &[
+const KNOWN_APPS: &[(&str, ParentApp)] = &[
     // IDEs (check first - they spawn terminal processes)
-    ("Cursor Helper", "cursor"),
-    ("Cursor", "cursor"),
-    ("Code Helper", "vscode"),
-    ("Code - Insiders", "vscode-insiders"),
-    ("Code", "vscode"),
+    ("Cursor Helper", ParentApp::Cursor),
+    ("Cursor", ParentApp::Cursor),
+    ("Code Helper", ParentApp::VSCode),
+    ("Code - Insiders", ParentApp::VSCodeInsiders),
+    ("Code", ParentApp::VSCode),
+    ("Zed", ParentApp::Zed),
     // Terminal emulators
-    ("Ghostty", "ghostty"),
-    ("iTerm2", "iterm2"),
-    ("Terminal", "terminal"),
-    ("Alacritty", "alacritty"),
-    ("kitty", "kitty"),
-    ("WarpTerminal", "warp"),
-    ("Warp", "warp"),
+    ("Ghostty", ParentApp::Ghostty),
+    ("iTerm2", ParentApp::ITerm),
+    ("Terminal", ParentApp::Terminal),
+    ("Alacritty", ParentApp::Alacritty),
+    ("kitty", ParentApp::Kitty),
+    ("WarpTerminal", ParentApp::Warp),
+    ("Warp", ParentApp::Warp),
     // Multiplexers
-    ("tmux", "tmux"),
+    ("tmux", ParentApp::Tmux),
 ];
 
-fn detect_parent_app(pid: u32) -> Option<String> {
+fn detect_parent_app(pid: u32) -> ParentApp {
     let mut current_pid = pid;
 
     for _ in 0..MAX_PARENT_CHAIN_DEPTH {
-        let ppid = get_parent_pid(current_pid).ok()?;
+        let ppid = match get_parent_pid(current_pid) {
+            Ok(p) => p,
+            Err(_) => return ParentApp::Unknown,
+        };
         if ppid <= 1 {
-            return None;
+            return ParentApp::Unknown;
         }
 
-        if let Some(app_id) = identify_app_from_pid(ppid) {
-            return Some(app_id);
+        if let Some(app) = identify_app_from_pid(ppid) {
+            return app;
         }
 
         current_pid = ppid;
     }
 
-    None
+    ParentApp::Unknown
 }
 
-fn identify_app_from_pid(pid: u32) -> Option<String> {
+fn identify_app_from_pid(pid: u32) -> Option<ParentApp> {
     let name = get_process_name(pid).ok()?;
 
     KNOWN_APPS
         .iter()
         .find(|(pattern, _)| name.contains(pattern))
-        .map(|(_, app_id)| app_id.to_string())
+        .map(|(_, app)| *app)
 }
 
 // MARK: - macOS Process APIs
@@ -466,11 +471,11 @@ mod tests {
     use super::*;
     use tempfile::TempDir;
 
-    fn make_shell_entry(cwd: &str, tty: &str, parent_app: Option<&str>) -> ShellEntry {
+    fn make_shell_entry(cwd: &str, tty: &str, parent_app: ParentApp) -> ShellEntry {
         ShellEntry {
             cwd: cwd.to_string(),
             tty: tty.to_string(),
-            parent_app: parent_app.map(String::from),
+            parent_app,
             tmux_session: None,
             tmux_client_tty: None,
             updated_at: Utc::now(),
@@ -520,7 +525,7 @@ mod tests {
         let mut state = ShellCwdState::default();
         state.shells.insert(
             "12345".to_string(),
-            make_shell_entry("/test/path", "/dev/ttys000", Some("cursor")),
+            make_shell_entry("/test/path", "/dev/ttys000", ParentApp::Cursor),
         );
 
         write_state_atomic(&path, &state).unwrap();
@@ -531,10 +536,7 @@ mod tests {
         assert_eq!(loaded.version, 1);
         assert_eq!(loaded.shells.len(), 1);
         assert_eq!(loaded.shells["12345"].cwd, "/test/path");
-        assert_eq!(
-            loaded.shells["12345"].parent_app,
-            Some("cursor".to_string())
-        );
+        assert_eq!(loaded.shells["12345"].parent_app, ParentApp::Cursor);
     }
 
     #[test]
@@ -542,8 +544,8 @@ mod tests {
         let temp = TempDir::new().unwrap();
         let path = temp.path().join("history.jsonl");
 
-        append_history(&path, "/path/a", 12345, "/dev/ttys000", Some("cursor")).unwrap();
-        append_history(&path, "/path/b", 12345, "/dev/ttys000", None).unwrap();
+        append_history(&path, "/path/a", 12345, "/dev/ttys000", ParentApp::Cursor).unwrap();
+        append_history(&path, "/path/b", 12345, "/dev/ttys000", ParentApp::Unknown).unwrap();
 
         let content = fs::read_to_string(&path).unwrap();
         let lines: Vec<&str> = content.lines().collect();
@@ -556,7 +558,7 @@ mod tests {
 
         let entry2: serde_json::Value = serde_json::from_str(lines[1]).unwrap();
         assert_eq!(entry2["cwd"], "/path/b");
-        assert!(entry2["parent_app"].is_null());
+        assert_eq!(entry2["parent_app"], "unknown");
     }
 
     #[test]
@@ -576,13 +578,13 @@ mod tests {
 
         state.shells.insert(
             "999999999".to_string(),
-            make_shell_entry("/old", "/dev/ttys999", None),
+            make_shell_entry("/old", "/dev/ttys999", ParentApp::Unknown),
         );
 
         let current_pid = std::process::id().to_string();
         state.shells.insert(
             current_pid.clone(),
-            make_shell_entry("/current", "/dev/ttys000", None),
+            make_shell_entry("/current", "/dev/ttys000", ParentApp::Unknown),
         );
 
         cleanup_dead_pids(&mut state);
@@ -607,7 +609,7 @@ mod tests {
         let mut original = ShellCwdState::default();
         original.shells.insert(
             "12345".to_string(),
-            make_shell_entry("/test", "/dev/ttys000", Some("iterm2")),
+            make_shell_entry("/test", "/dev/ttys000", ParentApp::ITerm),
         );
 
         write_state_atomic(&path, &original).unwrap();
@@ -677,7 +679,7 @@ mod tests {
             make_shell_entry(
                 "/Users/test/My Documents/Project Name",
                 "/dev/ttys000",
-                None,
+                ParentApp::Unknown,
             ),
         );
 
@@ -701,7 +703,7 @@ mod tests {
             make_shell_entry(
                 r#"/path/with "quotes" and \backslashes\ and $dollars"#,
                 "/dev/ttys000",
-                None,
+                ParentApp::Unknown,
             ),
         );
 
@@ -722,7 +724,11 @@ mod tests {
         let mut state = ShellCwdState::default();
         state.shells.insert(
             "12345".to_string(),
-            make_shell_entry("/Users/日本語/项目/مشروع/🚀", "/dev/ttys000", None),
+            make_shell_entry(
+                "/Users/日本語/项目/مشروع/🚀",
+                "/dev/ttys000",
+                ParentApp::Unknown,
+            ),
         );
 
         write_state_atomic(&path, &state).unwrap();
@@ -737,7 +743,14 @@ mod tests {
         let path = temp.path().join("history.jsonl");
 
         let special_path = r#"/path/with "quotes" and spaces/日本語"#;
-        append_history(&path, special_path, 12345, "/dev/ttys000", None).unwrap();
+        append_history(
+            &path,
+            special_path,
+            12345,
+            "/dev/ttys000",
+            ParentApp::Unknown,
+        )
+        .unwrap();
 
         let content = fs::read_to_string(&path).unwrap();
         let entry: serde_json::Value = serde_json::from_str(content.trim()).unwrap();
@@ -757,7 +770,7 @@ mod tests {
         let mut state = ShellCwdState::default();
         state.shells.insert(
             "12345".to_string(),
-            make_shell_entry("/old/path", "/dev/ttys000", None),
+            make_shell_entry("/old/path", "/dev/ttys000", ParentApp::Unknown),
         );
 
         assert!(has_cwd_changed(&state, 12345, "/new/path"));

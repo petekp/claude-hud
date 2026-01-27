@@ -389,6 +389,95 @@ pub struct HookDiagnosticReport {
 // Idea Capture Types
 // ═══════════════════════════════════════════════════════════════════════════════
 
+// ═══════════════════════════════════════════════════════════════════════════════
+// Parent App Types
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/// The parent application hosting a shell session.
+///
+/// This is the authoritative enum for app identification, exported via UniFFI
+/// to Swift. All app classification logic should use this type rather than
+/// parsing strings directly.
+///
+/// **JSON serialization:** Uses lowercase strings (e.g., `ParentApp::ITerm` → `"iterm2"`)
+/// for backward compatibility with existing `shell-cwd.json` files.
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default, uniffi::Enum,
+)]
+#[serde(rename_all = "lowercase")]
+pub enum ParentApp {
+    // Terminals
+    Ghostty,
+    #[serde(rename = "iterm2")]
+    ITerm,
+    Terminal,
+    Alacritty,
+    Kitty,
+    Warp,
+    // IDEs
+    Cursor,
+    #[serde(rename = "vscode")]
+    VSCode,
+    #[serde(rename = "vscode-insiders")]
+    VSCodeInsiders,
+    Zed,
+    // Multiplexers
+    Tmux,
+    // Fallback
+    #[default]
+    Unknown,
+}
+
+impl ParentApp {
+    /// Parse a parent app identifier string (as stored in JSON).
+    pub fn from_string(s: &str) -> Self {
+        match s.to_lowercase().as_str() {
+            "ghostty" => Self::Ghostty,
+            "iterm2" => Self::ITerm,
+            "terminal" => Self::Terminal,
+            "alacritty" => Self::Alacritty,
+            "kitty" => Self::Kitty,
+            "warp" => Self::Warp,
+            "cursor" => Self::Cursor,
+            "vscode" => Self::VSCode,
+            "vscode-insiders" => Self::VSCodeInsiders,
+            "zed" => Self::Zed,
+            "tmux" => Self::Tmux,
+            _ => Self::Unknown,
+        }
+    }
+
+    /// Whether this app is a native terminal emulator.
+    pub fn is_terminal(&self) -> bool {
+        matches!(
+            self,
+            Self::Ghostty
+                | Self::ITerm
+                | Self::Terminal
+                | Self::Alacritty
+                | Self::Kitty
+                | Self::Warp
+        )
+    }
+
+    /// Whether this app is an IDE with an integrated terminal.
+    pub fn is_ide(&self) -> bool {
+        matches!(
+            self,
+            Self::Cursor | Self::VSCode | Self::VSCodeInsiders | Self::Zed
+        )
+    }
+
+    /// Whether this app is a terminal multiplexer.
+    pub fn is_multiplexer(&self) -> bool {
+        matches!(self, Self::Tmux)
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Idea Capture Types
+// ═══════════════════════════════════════════════════════════════════════════════
+
 /// A captured idea stored in `~/.capacitor/projects/{encoded}/ideas.md`.
 ///
 /// Ideas are stored in markdown format with ULID identifiers for stable references.

@@ -1,33 +1,42 @@
 import Foundation
 
-// MARK: - Parent App Types
+// MARK: - ParentApp Extensions (UniFFI enum from hud-core)
 
-enum ParentAppType: String, CaseIterable, Codable, Identifiable {
-    case cursor
-    case vscode
-    case vscodeInsiders = "vscode-insiders"
-    case iterm2
-    case terminal
-    case ghostty
-    case kitty
-    case alacritty
-    case warp
-    case tmux
-    case unknown
+extension ParentApp: Identifiable, CaseIterable {
+    public var id: String {
+        switch self {
+        case .ghostty: return "ghostty"
+        case .iTerm: return "iterm2"
+        case .terminal: return "terminal"
+        case .alacritty: return "alacritty"
+        case .kitty: return "kitty"
+        case .warp: return "warp"
+        case .cursor: return "cursor"
+        case .vsCode: return "vscode"
+        case .vsCodeInsiders: return "vscode-insiders"
+        case .zed: return "zed"
+        case .tmux: return "tmux"
+        case .unknown: return "unknown"
+        }
+    }
 
-    var id: String { rawValue }
+    public static var allCases: [ParentApp] {
+        [.ghostty, .iTerm, .terminal, .alacritty, .kitty, .warp,
+         .cursor, .vsCode, .vsCodeInsiders, .zed, .tmux, .unknown]
+    }
 
     var displayName: String {
         switch self {
-        case .cursor: return "Cursor"
-        case .vscode: return "VS Code"
-        case .vscodeInsiders: return "VS Code Insiders"
-        case .iterm2: return "iTerm2"
-        case .terminal: return "Terminal.app"
         case .ghostty: return "Ghostty"
-        case .kitty: return "kitty"
+        case .iTerm: return "iTerm2"
+        case .terminal: return "Terminal.app"
         case .alacritty: return "Alacritty"
+        case .kitty: return "kitty"
         case .warp: return "Warp"
+        case .cursor: return "Cursor"
+        case .vsCode: return "VS Code"
+        case .vsCodeInsiders: return "VS Code Insiders"
+        case .zed: return "Zed"
         case .tmux: return "tmux"
         case .unknown: return "Unknown"
         }
@@ -35,8 +44,8 @@ enum ParentAppType: String, CaseIterable, Codable, Identifiable {
 
     var category: ParentAppCategory {
         switch self {
-        case .cursor, .vscode, .vscodeInsiders: return .ide
-        case .iterm2, .terminal, .ghostty, .kitty, .alacritty, .warp: return .terminal
+        case .cursor, .vsCode, .vsCodeInsiders, .zed: return .ide
+        case .ghostty, .iTerm, .terminal, .alacritty, .kitty, .warp: return .terminal
         case .tmux: return .multiplexer
         case .unknown: return .unknown
         }
@@ -47,7 +56,20 @@ enum ParentAppType: String, CaseIterable, Codable, Identifiable {
             self = .unknown
             return
         }
-        self = ParentAppType(rawValue: app.lowercased()) ?? .unknown
+        switch app.lowercased() {
+        case "ghostty": self = .ghostty
+        case "iterm2": self = .iTerm
+        case "terminal": self = .terminal
+        case "alacritty": self = .alacritty
+        case "kitty": self = .kitty
+        case "warp": self = .warp
+        case "cursor": self = .cursor
+        case "vscode": self = .vsCode
+        case "vscode-insiders": self = .vsCodeInsiders
+        case "zed": self = .zed
+        case "tmux": self = .tmux
+        default: self = .unknown
+        }
     }
 }
 
@@ -136,13 +158,13 @@ enum ActivationStrategy: String, CaseIterable, Codable, Identifiable {
 
 // MARK: - Shell Scenario
 
-struct ShellScenario: Identifiable, Hashable, Codable {
-    let parentApp: ParentAppType
+struct ShellScenario: Identifiable, Hashable {
+    let parentApp: ParentApp
     let context: ShellContext
     let multiplicity: TerminalMultiplicity
 
     var id: String {
-        "\(parentApp.rawValue):\(context.rawValue):\(multiplicity.rawValue)"
+        "\(parentApp.id):\(context.rawValue):\(multiplicity.rawValue)"
     }
 }
 
@@ -180,7 +202,7 @@ struct ScenarioBehavior: Codable, Equatable {
 
     private static func terminalDefault(_ scenario: ShellScenario) -> ScenarioBehavior {
         switch scenario.parentApp {
-        case .iterm2, .terminal:
+        case .iTerm, .terminal:
             return ttyCapableTerminalDefault(scenario)
         case .kitty:
             return kittyDefault(scenario)
