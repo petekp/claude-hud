@@ -345,6 +345,24 @@ pub struct HookHealthReport {
     pub last_heartbeat_age_secs: Option<u64>,
 }
 
+/// Result of running a comprehensive hook system test.
+///
+/// This verifies both the heartbeat (hooks are firing) and state file I/O
+/// (persistence layer is working). Used by the "Test Hooks" button in the UI.
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct HookTestResult {
+    /// True if all tests passed
+    pub success: bool,
+    /// True if heartbeat file is recent (hooks are firing)
+    pub heartbeat_ok: bool,
+    /// Age of the heartbeat file in seconds (None if file doesn't exist)
+    pub heartbeat_age_secs: Option<u64>,
+    /// True if state file I/O test passed
+    pub state_file_ok: bool,
+    /// Human-readable summary message for display
+    pub message: String,
+}
+
 /// The primary issue preventing hooks from working correctly.
 ///
 /// Issues are prioritized: policy blocks are shown first (can't auto-fix),
@@ -383,6 +401,12 @@ pub struct HookDiagnosticReport {
     pub binary_ok: bool,
     pub config_ok: bool,
     pub firing_ok: bool,
+    /// Path to the hook binary/symlink (e.g., ~/.local/bin/hud-hook)
+    pub symlink_path: String,
+    /// Target of the symlink if it is one, None if regular file or doesn't exist
+    pub symlink_target: Option<String>,
+    /// Age of last heartbeat in seconds (for "last seen X ago" display)
+    pub last_heartbeat_age_secs: Option<u64>,
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════

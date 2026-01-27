@@ -4,11 +4,15 @@ struct SetupStatusCard: View {
     let diagnostic: HookDiagnosticReport
     let onFix: () -> Void
     let onRefresh: () -> Void
+    let onTest: () -> HookTestResult
 
     @State private var isExpanded = false
     @State private var isFixing = false
     @State private var isHovered = false
     @State private var fixButtonHovered = false
+    @State private var isTesting = false
+    @State private var testResult: HookTestResult?
+    @State private var testButtonHovered = false
     @Environment(\.prefersReducedMotion) private var reduceMotion
 
     var body: some View {
@@ -79,6 +83,12 @@ struct SetupStatusCard: View {
             statusChecklist
                 .padding(.horizontal, 12)
 
+            diagnosticDetails
+                .padding(.horizontal, 12)
+
+            testHookButton
+                .padding(.horizontal, 12)
+
             if let issue = diagnostic.primaryIssue, isPolicyBlocked(issue) {
                 policyBlockedMessage
                     .padding(.horizontal, 12)
@@ -113,6 +123,57 @@ struct SetupStatusCard: View {
             return "Waiting for first Claude session"
         }
         return "Hooks responding"
+    }
+
+    private var diagnosticDetails: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Divider()
+                .background(Color.white.opacity(0.1))
+                .padding(.vertical, 4)
+
+            detailRow(label: "Binary", value: formatPath(diagnostic.symlinkPath))
+
+            if let target = diagnostic.symlinkTarget {
+                detailRow(label: "→ Target", value: formatPath(target))
+            }
+
+            detailRow(label: "Last seen", value: formatHeartbeatAge(diagnostic.lastHeartbeatAgeSecs))
+        }
+    }
+
+    private func detailRow(label: String, value: String) -> some View {
+        HStack(alignment: .top, spacing: 8) {
+            Text(label)
+                .font(AppTypography.captionSmall)
+                .foregroundColor(.white.opacity(0.4))
+                .frame(width: 55, alignment: .leading)
+            Text(value)
+                .font(.system(size: 10, design: .monospaced))
+                .foregroundColor(.white.opacity(0.5))
+                .lineLimit(1)
+                .truncationMode(.middle)
+        }
+    }
+
+    private func formatPath(_ path: String) -> String {
+        let home = FileManager.default.homeDirectoryForCurrentUser.path
+        if path.hasPrefix(home) {
+            return "~" + path.dropFirst(home.count)
+        }
+        return path
+    }
+
+    private func formatHeartbeatAge(_ ageSecs: UInt64?) -> String {
+        guard let age = ageSecs else {
+            return "Never"
+        }
+        if age < 60 {
+            return "\(age)s ago"
+        } else if age < 3600 {
+            return "\(age / 60)m ago"
+        } else {
+            return "\(age / 3600)h ago"
+        }
     }
 
     private func checklistItem(label: String, isOk: Bool, isPending: Bool = false) -> some View {
@@ -182,6 +243,83 @@ struct SetupStatusCard: View {
             .onHover { hovering in
                 withAnimation(reduceMotion ? AppMotion.reducedMotionFallback : .easeOut(duration: 0.15)) {
                     fixButtonHovered = hovering
+                }
+            }
+        }
+    }
+
+    private var testHookButton: some View {
+        HStack(spacing: 8) {
+            Button(action: runHookTest) {
+                HStack(spacing: 6) {
+                    if isTesting {
+                        ProgressView()
+                            .scaleEffect(0.6)
+                            .frame(width: 12, height: 12)
+                    } else if let result = testResult {
+                        Image(systemName: result.success ? "checkmark.circle.fill" : "xmark.circle.fill")
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundColor(result.success ? .green : .orange)
+                    } else {
+                        Image(systemName: "play.circle")
+                            .font(.system(size: 10, weight: .semibold))
+                    }
+                    Text(testButtonLabel)
+                        .font(AppTypography.captionSmall.weight(.medium))
+                }
+                .foregroundColor(.white.opacity(testButtonHovered ? 0.9 : 0.7))
+                .padding(.horizontal, 10)
+                .padding(.vertical, 5)
+                .background(
+                    RoundedRectangle(cornerRadius: 5)
+                        .fill(Color.white.opacity(testButtonHovered ? 0.12 : 0.08))
+                )
+            }
+            .buttonStyle(.plain)
+            .disabled(isTesting)
+            .onHover { hovering in
+                withAnimation(reduceMotion ? AppMotion.reducedMotionFallback : .easeOut(duration: 0.15)) {
+                    testButtonHovered = hovering
+                }
+            }
+
+            if let result = testResult {
+                Text(result.message)
+                    .font(AppTypography.captionSmall)
+                    .foregroundColor(.white.opacity(0.5))
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+            }
+
+            Spacer()
+        }
+    }
+
+    private var testButtonLabel: String {
+        if isTesting {
+            return "Testing..."
+        }
+        if let result = testResult {
+            return result.success ? "✓ Working" : "✗ Issue"
+        }
+        return "Test Hooks"
+    }
+
+    private func runHookTest() {
+        guard !isTesting else { return }
+        isTesting = true
+        testResult = nil
+
+        DispatchQueue.global(qos: .userInitiated).async {
+            let result = onTest()
+            DispatchQueue.main.async {
+                testResult = result
+                isTesting = false
+
+                DispatchQueue.main.asyncAfter(deadline: .now() + 5) {
+                    if testResult?.success == result.success {
+                        testResult = nil
+                    }
                 }
             }
         }

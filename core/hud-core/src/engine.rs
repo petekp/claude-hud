@@ -29,8 +29,8 @@ use crate::sessions::{
 use crate::setup::{DependencyStatus, HookStatus, InstallResult, SetupChecker, SetupStatus};
 use crate::storage::StorageConfig;
 use crate::types::{
-    Artifact, DashboardData, GlobalConfig, HookDiagnosticReport, HookIssue, HudConfig, Plugin,
-    PluginManifest, Project, ProjectSessionState, SuggestedProject,
+    Artifact, DashboardData, GlobalConfig, HookDiagnosticReport, HookIssue, HookTestResult,
+    HudConfig, Plugin, PluginManifest, Project, ProjectSessionState, SuggestedProject,
 };
 use crate::validation::{create_claude_md, validate_project_path, ValidationResultFfi};
 use fs_err as fs;
@@ -884,6 +884,19 @@ impl HudEngine {
 
         let is_healthy = primary_issue.is_none();
 
+        // Get symlink info for debugging display
+        let symlink_path = dirs::home_dir()
+            .map(|h| h.join(".local/bin/hud-hook"))
+            .unwrap_or_else(|| std::path::PathBuf::from("/usr/local/bin/hud-hook"));
+
+        let symlink_target = if symlink_path.is_symlink() {
+            std::fs::read_link(&symlink_path)
+                .ok()
+                .map(|p| p.to_string_lossy().to_string())
+        } else {
+            None
+        };
+
         HookDiagnosticReport {
             is_healthy,
             primary_issue,
@@ -892,6 +905,106 @@ impl HudEngine {
             binary_ok,
             config_ok,
             firing_ok,
+            symlink_path: symlink_path.to_string_lossy().to_string(),
+            symlink_target,
+            last_heartbeat_age_secs: health.last_heartbeat_age_secs,
         }
+    }
+
+    /// Runs a comprehensive hook system test.
+    ///
+    /// This verifies:
+    /// 1. Heartbeat file exists and is recent (< 60s old)
+    /// 2. State file (sessions.json) can be written and read back
+    ///
+    /// Used by the "Test Hooks" button in SetupStatusCard to give users
+    /// confidence that the hook system is functioning correctly.
+    pub fn run_hook_test(&self) -> HookTestResult {
+        // 1. Check heartbeat
+        let health = self.check_hook_health();
+        let heartbeat_ok = matches!(health.status, crate::types::HookHealthStatus::Healthy);
+        let heartbeat_age = health.last_heartbeat_age_secs;
+
+        // 2. Test state file I/O
+        let state_file_ok = self.test_state_file_io();
+
+        let success = heartbeat_ok && state_file_ok;
+        let message = if success {
+            "Hooks are working correctly".to_string()
+        } else if !heartbeat_ok {
+            match heartbeat_age {
+                Some(age) => format!(
+                    "Heartbeat stale ({}s ago). Start a Claude session to test.",
+                    age
+                ),
+                None => "No heartbeat detected. Start a Claude session to test hooks.".to_string(),
+            }
+        } else {
+            "State file I/O failed. Check ~/.capacitor permissions.".to_string()
+        };
+
+        HookTestResult {
+            success,
+            heartbeat_ok,
+            heartbeat_age_secs: heartbeat_age,
+            state_file_ok,
+            message,
+        }
+    }
+}
+
+impl HudEngine {
+    /// Tests that we can write and read from the sessions state file.
+    ///
+    /// This validates the persistence layer is working by:
+    /// 1. Writing a test record with a unique ID
+    /// 2. Reading it back to verify
+    /// 3. Removing the test record
+    ///
+    /// Returns true if all operations succeed.
+    fn test_state_file_io(&self) -> bool {
+        use crate::state::StateStore;
+        use crate::types::SessionState;
+
+        let sessions_file = self.storage.sessions_file();
+
+        // Create a unique test session ID using PID and timestamp
+        let test_id = format!(
+            "__test__{}_{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or(0)
+        );
+
+        // Load current state (StateStore handles missing/corrupt files gracefully)
+        let mut store = match StateStore::load(&sessions_file) {
+            Ok(s) => s,
+            Err(_) => return false,
+        };
+
+        // Add test record using the update API
+        store.update(&test_id, SessionState::Idle, "/tmp/hook-test");
+
+        // Save state
+        if store.save().is_err() {
+            return false;
+        }
+
+        // Read back and verify
+        let read_back = match StateStore::load(&sessions_file) {
+            Ok(s) => s,
+            Err(_) => return false,
+        };
+
+        let found = read_back.get_by_session_id(&test_id).is_some();
+
+        // Clean up: remove test record
+        let mut cleanup_store = read_back;
+        cleanup_store.remove(&test_id);
+        let _ = cleanup_store.save();
+
+        found
     }
 }

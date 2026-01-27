@@ -246,6 +246,19 @@ class AppState: ObservableObject {
         }
     }
 
+    func testHooks() -> HookTestResult {
+        guard let engine = engine else {
+            return HookTestResult(
+                success: false,
+                heartbeatOk: false,
+                heartbeatAgeSecs: nil,
+                stateFileOk: false,
+                message: "Engine not initialized"
+            )
+        }
+        return engine.runHookTest()
+    }
+
     // MARK: - Project Management
 
     func addProject(_ path: String) {

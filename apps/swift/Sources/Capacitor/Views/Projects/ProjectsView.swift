@@ -43,7 +43,8 @@ struct ProjectsView: View {
                         onRefresh: {
                             appState.checkHookDiagnostic()
                             appState.refreshSessionStates()
-                        }
+                        },
+                        onTest: { appState.testHooks() }
                     )
                     .padding(.bottom, 4)
                 }

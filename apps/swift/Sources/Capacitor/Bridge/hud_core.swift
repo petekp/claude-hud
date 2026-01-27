@@ -754,6 +754,18 @@ public protocol HudEngineProtocol: AnyObject {
     func removeProject(path: String) throws
 
     /**
+     * Runs a comprehensive hook system test.
+     *
+     * This verifies:
+     * 1. Heartbeat file exists and is recent (< 60s old)
+     * 2. State file (sessions.json) can be written and read back
+     *
+     * Used by the "Test Hooks" button in SetupStatusCard to give users
+     * confidence that the hook system is functioning correctly.
+     */
+    func runHookTest() -> HookTestResult
+
+    /**
      * Performs startup cleanup of stale artifacts.
      *
      * Call this once when the app launches to clean up:
@@ -1261,6 +1273,22 @@ open class HudEngine:
     }
 
     /**
+     * Runs a comprehensive hook system test.
+     *
+     * This verifies:
+     * 1. Heartbeat file exists and is recent (< 60s old)
+     * 2. State file (sessions.json) can be written and read back
+     *
+     * Used by the "Test Hooks" button in SetupStatusCard to give users
+     * confidence that the hook system is functioning correctly.
+     */
+    open func runHookTest() -> HookTestResult {
+        return try! FfiConverterTypeHookTestResult.lift(try! rustCall {
+            uniffi_hud_core_fn_method_hudengine_run_hook_test(self.uniffiClonePointer(), $0)
+        })
+    }
+
+    /**
      * Performs startup cleanup of stale artifacts.
      *
      * Call this once when the app launches to clean up:
@@ -1758,29 +1786,33 @@ public func FfiConverterTypeCachedProjectStats_lower(_ value: CachedProjectStats
  */
 public struct CleanupStats {
     /**
-     * Number of stale lock directories removed.
+     * Number of orphaned lock directories removed (dead PIDs).
      */
     public var locksRemoved: UInt32
     /**
-     * Number of legacy MD5-hash locks removed.
+     * Number of legacy MD5-hash locks removed (dead PIDs).
      */
     public var legacyLocksRemoved: UInt32
     /**
-     * Number of orphaned lock-holder processes killed.
+     * Number of orphaned lock-holder processes killed (monitoring dead PIDs).
      */
     public var orphanedProcessesKilled: UInt32
     /**
-     * Number of orphaned session records removed (no active lock).
+     * Number of orphaned session records removed (stale + no active lock).
      */
     public var orphanedSessionsRemoved: UInt32
     /**
-     * Number of old session records removed (> 24 hours).
+     * Number of expired session records removed (> 24 hours old).
      */
     public var sessionsRemoved: UInt32
     /**
-     * Number of old tombstone files removed.
+     * Number of old tombstone files removed (> 1 minute old).
      */
     public var tombstonesRemoved: UInt32
+    /**
+     * Number of old file activity entries cleaned up (> 24 hours old).
+     */
+    public var activityEntriesRemoved: UInt32
     /**
      * Errors encountered during cleanup.
      */
@@ -1790,23 +1822,26 @@ public struct CleanupStats {
     // declare one manually.
     public init(
         /**
-         * Number of stale lock directories removed.
+         * Number of orphaned lock directories removed (dead PIDs).
          */ locksRemoved: UInt32,
         /**
-            * Number of legacy MD5-hash locks removed.
+            * Number of legacy MD5-hash locks removed (dead PIDs).
             */ legacyLocksRemoved: UInt32,
         /**
-            * Number of orphaned lock-holder processes killed.
+            * Number of orphaned lock-holder processes killed (monitoring dead PIDs).
             */ orphanedProcessesKilled: UInt32,
         /**
-            * Number of orphaned session records removed (no active lock).
+            * Number of orphaned session records removed (stale + no active lock).
             */ orphanedSessionsRemoved: UInt32,
         /**
-            * Number of old session records removed (> 24 hours).
+            * Number of expired session records removed (> 24 hours old).
             */ sessionsRemoved: UInt32,
         /**
-            * Number of old tombstone files removed.
+            * Number of old tombstone files removed (> 1 minute old).
             */ tombstonesRemoved: UInt32,
+        /**
+            * Number of old file activity entries cleaned up (> 24 hours old).
+            */ activityEntriesRemoved: UInt32,
         /**
             * Errors encountered during cleanup.
             */ errors: [String]
@@ -1817,6 +1852,7 @@ public struct CleanupStats {
         self.orphanedSessionsRemoved = orphanedSessionsRemoved
         self.sessionsRemoved = sessionsRemoved
         self.tombstonesRemoved = tombstonesRemoved
+        self.activityEntriesRemoved = activityEntriesRemoved
         self.errors = errors
     }
 }
@@ -1841,6 +1877,9 @@ extension CleanupStats: Equatable, Hashable {
         if lhs.tombstonesRemoved != rhs.tombstonesRemoved {
             return false
         }
+        if lhs.activityEntriesRemoved != rhs.activityEntriesRemoved {
+            return false
+        }
         if lhs.errors != rhs.errors {
             return false
         }
@@ -1854,6 +1893,7 @@ extension CleanupStats: Equatable, Hashable {
         hasher.combine(orphanedSessionsRemoved)
         hasher.combine(sessionsRemoved)
         hasher.combine(tombstonesRemoved)
+        hasher.combine(activityEntriesRemoved)
         hasher.combine(errors)
     }
 }
@@ -1871,6 +1911,7 @@ public struct FfiConverterTypeCleanupStats: FfiConverterRustBuffer {
                 orphanedSessionsRemoved: FfiConverterUInt32.read(from: &buf),
                 sessionsRemoved: FfiConverterUInt32.read(from: &buf),
                 tombstonesRemoved: FfiConverterUInt32.read(from: &buf),
+                activityEntriesRemoved: FfiConverterUInt32.read(from: &buf),
                 errors: FfiConverterSequenceString.read(from: &buf)
             )
     }
@@ -1882,6 +1923,7 @@ public struct FfiConverterTypeCleanupStats: FfiConverterRustBuffer {
         FfiConverterUInt32.write(value.orphanedSessionsRemoved, into: &buf)
         FfiConverterUInt32.write(value.sessionsRemoved, into: &buf)
         FfiConverterUInt32.write(value.tombstonesRemoved, into: &buf)
+        FfiConverterUInt32.write(value.activityEntriesRemoved, into: &buf)
         FfiConverterSequenceString.write(value.errors, into: &buf)
     }
 }
@@ -2438,6 +2480,18 @@ public struct HookDiagnosticReport {
     public var binaryOk: Bool
     public var configOk: Bool
     public var firingOk: Bool
+    /**
+     * Path to the hook binary/symlink (e.g., ~/.local/bin/hud-hook)
+     */
+    public var symlinkPath: String
+    /**
+     * Target of the symlink if it is one, None if regular file or doesn't exist
+     */
+    public var symlinkTarget: String?
+    /**
+     * Age of last heartbeat in seconds (for "last seen X ago" display)
+     */
+    public var lastHeartbeatAgeSecs: UInt64?
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
@@ -2456,7 +2510,16 @@ public struct HookDiagnosticReport {
             */ isFirstRun: Bool,
         /**
             * Detailed status for checklist display
-            */ binaryOk: Bool, configOk: Bool, firingOk: Bool
+            */ binaryOk: Bool, configOk: Bool, firingOk: Bool,
+        /**
+            * Path to the hook binary/symlink (e.g., ~/.local/bin/hud-hook)
+            */ symlinkPath: String,
+        /**
+            * Target of the symlink if it is one, None if regular file or doesn't exist
+            */ symlinkTarget: String?,
+        /**
+            * Age of last heartbeat in seconds (for "last seen X ago" display)
+            */ lastHeartbeatAgeSecs: UInt64?
     ) {
         self.isHealthy = isHealthy
         self.primaryIssue = primaryIssue
@@ -2465,6 +2528,9 @@ public struct HookDiagnosticReport {
         self.binaryOk = binaryOk
         self.configOk = configOk
         self.firingOk = firingOk
+        self.symlinkPath = symlinkPath
+        self.symlinkTarget = symlinkTarget
+        self.lastHeartbeatAgeSecs = lastHeartbeatAgeSecs
     }
 }
 
@@ -2491,6 +2557,15 @@ extension HookDiagnosticReport: Equatable, Hashable {
         if lhs.firingOk != rhs.firingOk {
             return false
         }
+        if lhs.symlinkPath != rhs.symlinkPath {
+            return false
+        }
+        if lhs.symlinkTarget != rhs.symlinkTarget {
+            return false
+        }
+        if lhs.lastHeartbeatAgeSecs != rhs.lastHeartbeatAgeSecs {
+            return false
+        }
         return true
     }
 
@@ -2502,6 +2577,9 @@ extension HookDiagnosticReport: Equatable, Hashable {
         hasher.combine(binaryOk)
         hasher.combine(configOk)
         hasher.combine(firingOk)
+        hasher.combine(symlinkPath)
+        hasher.combine(symlinkTarget)
+        hasher.combine(lastHeartbeatAgeSecs)
     }
 }
 
@@ -2518,7 +2596,10 @@ public struct FfiConverterTypeHookDiagnosticReport: FfiConverterRustBuffer {
                 isFirstRun: FfiConverterBool.read(from: &buf),
                 binaryOk: FfiConverterBool.read(from: &buf),
                 configOk: FfiConverterBool.read(from: &buf),
-                firingOk: FfiConverterBool.read(from: &buf)
+                firingOk: FfiConverterBool.read(from: &buf),
+                symlinkPath: FfiConverterString.read(from: &buf),
+                symlinkTarget: FfiConverterOptionString.read(from: &buf),
+                lastHeartbeatAgeSecs: FfiConverterOptionUInt64.read(from: &buf)
             )
     }
 
@@ -2530,6 +2611,9 @@ public struct FfiConverterTypeHookDiagnosticReport: FfiConverterRustBuffer {
         FfiConverterBool.write(value.binaryOk, into: &buf)
         FfiConverterBool.write(value.configOk, into: &buf)
         FfiConverterBool.write(value.firingOk, into: &buf)
+        FfiConverterString.write(value.symlinkPath, into: &buf)
+        FfiConverterOptionString.write(value.symlinkTarget, into: &buf)
+        FfiConverterOptionUInt64.write(value.lastHeartbeatAgeSecs, into: &buf)
     }
 }
 
@@ -2625,6 +2709,128 @@ public func FfiConverterTypeHookHealthReport_lift(_ buf: RustBuffer) throws -> H
 #endif
 public func FfiConverterTypeHookHealthReport_lower(_ value: HookHealthReport) -> RustBuffer {
     return FfiConverterTypeHookHealthReport.lower(value)
+}
+
+/**
+ * Result of running a comprehensive hook system test.
+ *
+ * This verifies both the heartbeat (hooks are firing) and state file I/O
+ * (persistence layer is working). Used by the "Test Hooks" button in the UI.
+ */
+public struct HookTestResult {
+    /**
+     * True if all tests passed
+     */
+    public var success: Bool
+    /**
+     * True if heartbeat file is recent (hooks are firing)
+     */
+    public var heartbeatOk: Bool
+    /**
+     * Age of the heartbeat file in seconds (None if file doesn't exist)
+     */
+    public var heartbeatAgeSecs: UInt64?
+    /**
+     * True if state file I/O test passed
+     */
+    public var stateFileOk: Bool
+    /**
+     * Human-readable summary message for display
+     */
+    public var message: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * True if all tests passed
+         */ success: Bool,
+        /**
+            * True if heartbeat file is recent (hooks are firing)
+            */ heartbeatOk: Bool,
+        /**
+            * Age of the heartbeat file in seconds (None if file doesn't exist)
+            */ heartbeatAgeSecs: UInt64?,
+        /**
+            * True if state file I/O test passed
+            */ stateFileOk: Bool,
+        /**
+            * Human-readable summary message for display
+            */ message: String
+    ) {
+        self.success = success
+        self.heartbeatOk = heartbeatOk
+        self.heartbeatAgeSecs = heartbeatAgeSecs
+        self.stateFileOk = stateFileOk
+        self.message = message
+    }
+}
+
+extension HookTestResult: Equatable, Hashable {
+    public static func == (lhs: HookTestResult, rhs: HookTestResult) -> Bool {
+        if lhs.success != rhs.success {
+            return false
+        }
+        if lhs.heartbeatOk != rhs.heartbeatOk {
+            return false
+        }
+        if lhs.heartbeatAgeSecs != rhs.heartbeatAgeSecs {
+            return false
+        }
+        if lhs.stateFileOk != rhs.stateFileOk {
+            return false
+        }
+        if lhs.message != rhs.message {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(success)
+        hasher.combine(heartbeatOk)
+        hasher.combine(heartbeatAgeSecs)
+        hasher.combine(stateFileOk)
+        hasher.combine(message)
+    }
+}
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeHookTestResult: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> HookTestResult {
+        return
+            try HookTestResult(
+                success: FfiConverterBool.read(from: &buf),
+                heartbeatOk: FfiConverterBool.read(from: &buf),
+                heartbeatAgeSecs: FfiConverterOptionUInt64.read(from: &buf),
+                stateFileOk: FfiConverterBool.read(from: &buf),
+                message: FfiConverterString.read(from: &buf)
+            )
+    }
+
+    public static func write(_ value: HookTestResult, into buf: inout [UInt8]) {
+        FfiConverterBool.write(value.success, into: &buf)
+        FfiConverterBool.write(value.heartbeatOk, into: &buf)
+        FfiConverterOptionUInt64.write(value.heartbeatAgeSecs, into: &buf)
+        FfiConverterBool.write(value.stateFileOk, into: &buf)
+        FfiConverterString.write(value.message, into: &buf)
+    }
+}
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHookTestResult_lift(_ buf: RustBuffer) throws -> HookTestResult {
+    return try FfiConverterTypeHookTestResult.lift(buf)
+}
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHookTestResult_lower(_ value: HookTestResult) -> RustBuffer {
+    return FfiConverterTypeHookTestResult.lower(value)
 }
 
 /**
@@ -4719,10 +4925,6 @@ public enum HookIssue {
      */
     case configMissing
     /**
-     * Hook script/binary version is outdated
-     */
-    case configOutdated(current: String, latest: String)
-    /**
      * Hooks are installed but not firing (heartbeat stale or missing)
      */
     case notFiring(lastSeenSecs: UInt64?
@@ -4750,9 +4952,7 @@ public struct FfiConverterTypeHookIssue: FfiConverterRustBuffer {
 
         case 5: return .configMissing
 
-        case 6: return try .configOutdated(current: FfiConverterString.read(from: &buf), latest: FfiConverterString.read(from: &buf))
-
-        case 7: return try .notFiring(lastSeenSecs: FfiConverterOptionUInt64.read(from: &buf)
+        case 6: return try .notFiring(lastSeenSecs: FfiConverterOptionUInt64.read(from: &buf)
             )
 
         default: throw UniffiInternalError.unexpectedEnumCase
@@ -4780,13 +4980,8 @@ public struct FfiConverterTypeHookIssue: FfiConverterRustBuffer {
         case .configMissing:
             writeInt(&buf, Int32(5))
 
-        case let .configOutdated(current, latest):
-            writeInt(&buf, Int32(6))
-            FfiConverterString.write(current, into: &buf)
-            FfiConverterString.write(latest, into: &buf)
-
         case let .notFiring(lastSeenSecs):
-            writeInt(&buf, Int32(7))
+            writeInt(&buf, Int32(6))
             FfiConverterOptionUInt64.write(lastSeenSecs, into: &buf)
         }
     }
@@ -4813,7 +5008,6 @@ extension HookIssue: Equatable, Hashable {}
 
 public enum HookStatus {
     case notInstalled
-    case outdated(current: String, latest: String)
     case installed(version: String
     )
     case policyBlocked(reason: String
@@ -4837,18 +5031,16 @@ public struct FfiConverterTypeHookStatus: FfiConverterRustBuffer {
         switch variant {
         case 1: return .notInstalled
 
-        case 2: return try .outdated(current: FfiConverterString.read(from: &buf), latest: FfiConverterString.read(from: &buf))
-
-        case 3: return try .installed(version: FfiConverterString.read(from: &buf)
+        case 2: return try .installed(version: FfiConverterString.read(from: &buf)
             )
 
-        case 4: return try .policyBlocked(reason: FfiConverterString.read(from: &buf)
+        case 3: return try .policyBlocked(reason: FfiConverterString.read(from: &buf)
             )
 
-        case 5: return try .binaryBroken(reason: FfiConverterString.read(from: &buf)
+        case 4: return try .binaryBroken(reason: FfiConverterString.read(from: &buf)
             )
 
-        case 6: return try .symlinkBroken(target: FfiConverterString.read(from: &buf), reason: FfiConverterString.read(from: &buf))
+        case 5: return try .symlinkBroken(target: FfiConverterString.read(from: &buf), reason: FfiConverterString.read(from: &buf))
 
         default: throw UniffiInternalError.unexpectedEnumCase
         }
@@ -4859,25 +5051,20 @@ public struct FfiConverterTypeHookStatus: FfiConverterRustBuffer {
         case .notInstalled:
             writeInt(&buf, Int32(1))
 
-        case let .outdated(current, latest):
-            writeInt(&buf, Int32(2))
-            FfiConverterString.write(current, into: &buf)
-            FfiConverterString.write(latest, into: &buf)
-
         case let .installed(version):
-            writeInt(&buf, Int32(3))
+            writeInt(&buf, Int32(2))
             FfiConverterString.write(version, into: &buf)
 
         case let .policyBlocked(reason):
-            writeInt(&buf, Int32(4))
+            writeInt(&buf, Int32(3))
             FfiConverterString.write(reason, into: &buf)
 
         case let .binaryBroken(reason):
-            writeInt(&buf, Int32(5))
+            writeInt(&buf, Int32(4))
             FfiConverterString.write(reason, into: &buf)
 
         case let .symlinkBroken(target, reason):
-            writeInt(&buf, Int32(6))
+            writeInt(&buf, Int32(5))
             FfiConverterString.write(target, into: &buf)
             FfiConverterString.write(reason, into: &buf)
         }
@@ -5787,6 +5974,9 @@ private var initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if uniffi_hud_core_checksum_method_hudengine_remove_project() != 46288 {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if uniffi_hud_core_checksum_method_hudengine_run_hook_test() != 45458 {
         return InitializationResult.apiChecksumMismatch
     }
     if uniffi_hud_core_checksum_method_hudengine_run_startup_cleanup() != 39678 {
