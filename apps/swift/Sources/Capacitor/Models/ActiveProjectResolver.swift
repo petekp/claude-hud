@@ -34,27 +34,31 @@ final class ActiveProjectResolver {
     }
 
     /// Set a manual override for the active project.
-    /// The override persists until the user clicks on a different project
-    /// or the overridden project's session ends.
+    /// The override persists until:
+    /// - User clicks on a different project
+    /// - User navigates to a project directory that has an active Claude session
     func setManualOverride(_ project: Project) {
         manualOverride = project
     }
 
     func resolve() {
-        // Priority 0: Manual override (from clicking a project)
-        // Persists until user clicks a different project.
-        // This prevents auto-switching between multiple active sessions.
-        if let override = manualOverride {
-            // If the override project has an active session, use it
-            if let sessionState = sessionStateManager.getSessionState(for: override),
-               sessionState.isLocked {
-                activeProject = override
-                activeSource = .none
-                return
+        // Check if shell CWD points to a different project WITH an active Claude session.
+        // Only clear the override if the user navigated to a project that's actually running Claude.
+        // This prevents timestamp racing between sessions while still following intentional switches.
+        if let override = manualOverride,
+           let (shellProject, _, _) = findActiveShellProject(),
+           shellProject.path != override.path {
+            // Only clear override if the shell's project has an active Claude session
+            if let shellSessionState = sessionStateManager.getSessionState(for: shellProject),
+               shellSessionState.isLocked {
+                manualOverride = nil
             }
-            // No active session for override project - still honor the override
-            // but show as "manual" source. This lets users pin a project even without
-            // an active session. Override clears when user clicks different project.
+        }
+
+        // Priority 0: Manual override (from clicking a project)
+        // Persists until user clicks a different project OR navigates to a project
+        // with an active Claude session. This prevents timestamp racing.
+        if let override = manualOverride {
             activeProject = override
             activeSource = .none
             return
