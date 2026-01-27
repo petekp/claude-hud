@@ -1762,6 +1762,14 @@ public struct CleanupStats {
      */
     public var locksRemoved: UInt32
     /**
+     * Number of legacy MD5-hash locks removed.
+     */
+    public var legacyLocksRemoved: UInt32
+    /**
+     * Number of orphaned lock-holder processes killed.
+     */
+    public var orphanedProcessesKilled: UInt32
+    /**
      * Number of orphaned session records removed (no active lock).
      */
     public var orphanedSessionsRemoved: UInt32
@@ -1785,6 +1793,12 @@ public struct CleanupStats {
          * Number of stale lock directories removed.
          */ locksRemoved: UInt32,
         /**
+            * Number of legacy MD5-hash locks removed.
+            */ legacyLocksRemoved: UInt32,
+        /**
+            * Number of orphaned lock-holder processes killed.
+            */ orphanedProcessesKilled: UInt32,
+        /**
             * Number of orphaned session records removed (no active lock).
             */ orphanedSessionsRemoved: UInt32,
         /**
@@ -1798,6 +1812,8 @@ public struct CleanupStats {
             */ errors: [String]
     ) {
         self.locksRemoved = locksRemoved
+        self.legacyLocksRemoved = legacyLocksRemoved
+        self.orphanedProcessesKilled = orphanedProcessesKilled
         self.orphanedSessionsRemoved = orphanedSessionsRemoved
         self.sessionsRemoved = sessionsRemoved
         self.tombstonesRemoved = tombstonesRemoved
@@ -1808,6 +1824,12 @@ public struct CleanupStats {
 extension CleanupStats: Equatable, Hashable {
     public static func == (lhs: CleanupStats, rhs: CleanupStats) -> Bool {
         if lhs.locksRemoved != rhs.locksRemoved {
+            return false
+        }
+        if lhs.legacyLocksRemoved != rhs.legacyLocksRemoved {
+            return false
+        }
+        if lhs.orphanedProcessesKilled != rhs.orphanedProcessesKilled {
             return false
         }
         if lhs.orphanedSessionsRemoved != rhs.orphanedSessionsRemoved {
@@ -1827,6 +1849,8 @@ extension CleanupStats: Equatable, Hashable {
 
     public func hash(into hasher: inout Hasher) {
         hasher.combine(locksRemoved)
+        hasher.combine(legacyLocksRemoved)
+        hasher.combine(orphanedProcessesKilled)
         hasher.combine(orphanedSessionsRemoved)
         hasher.combine(sessionsRemoved)
         hasher.combine(tombstonesRemoved)
@@ -1842,6 +1866,8 @@ public struct FfiConverterTypeCleanupStats: FfiConverterRustBuffer {
         return
             try CleanupStats(
                 locksRemoved: FfiConverterUInt32.read(from: &buf),
+                legacyLocksRemoved: FfiConverterUInt32.read(from: &buf),
+                orphanedProcessesKilled: FfiConverterUInt32.read(from: &buf),
                 orphanedSessionsRemoved: FfiConverterUInt32.read(from: &buf),
                 sessionsRemoved: FfiConverterUInt32.read(from: &buf),
                 tombstonesRemoved: FfiConverterUInt32.read(from: &buf),
@@ -1851,6 +1877,8 @@ public struct FfiConverterTypeCleanupStats: FfiConverterRustBuffer {
 
     public static func write(_ value: CleanupStats, into buf: inout [UInt8]) {
         FfiConverterUInt32.write(value.locksRemoved, into: &buf)
+        FfiConverterUInt32.write(value.legacyLocksRemoved, into: &buf)
+        FfiConverterUInt32.write(value.orphanedProcessesKilled, into: &buf)
         FfiConverterUInt32.write(value.orphanedSessionsRemoved, into: &buf)
         FfiConverterUInt32.write(value.sessionsRemoved, into: &buf)
         FfiConverterUInt32.write(value.tombstonesRemoved, into: &buf)
@@ -4916,6 +4944,128 @@ extension HudFfiError: Foundation.LocalizedError {
         String(reflecting: self)
     }
 }
+
+// Note that we don't yet support `indirect` for enums.
+// See https://github.com/mozilla/uniffi-rs/issues/396 for further discussion.
+/**
+ * The parent application hosting a shell session.
+ *
+ * This is the authoritative enum for app identification, exported via UniFFI
+ * to Swift. All app classification logic should use this type rather than
+ * parsing strings directly.
+ *
+ * **JSON serialization:** Uses lowercase strings (e.g., `ParentApp::ITerm` → `"iterm2"`)
+ * for backward compatibility with existing `shell-cwd.json` files.
+ */
+
+public enum ParentApp {
+    case ghostty
+    case iTerm
+    case terminal
+    case alacritty
+    case kitty
+    case warp
+    case cursor
+    case vsCode
+    case vsCodeInsiders
+    case zed
+    case tmux
+    case unknown
+}
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeParentApp: FfiConverterRustBuffer {
+    typealias SwiftType = ParentApp
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ParentApp {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        case 1: return .ghostty
+
+        case 2: return .iTerm
+
+        case 3: return .terminal
+
+        case 4: return .alacritty
+
+        case 5: return .kitty
+
+        case 6: return .warp
+
+        case 7: return .cursor
+
+        case 8: return .vsCode
+
+        case 9: return .vsCodeInsiders
+
+        case 10: return .zed
+
+        case 11: return .tmux
+
+        case 12: return .unknown
+
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: ParentApp, into buf: inout [UInt8]) {
+        switch value {
+        case .ghostty:
+            writeInt(&buf, Int32(1))
+
+        case .iTerm:
+            writeInt(&buf, Int32(2))
+
+        case .terminal:
+            writeInt(&buf, Int32(3))
+
+        case .alacritty:
+            writeInt(&buf, Int32(4))
+
+        case .kitty:
+            writeInt(&buf, Int32(5))
+
+        case .warp:
+            writeInt(&buf, Int32(6))
+
+        case .cursor:
+            writeInt(&buf, Int32(7))
+
+        case .vsCode:
+            writeInt(&buf, Int32(8))
+
+        case .vsCodeInsiders:
+            writeInt(&buf, Int32(9))
+
+        case .zed:
+            writeInt(&buf, Int32(10))
+
+        case .tmux:
+            writeInt(&buf, Int32(11))
+
+        case .unknown:
+            writeInt(&buf, Int32(12))
+        }
+    }
+}
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+public func FfiConverterTypeParentApp_lift(_ buf: RustBuffer) throws -> ParentApp {
+    return try FfiConverterTypeParentApp.lift(buf)
+}
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+public func FfiConverterTypeParentApp_lower(_ value: ParentApp) -> RustBuffer {
+    return FfiConverterTypeParentApp.lower(value)
+}
+
+extension ParentApp: Equatable, Hashable {}
 
 // Note that we don't yet support `indirect` for enums.
 // See https://github.com/mozilla/uniffi-rs/issues/396 for further discussion.
