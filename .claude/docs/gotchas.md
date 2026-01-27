@@ -72,6 +72,15 @@ App auto-repairs hooks at startup. Claude Code interactions keep heartbeat fresh
 
 Heartbeat check returns `Healthy` if any active lock exists, even with stale heartbeat. See `check_hook_health()` in `engine.rs:782-787`.
 
+## Activity Tracking
+
+### Hook Format Detection in ActivityStore::load()
+The activity store supports two formats: hook format (`"files"` array from hud-hook) and native format (`"activity"` array with `project_path`). When loading, the code checks for hook format markers before attempting native format parsing.
+
+**Why this matters:** Hook format JSON successfully deserializes as native format (due to `serde(default)`), but with empty `activity` arrays. Without explicit hook marker detection, file activity data gets silently discarded, breaking the activity-based fallback for state resolution.
+
+**Related test:** `loads_hook_format_with_boundary_detection` in `activity.rs`.
+
 ## Accepted Tradeoffs
 
 ### Cleanup Race Condition

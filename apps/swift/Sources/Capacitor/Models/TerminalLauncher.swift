@@ -69,6 +69,25 @@ private struct ActivationContext {
 }
 
 // MARK: - Terminal Launcher
+//
+// Handles "click project → focus terminal" activation. The goal is to bring the user
+// to their existing terminal window for a project, not spawn new windows unnecessarily.
+//
+// ACTIVATION PRIORITY (ordered by user intent signal strength):
+//
+//   1. Active shell in shell-cwd.json → User has a terminal window open RIGHT NOW
+//      These are verified-live PIDs from recent shell hook activity.
+//
+//   2. Tmux session at project path → User has a session but may not be attached
+//      Queried directly from tmux, may exist even without recent shell activity.
+//
+//   3. Launch new terminal → No existing terminal for this project
+//
+// WHY THIS ORDER MATTERS:
+// Previously, tmux was checked first. This caused a bug: if a user had a Ghostty
+// window open (non-tmux) AND a tmux session existed at the same path, clicking
+// the project would open a NEW window in tmux instead of focusing the existing
+// Ghostty window. The shell-cwd.json check finds the actively-used terminal.
 
 @MainActor
 final class TerminalLauncher {
@@ -88,19 +107,24 @@ final class TerminalLauncher {
     }
 
     private func launchTerminalAsync(for project: Project, shellState: ShellCwdState? = nil) async {
-        // First, check if there's a tmux session for this project path.
-        // This is more reliable than shell-cwd.json since it queries tmux directly.
+        // Priority 1: Active shell with verified-live PID.
+        // shell-cwd.json contains entries from shell precmd hooks—if a shell is here
+        // with a live PID, the user has a terminal window open for this project.
+        if let match = findExistingShell(for: project, in: shellState) {
+            await activateExistingTerminal(shell: match.shell, pid: match.pid, projectPath: project.path, shellState: shellState)
+            return
+        }
+
+        // Priority 2: Tmux session exists but no active shell was tracked.
+        // This catches cases where: tmux session exists but shell hook hasn't fired
+        // recently, or user created session outside of hook-tracked terminals.
         if let tmuxSession = await findTmuxSessionForPath(project.path) {
             await switchToTmuxSessionAndActivate(session: tmuxSession)
             return
         }
 
-        // Fallback to shell-cwd.json based matching
-        if let match = findExistingShell(for: project, in: shellState) {
-            await activateExistingTerminal(shell: match.shell, pid: match.pid, projectPath: project.path, shellState: shellState)
-        } else {
-            launchNewTerminal(for: project)
-        }
+        // Priority 3: No existing terminal—launch a new one.
+        launchNewTerminal(for: project)
     }
 
     private func switchToTmuxSessionAndActivate(session: String) async {
@@ -158,15 +182,22 @@ final class TerminalLauncher {
 
     // MARK: - Shell Lookup
 
+    /// Finds an active shell for the given project path from shell-cwd.json.
+    ///
+    /// Only returns shells with live PIDs (verified via `kill(pid, 0)`).
+    /// When multiple shells exist at the same path, prefers tmux shells because
+    /// `tmux switch-client` is more reliable than TTY-based tab selection.
+    ///
+    /// Uses exact path matching—a shell at `/project/src` won't match `/project`.
+    /// This is intentional: monorepo packages should have their own terminals.
     private func findExistingShell(for project: Project, in state: ShellCwdState?) -> ShellMatch? {
         guard let shells = state?.shells else { return nil }
 
         let liveShells = shells.filter { isLiveShell($0) }
         let (nonTmuxShells, tmuxShells) = partitionByTmux(liveShells)
 
-        // Prefer tmux shells over non-tmux shells since tmux session switching is more reliable
-        // than TTY-based activation (which often fails for tmux client TTYs)
-        // Uses exact path matching only - no child path inheritance.
+        // Prefer tmux when both exist: tmux session switching is reliable across
+        // all terminal apps, while TTY-based activation only works for iTerm/Terminal.app.
         return findMatchingShell(in: tmuxShells, projectPath: project.path)
             ?? findMatchingShell(in: nonTmuxShells, projectPath: project.path)
     }

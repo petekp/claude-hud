@@ -1,17 +1,72 @@
 # Agent Changelog
 
 > This file helps coding agents understand project evolution, key decisions,
-> and deprecated patterns. Updated: 2026-01-27 (Session 3)
+> and deprecated patterns. Updated: 2026-01-27 (Session 4)
 
 ## Current State Summary
 
-Capacitor is a native macOS SwiftUI app (Apple Silicon, macOS 14+) that acts as a sidecar dashboard for Claude Code. The architecture uses a Rust core (`hud-core`) with UniFFI bindings to Swift. State tracking relies on Claude Code hooks that write to `~/.capacitor/`, with session-based locks (`{session_id}-{pid}.lock`) as the authoritative signal for active sessions. Shell integration provides ambient project awareness via precmd hooks. Hooks run asynchronously to avoid blocking Claude Code execution. All file I/O uses `fs_err` for enriched error messages, and structured logging via `tracing` writes to `~/.capacitor/hud-hook-debug.{date}.log`. **Bulletproof Hooks complete:** Phase 4 Test Hooks button added for manual verification. **Audit complete:** A comprehensive 12-session side-effects analysis validated all major subsystems.
+Capacitor is a native macOS SwiftUI app (Apple Silicon, macOS 14+) that acts as a sidecar dashboard for Claude Code. The architecture uses a Rust core (`hud-core`) with UniFFI bindings to Swift. State tracking relies on Claude Code hooks that write to `~/.capacitor/`, with session-based locks (`{session_id}-{pid}.lock`) as the authoritative signal for active sessions. Shell integration provides ambient project awareness via precmd hooks. Hooks run asynchronously to avoid blocking Claude Code execution. All file I/O uses `fs_err` for enriched error messages, and structured logging via `tracing` writes to `~/.capacitor/hud-hook-debug.{date}.log`. **Bulletproof Hooks complete:** Phase 4 Test Hooks button added for manual verification. **Audit complete:** A comprehensive 12-session side-effects analysis validated all major subsystems. **Activity fallback fixed:** Hook format detection bug in ActivityStore corrected—projects now show correct status when Claude runs from subdirectories.
 
 ## Stale Information Detected
 
 None currently. Last audit: 2026-01-27 (fixed v3→v4 documentation in state modules, hud-hook audit remediation).
 
 ## Timeline
+
+### 2026-01-27 — Activity Store Hook Format Detection Fix
+
+**What changed:**
+Fixed critical bug in `ActivityStore::load()` where hook format data was silently discarded.
+
+**Root cause:** When loading `file-activity.json` (hook format with `"files"` array), the code incorrectly parsed it as native format (with `"activity"` array) due to `serde(default)` making the activity field empty. The format detection logic treated `activity.is_empty()` as proof of native format.
+
+**Why this matters:** The activity-based fallback enables correct project status when:
+- Claude runs from subdirectory (e.g., `apps/swift/`)
+- Project is pinned at root (e.g., `/project`)
+- Exact-match lock resolution fails (by design)
+
+Without this fix, projects showed "Idle" even when actively working because file activity data was lost.
+
+**Fix:** Added explicit hook format marker detection—check for `"files"` key presence in raw JSON before deciding parsing strategy.
+
+**Agent impact:**
+- Hook format detection now checks raw JSON for `"files"` arrays, not just struct deserialization success
+- The `serde(default)` behavior can mask format differences—always validate against raw JSON when format matters
+- Activity fallback is a secondary signal; lock presence is still authoritative
+
+**Files changed:** `core/hud-core/src/activity.rs`
+
+**Test added:** `loads_hook_format_with_boundary_detection`
+
+**Gotcha added:** `.claude/docs/gotchas.md` — Hook Format Detection section
+
+---
+
+### 2026-01-27 — Terminal Launcher Priority Fix
+
+**What changed:**
+Fixed terminal activation to check shell-cwd.json BEFORE tmux sessions.
+
+**Root cause:** `launchTerminalAsync()` checked tmux first (lines 90-96), returning early before checking shell-cwd.json. If user had a non-tmux terminal window open AND a tmux session existed at the same path, clicking the project would open a NEW window in tmux instead of focusing the existing terminal.
+
+**Fix:** Inverted priority order:
+1. Check shell-cwd.json first (active shells with verified-live PIDs)
+2. Then check tmux sessions
+3. Finally launch new terminal
+
+**Why this order matters:**
+- Shell-cwd.json entries are verified-live PIDs from recent shell hook activity
+- Tmux sessions may exist but not be actively used
+- User intent: focus what they're currently using, not what they used before
+
+**Agent impact:**
+- Terminal activation priority: shell-cwd.json → tmux → new terminal
+- Comments in `TerminalLauncher.swift` now document this priority chain and why
+- When implementing activation features, prioritize "currently active" signals over "exists" signals
+
+**Files changed:** `apps/swift/Sources/Capacitor/Models/TerminalLauncher.swift`
+
+---
 
 ### 2026-01-27 — Test Hooks Button (Bulletproof Hooks Phase 4)
 
@@ -542,6 +597,8 @@ None currently. Last audit: 2026-01-27 (fixed v3→v4 documentation in state mod
 
 | Don't | Do Instead | Deprecated Since |
 |-------|------------|------------------|
+| Rely on `serde(default)` to distinguish file formats | Check raw JSON for format-specific keys | 2026-01-27 |
+| Check tmux before shell-cwd.json in terminal activation | Check shell-cwd.json first (active > exists) | 2026-01-27 |
 | Use `Task` in Swift files with UniFFI imports | Use `_Concurrency.Task` to avoid shadowing | 2026-01-27 |
 | Return `true` unconditionally from strategy methods | Return actual success status for fallback chains | 2026-01-27 |
 | Create fake objects to extract few fields | Add overloads that accept the needed fields directly | 2026-01-27 |
@@ -624,5 +681,14 @@ The project is moving toward:
     - CLAUDE.md optimized (107→95 lines)
     - Detailed gotchas moved to `.claude/docs/gotchas.md`
     - Progressive disclosure pattern for reference material
+
+12. **Activity tracking reliability** — ✅ Fixed (2026-01-27)
+    - Hook format detection bug fixed in ActivityStore::load()
+    - Projects now show correct status when Claude runs from subdirectories
+    - Added regression test for format detection
+
+13. **Terminal activation priority** — ✅ Fixed (2026-01-27)
+    - Shell-cwd.json now checked before tmux sessions
+    - Fixes issue where clicking project opened new tmux window instead of focusing existing terminal
 
 The core sidecar architecture is stable and validated. The 12-session side-effects audit confirmed all major subsystems work correctly; the few issues found have been remediated. Focus areas: lock reliability (session-based, self-healing, fail-safe error handling), exact-match path resolution for monorepos, terminal integration, and codebase hygiene (dead code removal, documentation accuracy).

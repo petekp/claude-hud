@@ -138,19 +138,34 @@ impl ActivityStore {
             }
         }
 
-        // Try to parse as native format first
-        if let Ok(store) = serde_json::from_str::<ActivityStore>(&content) {
-            // Determine if this is native format by checking structure:
-            // - Native format uses "activity" array with "project_path" field
-            // - Hook format uses "files" array without "project_path" field
-            // - Empty store (no sessions or no activity) is treated as native
-            let is_native = store.sessions.is_empty()
-                || store.sessions.values().all(|s| {
-                    s.activity.is_empty() || s.activity.iter().any(|a| !a.project_path.is_empty())
-                });
+        // Check if the raw JSON contains hook format markers ("files" key in any session).
+        // This prevents false positives where hook format deserializes into native format
+        // with empty "activity" arrays due to serde(default).
+        let has_hook_markers = serde_json::from_str::<serde_json::Value>(&content)
+            .ok()
+            .and_then(|raw| raw.get("sessions")?.as_object().cloned())
+            .map(|sessions| {
+                sessions.values().any(|s| {
+                    s.get("files")
+                        .and_then(|f| f.as_array())
+                        .is_some_and(|a| !a.is_empty())
+                })
+            })
+            .unwrap_or(false);
 
-            if is_native {
-                return store;
+        // Try to parse as native format first, but only if no hook markers present
+        if !has_hook_markers {
+            if let Ok(store) = serde_json::from_str::<ActivityStore>(&content) {
+                // Verify this is actually native format (has activity with project_path)
+                let is_native = store.sessions.is_empty()
+                    || store.sessions.values().all(|s| {
+                        s.activity.is_empty()
+                            || s.activity.iter().any(|a| !a.project_path.is_empty())
+                    });
+
+                if is_native {
+                    return store;
+                }
             }
         }
 
@@ -1033,5 +1048,64 @@ mod tests {
     #[test]
     fn is_within_threshold_handles_invalid_timestamp() {
         assert!(!is_within_threshold("invalid", ACTIVITY_THRESHOLD));
+    }
+
+    #[test]
+    fn loads_hook_format_with_boundary_detection() {
+        // Regression test: hook format (with "files" array) was incorrectly parsed as native
+        // format (with empty "activity" array) due to serde(default) causing false positives.
+        //
+        // The fix ensures that when JSON contains "files" key, it's converted to native format
+        // with proper project_path attribution via boundary detection.
+        let tmp = create_test_dir();
+        let state_file = tmp.path().join("activity.json");
+
+        // Create a project boundary so boundary detection works
+        let project_dir = create_dir(tmp.path(), "myproject");
+        create_file(&project_dir, "CLAUDE.md");
+        let src_dir = create_dir(&project_dir, "src");
+        let file_path = src_dir.join("main.rs").to_string_lossy().to_string();
+
+        // Write hook format (uses "files" array, not "activity")
+        let content = format!(
+            r#"{{
+            "version": 1,
+            "sessions": {{
+                "session-1": {{
+                    "cwd": "{}",
+                    "files": [
+                        {{
+                            "file_path": "{}",
+                            "tool": "Edit",
+                            "timestamp": "2026-01-16T18:00:00Z"
+                        }}
+                    ]
+                }}
+            }}
+        }}"#,
+            project_dir.display(),
+            file_path
+        );
+        fs::write(&state_file, content).unwrap();
+
+        let store = ActivityStore::load(&state_file);
+
+        // Verify conversion happened - activity array should be populated
+        assert!(store.sessions.contains_key("session-1"));
+        let session = store.sessions.get("session-1").unwrap();
+        assert_eq!(
+            session.activity.len(),
+            1,
+            "Hook format 'files' should be converted to 'activity'"
+        );
+
+        // Verify boundary detection populated project_path
+        let activity = &session.activity[0];
+        assert_eq!(
+            activity.project_path,
+            project_dir.to_string_lossy(),
+            "project_path should be set via boundary detection"
+        );
+        assert_eq!(activity.file_path, file_path);
     }
 }
