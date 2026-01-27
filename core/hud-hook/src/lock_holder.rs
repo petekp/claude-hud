@@ -20,13 +20,29 @@ use hud_core::state::release_lock_by_session;
 use std::fs;
 use std::path::Path;
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 const LOG_FILE: &str = ".capacitor/hud-hook-debug.log";
 
+/// Maximum lifetime for a lock holder (24 hours).
+/// This is a safety valve to prevent perpetually running lock holders
+/// in case something goes wrong with PID monitoring.
+const MAX_LIFETIME_SECS: u64 = 24 * 60 * 60;
+
 pub fn run(session_id: &str, cwd: &str, pid: u32, lock_dir: &Path) {
+    let start = Instant::now();
+
     // Monitor the PID until it exits
     while is_pid_alive(pid) {
+        // Safety timeout: exit after 24 hours to prevent perpetually running lock holders
+        if start.elapsed().as_secs() > MAX_LIFETIME_SECS {
+            log(&format!(
+                "Lock holder exceeded max lifetime (24h), exiting for session {} at {}",
+                session_id, cwd
+            ));
+            break;
+        }
+
         // Check if lock directory still exists
         if !lock_dir.exists() {
             log(&format!(

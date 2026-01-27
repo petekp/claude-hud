@@ -233,12 +233,18 @@ pub(crate) fn read_lock_info(lock_dir: &Path) -> Option<LockInfo> {
         })
     });
 
+    // Handle lock_version (version tracking)
+    let lock_version = meta
+        .get("lock_version")
+        .and_then(|v| v.as_str().map(String::from));
+
     let info = LockInfo {
         pid,
         path,
         session_id,
         proc_started,
         created,
+        lock_version,
     };
 
     // Age-based expiry for legacy locks (no proc_started)
@@ -771,6 +777,7 @@ fn write_lock_metadata(
         "pid": pid,
         "path": project_path,
         "created": created_ms,
+        "lock_version": env!("CARGO_PKG_VERSION"),
     });
 
     if let Some(sid) = session_id {
@@ -869,8 +876,8 @@ pub mod tests_helper {
         fs::write(
             lock_dir.join("meta.json"),
             format!(
-                r#"{{"pid": {}, "path": "{}", "session_id": "{}", "proc_started": {}, "created": {}}}"#,
-                pid, path, session_id, proc_started, created
+                r#"{{"pid": {}, "path": "{}", "session_id": "{}", "proc_started": {}, "created": {}, "lock_version": "{}"}}"#,
+                pid, path, session_id, proc_started, created, env!("CARGO_PKG_VERSION")
             ),
         )
         .unwrap();
@@ -890,8 +897,8 @@ pub mod tests_helper {
         fs::write(
             lock_dir.join("meta.json"),
             format!(
-                r#"{{"pid": {}, "path": "{}", "proc_started": {}, "created": {}}}"#,
-                pid, path, proc_started, created
+                r#"{{"pid": {}, "path": "{}", "proc_started": {}, "created": {}, "lock_version": "{}"}}"#,
+                pid, path, proc_started, created, env!("CARGO_PKG_VERSION")
             ),
         )
         .unwrap();
@@ -1167,5 +1174,111 @@ mod tests {
         assert_eq!(meta["pid"].as_u64().unwrap(), pid as u64);
         assert_eq!(meta["handoff_from"].as_u64().unwrap(), old_pid as u64);
         assert_eq!(meta["path"].as_str().unwrap(), "/project");
+    }
+
+    #[test]
+    fn test_session_lock_release_only_own_lock() {
+        // Verify that release_lock_by_session only removes the specific process's lock
+        use super::tests_helper::create_session_lock;
+
+        let temp = tempdir().unwrap();
+        let pid = std::process::id();
+
+        // Create session lock
+        create_session_lock(temp.path(), pid, "/project", "test-session");
+
+        let lock_path = temp.path().join(format!("test-session-{}.lock", pid));
+        assert!(lock_path.exists(), "Lock should exist after creation");
+
+        // Release the lock
+        let released = release_lock_by_session(temp.path(), "test-session", pid);
+        assert!(released, "Release should succeed");
+        assert!(!lock_path.exists(), "Lock should be removed after release");
+    }
+
+    #[test]
+    fn test_release_nonexistent_lock_succeeds() {
+        // Releasing a lock that doesn't exist should return true (idempotent)
+        let temp = tempdir().unwrap();
+        let released = release_lock_by_session(temp.path(), "nonexistent", 12345);
+        assert!(
+            released,
+            "Releasing nonexistent lock should succeed (idempotent)"
+        );
+    }
+
+    #[test]
+    fn test_count_other_session_locks() {
+        // Verify count_other_session_locks correctly counts sibling processes
+        use super::tests_helper::create_session_lock;
+
+        let temp = tempdir().unwrap();
+        let pid = std::process::id();
+
+        // Create two locks for the same session ID but different (simulated) PIDs
+        // Note: We can only create one valid lock for our actual PID
+        create_session_lock(temp.path(), pid, "/project", "shared-session");
+
+        // Count other locks excluding our PID - should be 0 (we're the only live one)
+        let count = count_other_session_locks(temp.path(), "shared-session", pid);
+        assert_eq!(
+            count, 0,
+            "No other live processes should hold this session's lock"
+        );
+
+        // Count excluding a different PID - should find our lock (if it's alive)
+        let count = count_other_session_locks(temp.path(), "shared-session", 99999);
+        assert_eq!(
+            count, 1,
+            "Our lock should be counted when excluding a different PID"
+        );
+    }
+
+    #[test]
+    fn test_session_lock_naming_format() {
+        // Verify session-based locks follow the {session_id}-{pid}.lock naming format
+        use super::tests_helper::create_session_lock;
+
+        let temp = tempdir().unwrap();
+        let pid = std::process::id();
+        let session_id = "abc123-def456";
+
+        create_session_lock(temp.path(), pid, "/project", session_id);
+
+        let expected_name = format!("{}-{}.lock", session_id, pid);
+        let lock_path = temp.path().join(&expected_name);
+
+        assert!(
+            lock_path.exists(),
+            "Session lock should use {{session_id}}-{{pid}}.lock naming"
+        );
+
+        // Verify it contains correct metadata
+        let info = read_lock_info(&lock_path).unwrap();
+        assert_eq!(info.session_id.as_deref(), Some(session_id));
+        assert_eq!(info.pid, pid);
+    }
+
+    #[test]
+    fn test_find_all_locks_exact_match_only() {
+        // Verify find_all_locks_for_path uses exact match only (no child inheritance)
+        use super::tests_helper::create_session_lock;
+
+        let temp = tempdir().unwrap();
+        let pid = std::process::id();
+
+        // Create locks at different paths
+        create_session_lock(temp.path(), pid, "/project", "session-parent");
+        create_session_lock(temp.path(), pid, "/project/src", "session-child");
+
+        // Query parent path - should only find parent lock
+        let locks = find_all_locks_for_path(temp.path(), "/project");
+        assert_eq!(locks.len(), 1, "Should find only exact match, not children");
+        assert_eq!(locks[0].path, "/project");
+
+        // Query child path - should only find child lock
+        let locks = find_all_locks_for_path(temp.path(), "/project/src");
+        assert_eq!(locks.len(), 1, "Should find only exact match");
+        assert_eq!(locks[0].path, "/project/src");
     }
 }

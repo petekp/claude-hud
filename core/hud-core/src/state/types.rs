@@ -257,6 +257,10 @@ pub struct LockInfo {
     /// New locks write to "created" field instead.
     #[serde(default, alias = "started")]
     pub created: Option<u64>,
+    /// Version of hud-core that created this lock.
+    /// Used to identify locks from old versions that might need special handling.
+    #[serde(default)]
+    pub lock_version: Option<String>,
 }
 
 #[cfg(test)]

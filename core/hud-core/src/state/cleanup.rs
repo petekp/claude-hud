@@ -17,6 +17,8 @@ use chrono::{Duration, Utc};
 use super::lock::{is_pid_alive, read_lock_info};
 use super::store::StateStore;
 
+use sysinfo::{ProcessRefreshKind, System, UpdateKind};
+
 /// Maximum age for session records (24 hours).
 const SESSION_MAX_AGE_HOURS: i64 = 24;
 
@@ -24,11 +26,102 @@ const SESSION_MAX_AGE_HOURS: i64 = 24;
 /// Tombstones only need to survive race conditions, not long-term.
 const TOMBSTONE_MAX_AGE_SECS: u64 = 60;
 
+/// Kills orphaned lock-holder processes whose monitored PID is dead.
+///
+/// Lock-holder processes (`hud-hook lock-holder --pid <PID>`) monitor Claude processes
+/// and release locks when they exit. If the lock-holder itself is killed before it can
+/// clean up, or if its monitored PID somehow exited without triggering cleanup, the
+/// lock-holder becomes orphaned.
+///
+/// This function:
+/// 1. Enumerates all processes whose command contains "hud-hook" and "lock-holder"
+/// 2. Parses the --pid argument to find the monitored PID
+/// 3. Sends SIGTERM to lock-holders whose monitored PID is dead
+///
+/// Safety: Only kills processes where the monitored PID is confirmed dead.
+/// This prevents killing active lock-holders that are legitimately monitoring live processes.
+pub fn cleanup_orphaned_lock_holders() -> CleanupStats {
+    let mut stats = CleanupStats::default();
+
+    // Initialize sysinfo with command line info
+    let mut sys = System::new();
+    sys.refresh_processes_specifics(ProcessRefreshKind::new().with_cmd(UpdateKind::Always));
+
+    for (pid, process) in sys.processes() {
+        let cmd = process.cmd();
+
+        // Look for lock-holder processes
+        // Command format: hud-hook lock-holder --session_id <ID> --cwd <PATH> --pid <PID>
+        let is_lock_holder = cmd.iter().any(|arg| arg.contains("hud-hook"))
+            && cmd.iter().any(|arg| arg == "lock-holder");
+
+        if !is_lock_holder {
+            continue;
+        }
+
+        // Parse the --pid argument to find which PID this holder is monitoring
+        let monitored_pid = parse_monitored_pid(cmd);
+
+        let Some(monitored) = monitored_pid else {
+            // Can't determine which PID is being monitored - skip to be safe
+            continue;
+        };
+
+        // Check if the monitored PID is still alive
+        if is_pid_alive(monitored) {
+            // Monitored process is still alive - this is a legitimate lock holder
+            continue;
+        }
+
+        // Monitored PID is dead - this lock holder is orphaned
+        // Send SIGTERM to give it a chance to clean up gracefully
+        #[cfg(unix)]
+        {
+            let holder_pid = pid.as_u32() as i32;
+            unsafe {
+                if libc::kill(holder_pid, libc::SIGTERM) == 0 {
+                    stats.orphaned_processes_killed += 1;
+                } else {
+                    // Failed to kill - might have already exited
+                    let errno = *libc::__error();
+                    if errno != libc::ESRCH {
+                        // ESRCH = no such process (already dead), not an error
+                        stats.errors.push(format!(
+                            "Failed to kill orphaned lock-holder PID {}: errno {}",
+                            holder_pid, errno
+                        ));
+                    }
+                }
+            }
+        }
+    }
+
+    stats
+}
+
+/// Parses the --pid argument from a lock-holder command line.
+fn parse_monitored_pid(cmd: &[String]) -> Option<u32> {
+    let mut found_pid_flag = false;
+    for arg in cmd {
+        if found_pid_flag {
+            return arg.parse().ok();
+        }
+        if arg == "--pid" {
+            found_pid_flag = true;
+        }
+    }
+    None
+}
+
 /// Results from a cleanup operation.
 #[derive(Debug, Default, Clone, uniffi::Record)]
 pub struct CleanupStats {
     /// Number of stale lock directories removed.
     pub locks_removed: u32,
+    /// Number of legacy MD5-hash locks removed.
+    pub legacy_locks_removed: u32,
+    /// Number of orphaned lock-holder processes killed.
+    pub orphaned_processes_killed: u32,
     /// Number of orphaned session records removed (no active lock).
     pub orphaned_sessions_removed: u32,
     /// Number of old session records removed (> 24 hours).
@@ -45,12 +138,23 @@ pub struct CleanupStats {
 pub fn run_startup_cleanup(lock_base: &Path, state_file: &Path) -> CleanupStats {
     let mut stats = CleanupStats::default();
 
-    // 1. Clean up stale locks (dead PIDs)
+    // 0. Kill orphaned lock-holder processes FIRST (before cleaning lock files)
+    // This prevents race conditions where we clean a lock file but leave the holder running
+    let process_stats = cleanup_orphaned_lock_holders();
+    stats.orphaned_processes_killed = process_stats.orphaned_processes_killed;
+    stats.errors.extend(process_stats.errors);
+
+    // 1. Clean up legacy MD5-hash locks (dead PIDs only)
+    let legacy_stats = cleanup_legacy_locks(lock_base);
+    stats.legacy_locks_removed = legacy_stats.legacy_locks_removed;
+    stats.errors.extend(legacy_stats.errors);
+
+    // 2. Clean up stale locks (dead PIDs)
     let lock_stats = cleanup_stale_locks(lock_base);
     stats.locks_removed = lock_stats.locks_removed;
     stats.errors.extend(lock_stats.errors);
 
-    // 2. Clean up orphaned session records (no active lock)
+    // 3. Clean up orphaned session records (no active lock)
     // This is important for v4 session-based locks: when a session ends,
     // its lock is released but the record may linger. Without the stale Ready
     // fallback, these orphaned records should be cleaned up.
@@ -58,12 +162,12 @@ pub fn run_startup_cleanup(lock_base: &Path, state_file: &Path) -> CleanupStats 
     stats.orphaned_sessions_removed = orphan_stats.orphaned_sessions_removed;
     stats.errors.extend(orphan_stats.errors);
 
-    // 3. Clean up old session records (> 24 hours)
+    // 4. Clean up old session records (> 24 hours)
     let session_stats = cleanup_old_sessions(state_file);
     stats.sessions_removed = session_stats.sessions_removed;
     stats.errors.extend(session_stats.errors);
 
-    // 4. Clean up old tombstones
+    // 5. Clean up old tombstones
     // Tombstones dir is sibling to lock_base: ~/.capacitor/ended-sessions/
     if let Some(capacitor_dir) = lock_base.parent() {
         let tombstones_dir = capacitor_dir.join("ended-sessions");
@@ -115,6 +219,74 @@ fn cleanup_stale_locks(lock_base: &Path) -> CleanupStats {
                 ));
             } else {
                 stats.locks_removed += 1;
+            }
+        }
+    }
+
+    stats
+}
+
+/// Removes legacy MD5-hash format locks.
+///
+/// Legacy locks use the format `{32-hex-chars}.lock` (MD5 hash of path).
+/// Modern session-based locks use `{session_id}-{pid}.lock` (contain "-").
+///
+/// This cleans up locks created by old versions of hud-hook that used
+/// path-based locking instead of session-based locking.
+fn cleanup_legacy_locks(lock_base: &Path) -> CleanupStats {
+    let mut stats = CleanupStats::default();
+
+    let entries = match fs::read_dir(lock_base) {
+        Ok(e) => e,
+        Err(e) => {
+            if e.kind() != std::io::ErrorKind::NotFound {
+                stats
+                    .errors
+                    .push(format!("Failed to read lock directory: {}", e));
+            }
+            return stats;
+        }
+    };
+
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if !path.is_dir() || !path.extension().is_some_and(|e| e == "lock") {
+            continue;
+        }
+
+        // Check if this is a legacy MD5-hash lock
+        // Legacy: abc123def456...lock (32 hex chars, no "-")
+        // v4:     {session_id}-{pid}.lock (contains "-")
+        let is_legacy = path
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .map(|name| {
+                // Legacy locks are exactly 32 hex chars with no hyphen
+                name.len() == 32
+                    && !name.contains('-')
+                    && name.chars().all(|c| c.is_ascii_hexdigit())
+            })
+            .unwrap_or(false);
+
+        if !is_legacy {
+            continue;
+        }
+
+        // Read lock info and check if PID is dead
+        let should_remove = match read_lock_info(&path) {
+            Some(info) => !is_pid_alive(info.pid),
+            None => true, // Corrupt or unreadable lock — remove it
+        };
+
+        if should_remove {
+            if let Err(e) = fs::remove_dir_all(&path) {
+                stats.errors.push(format!(
+                    "Failed to remove legacy lock {}: {}",
+                    path.display(),
+                    e
+                ));
+            } else {
+                stats.legacy_locks_removed += 1;
             }
         }
     }
@@ -448,7 +620,7 @@ mod tests {
         let state_file = temp.path().join("sessions.json");
         fs::create_dir_all(&lock_base).unwrap();
 
-        // Create a stale lock
+        // Create a stale lock (legacy format - 32 hex char hash)
         create_lock_with_pid(&lock_base, "/stale/project", 99999999);
 
         // Create state file with an old session
@@ -469,7 +641,14 @@ mod tests {
 
         let stats = run_startup_cleanup(&lock_base, &state_file);
 
-        assert_eq!(stats.locks_removed, 1);
+        // The stale lock is a legacy MD5-hash lock (create_lock_with_pid uses legacy format),
+        // so it's cleaned by legacy_locks cleanup. Modern session-based locks would be
+        // counted in locks_removed.
+        let total_locks_removed = stats.locks_removed + stats.legacy_locks_removed;
+        assert_eq!(
+            total_locks_removed, 1,
+            "Should remove 1 stale lock (either modern or legacy)"
+        );
         // v4: The old session is first cleaned up by orphaned session cleanup
         // (stale record without a lock), so sessions_removed may be 0
         // The total removed should be 1 (either as orphaned or old)
