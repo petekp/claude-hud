@@ -1,7 +1,7 @@
 # Agent Changelog
 
 > This file helps coding agents understand project evolution, key decisions,
-> and deprecated patterns. Updated: 2026-01-26
+> and deprecated patterns. Updated: 2026-01-27
 
 ## Current State Summary
 
@@ -9,9 +9,33 @@ Capacitor is a native macOS SwiftUI app (Apple Silicon, macOS 14+) that acts as 
 
 ## Stale Information Detected
 
-None currently. Last audit: 2026-01-26.
+None currently. Last audit: 2026-01-27 (fixed v3→v4 documentation in state modules).
 
 ## Timeline
+
+### 2026-01-27 — Lock Holder Timeout Fix and Dead Code Removal
+
+**What changed:**
+1. Fixed critical bug: lock holder 24h timeout no longer releases locks when PID is still alive
+2. Removed ~650 lines of dead code: `is_session_active()`, `find_by_cwd()`, redundant `normalize_path`
+3. Updated stale v3→v4 documentation across state modules
+
+**Why:**
+- **Timeout bug**: Sessions running >24h would incorrectly have their locks released, causing state tracking to fail. The lock holder's safety timeout was unconditionally releasing locks instead of only when PID actually exited.
+- **Dead code**: The codebase evolved from child→parent path inheritance (v3) to exact-match-only (v4), leaving orphaned functions and tests that no longer applied.
+- **Stale docs**: Module docstrings still described v3 behavior (path inheritance, read-only store, hash-based locks).
+
+**Agent impact:**
+- Lock holder now tracks exit reason: only releases lock if `pid_exited == true`
+- Functions removed: `is_session_active()`, `is_session_active_with_storage()`, `find_by_cwd()`, `boundaries::normalize_path()`
+- Documentation in `store.rs`, `mod.rs`, `lock.rs`, `resolver.rs` now accurately describes v4 behavior
+- Path matching is exact-match-only—don't implement child→parent inheritance
+
+**Files changed:** `lock_holder.rs`, `sessions.rs`, `store.rs`, `boundaries.rs`, `lock.rs`, `mod.rs`, `resolver.rs`, `claude.rs`
+
+**Commit:** `3d78b1b`
+
+---
 
 ### 2026-01-26 — fs_err and tracing for Improved Debugging
 
@@ -378,6 +402,9 @@ None currently. Last audit: 2026-01-26.
 
 | Don't | Do Instead | Deprecated Since |
 |-------|------------|------------------|
+| Use `is_session_active()` or path-based session checks | Use lock existence via `find_all_locks_for_path()` | 2026-01-27 |
+| Use `find_by_cwd()` for path→session lookup | Use `get_by_session_id()` with exact session ID | 2026-01-27 |
+| Use `boundaries::normalize_path()` | Use `normalize_path_for_hashing()` or `normalize_path_for_comparison()` | 2026-01-27 |
 | Use `std::fs` directly | Use `fs_err as fs` import | 2026-01-26 |
 | Duplicate `is_pid_alive` function | Import from `hud_core::state` | 2026-01-26 |
 | Use custom `log()` functions | Use `tracing::debug!/info!/warn!/error!` | 2026-01-26 |
@@ -424,4 +451,9 @@ The project is moving toward:
    - `tracing` for structured logging with daily rotation
    - Consolidated shared utilities (e.g., `is_pid_alive`)
 
-The core sidecar architecture is stable. Recent focus: lock reliability (session-based, self-healing), exact-match path resolution for monorepos, terminal integration, and developer experience (better debugging and error messages).
+7. **Codebase cleanup** — ✅ Implemented (2026-01-27)
+   - Removed ~650 lines of dead code from v3→v4 evolution
+   - Fixed lock holder 24h timeout bug (no longer releases active sessions)
+   - Updated stale documentation across state modules
+
+The core sidecar architecture is stable. Recent focus: lock reliability (session-based, self-healing, timeout fix), exact-match path resolution for monorepos, terminal integration, and codebase hygiene (dead code removal, documentation accuracy).
