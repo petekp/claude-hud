@@ -2,13 +2,13 @@ import Foundation
 
 #if DEBUG
 
-// MARK: - UI Extensions for ParentAppType
+// MARK: - UI Extensions for ParentApp
 
-extension ParentAppType {
+extension ParentApp {
     var icon: String {
         switch self {
-        case .cursor, .vscode, .vscodeInsiders: return "curlybraces"
-        case .iterm2, .terminal, .ghostty, .kitty, .alacritty, .warp: return "terminal"
+        case .cursor, .vsCode, .vsCodeInsiders, .zed: return "curlybraces"
+        case .ghostty, .iTerm, .terminal, .kitty, .alacritty, .warp: return "terminal"
         case .tmux: return "rectangle.split.3x1"
         case .unknown: return "questionmark.circle"
         }
@@ -27,8 +27,8 @@ extension ParentAppCategory {
         }
     }
 
-    var parentApps: [ParentAppType] {
-        ParentAppType.allCases.filter { $0.category == self }
+    var parentApps: [ParentApp] {
+        ParentApp.allCases.filter { $0.category == self }
     }
 }
 
@@ -113,13 +113,7 @@ extension ShellScenario {
     }
 
     static func fromLiveState(shell: ShellEntry, shellCount: Int) -> ShellScenario {
-        let parentApp: ParentAppType
-        if let app = shell.parentApp {
-            parentApp = ParentAppType(rawValue: app.lowercased()) ?? .unknown
-        } else {
-            parentApp = .unknown
-        }
-
+        let parentApp = ParentApp(fromString: shell.parentApp)
         let context: ShellContext = shell.tmuxSession != nil ? .tmux : .direct
 
         let multiplicity: TerminalMultiplicity
@@ -164,7 +158,7 @@ enum CwdMatchType: String, CaseIterable, Codable {
 // MARK: - Scenario Generator
 
 enum ScenarioGenerator {
-    static func generatePracticalScenarios(for parentApp: ParentAppType) -> [ShellScenario] {
+    static func generatePracticalScenarios(for parentApp: ParentApp) -> [ShellScenario] {
         var scenarios: [ShellScenario] = []
 
         let contexts: [ShellContext] = parentApp == .tmux ? [.tmux] : [.direct, .tmux]
@@ -183,7 +177,7 @@ enum ScenarioGenerator {
         return scenarios
     }
 
-    static func generateAllScenarios(for parentApp: ParentAppType) -> [ShellScenario] {
+    static func generateAllScenarios(for parentApp: ParentApp) -> [ShellScenario] {
         var scenarios: [ShellScenario] = []
 
         let contexts: [ShellContext] = parentApp == .tmux ? [.tmux] : ShellContext.allCases

@@ -9,7 +9,7 @@ struct ShellMatrixPanel: View {
     @State private var shellStateStore = ShellStateStore()
     @State private var config = ShellMatrixConfig.shared
     @State private var selectedCategory: ParentAppCategory = .ide
-    @State private var selectedParentApp: ParentAppType = .cursor
+    @State private var selectedParentApp: ParentApp = .cursor
     @State private var copiedToClipboard = false
     @State private var panelSize = CGSize(width: 680, height: 760)
 
@@ -192,7 +192,7 @@ struct ShellMatrixPanel: View {
 private struct MatrixCategoryRow: View {
     let category: ParentAppCategory
     @Binding var selectedCategory: ParentAppCategory
-    @Binding var selectedParentApp: ParentAppType
+    @Binding var selectedParentApp: ParentApp
     @State private var isExpanded: Bool = true
 
     var body: some View {
@@ -244,7 +244,7 @@ private struct MatrixCategoryRow: View {
 }
 
 private struct MatrixSubcategoryRow: View {
-    let parentApp: ParentAppType
+    let parentApp: ParentApp
     let isSelected: Bool
     let onSelect: () -> Void
     @State private var isHovered = false

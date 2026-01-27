@@ -185,7 +185,7 @@ struct LiveStateSection: View {
 
 @MainActor
 struct ScenarioListSection: View {
-    let parentApp: ParentAppType
+    let parentApp: ParentApp
     @Bindable var config: ShellMatrixConfig
 
     private var scenarios: [ShellScenario] {
