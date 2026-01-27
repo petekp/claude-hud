@@ -5,13 +5,76 @@
 
 ## Current State Summary
 
-Capacitor is a native macOS SwiftUI app (Apple Silicon, macOS 14+) that acts as a sidecar dashboard for Claude Code. The architecture uses a Rust core (`hud-core`) with UniFFI bindings to Swift. State tracking relies on Claude Code hooks that write to `~/.capacitor/`, with shell integration providing ambient project awareness via precmd hooks. Hooks now run asynchronously to avoid blocking Claude Code execution.
+Capacitor is a native macOS SwiftUI app (Apple Silicon, macOS 14+) that acts as a sidecar dashboard for Claude Code. The architecture uses a Rust core (`hud-core`) with UniFFI bindings to Swift. State tracking relies on Claude Code hooks that write to `~/.capacitor/`, with session-based locks (`{session_id}-{pid}.lock`) as the authoritative signal for active sessions. Shell integration provides ambient project awareness via precmd hooks. Hooks run asynchronously to avoid blocking Claude Code execution.
 
 ## Stale Information Detected
 
-None currently. Last audit: 2026-01-25.
+None currently. Last audit: 2026-01-26.
 
 ## Timeline
+
+### 2026-01-26 — Self-Healing Lock Management
+
+**What changed:** Added multi-layered cleanup to prevent accumulation of stale lock artifacts:
+1. `cleanup_orphaned_lock_holders()` kills lock-holder processes whose monitored PID is dead
+2. `cleanup_legacy_locks()` removes MD5-hash format locks from older versions
+3. Lock-holders have 24-hour safety timeout (`MAX_LIFETIME_SECS`)
+4. Locks now include `lock_version` field for debugging
+
+**Why:** Users accumulate stale artifacts when Claude crashes without SessionEnd, terminal force-quits, or app updates. The system relied on "happy path" cleanup—processes exiting gracefully—but real-world usage is messier.
+
+**Agent impact:**
+- `CleanupStats` now has `orphaned_processes_killed` and `legacy_locks_removed` fields
+- Lock metadata includes `lock_version` (currently `CARGO_PKG_VERSION`)
+- `run_startup_cleanup()` runs process cleanup **first** (before file cleanup) to prevent races
+- Lock-holder processes self-terminate after 24 hours regardless of PID monitoring state
+
+**Files changed:** `cleanup.rs` (process/legacy cleanup), `lock_holder.rs` (timeout), `lock.rs` (version), `types.rs` (LockInfo)
+
+---
+
+### 2026-01-26 — Session-Based Locks (v4) and Exact-Match-Only Resolution
+
+**What changed:**
+1. Locks keyed by `{session_id}-{pid}` instead of path hash (MD5)
+2. Path matching uses exact comparison only—no child→parent inheritance
+3. Sticky focus: manual override persists until user clicks different project
+4. Path normalization handles macOS case-insensitivity and symlinks
+
+**Why:**
+- **Concurrent sessions**: Old path-hash locks created 1:1 path↔lock, so two sessions in same directory competed
+- **Monorepo independence**: Child paths shouldn't inherit parent's state; packages track independently
+- **Sticky focus**: Prevents jarring auto-switching between multiple active sessions
+
+**Agent impact:**
+- Lock files: `~/.capacitor/sessions/{session_id}-{pid}.lock/` (v4) vs `{md5-hash}.lock/` (legacy)
+- `find_all_locks_for_path()` returns multiple locks (concurrent sessions)
+- `release_lock_by_session()` releases specific session's lock
+- Resolver's stale Ready fallback removed—lock existence is authoritative
+- Legacy MD5-hash locks are stale and should be deleted
+
+**Deprecated:** Path-based locks (`{hash}.lock`), child→parent inheritance, stale Ready fallback.
+
+**Commits:** `97ddc3a`, `3e63150`
+
+**Plan doc:** `.claude/plans/DONE-session-based-locking.md`
+
+---
+
+### 2026-01-26 — Bulletproof Hook System
+
+**What changed:** Hook binary management now uses symlinks instead of copies, with auto-repair on failure.
+
+**Why:** Copying adhoc-signed Rust binaries triggered macOS Gatekeeper SIGKILL (exit 137). Symlinks work reliably.
+
+**Agent impact:**
+- `~/.local/bin/hud-hook` must be a **symlink** to `target/release/hud-hook`
+- Never copy the binary—always symlink
+- See `scripts/sync-hooks.sh` for the canonical approach
+
+**Commits:** `ec63003`
+
+---
 
 ### 2026-01-25 — Status Chips Replace Prose Summaries
 
@@ -259,6 +322,10 @@ None currently. Last audit: 2026-01-25.
 | Check timestamp freshness for session liveness | Check lock file existence + PID validity | 2026-01-19 |
 | Use `Bundle.module` directly | Use `ResourceBundle.url(forResource:)` | 2026-01-23 |
 | Implement prose summaries | Use status chips for project context | 2026-01-25 |
+| Use path-hash locks (`{md5}.lock`) | Use session-based locks (`{session_id}-{pid}.lock`) | 2026-01-26 |
+| Inherit child lock state to parent path | Use exact-match-only path comparison | 2026-01-26 |
+| Copy hook binary to `~/.local/bin/` | Symlink to `target/release/hud-hook` | 2026-01-26 |
+| Rely on stale Ready record fallback | Trust lock existence as authoritative | 2026-01-26 |
 
 ## Trajectory
 
@@ -276,4 +343,7 @@ The project is moving toward:
 
 4. **Idea capture with LLM sensemaking** — Fast capture flow with AI-powered expansion (plan completed)
 
-The core sidecar architecture is stable. Recent focus: terminal integration, async hooks, and UX refinements for rapid context-switching.
+5. **Self-healing lock management** — ✅ Implemented (2026-01-26)
+   - Orphaned process cleanup, legacy lock cleanup, 24h safety timeout, version tracking
+
+The core sidecar architecture is stable. Recent focus: lock reliability (session-based, self-healing), exact-match path resolution for monorepos, and terminal integration.

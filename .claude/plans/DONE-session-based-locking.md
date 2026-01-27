@@ -1,6 +1,6 @@
 # Session-Based Lock Architecture
 
-**Status:** ACTIVE
+**Status:** DONE
 **Created:** 2026-01-26
 **Issue:** Projects showing "Ready" after session ends; concurrent sessions not properly tracked
 
