@@ -92,7 +92,12 @@ pub fn run(session_id: &str, cwd: &str, pid: u32, lock_dir: &Path) {
 fn is_pid_alive(pid: u32) -> bool {
     #[cfg(unix)]
     {
-        unsafe { libc::kill(pid as i32, 0) == 0 }
+        // SAFETY: kill(pid, 0) is a standard POSIX liveness check that sends no signal.
+        // Returns 0 if the process exists, -1 with ESRCH if the process doesn't exist.
+        #[allow(unsafe_code)]
+        unsafe {
+            libc::kill(pid as i32, 0) == 0
+        }
     }
     #[cfg(not(unix))]
     {

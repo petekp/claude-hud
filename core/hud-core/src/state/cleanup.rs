@@ -78,6 +78,10 @@ pub fn cleanup_orphaned_lock_holders() -> CleanupStats {
         #[cfg(unix)]
         {
             let holder_pid = pid.as_u32() as i32;
+            // SAFETY: libc::kill with SIGTERM is a standard POSIX signal delivery.
+            // The holder_pid is obtained from sysinfo enumeration, so it's a valid PID.
+            // SIGTERM allows graceful shutdown. If the process already exited, we get ESRCH.
+            #[allow(unsafe_code)]
             unsafe {
                 if libc::kill(holder_pid, libc::SIGTERM) == 0 {
                     stats.orphaned_processes_killed += 1;

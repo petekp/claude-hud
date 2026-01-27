@@ -479,8 +479,10 @@ fn parse_ideas_file(content: &str) -> Result<Vec<Idea>> {
         // For now, just warn and try to parse anyway
     }
 
-    // Regex patterns
+    // Regex patterns - unwrap is safe for compile-time literal patterns
+    #[allow(clippy::unwrap_used)]
     let id_regex = Regex::new(r"### \[#idea-([A-Z0-9]{26})\] (.+)").unwrap();
+    #[allow(clippy::unwrap_used)]
     let meta_regex = Regex::new(r"- \*\*(.+?):\*\* (.+)").unwrap();
 
     let mut current_idea: Option<IdeaBuilder> = None;
@@ -496,17 +498,32 @@ fn parse_ideas_file(content: &str) -> Result<Vec<Idea>> {
                 description_lines.clear();
             }
 
-            // Start new idea
-            let id = caps.get(1).unwrap().as_str().to_string();
-            let title = caps.get(2).unwrap().as_str().to_string();
+            // Start new idea - capture groups are guaranteed by regex pattern
+            let id = caps
+                .get(1)
+                .expect("group 1 always exists when regex matches")
+                .as_str()
+                .to_string();
+            let title = caps
+                .get(2)
+                .expect("group 2 always exists when regex matches")
+                .as_str()
+                .to_string();
             current_idea = Some(IdeaBuilder::new(id, title));
             in_metadata_block = true;
         } else if in_metadata_block {
             if let Some(caps) = meta_regex.captures(line) {
                 // Parse metadata only while in metadata block
                 if let Some(builder) = current_idea.as_mut() {
-                    let key = caps.get(1).unwrap().as_str();
-                    let value = caps.get(2).unwrap().as_str();
+                    // Capture groups are guaranteed by regex pattern
+                    let key = caps
+                        .get(1)
+                        .expect("group 1 always exists when regex matches")
+                        .as_str();
+                    let value = caps
+                        .get(2)
+                        .expect("group 2 always exists when regex matches")
+                        .as_str();
                     builder.set_metadata(key, value);
                 }
             } else if line.trim().is_empty() {

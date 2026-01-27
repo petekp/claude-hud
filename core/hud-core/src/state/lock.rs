@@ -82,7 +82,13 @@ fn compute_lock_hash(path: &str) -> String {
 pub fn is_pid_alive(pid: u32) -> bool {
     #[cfg(unix)]
     {
-        unsafe { libc::kill(pid as i32, 0) == 0 }
+        // SAFETY: kill(pid, 0) is a standard POSIX liveness check that sends no signal.
+        // Returns 0 if the process exists (we have permission to signal it), -1 otherwise.
+        // This is the canonical way to check process existence on Unix systems.
+        #[allow(unsafe_code)]
+        unsafe {
+            libc::kill(pid as i32, 0) == 0
+        }
     }
     #[cfg(not(unix))]
     {

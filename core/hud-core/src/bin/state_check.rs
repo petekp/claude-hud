@@ -33,6 +33,8 @@ fn main() {
 
                 if let Ok(pid_str) = std::fs::read_to_string(&pid_file) {
                     let pid: u32 = pid_str.trim().parse().unwrap_or(0);
+                    // SAFETY: kill(pid, 0) is a standard POSIX liveness check.
+                    #[allow(unsafe_code)]
                     let alive = unsafe { libc::kill(pid as i32, 0) == 0 };
 
                     if let Ok(meta_content) = std::fs::read_to_string(&meta_file) {

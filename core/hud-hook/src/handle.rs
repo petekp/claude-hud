@@ -354,6 +354,9 @@ fn spawn_lock_holder(lock_base: &Path, session_id: &str, cwd: &str, pid: u32) {
 fn get_ppid() -> Option<u32> {
     #[cfg(unix)]
     {
+        // SAFETY: getppid() is a simple syscall that returns the parent process ID.
+        // It has no failure modes and always returns a valid PID (1 if parent exited).
+        #[allow(unsafe_code)]
         Some(unsafe { libc::getppid() } as u32)
     }
     #[cfg(not(unix))]

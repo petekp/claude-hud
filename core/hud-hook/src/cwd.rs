@@ -189,7 +189,12 @@ fn cleanup_dead_pids(state: &mut ShellCwdState) {
 }
 
 fn process_exists(pid: u32) -> bool {
-    unsafe { libc::kill(pid as i32, 0) == 0 }
+    // SAFETY: kill(pid, 0) is a standard POSIX liveness check that sends no signal.
+    // Returns 0 if the process exists, -1 with ESRCH if not.
+    #[allow(unsafe_code)]
+    unsafe {
+        libc::kill(pid as i32, 0) == 0
+    }
 }
 
 // MARK: - History Management
@@ -415,9 +420,15 @@ fn get_parent_pid(pid: u32) -> Result<u32, std::io::Error> {
         ) -> i32;
     }
 
+    // SAFETY: ProcBsdInfo is a #[repr(C)] struct of primitive types.
+    // Zeroing is safe because all bit patterns are valid for the numeric fields.
+    #[allow(unsafe_code)]
     let mut info: ProcBsdInfo = unsafe { std::mem::zeroed() };
     let size = std::mem::size_of::<ProcBsdInfo>() as i32;
 
+    // SAFETY: proc_pidinfo is a macOS system call that fills the buffer with process info.
+    // We pass a properly-sized buffer and check the return value before using the data.
+    #[allow(unsafe_code)]
     let result = unsafe {
         proc_pidinfo(
             pid as i32,
@@ -446,6 +457,9 @@ fn get_process_name(pid: u32) -> Result<String, std::io::Error> {
     }
 
     let mut buffer = vec![0i8; PROC_PIDPATHINFO_MAXSIZE];
+    // SAFETY: proc_name is a macOS system call that writes a null-terminated C string.
+    // We provide a buffer large enough (4096 bytes) and check result > 0 before use.
+    #[allow(unsafe_code)]
     let result = unsafe { proc_name(pid as i32, buffer.as_mut_ptr(), buffer.len() as u32) };
 
     if result <= 0 {
@@ -455,6 +469,9 @@ fn get_process_name(pid: u32) -> Result<String, std::io::Error> {
         ));
     }
 
+    // SAFETY: proc_name guarantees null-termination when result > 0.
+    // The buffer was initialized to zeros, so even partial writes are safe.
+    #[allow(unsafe_code)]
     let name = unsafe {
         std::ffi::CStr::from_ptr(buffer.as_ptr())
             .to_string_lossy()

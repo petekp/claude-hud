@@ -108,7 +108,11 @@ impl AgentRegistry {
 
         // Phase 1: Check cache validity under read lock
         let (cached_results, adapters_needing_refresh): (Vec<_>, Vec<_>) = {
-            let cache = self.session_cache.read().unwrap();
+            // Recover from poisoning - cache corruption is non-fatal, just refetch
+            let cache = self
+                .session_cache
+                .read()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
 
             installed
                 .into_iter()
@@ -153,7 +157,11 @@ impl AgentRegistry {
 
         // Phase 3: Update cache under write lock (brief)
         if !fresh_results.is_empty() {
-            let mut cache = self.session_cache.write().unwrap();
+            // Recover from poisoning - cache corruption is non-fatal
+            let mut cache = self
+                .session_cache
+                .write()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
             for (id, sessions, mtime) in &fresh_results {
                 if let Some(m) = mtime {
                     cache.mtimes.insert(id.clone(), *m);
@@ -173,14 +181,22 @@ impl AgentRegistry {
 
     /// Invalidate the session cache for a specific adapter
     pub fn invalidate_cache(&self, adapter_id: &str) {
-        let mut cache = self.session_cache.write().unwrap();
+        // Recover from poisoning - invalidation clears corrupt data anyway
+        let mut cache = self
+            .session_cache
+            .write()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
         cache.sessions.remove(adapter_id);
         cache.mtimes.remove(adapter_id);
     }
 
     /// Invalidate all caches
     pub fn invalidate_all_caches(&self) {
-        let mut cache = self.session_cache.write().unwrap();
+        // Recover from poisoning - invalidation clears corrupt data anyway
+        let mut cache = self
+            .session_cache
+            .write()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
         cache.sessions.clear();
         cache.mtimes.clear();
     }

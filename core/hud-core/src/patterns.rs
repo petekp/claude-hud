@@ -5,6 +5,10 @@
 //! markdown frontmatter.
 //! Update these when Claude log or plugin formats change.
 
+// All regex patterns in this module are compile-time literals that are guaranteed
+// to be valid. The unwraps here cannot fail and are intentional.
+#![allow(clippy::unwrap_used)]
+
 use once_cell::sync::Lazy;
 use regex::Regex;
 
