@@ -419,6 +419,28 @@ tmux list-clients -t <session-name>
 tmux display-message -p "#{client_tty}"
 ```
 
+### OSLog Limitation for Debug Builds
+
+**Important:** Swift's `Logger` (OSLog) doesn't output to `log show`/`log stream` for unsigned debug builds run via `swift run`. The unified logging system requires signed apps or specific entitlements.
+
+**For debug telemetry, use stderr instead:**
+```swift
+private func telemetry(_ message: String) {
+    FileHandle.standardError.write(Data("[TELEMETRY] \(message)\n".utf8))
+}
+```
+
+**Capture during testing:**
+```bash
+# Run with stderr going to log file
+./.build/arm64-apple-macosx/debug/Capacitor 2> /tmp/capacitor-telemetry.log &
+
+# Monitor in real-time
+tail -f /tmp/capacitor-telemetry.log
+```
+
+This bypasses OSLog entirely and ensures telemetry is always visible during development. **Remove telemetry helpers before committing.**
+
 ### Common Telemetry Patterns
 
 **Pattern 1: Wrong shell selected**

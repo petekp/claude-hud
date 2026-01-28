@@ -4,6 +4,11 @@ import os.log
 
 private let logger = Logger(subsystem: "com.capacitor.app", category: "TerminalLauncher")
 
+private func telemetry(_ message: String) {
+    let output = "[TELEMETRY] \(message)\n"
+    FileHandle.standardError.write(Data(output.utf8))
+}
+
 // MARK: - ParentApp Terminal Extensions
 
 extension ParentApp {
@@ -137,6 +142,7 @@ final class TerminalLauncher {
 
     private func launchTerminalWithRustResolver(for project: Project, shellState: ShellCwdState? = nil) async {
         logger.info("━━━ ACTIVATION START: \(project.name) ━━━")
+        telemetry(" ━━━ ACTIVATION START: \(project.name) ━━━")
         logger.info("  Project path: \(project.path)")
 
         if let state = shellState {
@@ -167,13 +173,16 @@ final class TerminalLauncher {
         )
 
         logger.info("  Decision: \(decision.reason)")
+        telemetry(" Decision: \(decision.reason)")
         logger.info("  Primary action: \(String(describing: decision.primary))")
+        telemetry(" Primary action: \(String(describing: decision.primary))")
         if let fallback = decision.fallback {
             logger.info("  Fallback action: \(String(describing: fallback))")
         }
 
         let primarySuccess = await executeActivationAction(decision.primary, projectPath: project.path, projectName: project.name)
         logger.info("  Primary action result: \(primarySuccess ? "SUCCESS" : "FAILED")")
+        telemetry(" Primary action result: \(primarySuccess ? "SUCCESS" : "FAILED")")
 
         if !primarySuccess, let fallback = decision.fallback {
             logger.info("  ▸ Primary failed, executing fallback: \(String(describing: fallback))")
@@ -285,10 +294,17 @@ final class TerminalLauncher {
                 return true
             }
 
+            // Query FRESH client TTY - shell record's tmux_client_tty may be stale
+            // (users reconnect to tmux and get new TTY devices)
+            let freshTty = await getCurrentTmuxClientTty() ?? hostTty
+            logger.info("  ▸ Fresh TTY query: \(freshTty) (shell record had: \(hostTty))")
+            telemetry(" Fresh TTY query: \(freshTty) (shell record had: \(hostTty))")
+
             // Step 1: Try TTY discovery first (works for iTerm, Terminal.app)
             // This correctly identifies the host terminal even when Ghostty is also running.
-            let ttyActivated = await activateTerminalByTTYDiscovery(tty: hostTty)
-            logger.info("  ▸ TTY discovery for '\(hostTty)': \(ttyActivated ? "SUCCESS" : "FAILED")")
+            let ttyActivated = await activateTerminalByTTYDiscovery(tty: freshTty)
+            logger.info("  ▸ TTY discovery for '\(freshTty)': \(ttyActivated ? "SUCCESS" : "FAILED")")
+            telemetry(" TTY discovery for '\(freshTty)': \(ttyActivated ? "SUCCESS" : "FAILED")")
             if ttyActivated {
                 logger.info("  ▸ Switching tmux to session '\(sessionName)'")
                 let result = await runBashScriptWithResultAsync(
@@ -484,6 +500,13 @@ final class TerminalLauncher {
         let result = await runBashScriptWithResultAsync("tmux list-clients -t \(escaped) 2>/dev/null")
         guard result.exitCode == 0, let output = result.output else { return false }
         return !output.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    private func getCurrentTmuxClientTty() async -> String? {
+        let result = await runBashScriptWithResultAsync("tmux display-message -p '#{client_tty}' 2>/dev/null")
+        guard result.exitCode == 0, let output = result.output else { return nil }
+        let tty = output.trimmingCharacters(in: .whitespacesAndNewlines)
+        return tty.isEmpty ? nil : tty
     }
 
     private func launchTerminalWithTmuxSession(_ session: String) {

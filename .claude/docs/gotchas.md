@@ -46,6 +46,23 @@ run_tmux_command(&["display-message", "-p", "#S\t#{client_tty}"])
 
 ## Swift
 
+### OSLog Not Captured for Debug Builds
+
+Swift's `Logger` (OSLog) writes to the unified logging system, but for unsigned debug builds run via `swift run`, these logs are NOT captured by `log show` or `log stream`.
+
+**Symptom:** `logger.info()` calls produce no output in Console.app or `log stream --predicate 'subsystem == "com.capacitor.app"'`.
+
+**Workaround:** For debugging sessions requiring telemetry, add explicit stderr output:
+```swift
+private func telemetry(_ message: String) {
+    FileHandle.standardError.write(Data("[TELEMETRY] \(message)\n".utf8))
+}
+```
+
+Then capture with: `./Capacitor 2> /tmp/telemetry.log &`
+
+**Note:** Remove telemetry helpers before committing—they're for debugging only.
+
 ### Never Use Bundle.module
 Use `ResourceBundle.url(forResource:withExtension:)` instead—crashes in distributed builds.
 
@@ -100,6 +117,24 @@ hasTmuxClientAttached()  // ✅ Returns true if ANY client exists
 **Why this matters:** If you're viewing session A and click project B, the old code reported "no client" (because no client was on B's session). Rust then decided `LaunchTerminalWithTmux` → spawned new windows.
 
 **Semantic:** "Has attached client" answers "can we use `tmux switch-client`?" If ANY client exists, we can switch it to the target session. Only launch new terminal when NO clients exist at all.
+
+### Terminal Activation: Query Fresh Client TTY
+
+Shell records in `shell-cwd.json` store `tmux_client_tty` at shell creation time. This TTY becomes **stale** when users reconnect to tmux—they get assigned new TTY devices (e.g., `/dev/ttys012` instead of `/dev/ttys000`).
+
+**Symptom:** TTY discovery fails, falls through to Ghostty window-count check, sees 0 windows (user is in Terminal.app/iTerm), spawns new terminal.
+
+**Fix:** Query fresh TTY at activation time:
+```swift
+private func getCurrentTmuxClientTty() async -> String? {
+    let result = await runBashScriptWithResultAsync("tmux display-message -p '#{client_tty}'")
+    guard result.exitCode == 0, let output = result.output else { return nil }
+    let tty = output.trimmingCharacters(in: .whitespacesAndNewlines)
+    return tty.isEmpty ? nil : tty
+}
+```
+
+**Where:** `TerminalLauncher.swift:activateHostThenSwitchTmux` — use `getCurrentTmuxClientTty() ?? hostTty` before TTY discovery.
 
 ### Shell Escaping Utilities
 `TerminalLauncher.swift` provides two escaping functions for shell injection prevention:
