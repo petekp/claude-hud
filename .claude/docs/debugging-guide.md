@@ -302,6 +302,192 @@ kill -0 <pid> && echo "alive" || echo "dead"
 2. Shell entries in JSON have recent `updated_at` timestamps
 3. The expected shell PID is actually alive
 
+## Terminal Activation Telemetry Strategy
+
+Terminal activation bugs are notoriously difficult to debug because they span two layers (Rust decision, Swift execution), interact with external state (`shell-cwd.json`, tmux), and depend on ephemeral conditions (which windows exist, which processes are live).
+
+### The Two-Layer Architecture
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  User clicks project card                                   │
+└─────────────────────────────────────────────────────────────┘
+                            │
+                            ▼
+┌─────────────────────────────────────────────────────────────┐
+│  RUST DECISION LAYER (activation.rs)                        │
+│  • Reads shell-cwd.json via Swift                          │
+│  • Queries tmux context via Swift                          │
+│  • find_shell_at_path() selects best shell                 │
+│  • Returns ActivationAction enum                            │
+│                                                             │
+│  Key decision points:                                       │
+│  • Which shell to use? (live/dead, tmux/non-tmux, recency) │
+│  • What action? (ActivateByTty, ActivateHostThenSwitchTmux,│
+│    LaunchTerminalWithTmux, ActivatePriorityFallback, etc.) │
+└─────────────────────────────────────────────────────────────┘
+                            │
+                            ▼
+┌─────────────────────────────────────────────────────────────┐
+│  SWIFT EXECUTION LAYER (TerminalLauncher.swift)            │
+│  • executeActivationAction() dispatches on action type     │
+│  • Calls AppleScript, bash commands, or NSRunningApplication│
+│  • May have fallbacks if primary fails                     │
+│                                                             │
+│  Key execution points:                                      │
+│  • TTY discovery (which terminal owns this TTY?)           │
+│  • tmux switch-client (does it succeed?)                   │
+│  • App activation (does the right window come forward?)    │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Telemetry Log Markers
+
+The telemetry uses structured markers for easy filtering:
+
+**Rust layer (activation.rs):**
+- Decision logic is pure—add `tracing::info!` or `eprintln!` if needed
+- Test coverage is the primary debugging tool (26+ tests)
+
+**Swift layer (TerminalLauncher.swift):**
+```
+[TerminalLauncher] launchTerminalAsync for: <path>     # Entry point
+  ▸ Rust decision: <action type>                       # What Rust decided
+  ▸ reason: <why Rust chose this>                      # Rust's explanation
+  ▸ Executing action: <action>                         # Swift dispatching
+
+# For ActivateHostThenSwitchTmux:
+  activateHostThenSwitchTmux: hostTty=<tty>, session=<name>
+    Ghostty window count: <n>
+  ▸ Single Ghostty window → activating and switching tmux
+  ▸ tmux switch-client result: exit <code>
+
+# For ActivateByTty:
+    activateByTtyAction: tty=<tty>, terminalType=<type>
+    activateGhosttyWithHeuristic: tty=<tty>, windowCount=<n>
+```
+
+### Debugging Workflow
+
+**Step 1: Reproduce and capture logs**
+```bash
+# Open Console.app and filter by "TerminalLauncher" or "Capacitor"
+# Or use log stream:
+log stream --predicate 'subsystem == "dev.capacitor.Capacitor"' --level debug
+```
+
+**Step 2: Identify which layer failed**
+
+| Symptom | Likely Layer | What to Check |
+|---------|--------------|---------------|
+| Wrong action chosen | Rust | `shell-cwd.json`, tmux context |
+| Right action, wrong result | Swift | AppleScript, bash commands |
+| Shell selection wrong | Rust | `find_shell_at_path()` priority logic |
+| Tmux doesn't switch | Swift | `tmux switch-client` exit code |
+| Wrong window activated | Swift | TTY discovery, Ghostty heuristics |
+
+**Step 3: Inspect shell-cwd.json state**
+```bash
+# See all shells at a path
+cat ~/.capacitor/shell-cwd.json | jq --arg path "/Users/you/Code/project" '
+  .shells | to_entries[] |
+  select(.value.cwd | contains($path)) |
+  {pid: .key, cwd: .value.cwd, tty: .value.tty, tmux: .value.tmux_session, live: .value.is_live, updated: .value.updated_at}
+'
+
+# Check for multiple shells (the source of many bugs)
+cat ~/.capacitor/shell-cwd.json | jq '
+  .shells | to_entries |
+  group_by(.value.cwd) |
+  map(select(length > 1)) |
+  .[] | {path: .[0].value.cwd, count: length, shells: [.[] | {pid: .key, tmux: .value.tmux_session}]}
+'
+```
+
+**Step 4: Verify tmux context**
+```bash
+# What sessions exist?
+tmux list-sessions
+
+# Is any client attached?
+tmux list-clients
+
+# For a specific session, are there clients?
+tmux list-clients -t <session-name>
+
+# What's the current client's TTY? (from inside tmux)
+tmux display-message -p "#{client_tty}"
+```
+
+### Common Telemetry Patterns
+
+**Pattern 1: Wrong shell selected**
+```
+Log shows: Rust decision: ActivateByTty (not ActivateHostThenSwitchTmux)
+```
+→ Check if multiple shells exist at path
+→ Verify `is_live` flags are correct
+→ Check if tmux shell has `tmux_session` set
+
+**Pattern 2: Right decision, tmux doesn't switch**
+```
+Log shows: tmux switch-client result: exit 1
+```
+→ Run `tmux switch-client -t <session>` manually
+→ Check if session name has special characters
+→ Verify client is attached
+
+**Pattern 3: Ghostty activates wrong window**
+```
+Log shows: Multiple Ghostty windows (3) → activating and switching tmux
+```
+→ This is expected behavior (Ghostty has no window selection API)
+→ User must manually switch to correct Ghostty window
+→ Tmux session switch should still succeed
+
+### Adding New Telemetry
+
+When debugging a new issue:
+
+1. **Add entry/exit logging** to suspect functions:
+```swift
+logger.info("  functionName: param1=\(param1), param2=\(param2)")
+// ... function body ...
+logger.info("  functionName: result=\(result)")
+```
+
+2. **Log decision points** with context:
+```swift
+if someCondition {
+    logger.info("  ▸ Taking path A because: \(reason)")
+} else {
+    logger.info("  ▸ Taking path B because: \(otherReason)")
+}
+```
+
+3. **Log external command results**:
+```swift
+let result = await runBashScriptWithResultAsync(command)
+logger.info("  \(commandName) exit=\(result.exitCode), output=\(result.output ?? "nil")")
+```
+
+4. **Use consistent indentation** to show call hierarchy (2 spaces per level)
+
+### Telemetry Checklist for New Terminal Bugs
+
+Before modifying code:
+- [ ] Captured logs from Console.app/log stream
+- [ ] Identified which layer (Rust/Swift) made the wrong decision
+- [ ] Inspected `shell-cwd.json` for the relevant path
+- [ ] Checked tmux context (sessions, clients, TTYs)
+- [ ] Verified terminal app capabilities in `terminal-switching-matrix.md`
+- [ ] Added hypothesis to explain the misbehavior
+
+After fixing:
+- [ ] Added test case to `activation.rs` if Rust logic changed
+- [ ] Verified fix works with user's specific terminal setup
+- [ ] Documented gotcha in `.claude/docs/gotchas.md` if non-obvious
+
 ## UniFFI Debugging
 
 ### "Extra argument in call" or "Missing argument" Errors
