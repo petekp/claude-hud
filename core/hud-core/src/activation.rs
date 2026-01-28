@@ -259,14 +259,11 @@ fn find_shell_at_path<'a>(
             Err(_) => continue,
         };
 
-        // Prefer live shells, then most recent
+        // Prefer live shells, then most recent timestamp
         let dominated = match (shell.is_live, best_is_live) {
             (false, true) => true,  // Dead shell can't beat live shell
             (true, false) => false, // Live shell always beats dead
-            _ => {
-                // Same liveness: compare timestamps
-                best_timestamp.is_some() && shell.updated_at.as_str() <= best_timestamp.unwrap()
-            }
+            _ => best_timestamp.is_some_and(|ts| shell.updated_at.as_str() <= ts),
         };
 
         if !dominated {
@@ -279,21 +276,17 @@ fn find_shell_at_path<'a>(
     best_shell
 }
 
-/// Check if two paths refer to the same location.
+/// Check if two paths refer to the same location or are parent/child.
 fn paths_match(a: &str, b: &str) -> bool {
-    // Exact match
     if a == b {
         return true;
     }
 
-    // Check if one is a prefix of the other (subdir case)
-    // This handles cases where shell is in /proj/src but project is /proj
+    // Check if one is a subdirectory of the other (e.g., /proj matches /proj/src)
     let (shorter, longer) = if a.len() < b.len() { (a, b) } else { (b, a) };
-    if let Some(rest) = longer.strip_prefix(shorter) {
-        return rest.is_empty() || rest.starts_with('/');
-    }
-
-    false
+    longer
+        .strip_prefix(shorter)
+        .is_some_and(|rest| rest.starts_with('/'))
 }
 
 /// Resolve activation for an existing shell found in shell-cwd.json.
