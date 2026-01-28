@@ -209,3 +209,133 @@ If `activateAppByName` is called for a terminal without tab selection API, you'v
 **Diagnosis:** Add logging to check if `activate()` returns true but the app doesn't come to front.
 
 **Fix:** Use AppleScript `tell application "AppName" to activate` instead. It goes through Apple Events which is more reliable for inter-app activation from SwiftUI apps.
+
+### Tmux Multi-Client Activation (Wrong Terminal Focused)
+
+**Symptoms:** With multiple terminals attached to the same tmux session, clicking a project activates the wrong terminal window.
+
+**Root cause:** `tmux list-clients` returns clients in arbitrary order (not most-recent). If the hook used the first line to determine the client TTY, it would often pick the wrong one.
+
+**Diagnosis:**
+```bash
+# Check how many clients are attached
+tmux list-clients
+
+# Check what the CURRENT client's TTY is (this is correct)
+tmux display-message -p "#{client_tty}"
+
+# Check what session the current client is viewing
+tmux display-message -p "#S"
+```
+
+**The fix (already applied):** The hook now uses `display-message -p "#S\t#{client_tty}"` which returns the TTY of the client that invoked the command, not an arbitrary client from the list.
+
+**If still failing:** Check `~/.capacitor/shell-cwd.json` to see what `tmux_client_tty` value the hook recorded:
+```bash
+cat ~/.capacitor/shell-cwd.json | jq '.shells | to_entries[] | select(.value.tmux_session != null) | {pid: .key, session: .value.tmux_session, tty: .value.tmux_client_tty}'
+```
+
+### Ghostty Activated When Tmux Client Is in iTerm
+
+**Symptoms:** Clicking a project with tmux activates Ghostty even though the tmux client is attached in iTerm.
+
+**Root cause:** The old activation strategy checked "is Ghostty running?" before attempting TTY-based terminal discovery. If Ghostty was running for any reason, it would use Ghostty-specific logic even when the actual tmux client was elsewhere.
+
+**Diagnosis:**
+```bash
+# Check which terminal actually has the tmux client attached
+tmux display-message -p "#{client_tty}"
+# Then match this TTY to a terminal process
+
+# Check what's in shell-cwd.json
+cat ~/.capacitor/shell-cwd.json | jq '.shells' | head -50
+```
+
+**The fix (already applied):** The activation strategy now tries TTY discovery FIRST. Only if TTY discovery fails AND Ghostty is running does it fall back to Ghostty-specific window counting.
+
+**Order of operations:**
+1. Try `activateTerminalByTTYDiscovery()` using the recorded TTY
+2. If TTY found → switch tmux in that terminal, done
+3. If TTY not found AND Ghostty running → use Ghostty window-count strategy
+4. Otherwise → trigger fallback (launch new terminal)
+
+### Shell Injection Testing
+
+When testing terminal activation manually, be aware that session names with special characters could cause issues:
+
+**Test session names to verify escaping:**
+```bash
+# Create session with single quote (most dangerous)
+tmux new-session -d -s "test'session"
+
+# Create session with shell metacharacters
+tmux new-session -d -s 'test$(whoami)'
+
+# Click the project in Capacitor and verify:
+# 1. No command injection occurs
+# 2. The correct session is switched to
+```
+
+**Escape functions in use:**
+- `shellEscape()` - Single-quote escaping for shell arguments
+- `bashDoubleQuoteEscape()` - Escapes `\`, `"`, `$`, `` ` `` for double-quoted strings
+
+### Dead Shells Being Preferred Over Live Ones
+
+**Symptoms:** Terminal activation targets a shell that has exited instead of the live shell in the same directory.
+
+**Diagnosis:**
+```bash
+# Check shell-cwd.json for shells at a path
+cat ~/.capacitor/shell-cwd.json | jq '.shells | to_entries[] | select(.value.cwd | contains("/your/project"))'
+
+# For each PID, check if it's alive
+kill -0 <pid> && echo "alive" || echo "dead"
+```
+
+**The fix (already applied):** Rust now receives an `is_live` flag from Swift and prefers live shells:
+- Live shell always beats dead shell at same path
+- Among shells with same liveness, most recently updated wins
+
+**If still failing:** Check that:
+1. UniFFI bindings are regenerated (Swift sends `isLive` to Rust)
+2. Shell entries in JSON have recent `updated_at` timestamps
+3. The expected shell PID is actually alive
+
+## UniFFI Debugging
+
+### "Extra argument in call" or "Missing argument" Errors
+
+**Symptoms:** Swift build fails with errors like `extra argument 'fieldName' in call` or `missing argument for parameter 'fieldName'`.
+
+**Root cause:** Rust FFI struct changed but UniFFI bindings weren't regenerated.
+
+**Fix:**
+```bash
+# Must build release first (bindings come from dylib)
+cargo build -p hud-core --release
+
+# Regenerate Swift bindings
+cargo run --bin uniffi-bindgen generate \
+    --library target/release/libhud_core.dylib \
+    --language swift --out-dir apps/swift/bindings
+
+# Copy to Bridge directory
+cp apps/swift/bindings/hud_core.swift apps/swift/Sources/Capacitor/Bridge/
+
+# Rebuild Swift
+cd apps/swift && swift build
+```
+
+**Prevention:** After any change to FFI types in Rust (structs with `#[derive(uniffi::Record)]`), always run the regeneration sequence.
+
+### Rust Changes Not Reflected in Swift
+
+**Symptoms:** Added new field to FFI struct, Rust tests pass, but Swift doesn't see the new field.
+
+**Checklist:**
+1. Is the field in a `#[derive(uniffi::Record)]` struct? (Required for FFI)
+2. Did you rebuild the release dylib? (`cargo build -p hud-core --release`)
+3. Did you regenerate bindings? (See command above)
+4. Did you copy the new `hud_core.swift` to the Bridge directory?
+5. Did you clean Swift build cache? (`rm -rf apps/swift/.build`)
