@@ -214,14 +214,12 @@ final class TerminalLauncher {
         let sessionAtPath = await findTmuxSessionForPath(projectPath)
         logger.debug("  queryTmuxContext: findTmuxSessionForPath('\(projectPath)') → \(sessionAtPath ?? "nil")")
 
-        let hasAttached: Bool
-        if let session = sessionAtPath {
-            hasAttached = await hasTmuxClientAttachedToSession(session)
-            logger.debug("  queryTmuxContext: hasTmuxClientAttachedToSession('\(session)') → \(hasAttached)")
-        } else {
-            hasAttached = false
-            logger.debug("  queryTmuxContext: no session at path, hasAttached=false")
-        }
+        // Check if ANY tmux client is attached (regardless of which session).
+        // This is crucial: if a client is viewing session A and we want to activate
+        // session B, we can still `tmux switch-client` to B. We only need to launch
+        // a new terminal if NO clients exist at all.
+        let hasAttached = await hasTmuxClientAttached()
+        logger.debug("  queryTmuxContext: hasTmuxClientAttached() → \(hasAttached)")
 
         return TmuxContextFfi(
             sessionAtPath: sessionAtPath,
@@ -276,11 +274,13 @@ final class TerminalLauncher {
         case let .activateHostThenSwitchTmux(hostTty, sessionName):
             logger.info("  ▸ activateHostThenSwitchTmux: hostTty=\(hostTty), session=\(sessionName)")
 
-            // Re-verify client is still attached to THIS session (may have detached since query)
-            let stillAttached = await hasTmuxClientAttachedToSession(sessionName)
-            logger.info("  ▸ Re-verify: session '\(sessionName)' has clients? \(stillAttached)")
-            if !stillAttached {
-                logger.info("  ▸ No clients → launching new terminal to attach")
+            // Re-verify ANY client is still attached (may have all detached since query)
+            // NOTE: We check for ANY client, not just clients on THIS session.
+            // If a client is viewing a different session, we can still switch it.
+            let anyClientAttached = await hasTmuxClientAttached()
+            logger.info("  ▸ Re-verify: any tmux client attached? \(anyClientAttached)")
+            if !anyClientAttached {
+                logger.info("  ▸ No clients anywhere → launching new terminal to attach")
                 launchTerminalWithTmuxSession(sessionName)
                 return true
             }
