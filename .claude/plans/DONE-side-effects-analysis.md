@@ -7,9 +7,11 @@ Systematic audit of Capacitor's side effects to identify latent issues causing s
 ## Methodology
 
 ### Isolation Principle
+
 Each subsystem analyzed in a **separate session** to prevent context pollution. Findings documented immediately after each session.
 
 ### Analysis Checklist (per subsystem)
+
 For each side effect subsystem, verify:
 
 1. **Correctness** — Does the code do what the documentation says?
@@ -21,7 +23,9 @@ For each side effect subsystem, verify:
 7. **Dead code** — Are there unused code paths that could cause confusion?
 
 ### Findings Format
+
 Each issue documented as:
+
 ```
 ## [SUBSYSTEM] Issue: Brief title
 
@@ -44,33 +48,36 @@ Specific fix or removal.
 ## Analysis Order (Priority-Based)
 
 ### Phase 1: State Detection Core ✅ COMPLETE
+
 These directly cause the "wrong state shown" regressions.
 
-| Session | Subsystem | Files | Focus | Status |
-|---------|-----------|-------|-------|--------|
-| 1 | **Lock System** | `lock.rs` | Lock creation, verification, exact-match policy | ✅ |
-| 2 | **Lock Holder** | `lock_holder.rs`, `handle.rs:spawn_lock_holder` | Lifecycle, exit detection, orphan prevention | ✅ |
-| 3 | **Session State Store** | `store.rs`, `types.rs` | State transitions, atomic saves, keying | ✅ |
-| 4 | **Cleanup System** | `cleanup.rs` | Stale lock removal, startup cleanup | ✅ |
-| 5 | **Tombstone System** | `handle.rs` tombstone functions | Race prevention, cleanup timing | ✅ |
+| Session | Subsystem               | Files                                           | Focus                                           | Status |
+| ------- | ----------------------- | ----------------------------------------------- | ----------------------------------------------- | ------ |
+| 1       | **Lock System**         | `lock.rs`                                       | Lock creation, verification, exact-match policy | ✅     |
+| 2       | **Lock Holder**         | `lock_holder.rs`, `handle.rs:spawn_lock_holder` | Lifecycle, exit detection, orphan prevention    | ✅     |
+| 3       | **Session State Store** | `store.rs`, `types.rs`                          | State transitions, atomic saves, keying         | ✅     |
+| 4       | **Cleanup System**      | `cleanup.rs`                                    | Stale lock removal, startup cleanup             | ✅     |
+| 5       | **Tombstone System**    | `handle.rs` tombstone functions                 | Race prevention, cleanup timing                 | ✅     |
 
 ### Phase 2: Shell Integration ✅ COMPLETE
+
 These cause "wrong project activated" or "shell not tracked" issues.
 
-| Session | Subsystem | Files | Focus | Status |
-|---------|-----------|-------|-------|--------|
-| 6 | **Shell CWD Tracking** | `cwd.rs` | PID tracking, dead shell cleanup | ✅ |
-| 7 | **Shell State Store (Swift)** | `ShellStateStore.swift` | Reading/parsing, timestamp handling | ✅ |
-| 8 | **Terminal Launcher** | `TerminalLauncher.swift` | TTY matching, AppleScript reliability | ✅ |
+| Session | Subsystem                     | Files                    | Focus                                 | Status |
+| ------- | ----------------------------- | ------------------------ | ------------------------------------- | ------ |
+| 6       | **Shell CWD Tracking**        | `cwd.rs`                 | PID tracking, dead shell cleanup      | ✅     |
+| 7       | **Shell State Store (Swift)** | `ShellStateStore.swift`  | Reading/parsing, timestamp handling   | ✅     |
+| 8       | **Terminal Launcher**         | `TerminalLauncher.swift` | TTY matching, AppleScript reliability | ✅     |
 
 ### Phase 3: Supporting Systems ✅ COMPLETE
+
 Lower priority but can cause subtle issues.
 
-| Session | Subsystem | Files | Focus | Status |
-|---------|-----------|-------|-------|--------|
-| 9 | **Activity Files** | `handle.rs` activity functions | File tracking accuracy | ✅ |
-| 10 | **Hook Configuration** | `setup.rs` | settings.json modification safety | ✅ |
-| 11 | **Project Resolution** | `ActiveProjectResolver.swift` | Focus override logic | ✅ |
+| Session | Subsystem              | Files                          | Focus                             | Status |
+| ------- | ---------------------- | ------------------------------ | --------------------------------- | ------ |
+| 9       | **Activity Files**     | `handle.rs` activity functions | File tracking accuracy            | ✅     |
+| 10      | **Hook Configuration** | `setup.rs`                     | settings.json modification safety | ✅     |
+| 11      | **Project Resolution** | `ActiveProjectResolver.swift`  | Focus override logic              | ✅     |
 
 ---
 
@@ -92,12 +99,14 @@ These documented gotchas indicate areas of historical trouble:
 From initial read of `lock.rs`:
 
 ### Finding 1: Stale Documentation ✅ FIXED (2026-01-27)
+
 **Severity:** Medium
 **Type:** Stale docs
 **Location:** `lock.rs:42-46`
 
 **Problem:**
 Module docstring claims child→parent inheritance:
+
 > "A lock at `/project/src` makes `/project` appear active"
 
 But code implements exact-match-only (lines 377, 414-421). This could mislead future maintainers.
@@ -105,6 +114,7 @@ But code implements exact-match-only (lines 377, 414-421). This could mislead fu
 **Resolution:** Fixed in commit `3d78b1b`. Documentation now correctly states exact-match-only policy.
 
 ### Finding 2: Misleading Function Name
+
 **Severity:** Low
 **Type:** Stale naming
 **Location:** `lock.rs:435`
@@ -118,28 +128,30 @@ But code implements exact-match-only (lines 377, 414-421). This could mislead fu
 
 All audit documents created in `.claude/docs/audit/`:
 
-| Document | Session | Key Findings |
-|----------|---------|--------------|
-| `01-lock-system.md` | 1 | Stale docs fixed, function naming vestige |
-| `02-lock-holder.md` | 2 | Lock holder lifecycle verified |
-| `03-session-store.md` | 3 | Atomic saves, state transitions verified |
-| `04-cleanup-system.md` | 4 | Startup cleanup verified |
-| `05-tombstone-system.md` | 5 | Race prevention verified |
-| `06-shell-cwd-tracking.md` | 6 | PID tracking, dead shell cleanup verified |
-| `07-shell-state-store.md` | 7 | Timestamp handling verified |
-| `08-terminal-launcher.md` | 8 | TTY matching, AppleScript reliability |
-| `09-activity-files.md` | 9 | File tracking accuracy verified |
-| `10-hook-configuration.md` | 10 | settings.json modification safety verified |
-| `11-project-resolution.md` | 11 | Focus override logic verified, no bugs |
+| Document                   | Session | Key Findings                               |
+| -------------------------- | ------- | ------------------------------------------ |
+| `01-lock-system.md`        | 1       | Stale docs fixed, function naming vestige  |
+| `02-lock-holder.md`        | 2       | Lock holder lifecycle verified             |
+| `03-session-store.md`      | 3       | Atomic saves, state transitions verified   |
+| `04-cleanup-system.md`     | 4       | Startup cleanup verified                   |
+| `05-tombstone-system.md`   | 5       | Race prevention verified                   |
+| `06-shell-cwd-tracking.md` | 6       | PID tracking, dead shell cleanup verified  |
+| `07-shell-state-store.md`  | 7       | Timestamp handling verified                |
+| `08-terminal-launcher.md`  | 8       | TTY matching, AppleScript reliability      |
+| `09-activity-files.md`     | 9       | File tracking accuracy verified            |
+| `10-hook-configuration.md` | 10      | settings.json modification safety verified |
+| `11-project-resolution.md` | 11      | Focus override logic verified, no bugs     |
 
 ---
 
 ## Summary of Findings
 
 ### Issues Fixed During Audit
+
 1. **Stale documentation in lock.rs** — Fixed in commit `3d78b1b`
 
 ### Design Validations (No Action Needed)
+
 1. **Session-based lock keying** — Correctly implements `{session_id}-{pid}` pattern
 2. **Exact-match-only policy** — Correctly prevents child→parent inheritance confusion
 3. **Focus override anti-racing** — Clever mechanism to prevent timestamp racing
@@ -147,6 +159,7 @@ All audit documents created in `.claude/docs/audit/`:
 5. **Active/passive session priority** — Working sessions beat Ready sessions
 
 ### Low-Priority Items (Optional)
+
 1. **Function rename**: `find_matching_child_lock` → `find_lock_for_path` (vestigial name)
 
 ---
