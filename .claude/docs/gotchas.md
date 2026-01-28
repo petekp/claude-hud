@@ -73,6 +73,17 @@ In `activateHostThenSwitchTmux`, always try TTY discovery before Ghostty-specifi
 3. If TTY not found AND Ghostty running → use Ghostty window-count strategy
 4. Otherwise → trigger fallback
 
+### Shell Selection: Tmux Priority When Client Attached
+When multiple shells exist at the same path in `shell-cwd.json` (e.g., one tmux shell, two direct shells), the Rust `find_shell_at_path()` function uses this priority order:
+
+1. **Live shells** beat dead shells
+2. **Tmux shells** beat non-tmux shells (only when tmux client is attached)
+3. **Most recent timestamp** as tiebreaker
+
+**Why this matters:** Without tmux priority, timestamp alone determines shell selection. If a user recently cd'd into a directory in a non-tmux shell, that shell gets selected—resulting in `ActivateByTty` instead of `ActivateHostThenSwitchTmux`. The tmux session then fails to switch.
+
+**Key insight:** "Tmux client attached" is a strong signal the user is actively using tmux and wants session switching. See `activation.rs:find_shell_at_path()` and test `test_prefers_tmux_shell_when_client_attached_even_if_older`.
+
 ### Shell Escaping Utilities
 `TerminalLauncher.swift` provides two escaping functions for shell injection prevention:
 - `shellEscape()` — Single-quote escaping for shell arguments (e.g., `foo'bar` → `'foo'\''bar'`)

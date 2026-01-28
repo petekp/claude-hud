@@ -201,8 +201,11 @@ pub fn resolve_activation(
     let normalized_path = normalize_path(project_path);
 
     // Priority 1: Find existing shell in shell-cwd.json
+    // Pass tmux context so shell selection can prioritize tmux shells when appropriate
     if let Some(state) = shell_state {
-        if let Some((pid, shell)) = find_shell_at_path(&state.shells, &normalized_path) {
+        if let Some((pid, shell)) =
+            find_shell_at_path(&state.shells, &normalized_path, tmux_context)
+        {
             return resolve_for_existing_shell(pid, shell, tmux_context, &normalized_path);
         }
     }
@@ -235,19 +238,30 @@ pub fn resolve_activation(
 
 /// Find a shell entry at the given path.
 ///
-/// Returns the best shell at the path, preferring:
-/// 1. Live shells over dead shells (process still running)
-/// 2. Among same-liveness, most recently updated
+/// Returns the best shell at the path using a deterministic priority order:
 ///
-/// This ensures we activate the terminal the user is *currently* working in,
-/// not a stale entry from hours ago or a dead process.
+/// **Priority (highest to lowest):**
+/// 1. Live shells beat dead shells (process still running)
+/// 2. When tmux client is attached: shells with `tmux_session` beat those without
+/// 3. Among same-tier shells: most recently updated wins
+///
+/// This ensures predictable behavior:
+/// - If you're using tmux with an attached client, we'll always pick the tmux shell
+/// - This guarantees `ActivateHostThenSwitchTmux` is chosen for proper session switching
+/// - Non-tmux shells are only preferred when no tmux client is attached
 fn find_shell_at_path<'a>(
     shells: &'a HashMap<String, ShellEntryFfi>,
     project_path: &str,
+    tmux_context: &TmuxContextFfi,
 ) -> Option<(u32, &'a ShellEntryFfi)> {
     let mut best_shell: Option<(u32, &ShellEntryFfi)> = None;
     let mut best_is_live = false;
+    let mut best_has_tmux = false;
     let mut best_timestamp: Option<DateTime<Utc>> = None;
+
+    // Only prefer tmux shells when a client is actually attached
+    // (If no client attached, picking a tmux shell would just launch a new terminal anyway)
+    let prefer_tmux = tmux_context.has_attached_client;
 
     for (pid_str, shell) in shells {
         let shell_path = normalize_path(&shell.cwd);
@@ -261,17 +275,32 @@ fn find_shell_at_path<'a>(
         };
 
         let shell_time = parse_timestamp(&shell.updated_at);
+        let shell_has_tmux = shell.tmux_session.is_some();
 
-        // Prefer live shells, then most recent timestamp
+        // Determine if current best dominates this candidate
+        // Priority order: live > dead, then (if prefer_tmux) tmux > non-tmux, then newer > older
         let dominated = match (shell.is_live, best_is_live) {
             (false, true) => true,  // Dead shell can't beat live shell
             (true, false) => false, // Live shell always beats dead
-            _ => is_timestamp_older_or_equal(shell_time, best_timestamp),
+            _ => {
+                // Same liveness tier - check tmux preference if enabled
+                if prefer_tmux {
+                    match (shell_has_tmux, best_has_tmux) {
+                        (false, true) => true,  // Non-tmux can't beat tmux when client attached
+                        (true, false) => false, // Tmux beats non-tmux when client attached
+                        _ => is_timestamp_older_or_equal(shell_time, best_timestamp),
+                    }
+                } else {
+                    // No tmux client attached - just use timestamp
+                    is_timestamp_older_or_equal(shell_time, best_timestamp)
+                }
+            }
         };
 
         if !dominated {
             best_shell = Some((pid, shell));
             best_is_live = shell.is_live;
+            best_has_tmux = shell_has_tmux;
             best_timestamp = shell_time;
         }
     }
@@ -1215,6 +1244,111 @@ mod tests {
             decision.primary,
             ActivationAction::ActivateApp { app_name } if app_name == "Ghostty"
         ));
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────────
+    // Path matching tests
+    // ─────────────────────────────────────────────────────────────────────────────
+
+    // ─────────────────────────────────────────────────────────────────────────────
+    // Scenario: Multiple shells with mixed tmux/non-tmux (the bug scenario!)
+    // ─────────────────────────────────────────────────────────────────────────────
+
+    #[test]
+    fn test_prefers_tmux_shell_when_client_attached_even_if_older() {
+        // THE BUG SCENARIO: User has multiple shells at same path
+        // - One tmux shell (older timestamp)
+        // - Two non-tmux shells (newer timestamps)
+        // When tmux client IS attached, we should pick the tmux shell
+        // to enable proper session switching
+
+        let old_tmux_shell = make_shell_entry_with_time(
+            "/Users/pete/Code/capacitor",
+            "/dev/pts/0",
+            ParentApp::Tmux,
+            Some("capacitor"),
+            "2026-01-27T08:00:00Z", // Older
+        );
+
+        let recent_nontmux_shell1 = make_shell_entry_with_time(
+            "/Users/pete/Code/capacitor",
+            "/dev/ttys001",
+            ParentApp::Ghostty,
+            None,
+            "2026-01-27T10:00:00Z", // Newer
+        );
+
+        let recent_nontmux_shell2 = make_shell_entry_with_time(
+            "/Users/pete/Code/capacitor",
+            "/dev/ttys002",
+            ParentApp::Unknown, // Unknown parent, no tmux
+            None,
+            "2026-01-27T09:30:00Z", // Also newer
+        );
+
+        let state = make_shell_state(vec![
+            ("11111", old_tmux_shell),
+            ("22222", recent_nontmux_shell1),
+            ("33333", recent_nontmux_shell2),
+        ]);
+
+        // Client IS attached - should prefer tmux shell for proper switching
+        let decision = resolve_activation(
+            "/Users/pete/Code/capacitor",
+            Some(&state),
+            &tmux_context_attached("capacitor"),
+        );
+
+        // Should pick the TMUX shell and use ActivateHostThenSwitchTmux
+        assert!(
+            matches!(
+                decision.primary,
+                ActivationAction::ActivateHostThenSwitchTmux { .. }
+            ),
+            "Expected ActivateHostThenSwitchTmux when tmux client attached, got {:?}",
+            decision.primary
+        );
+    }
+
+    #[test]
+    fn test_prefers_recent_shell_when_no_client_attached() {
+        // Same scenario but no tmux client attached
+        // Should use most recent shell (the old timestamp behavior)
+
+        let old_tmux_shell = make_shell_entry_with_time(
+            "/Users/pete/Code/capacitor",
+            "/dev/pts/0",
+            ParentApp::Tmux,
+            Some("capacitor"),
+            "2026-01-27T08:00:00Z", // Older
+        );
+
+        let recent_nontmux_shell = make_shell_entry_with_time(
+            "/Users/pete/Code/capacitor",
+            "/dev/ttys001",
+            ParentApp::Ghostty,
+            None,
+            "2026-01-27T10:00:00Z", // Newer
+        );
+
+        let state = make_shell_state(vec![
+            ("11111", old_tmux_shell),
+            ("22222", recent_nontmux_shell),
+        ]);
+
+        // No client attached - should use most recent (Ghostty)
+        let decision = resolve_activation(
+            "/Users/pete/Code/capacitor",
+            Some(&state),
+            &tmux_context_none(),
+        );
+
+        // Should pick the MORE RECENT shell (Ghostty)
+        assert!(
+            matches!(decision.primary, ActivationAction::ActivateApp { ref app_name } if app_name == "Ghostty"),
+            "Expected ActivateApp(Ghostty) when no tmux client, got {:?}",
+            decision.primary
+        );
     }
 
     // ─────────────────────────────────────────────────────────────────────────────
