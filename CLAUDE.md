@@ -74,6 +74,7 @@ Hooks → `~/.capacitor/sessions.json` → Capacitor reads
 - **Dev builds need dylib** — After Rust rebuilds: `cp target/release/libhud_core.dylib apps/swift/.build/arm64-apple-macosx/debug/`
 - **Hook symlink, not copy** — Use `ln -s target/release/hud-hook ~/.local/bin/hud-hook` (copying triggers Gatekeeper SIGKILL)
 - **UniFFI Task shadows Swift Task** — Use `_Concurrency.Task` explicitly in async code
+- **UniFFI bindings after FFI changes** — `cargo run --bin uniffi-bindgen generate --library target/release/libhud_core.dylib --language swift --out-dir apps/swift/bindings && cp apps/swift/bindings/hud_core.swift apps/swift/Sources/Capacitor/Bridge/`
 
 **Full gotchas reference:** `.claude/docs/gotchas.md`
 
