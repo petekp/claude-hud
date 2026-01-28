@@ -4428,16 +4428,25 @@ public struct ShellEntryFfi {
     public var tmuxSession: String?
     public var tmuxClientTty: String?
     public var updatedAt: String
+    /**
+     * Whether the shell process is still running (verified via kill(pid, 0))
+     */
+    public var isLive: Bool
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
-    public init(cwd: String, tty: String, parentApp: ParentApp, tmuxSession: String?, tmuxClientTty: String?, updatedAt: String) {
+    public init(cwd: String, tty: String, parentApp: ParentApp, tmuxSession: String?, tmuxClientTty: String?, updatedAt: String,
+                /**
+                    * Whether the shell process is still running (verified via kill(pid, 0))
+                    */ isLive: Bool)
+    {
         self.cwd = cwd
         self.tty = tty
         self.parentApp = parentApp
         self.tmuxSession = tmuxSession
         self.tmuxClientTty = tmuxClientTty
         self.updatedAt = updatedAt
+        self.isLive = isLive
     }
 }
 
@@ -4461,6 +4470,9 @@ extension ShellEntryFfi: Equatable, Hashable {
         if lhs.updatedAt != rhs.updatedAt {
             return false
         }
+        if lhs.isLive != rhs.isLive {
+            return false
+        }
         return true
     }
 
@@ -4471,6 +4483,7 @@ extension ShellEntryFfi: Equatable, Hashable {
         hasher.combine(tmuxSession)
         hasher.combine(tmuxClientTty)
         hasher.combine(updatedAt)
+        hasher.combine(isLive)
     }
 }
 
@@ -4486,7 +4499,8 @@ public struct FfiConverterTypeShellEntryFfi: FfiConverterRustBuffer {
                 parentApp: FfiConverterTypeParentApp.read(from: &buf),
                 tmuxSession: FfiConverterOptionString.read(from: &buf),
                 tmuxClientTty: FfiConverterOptionString.read(from: &buf),
-                updatedAt: FfiConverterString.read(from: &buf)
+                updatedAt: FfiConverterString.read(from: &buf),
+                isLive: FfiConverterBool.read(from: &buf)
             )
     }
 
@@ -4497,6 +4511,7 @@ public struct FfiConverterTypeShellEntryFfi: FfiConverterRustBuffer {
         FfiConverterOptionString.write(value.tmuxSession, into: &buf)
         FfiConverterOptionString.write(value.tmuxClientTty, into: &buf)
         FfiConverterString.write(value.updatedAt, into: &buf)
+        FfiConverterBool.write(value.isLive, into: &buf)
     }
 }
 

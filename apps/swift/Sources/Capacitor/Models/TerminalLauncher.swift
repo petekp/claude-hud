@@ -167,11 +167,12 @@ final class TerminalLauncher {
         var ffiShells: [String: ShellEntryFfi] = [:]
 
         for (pid, entry) in state.shells {
-            guard isLiveShell((pid, entry)) else { continue }
-
             let parentApp = ParentApp(fromString: entry.parentApp)
             let formatter = ISO8601DateFormatter()
             formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+
+            // Check liveness and pass to Rust instead of filtering here
+            let isLive = isLiveShell((pid, entry))
 
             ffiShells[pid] = ShellEntryFfi(
                 cwd: entry.cwd,
@@ -179,7 +180,8 @@ final class TerminalLauncher {
                 parentApp: parentApp,
                 tmuxSession: entry.tmuxSession,
                 tmuxClientTty: entry.tmuxClientTty,
-                updatedAt: formatter.string(from: entry.updatedAt)
+                updatedAt: formatter.string(from: entry.updatedAt),
+                isLive: isLive
             )
         }
 
@@ -228,13 +230,35 @@ final class TerminalLauncher {
             return true
 
         case let .activateHostThenSwitchTmux(hostTty, sessionName):
-            // Special handling for Ghostty: it has no API to focus a specific window by TTY.
-            // If Ghostty is running, use window-count strategy instead of TTY discovery.
+            // Re-verify client is still attached (may have detached since query)
+            let stillAttached = await hasTmuxClientAttached()
+            if !stillAttached {
+                logger.info("Tmux client detached since query, falling back to launch")
+                launchTerminalWithTmuxSession(sessionName)
+                return true
+            }
+
+            // Step 1: Try TTY discovery first (works for iTerm, Terminal.app)
+            // This correctly identifies the host terminal even when Ghostty is also running.
+            let ttyActivated = await activateTerminalByTTYDiscovery(tty: hostTty)
+            if ttyActivated {
+                logger.debug("TTY discovery succeeded for '\(hostTty)', switching tmux session")
+                let result = await runBashScriptWithResultAsync(
+                    "tmux switch-client -t \(shellEscape(sessionName)) 2>&1"
+                )
+                if result.exitCode != 0 {
+                    logger.warning("tmux switch-client failed (exit \(result.exitCode)): \(result.output ?? "")")
+                    return false
+                }
+                return true
+            }
+
+            // Step 2: TTY discovery failed - if Ghostty is running, use Ghostty-specific strategy.
+            // Ghostty has no API to focus by TTY, so we use window-count heuristics.
             if isGhosttyRunning() {
                 cleanupExpiredGhosttyCache()
 
                 // Check if we recently launched a window for this session.
-                // If so, just activate + switch-client instead of launching another.
                 if let launchTime = Self.recentlyLaunchedGhosttySessions[sessionName],
                    Date().timeIntervalSince(launchTime) < Constants.ghosttySessionCacheDuration
                 {
@@ -250,15 +274,13 @@ final class TerminalLauncher {
                     return true
                 }
 
-                logger.debug("Cache miss for Ghostty session '\(sessionName)'")
+                logger.debug("TTY discovery failed, trying Ghostty fallback for session '\(sessionName)'")
 
                 let windowCount = countGhosttyWindows()
-                logger.debug("Ghostty has \(windowCount) window(s) for tmux session '\(sessionName)'")
+                logger.debug("Ghostty has \(windowCount) window(s)")
 
                 if windowCount == 1 {
-                    // Single window - safe to activate the app and switch tmux session.
-                    // Use AppleScript for reliable activation (NSRunningApplication.activate
-                    // can silently fail when SwiftUI windows steal focus back).
+                    // Single window - safe to activate and switch.
                     runAppleScript("tell application \"Ghostty\" to activate")
                     let result = await runBashScriptWithResultAsync(
                         "tmux switch-client -t \(shellEscape(sessionName)) 2>&1"
@@ -270,7 +292,6 @@ final class TerminalLauncher {
                     return true
                 } else {
                     // 0 or multiple windows - launch new terminal to attach.
-                    // Record this launch so subsequent clicks within 30s just activate + switch.
                     Self.recentlyLaunchedGhosttySessions[sessionName] = Date()
                     logger.info("Ghostty has \(windowCount) windows - launching new terminal for reliable tmux activation")
                     launchTerminalWithTmuxSession(sessionName)
@@ -278,16 +299,9 @@ final class TerminalLauncher {
                 }
             }
 
-            // For other terminals (iTerm, Terminal.app), use TTY discovery
-            let ttyActivated = await activateTerminalByTTYDiscovery(tty: hostTty)
-            let result = await runBashScriptWithResultAsync(
-                "tmux switch-client -t \(shellEscape(sessionName)) 2>&1"
-            )
-            if result.exitCode != 0 {
-                logger.warning("tmux switch-client failed (exit \(result.exitCode)): \(result.output ?? "")")
-                return false
-            }
-            return ttyActivated
+            // Step 3: TTY discovery failed and Ghostty not running - trigger fallback
+            logger.info("TTY discovery failed for '\(hostTty)' and no Ghostty running")
+            return false
 
         case let .launchTerminalWithTmux(sessionName, _):
             launchTerminalWithTmuxSession(sessionName)
@@ -402,7 +416,11 @@ final class TerminalLauncher {
             guard parts.count == 2 else { continue }
             let sessionName = String(parts[0])
             let panePath = String(parts[1])
-            if panePath == projectPath {
+
+            // Match exact path OR if one is subdirectory of other (align with Rust paths_match)
+            if panePath == projectPath ||
+               panePath.hasPrefix(projectPath + "/") ||
+               projectPath.hasPrefix(panePath + "/") {
                 return sessionName
             }
         }
@@ -611,8 +629,7 @@ final class TerminalLauncher {
         // Use AppleScript for reliable activation - NSRunningApplication.activate()
         // can silently fail when SwiftUI windows steal focus back.
         logger.debug("Activating '\(appName)' via AppleScript")
-        runAppleScript("tell application \"\(appName)\" to activate")
-        return true
+        return runAppleScriptChecked("tell application \"\(appName)\" to activate")
     }
 
     private func activateFirstRunningTerminal() {
@@ -668,6 +685,34 @@ final class TerminalLauncher {
         process.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
         process.arguments = ["-e", script]
         try? process.run()
+    }
+
+    /// Runs AppleScript and returns success/failure based on exit code.
+    /// Use this for critical activation paths where failure should trigger fallback.
+    @discardableResult
+    private func runAppleScriptChecked(_ script: String) -> Bool {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
+        process.arguments = ["-e", script]
+
+        let errorPipe = Pipe()
+        process.standardError = errorPipe
+
+        do {
+            try process.run()
+            process.waitUntilExit()
+
+            if process.terminationStatus != 0 {
+                let errorData = errorPipe.fileHandleForReading.readDataToEndOfFile()
+                let errorMsg = String(data: errorData, encoding: .utf8) ?? "unknown"
+                logger.warning("AppleScript failed (exit \(process.terminationStatus)): \(errorMsg)")
+                return false
+            }
+            return true
+        } catch {
+            logger.error("AppleScript launch failed: \(error.localizedDescription)")
+            return false
+        }
     }
 
     private func runAppleScriptAsync(_ script: String) async {

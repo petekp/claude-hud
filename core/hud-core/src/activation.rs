@@ -54,6 +54,9 @@ pub struct ShellEntryFfi {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tmux_client_tty: Option<String>,
     pub updated_at: String,
+    /// Whether the shell process is still running (verified via kill(pid, 0))
+    #[serde(default)]
+    pub is_live: bool,
 }
 
 /// Context about tmux state, queried by Swift before calling the resolver.
@@ -231,18 +234,18 @@ pub fn resolve_activation(
 
 /// Find a shell entry at the given path.
 ///
-/// Returns the most recently updated shell at the path. This ensures we
-/// activate the terminal the user is *currently* working in, not a stale
-/// entry from hours ago.
+/// Returns the best shell at the path, preferring:
+/// 1. Live shells over dead shells (process still running)
+/// 2. Among same-liveness, most recently updated
 ///
-/// Note: We previously preferred tmux shells unconditionally, but this caused
-/// issues when tmux shell data was stale (tmux_client_tty pointing to wrong
-/// terminal). Now we prefer recency to ensure we activate the right window.
+/// This ensures we activate the terminal the user is *currently* working in,
+/// not a stale entry from hours ago or a dead process.
 fn find_shell_at_path<'a>(
     shells: &'a HashMap<String, ShellEntryFfi>,
     project_path: &str,
 ) -> Option<(u32, &'a ShellEntryFfi)> {
     let mut best_shell: Option<(u32, &ShellEntryFfi)> = None;
+    let mut best_is_live = false;
     let mut best_timestamp: Option<&str> = None;
 
     for (pid_str, shell) in shells {
@@ -256,11 +259,19 @@ fn find_shell_at_path<'a>(
             Err(_) => continue,
         };
 
-        // Pick the most recently updated shell
-        let is_newer =
-            best_timestamp.is_none() || shell.updated_at.as_str() > best_timestamp.unwrap();
-        if is_newer {
+        // Prefer live shells, then most recent
+        let dominated = match (shell.is_live, best_is_live) {
+            (false, true) => true,  // Dead shell can't beat live shell
+            (true, false) => false, // Live shell always beats dead
+            _ => {
+                // Same liveness: compare timestamps
+                best_timestamp.is_some() && shell.updated_at.as_str() <= best_timestamp.unwrap()
+            }
+        };
+
+        if !dominated {
             best_shell = Some((pid, shell));
+            best_is_live = shell.is_live;
             best_timestamp = Some(&shell.updated_at);
         }
     }
@@ -485,7 +496,14 @@ mod tests {
         parent_app: ParentApp,
         tmux_session: Option<&str>,
     ) -> ShellEntryFfi {
-        make_shell_entry_with_time(cwd, tty, parent_app, tmux_session, "2026-01-27T10:00:00Z")
+        make_shell_entry_full(
+            cwd,
+            tty,
+            parent_app,
+            tmux_session,
+            "2026-01-27T10:00:00Z",
+            true,
+        )
     }
 
     fn make_shell_entry_with_time(
@@ -495,6 +513,17 @@ mod tests {
         tmux_session: Option<&str>,
         updated_at: &str,
     ) -> ShellEntryFfi {
+        make_shell_entry_full(cwd, tty, parent_app, tmux_session, updated_at, true)
+    }
+
+    fn make_shell_entry_full(
+        cwd: &str,
+        tty: &str,
+        parent_app: ParentApp,
+        tmux_session: Option<&str>,
+        updated_at: &str,
+        is_live: bool,
+    ) -> ShellEntryFfi {
         ShellEntryFfi {
             cwd: cwd.to_string(),
             tty: tty.to_string(),
@@ -502,6 +531,7 @@ mod tests {
             tmux_session: tmux_session.map(|s| s.to_string()),
             tmux_client_tty: tmux_session.map(|_| "/dev/ttys000".to_string()),
             updated_at: updated_at.to_string(),
+            is_live,
         }
     }
 
