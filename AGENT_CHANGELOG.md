@@ -1,7 +1,7 @@
 # Agent Changelog
 
 > This file helps coding agents understand project evolution, key decisions,
-> and deprecated patterns. Updated: 2026-01-27 (Session 7)
+> and deprecated patterns. Updated: 2026-01-28 (Session 8)
 
 ## Current State Summary
 
@@ -823,7 +823,7 @@ The project is moving toward:
 10. **Bulletproof Hooks** — ✅ Complete (2026-01-27)
     - Phase 1-3: Symlink-based installation, auto-repair, observability (2026-01-26)
     - Phase 4: Test Hooks button for manual round-trip verification (2026-01-27)
-    - Plan doc: `.claude/plans/ACTIVE-bulletproof-hooks.md`
+    - Plan doc: `.claude/plans/DONE-bulletproof-hooks.md`
 
 11. **Documentation optimization** — ✅ Complete (2026-01-27)
     - CLAUDE.md optimized (107→95 lines)
@@ -845,4 +845,10 @@ The project is moving toward:
     - Phase 3: Chrono timestamp parsing, Ghostty cache size limit, `pathsMatch` UniFFI export
     - Plan doc: `.claude/plans/DONE-terminal-activation-fixes.md`
 
-The core sidecar architecture is stable and validated. The 12-session side-effects audit confirmed all major subsystems work correctly; the few issues found have been remediated. Focus areas: lock reliability (session-based, self-healing, fail-safe error handling), exact-match path resolution for monorepos, terminal integration, and codebase hygiene (dead code removal, documentation accuracy).
+15. **Plan housekeeping** — ✅ Complete (2026-01-28)
+    - All ACTIVE plans marked DONE: bulletproof-hooks, terminal-shell-test-expansion
+    - Terminal test expansion P1 gaps were already fixed during terminal activation hardening
+    - Manual test matrix already documented at `.claude/docs/terminal-test-matrix.md`
+    - Only DRAFT plan remaining: `activation-config-rust-migration.md` (deferred until second client needed)
+
+The core sidecar architecture is stable and validated. The 12-session side-effects audit confirmed all major subsystems work correctly; the few issues found have been remediated. **All implementation plans are now complete.** Focus areas: lock reliability (session-based, self-healing, fail-safe error handling), exact-match path resolution for monorepos, terminal integration, and codebase hygiene (dead code removal, documentation accuracy).
