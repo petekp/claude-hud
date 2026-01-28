@@ -6655,6 +6655,24 @@ private struct FfiConverterDictionaryStringTypeShellEntryFfi: FfiConverterRustBu
     }
 }
 
+/**
+ * Check if two paths refer to the same location or are parent/child.
+ *
+ * Returns true if:
+ * - The paths are identical
+ * - One path is a subdirectory of the other
+ *
+ * This allows activating a shell in `/project/src` when clicking `/project`.
+ */
+public func pathsMatch(a: String, b: String) -> Bool {
+    return try! FfiConverterBool.lift(try! rustCall {
+        uniffi_hud_core_fn_func_paths_match(
+            FfiConverterString.lower(a),
+            FfiConverterString.lower(b), $0
+        )
+    })
+}
+
 private enum InitializationResult {
     case ok
     case contractVersionMismatch
@@ -6670,6 +6688,9 @@ private var initializationResult: InitializationResult = {
     let scaffolding_contract_version = ffi_hud_core_uniffi_contract_version()
     if bindings_contract_version != scaffolding_contract_version {
         return InitializationResult.contractVersionMismatch
+    }
+    if uniffi_hud_core_checksum_func_paths_match() != 59842 {
+        return InitializationResult.apiChecksumMismatch
     }
     if uniffi_hud_core_checksum_method_hudengine_add_project() != 9786 {
         return InitializationResult.apiChecksumMismatch

@@ -1,6 +1,6 @@
 # Terminal Activation System Fixes
 
-**Status:** ACTIVE
+**Status:** COMPLETE
 **Created:** 2026-01-27
 **Source:** 5-model code review synthesis
 
@@ -412,6 +412,6 @@ pub fn paths_match(a: &str, b: &str) -> bool {
 | 2.3 | Subdirectory matching in findTmuxSessionForPath | ✅ |
 | 2.4 | Pass is_live flag to Rust | ✅ |
 | 2.5 | Fix Ghostty host detection | ✅ |
-| 3.1 | Parse timestamps properly | ⬜ |
-| 3.2 | Ghostty cache size limit | ⬜ |
-| 3.3 | Expose paths_match via UniFFI | ⬜ |
+| 3.1 | Parse timestamps properly | ✅ |
+| 3.2 | Ghostty cache size limit | ✅ |
+| 3.3 | Expose paths_match via UniFFI | ✅ |

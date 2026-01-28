@@ -467,6 +467,11 @@ void uniffi_hud_core_fn_method_hudengine_update_idea_triage(void*_Nonnull ptr, R
 RustBuffer uniffi_hud_core_fn_method_hudengine_validate_project(void*_Nonnull ptr, RustBuffer path, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_HUD_CORE_FN_FUNC_PATHS_MATCH
+#define UNIFFI_FFIDEF_UNIFFI_HUD_CORE_FN_FUNC_PATHS_MATCH
+int8_t uniffi_hud_core_fn_func_paths_match(RustBuffer a, RustBuffer b, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_FFI_HUD_CORE_RUSTBUFFER_ALLOC
 #define UNIFFI_FFIDEF_FFI_HUD_CORE_RUSTBUFFER_ALLOC
 RustBuffer ffi_hud_core_rustbuffer_alloc(uint64_t size, RustCallStatus *_Nonnull out_status
@@ -745,6 +750,12 @@ void ffi_hud_core_rust_future_free_void(uint64_t handle
 #ifndef UNIFFI_FFIDEF_FFI_HUD_CORE_RUST_FUTURE_COMPLETE_VOID
 #define UNIFFI_FFIDEF_FFI_HUD_CORE_RUST_FUTURE_COMPLETE_VOID
 void ffi_hud_core_rust_future_complete_void(uint64_t handle, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_HUD_CORE_CHECKSUM_FUNC_PATHS_MATCH
+#define UNIFFI_FFIDEF_UNIFFI_HUD_CORE_CHECKSUM_FUNC_PATHS_MATCH
+uint16_t uniffi_hud_core_checksum_func_paths_match(void
+    
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_HUD_CORE_CHECKSUM_METHOD_HUDENGINE_ADD_PROJECT

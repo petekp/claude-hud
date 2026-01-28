@@ -26,6 +26,7 @@
 //! ```
 
 use crate::types::ParentApp;
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -246,7 +247,7 @@ fn find_shell_at_path<'a>(
 ) -> Option<(u32, &'a ShellEntryFfi)> {
     let mut best_shell: Option<(u32, &ShellEntryFfi)> = None;
     let mut best_is_live = false;
-    let mut best_timestamp: Option<&str> = None;
+    let mut best_timestamp: Option<DateTime<Utc>> = None;
 
     for (pid_str, shell) in shells {
         let shell_path = normalize_path(&shell.cwd);
@@ -259,25 +260,56 @@ fn find_shell_at_path<'a>(
             Err(_) => continue,
         };
 
+        let shell_time = parse_timestamp(&shell.updated_at);
+
         // Prefer live shells, then most recent timestamp
         let dominated = match (shell.is_live, best_is_live) {
             (false, true) => true,  // Dead shell can't beat live shell
             (true, false) => false, // Live shell always beats dead
-            _ => best_timestamp.is_some_and(|ts| shell.updated_at.as_str() <= ts),
+            _ => is_timestamp_older_or_equal(shell_time, best_timestamp),
         };
 
         if !dominated {
             best_shell = Some((pid, shell));
             best_is_live = shell.is_live;
-            best_timestamp = Some(&shell.updated_at);
+            best_timestamp = shell_time;
         }
     }
 
     best_shell
 }
 
+/// Parse an RFC3339 timestamp string into a DateTime<Utc>.
+/// Returns None if parsing fails (malformed timestamp).
+fn parse_timestamp(s: &str) -> Option<DateTime<Utc>> {
+    DateTime::parse_from_rfc3339(s)
+        .ok()
+        .map(|dt| dt.with_timezone(&Utc))
+}
+
+/// Check if `candidate` is older than or equal to `best`.
+/// If either timestamp is unparseable, falls back to string comparison.
+fn is_timestamp_older_or_equal(
+    candidate: Option<DateTime<Utc>>,
+    best: Option<DateTime<Utc>>,
+) -> bool {
+    match (candidate, best) {
+        (Some(c), Some(b)) => c <= b,
+        (None, Some(_)) => true, // Unparseable candidate loses to parseable best
+        (Some(_), None) => false, // Parseable candidate beats unparseable best
+        (None, None) => true,    // Both unparseable, treat as dominated
+    }
+}
+
 /// Check if two paths refer to the same location or are parent/child.
-fn paths_match(a: &str, b: &str) -> bool {
+///
+/// Returns true if:
+/// - The paths are identical
+/// - One path is a subdirectory of the other
+///
+/// This allows activating a shell in `/project/src` when clicking `/project`.
+#[uniffi::export]
+pub fn paths_match(a: &str, b: &str) -> bool {
     if a == b {
         return true;
     }

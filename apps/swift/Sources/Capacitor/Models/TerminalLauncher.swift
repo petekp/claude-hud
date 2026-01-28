@@ -505,6 +505,12 @@ final class TerminalLauncher {
         Self.recentlyLaunchedGhosttySessions = Self.recentlyLaunchedGhosttySessions.filter { _, launchTime in
             now.timeIntervalSince(launchTime) < Constants.ghosttySessionCacheDuration
         }
+
+        // Safety: cap cache at 100 entries to prevent unbounded growth
+        if Self.recentlyLaunchedGhosttySessions.count > 100 {
+            let sorted = Self.recentlyLaunchedGhosttySessions.sorted { $0.value > $1.value }
+            Self.recentlyLaunchedGhosttySessions = Dictionary(uniqueKeysWithValues: Array(sorted.prefix(50)))
+        }
     }
 
     // MARK: - TTY Discovery
