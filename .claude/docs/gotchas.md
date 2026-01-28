@@ -23,6 +23,27 @@ During development, `~/.local/bin/hud-hook` must symlink to `target/release/hud-
 ### Logging Guard Must Be Held
 `logging::init()` returns `Option<WorkerGuard>` which must be held in `main()` scope. Using `std::mem::forget()` prevents log flushing. See `logging.rs` and `main.rs:70`.
 
+### UniFFI Bindings Must Be Regenerated
+After adding/changing fields in FFI types (e.g., `ShellEntryFfi`), regenerate Swift bindings:
+```bash
+cargo build -p hud-core --release  # Must build release first
+cargo run --bin uniffi-bindgen generate \
+    --library target/release/libhud_core.dylib \
+    --language swift --out-dir apps/swift/bindings
+cp apps/swift/bindings/hud_core.swift apps/swift/Sources/Capacitor/Bridge/
+```
+Symptom without this: Swift compile error "extra argument 'fieldName' in call".
+
+### Tmux Multi-Client Detection
+Use `tmux display-message -p "#{client_tty}"` (not `list-clients`) to get the current client's TTY. `list-clients` returns clients in arbitrary order—wrong when multiple terminals are attached to the same session.
+
+**Efficient pattern:** Combine queries into single call:
+```rust
+// Instead of two calls for session + tty:
+run_tmux_command(&["display-message", "-p", "#S\t#{client_tty}"])
+// Then split on '\t'
+```
+
 ## Swift
 
 ### Never Use Bundle.module
@@ -42,6 +63,22 @@ UniFFI bindings define a `Task` type shadowing Swift's `_Concurrency.Task`. Alwa
 
 ### Rust Activation Resolver Is Sole Path
 Terminal activation now uses a single path: Rust decides (`engine.resolveActivation()`), Swift executes (`executeActivationAction()`). The legacy Swift-only strategy methods were removed in Jan 2026. All decision logic lives in `core/hud-core/src/activation.rs` (25+ unit tests).
+
+### Terminal Activation: TTY Discovery First
+In `activateHostThenSwitchTmux`, always try TTY discovery before Ghostty-specific handling. Without this, Ghostty gets activated even when tmux is running in iTerm.
+
+**Correct order:**
+1. Try TTY discovery (works for iTerm, Terminal.app)
+2. If TTY found → switch tmux, done
+3. If TTY not found AND Ghostty running → use Ghostty window-count strategy
+4. Otherwise → trigger fallback
+
+### Shell Escaping Utilities
+`TerminalLauncher.swift` provides two escaping functions for shell injection prevention:
+- `shellEscape()` — Single-quote escaping for shell arguments (e.g., `foo'bar` → `'foo'\''bar'`)
+- `bashDoubleQuoteEscape()` — Escape `\`, `"`, `$`, `` ` `` for double-quoted strings
+
+Always use these when interpolating user-controlled values (like tmux session names) into shell commands.
 
 ## State & Locks
 
