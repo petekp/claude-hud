@@ -101,6 +101,19 @@ When multiple shells exist at the same path in `shell-cwd.json` (e.g., one tmux 
 
 **Key insight:** "Tmux client attached" is a strong signal the user is actively using tmux and wants session switching. See `activation.rs:find_shell_at_path()` and test `test_prefers_tmux_shell_when_client_attached_even_if_older`.
 
+### Shell Selection: HOME Excluded from Parent Matching
+
+Path matching supports parent-child relationships for monorepo support (shell at `/Code/monorepo` matches project `/Code/monorepo/packages/app`). However, HOME (`/Users/pete`) is explicitly **excluded** from parent matching.
+
+**Why:** HOME is a parent of nearly everything. Without exclusion, a shell at HOME matches all projects, causing:
+- Wrong shell selection (HOME shell instead of project-specific shell)
+- `ActivateByTty` instead of `ActivateHostThenSwitchTmux`
+- Terminal focuses but tmux session doesn't switch
+
+**Implementation:** `paths_match_excluding_home()` in `activation.rs` checks if the shorter path equals `home_dir` before allowing parent matching.
+
+**Test:** `test_home_shell_does_not_match_project` verifies this behavior.
+
 ### Tmux Context: "Has Client" Means ANY Client
 When building `TmuxContextFfi` for Rust, `hasAttachedClient` must mean "any tmux client exists anywhere" NOT "client attached to this specific session."
 

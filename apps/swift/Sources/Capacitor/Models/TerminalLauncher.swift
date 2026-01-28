@@ -232,7 +232,8 @@ final class TerminalLauncher {
 
         return TmuxContextFfi(
             sessionAtPath: sessionAtPath,
-            hasAttachedClient: hasAttached
+            hasAttachedClient: hasAttached,
+            homeDir: NSHomeDirectory()
         )
     }
 

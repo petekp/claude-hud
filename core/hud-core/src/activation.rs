@@ -67,6 +67,8 @@ pub struct TmuxContextFfi {
     pub session_at_path: Option<String>,
     /// Whether any tmux client is currently attached
     pub has_attached_client: bool,
+    /// User's home directory (e.g., "/Users/pete") - excluded from parent matching
+    pub home_dir: String,
 }
 
 /// The resolved activation decision.
@@ -265,7 +267,7 @@ fn find_shell_at_path<'a>(
 
     for (pid_str, shell) in shells {
         let shell_path = normalize_path(&shell.cwd);
-        if !paths_match(&shell_path, project_path) {
+        if !paths_match_excluding_home(&shell_path, project_path, &tmux_context.home_dir) {
             continue;
         }
 
@@ -345,6 +347,35 @@ pub fn paths_match(a: &str, b: &str) -> bool {
 
     // Check if one is a subdirectory of the other (e.g., /proj matches /proj/src)
     let (shorter, longer) = if a.len() < b.len() { (a, b) } else { (b, a) };
+    longer
+        .strip_prefix(shorter)
+        .is_some_and(|rest| rest.starts_with('/'))
+}
+
+/// Check if two paths match, excluding HOME as a parent.
+///
+/// HOME is a parent of nearly everything, making it too broad for useful matching.
+/// A shell at `/Users/pete` should NOT match `/Users/pete/Code/myproject` just
+/// because HOME is technically a parent directory.
+///
+/// Used internally by `find_shell_at_path()` to prevent HOME shells from matching
+/// all projects.
+fn paths_match_excluding_home(shell_path: &str, project_path: &str, home_dir: &str) -> bool {
+    if shell_path == project_path {
+        return true;
+    }
+
+    let (shorter, longer) = if shell_path.len() < project_path.len() {
+        (shell_path, project_path)
+    } else {
+        (project_path, shell_path)
+    };
+
+    // HOME is too broad to be a useful parent - exclude it from parent matching
+    if shorter == home_dir {
+        return false;
+    }
+
     longer
         .strip_prefix(shorter)
         .is_some_and(|rest| rest.starts_with('/'))
@@ -599,10 +630,13 @@ mod tests {
         }
     }
 
+    const TEST_HOME_DIR: &str = "/Users/pete";
+
     fn tmux_context_none() -> TmuxContextFfi {
         TmuxContextFfi {
             session_at_path: None,
             has_attached_client: false,
+            home_dir: TEST_HOME_DIR.to_string(),
         }
     }
 
@@ -610,6 +644,7 @@ mod tests {
         TmuxContextFfi {
             session_at_path: Some(session.to_string()),
             has_attached_client: true,
+            home_dir: TEST_HOME_DIR.to_string(),
         }
     }
 
@@ -617,6 +652,7 @@ mod tests {
         TmuxContextFfi {
             session_at_path: Some(session.to_string()),
             has_attached_client: false,
+            home_dir: TEST_HOME_DIR.to_string(),
         }
     }
 
@@ -1389,6 +1425,111 @@ mod tests {
         assert!(!paths_match(
             "/Users/pete/Code/project",
             "/Users/pete/Code/projectfoo"
+        ));
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────────
+    // Scenario: HOME exclusion from parent matching
+    // ─────────────────────────────────────────────────────────────────────────────
+
+    #[test]
+    fn test_home_shell_does_not_match_project() {
+        // THE BUG: Shell at HOME was matching all projects because HOME is
+        // technically a parent of everything under the user directory.
+        // This caused "plink" project to match a shell at /Users/pete.
+
+        let home_shell = make_shell_entry(
+            "/Users/pete", // Shell at HOME
+            "/dev/ttys007",
+            ParentApp::Unknown,
+            None,
+        );
+
+        let state = make_shell_state(vec![("87855", home_shell)]);
+
+        // Clicking on /Users/pete/Code/plink should NOT match the HOME shell
+        let decision = resolve_activation(
+            "/Users/pete/Code/plink",
+            Some(&state),
+            &tmux_context_attached("plink"),
+        );
+
+        // Should NOT use the HOME shell - should fall through to tmux session
+        assert!(
+            matches!(decision.primary, ActivationAction::SwitchTmuxSession { .. }),
+            "Expected SwitchTmuxSession (using tmux context) when HOME shell exists, got {:?}",
+            decision.primary
+        );
+    }
+
+    #[test]
+    fn test_home_shell_still_matches_exact_home() {
+        // Shell at HOME should still match when clicking HOME itself
+        let home_shell = make_shell_entry("/Users/pete", "/dev/ttys007", ParentApp::Unknown, None);
+
+        let state = make_shell_state(vec![("87855", home_shell)]);
+
+        // Clicking on /Users/pete (HOME itself) should match
+        let decision = resolve_activation("/Users/pete", Some(&state), &tmux_context_none());
+
+        assert!(
+            matches!(decision.primary, ActivationAction::ActivateByTty { .. }),
+            "Expected ActivateByTty when clicking HOME with HOME shell, got {:?}",
+            decision.primary
+        );
+    }
+
+    #[test]
+    fn test_non_home_parent_still_matches() {
+        // Parent matching should still work for non-HOME directories
+        // e.g., /Code/monorepo shell should match /Code/monorepo/packages/app
+        let monorepo_shell = make_shell_entry(
+            "/Users/pete/Code/monorepo",
+            "/dev/ttys003",
+            ParentApp::Ghostty,
+            None,
+        );
+
+        let state = make_shell_state(vec![("12345", monorepo_shell)]);
+
+        // Clicking on a subpackage should match the monorepo shell
+        let decision = resolve_activation(
+            "/Users/pete/Code/monorepo/packages/app",
+            Some(&state),
+            &tmux_context_none(),
+        );
+
+        assert!(
+            matches!(decision.primary, ActivationAction::ActivateApp { ref app_name } if app_name == "Ghostty"),
+            "Expected monorepo shell to match subpackage, got {:?}",
+            decision.primary
+        );
+    }
+
+    #[test]
+    fn test_paths_match_excluding_home_direct() {
+        let home = "/Users/pete";
+
+        // Exact match always works
+        assert!(paths_match_excluding_home(home, home, home));
+
+        // HOME as parent is excluded
+        assert!(!paths_match_excluding_home(
+            home,
+            "/Users/pete/Code/project",
+            home
+        ));
+        assert!(!paths_match_excluding_home(
+            "/Users/pete/Code/project",
+            home,
+            home
+        ));
+
+        // Non-HOME parent matching still works
+        assert!(paths_match_excluding_home(
+            "/Users/pete/Code/repo",
+            "/Users/pete/Code/repo/src",
+            home
         ));
     }
 

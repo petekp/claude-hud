@@ -4789,6 +4789,10 @@ public struct TmuxContextFfi {
      * Whether any tmux client is currently attached
      */
     public var hasAttachedClient: Bool
+    /**
+     * User's home directory (e.g., "/Users/pete") - excluded from parent matching
+     */
+    public var homeDir: String
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
@@ -4798,10 +4802,14 @@ public struct TmuxContextFfi {
          */ sessionAtPath: String?,
         /**
             * Whether any tmux client is currently attached
-            */ hasAttachedClient: Bool
+            */ hasAttachedClient: Bool,
+        /**
+            * User's home directory (e.g., "/Users/pete") - excluded from parent matching
+            */ homeDir: String
     ) {
         self.sessionAtPath = sessionAtPath
         self.hasAttachedClient = hasAttachedClient
+        self.homeDir = homeDir
     }
 }
 
@@ -4813,12 +4821,16 @@ extension TmuxContextFfi: Equatable, Hashable {
         if lhs.hasAttachedClient != rhs.hasAttachedClient {
             return false
         }
+        if lhs.homeDir != rhs.homeDir {
+            return false
+        }
         return true
     }
 
     public func hash(into hasher: inout Hasher) {
         hasher.combine(sessionAtPath)
         hasher.combine(hasAttachedClient)
+        hasher.combine(homeDir)
     }
 }
 
@@ -4830,13 +4842,15 @@ public struct FfiConverterTypeTmuxContextFfi: FfiConverterRustBuffer {
         return
             try TmuxContextFfi(
                 sessionAtPath: FfiConverterOptionString.read(from: &buf),
-                hasAttachedClient: FfiConverterBool.read(from: &buf)
+                hasAttachedClient: FfiConverterBool.read(from: &buf),
+                homeDir: FfiConverterString.read(from: &buf)
             )
     }
 
     public static func write(_ value: TmuxContextFfi, into buf: inout [UInt8]) {
         FfiConverterOptionString.write(value.sessionAtPath, into: &buf)
         FfiConverterBool.write(value.hasAttachedClient, into: &buf)
+        FfiConverterString.write(value.homeDir, into: &buf)
     }
 }
 

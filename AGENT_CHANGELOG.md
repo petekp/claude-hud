@@ -1,17 +1,55 @@
 # Agent Changelog
 
 > This file helps coding agents understand project evolution, key decisions,
-> and deprecated patterns. Updated: 2026-01-28 (v0.1.25 release)
+> and deprecated patterns. Updated: 2026-01-28 (post v0.1.25 fixes)
 
 ## Current State Summary
 
-Capacitor is a native macOS SwiftUI app (Apple Silicon, macOS 14+) that acts as a sidecar dashboard for Claude Code. The architecture uses a Rust core (`hud-core`) with UniFFI bindings to Swift. State tracking relies on Claude Code hooks that write to `~/.capacitor/`, with session-based locks (`{session_id}-{pid}.lock`) as the authoritative signal for active sessions. Shell integration provides ambient project awareness via precmd hooks. Hooks run asynchronously to avoid blocking Claude Code execution. All file I/O uses `fs_err` for enriched error messages, and structured logging via `tracing` writes to `~/.capacitor/hud-hook-debug.{date}.log`. **Terminal activation now uses Rust-only path:** The legacy Swift decision logic was removed (~277 lines); Rust decides (`activation.rs`), Swift executes (macOS APIs). **Terminal activation fully hardened and validated:** v0.1.25 fixes two critical bugs—tmux shell priority when client attached (`activation.rs`) and ANY-client detection (`TerminalLauncher.swift`). Test matrix validated 15 scenarios (A1-A4, B1-B3, C1, D1-D3, E1, E3). **Bulletproof Hooks complete:** Phase 4 Test Hooks button added for manual verification. **Audit complete:** A comprehensive 12-session side-effects analysis validated all major subsystems.
+Capacitor is a native macOS SwiftUI app (Apple Silicon, macOS 14+) that acts as a sidecar dashboard for Claude Code. The architecture uses a Rust core (`hud-core`) with UniFFI bindings to Swift. State tracking relies on Claude Code hooks that write to `~/.capacitor/`, with session-based locks (`{session_id}-{pid}.lock`) as the authoritative signal for active sessions. Shell integration provides ambient project awareness via precmd hooks. Hooks run asynchronously to avoid blocking Claude Code execution. All file I/O uses `fs_err` for enriched error messages, and structured logging via `tracing` writes to `~/.capacitor/hud-hook-debug.{date}.log`. **Terminal activation now uses Rust-only path:** The legacy Swift decision logic was removed (~277 lines); Rust decides (`activation.rs`), Swift executes (macOS APIs). **Terminal activation fully hardened and validated:** v0.1.25 plus two post-release fixes—stale TTY query (`TerminalLauncher.swift`) and HOME exclusion from path matching (`activation.rs`). Test matrix validated 15+ scenarios. **Bulletproof Hooks complete:** Phase 4 Test Hooks button added for manual verification. **Audit complete:** A comprehensive 12-session side-effects analysis validated all major subsystems.
 
 ## Stale Information Detected
 
-None currently. Last audit: 2026-01-27 (terminal activation migration, Rust-only path).
+None currently. Last audit: 2026-01-28 (post v0.1.25 hardening).
 
 ## Timeline
+
+### 2026-01-28 — Post v0.1.25: Stale TTY and HOME Path Fixes
+
+**What changed:**
+Two additional terminal activation bugs fixed after v0.1.25 release:
+
+1. **Stale tmux_client_tty fix** (`TerminalLauncher.swift`)
+   - Shell records in `shell-cwd.json` store `tmux_client_tty` at creation time
+   - TTY becomes stale when users reconnect to tmux (get new TTY device)
+   - Fix: Query fresh client TTY via `tmux display-message -p '#{client_tty}'` at activation time
+   - Telemetry shows: `Fresh TTY query: /dev/ttys000 (shell record had: /dev/ttys005)`
+
+2. **HOME exclusion from parent matching** (`activation.rs`)
+   - `paths_match()` allowed parent-directory matching for monorepo support
+   - HOME (`/Users/pete`) is parent of everything—shell at HOME matched ALL projects
+   - Symptom: Clicking "plink" project selected HOME shell → `ActivateByTty` instead of `SwitchTmuxSession`
+   - Fix: New `paths_match_excluding_home()` function excludes HOME from parent matching
+   - HOME can only match itself exactly; non-HOME parents still work for monorepos
+
+**Why:**
+- Stale TTY: Users reconnect to tmux sessions, get new TTY devices, but shell record has old TTY → TTY discovery fails
+- HOME exclusion: HOME is too broad to be useful as a parent; a shell at HOME shouldn't match every project
+
+**Agent impact:**
+- New gotcha: "Terminal Activation: Query Fresh Client TTY" in `.claude/docs/gotchas.md`
+- New gotcha: "Shell Selection: HOME Excluded from Parent Matching" in `.claude/docs/gotchas.md`
+- `TmuxContextFfi` now includes `home_dir: String` field for Rust decision logic
+- OSLog limitation documented: Swift `Logger` doesn't capture output for unsigned debug builds; use stderr telemetry for debugging
+
+**Files changed:**
+- `TerminalLauncher.swift` — `getCurrentTmuxClientTty()`, `telemetry()` helper, fresh TTY query in `activateHostThenSwitchTmux`
+- `activation.rs` — `paths_match_excluding_home()`, `TmuxContextFfi.home_dir`, 4 new unit tests
+- `.claude/docs/gotchas.md` — Three new sections (OSLog, Fresh TTY, HOME exclusion)
+- `.claude/docs/debugging-guide.md` — OSLog limitation section
+
+**Commits:** `31edfe2` (stale TTY), pending (HOME exclusion)
+
+---
 
 ### 2026-01-28 — v0.1.25: Terminal Activation Hardening Validated
 
@@ -779,6 +817,8 @@ Fixed terminal activation to check shell-cwd.json BEFORE tmux sessions.
 
 | Don't | Do Instead | Deprecated Since |
 |-------|------------|------------------|
+| Use shell record's `tmux_client_tty` directly for TTY discovery | Query fresh TTY via `getCurrentTmuxClientTty()` at activation time | 2026-01-28 |
+| Allow HOME to match project paths via parent matching | Use `paths_match_excluding_home()` which excludes HOME from parent matching | 2026-01-28 |
 | Check if client attached to *specific* tmux session | Check if *any* tmux client exists (`hasTmuxClientAttached()`) | 2026-01-28 |
 | Select shells by timestamp alone when tmux client attached | Prefer tmux shells via `is_preferred_tmux` sort key | 2026-01-28 |
 | Interpolate user input into shell commands without escaping | Use `shellEscape()` or `bashDoubleQuoteEscape()` | 2026-01-27 |
@@ -898,5 +938,11 @@ The project is moving toward:
     - Test matrix validated: 15 scenarios pass (A1-A4, B1-B3, C1, D1-D3, E1, E3)
     - Test matrix doc: `.claude/docs/terminal-activation-test-matrix.md` (status columns updated)
     - Gotchas added: tmux priority, ANY-client detection
+
+17. **Post v0.1.25 activation fixes** — ✅ Complete (2026-01-28)
+    - Stale TTY fix: Query fresh client TTY at activation time (shell records become stale on tmux reconnect)
+    - HOME exclusion: Exclude HOME from parent-directory matching (HOME matched everything)
+    - OSLog limitation documented: Use stderr telemetry for debug builds
+    - 4 new unit tests for HOME exclusion behavior
 
 The core sidecar architecture is stable and validated. The 12-session side-effects audit confirmed all major subsystems work correctly; the few issues found have been remediated. **All implementation plans are now complete.** Terminal activation has been hardened with comprehensive test coverage (15 scenarios validated). Focus areas: lock reliability (session-based, self-healing, fail-safe error handling), exact-match path resolution for monorepos, terminal integration, and codebase hygiene (dead code removal, documentation accuracy).
