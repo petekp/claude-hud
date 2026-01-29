@@ -14,11 +14,13 @@ extension View {
         floatingCardBackground: some View,
         solidCardBackground: some View,
         animationSeed: String,
-        cornerRadius: CGFloat = 12,
         layoutMode: LayoutMode = .vertical,
         isPressed: Bool = false
     ) -> some View {
-        self
+        // Single source of truth for corner radius
+        let cornerRadius = GlassConfig.shared.cardCornerRadius(for: layoutMode)
+
+        return self
             .background {
                 ZStack {
                     if floatingMode {
@@ -35,6 +37,22 @@ extension View {
                 }
             }
             .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
+            .overlay {
+                let config = GlassConfig.shared
+                let borderOpacity = isHovered ? config.cardHoverBorderOpacity : config.cardBorderOpacity
+                RoundedRectangle(cornerRadius: cornerRadius)
+                    .strokeBorder(
+                        LinearGradient(
+                            colors: [
+                                .white.opacity(borderOpacity),
+                                .white.opacity(borderOpacity * 0.4)
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        ),
+                        lineWidth: 0.5
+                    )
+            }
             .overlay(
                 RoundedRectangle(cornerRadius: cornerRadius)
                     .stroke(flashState.map { Color.flashColor(for: $0) } ?? .clear, lineWidth: 2)
@@ -67,7 +85,7 @@ extension View {
             }
             .overlay {
                 if isReady {
-                    ReadyBorderGlow(seed: animationSeed, cornerRadius: cornerRadius, layoutMode: layoutMode)
+                    ReadyBorderGlow(seed: animationSeed, layoutMode: layoutMode)
                         .transition(.opacity.animation(.easeInOut(duration: 0.4)))
                 }
             }
@@ -80,13 +98,13 @@ extension View {
             }
             .overlay {
                 if isWaiting {
-                    WaitingBorderPulse(seed: animationSeed, cornerRadius: cornerRadius, layoutMode: layoutMode)
+                    WaitingBorderPulse(seed: animationSeed, layoutMode: layoutMode)
                         .transition(.opacity.animation(.easeInOut(duration: 0.4)))
                 }
             }
             .overlay {
                 if isWorking {
-                    WorkingBorderGlow(seed: animationSeed, cornerRadius: cornerRadius, layoutMode: layoutMode)
+                    WorkingBorderGlow(seed: animationSeed, layoutMode: layoutMode)
                         .transition(.opacity.animation(.easeInOut(duration: 0.4)))
                 }
             }

@@ -81,8 +81,8 @@ struct ProjectDetailView: View {
                     Spacer()
                 }
                 .padding(.horizontal, 16)
-                .padding(.top, floatingMode ? 64 : 16)
-                .padding(.bottom, 16)
+                .padding(.top, floatingMode ? 12 : 16)
+                .padding(.bottom, floatingMode ? 64 : 16)
             }
             .blur(radius: isModalOpen ? 8 : 0)
             .saturation(isModalOpen ? 0.8 : 1)

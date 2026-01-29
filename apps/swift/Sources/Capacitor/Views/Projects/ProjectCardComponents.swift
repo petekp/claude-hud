@@ -266,13 +266,17 @@ struct ProjectContextMenu: View {
 /// Parameterized card background supporting both floating and solid modes
 struct ProjectCardBackground: View {
     let isHovered: Bool
-    var cornerRadius: CGFloat = 12
+    var layoutMode: LayoutMode = .vertical
 
     @Environment(\.floatingMode) private var floatingMode
 
     #if DEBUG
     var config: GlassConfig?
     #endif
+
+    private var cornerRadius: CGFloat {
+        GlassConfig.shared.cardCornerRadius(for: layoutMode)
+    }
 
     var body: some View {
         if floatingMode {
@@ -285,12 +289,12 @@ struct ProjectCardBackground: View {
     private var floatingBackground: some View {
         #if DEBUG
         if let config = config {
-            DarkFrostedCard(isHovered: isHovered, config: config)
+            DarkFrostedCard(isHovered: isHovered, layoutMode: layoutMode, config: config)
         } else {
-            DarkFrostedCard(isHovered: isHovered)
+            DarkFrostedCard(isHovered: isHovered, layoutMode: layoutMode)
         }
         #else
-        DarkFrostedCard(isHovered: isHovered)
+        DarkFrostedCard(isHovered: isHovered, layoutMode: layoutMode)
         #endif
     }
 
@@ -309,19 +313,6 @@ struct ProjectCardBackground: View {
                 Spacer()
             }
             .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
-
-            RoundedRectangle(cornerRadius: cornerRadius)
-                .strokeBorder(
-                    LinearGradient(
-                        colors: [
-                            .white.opacity(isHovered ? 0.18 : 0.1),
-                            .white.opacity(isHovered ? 0.08 : 0.05)
-                        ],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    ),
-                    lineWidth: 0.5
-                )
         }
     }
 }

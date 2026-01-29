@@ -1,7 +1,7 @@
 import SwiftUI
 
-/// Combines the animated StatusIndicator with recency for quick scanning.
-/// Uses the existing StatusIndicator animations (ellipsis, compacting, numericText transitions).
+/// Displays the session status with staleness-based opacity.
+/// Uses the existing StatusIndicator animations (ellipsis, compacting).
 struct StatusChip: View {
     let state: SessionState?
     let stateChangedAt: String?
@@ -18,17 +18,23 @@ struct StatusChip: View {
         state ?? .idle
     }
 
-    private var recencyText: String {
-        RelativeTimeFormatter.format(iso8601: stateChangedAt)
-    }
-
     private var isStale: Bool {
         guard let timestamp = stateChangedAt,
-              let date = RelativeTimeFormatter.parseISO8601(timestamp) else {
+              let date = parseISO8601(timestamp) else {
             return true
         }
         let hoursSince = Date().timeIntervalSince(date) / 3600
         return hoursSince > 24
+    }
+
+    private func parseISO8601(_ string: String) -> Date? {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        if let date = formatter.date(from: string) {
+            return date
+        }
+        formatter.formatOptions = [.withInternetDateTime]
+        return formatter.date(from: string)
     }
 
     private var chipOpacity: Double {
@@ -39,7 +45,7 @@ struct StatusChip: View {
     }
 
     var body: some View {
-        HStack(spacing: style == .compact ? 4 : 6) {
+        Group {
             if let state = state {
                 StatusIndicator(state: state)
                     .scaleEffect(style == .compact ? 0.85 : 1.0, anchor: .leading)
@@ -49,26 +55,14 @@ struct StatusChip: View {
                     .tracking(0.5)
                     .foregroundColor(.white.opacity(0.35))
             }
-
-            Text("·")
-                .font(style == .compact ? AppTypography.captionSmall : .system(.callout, design: .monospaced))
-                .foregroundColor(.white.opacity(0.3))
-
-            Text(recencyText)
-                .font(style == .compact ? AppTypography.captionSmall : .system(.callout, design: .monospaced).weight(.medium))
-                .foregroundColor(.white.opacity(0.5))
-                .contentTransition(reduceMotion ? .identity : .numericText())
         }
         .opacity(chipOpacity)
         .animation(reduceMotion ? AppMotion.reducedMotionFallback : .smooth(duration: 0.3), value: effectiveState)
-        .animation(reduceMotion ? AppMotion.reducedMotionFallback : .smooth(duration: 0.3), value: recencyText)
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(effectiveState), \(recencyText)")
+        .accessibilityLabel("\(effectiveState)")
     }
 }
 
 /// A row of status chips for project cards.
-/// Shows state + recency in a compact, scannable format.
 struct StatusChipsRow: View {
     let sessionState: ProjectSessionState?
     var style: StatusChip.ChipStyle = .normal

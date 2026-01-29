@@ -4,30 +4,30 @@ import AppKit
 #if DEBUG
 
 enum TuningCategory: String, CaseIterable, Identifiable {
-    case logo = "Logo"
     case projectCard = "Project Card"
     case panel = "Panel"
+    case logo = "Logo"
     case statusColors = "Status Colors"
 
     var id: String { rawValue }
 
     var icon: String {
         switch self {
-        case .logo: return "textformat"
         case .projectCard: return "rectangle.on.rectangle"
         case .panel: return "rectangle"
+        case .logo: return "textformat"
         case .statusColors: return "paintpalette"
         }
     }
 
     var subcategories: [TuningSubcategory] {
         switch self {
-        case .logo:
-            return [.letterpress, .metalShader]
         case .projectCard:
-            return [.appearance, .interactions, .stateEffects]
+            return [.appearance, .cardMaterial, .layout, .interactions, .stateEffects]
         case .panel:
             return [.panelBackground, .panelMaterial]
+        case .logo:
+            return [.logoAppearance]
         case .statusColors:
             return [.allStates]
         }
@@ -35,35 +35,44 @@ enum TuningCategory: String, CaseIterable, Identifiable {
 }
 
 enum TuningSubcategory: String, CaseIterable, Identifiable {
-    case letterpress = "Letterpress"
-    case metalShader = "Glass Shader"
     case appearance = "Appearance"
+    case cardMaterial = "Card Material"
+    case layout = "Layout"
     case interactions = "Interactions"
     case stateEffects = "State Effects"
     case panelBackground = "Background"
-    case panelMaterial = "Material"
+    case panelMaterial = "Panel Material"
+    case logoAppearance = "Size & Opacity"
     case allStates = "All States"
 
     var id: String { rawValue }
 
+    var displayName: String {
+        switch self {
+        case .cardMaterial, .panelMaterial: return "Material"
+        default: return rawValue
+        }
+    }
+
     var icon: String {
         switch self {
-        case .letterpress: return "a.square"
-        case .metalShader: return "cube.transparent"
         case .appearance: return "paintbrush"
+        case .cardMaterial: return "cube.transparent"
+        case .layout: return "rectangle.3.group"
         case .interactions: return "hand.tap"
         case .stateEffects: return "sparkles"
         case .panelBackground: return "square.fill"
         case .panelMaterial: return "cube.transparent"
+        case .logoAppearance: return "textformat.size"
         case .allStates: return "circle.hexagongrid"
         }
     }
 
     var parent: TuningCategory {
         switch self {
-        case .letterpress, .metalShader: return .logo
-        case .appearance, .interactions, .stateEffects: return .projectCard
+        case .appearance, .cardMaterial, .layout, .interactions, .stateEffects: return .projectCard
         case .panelBackground, .panelMaterial: return .panel
+        case .logoAppearance: return .logo
         case .allStates: return .statusColors
         }
     }
@@ -72,8 +81,8 @@ enum TuningSubcategory: String, CaseIterable, Identifiable {
 struct UITuningPanel: View {
     @Environment(\.dismissWindow) private var dismissWindow
     @ObservedObject var config = GlassConfig.shared
-    @State private var selectedCategory: TuningCategory = .logo
-    @State private var selectedSubcategory: TuningSubcategory = .letterpress
+    @State private var selectedCategory: TuningCategory = .projectCard
+    @State private var selectedSubcategory: TuningSubcategory = .appearance
     @State private var panelSize: CGSize = CGSize(width: 580, height: 720)
     @State private var copiedToClipboard = false
 
@@ -184,7 +193,7 @@ struct UITuningPanel: View {
                 Text(selectedCategory.rawValue)
                     .font(.system(size: 11, weight: .medium))
                     .foregroundColor(.white.opacity(0.5))
-                Text(selectedSubcategory.rawValue)
+                Text(selectedSubcategory.displayName)
                     .font(.system(size: 15, weight: .semibold))
                     .foregroundColor(.white.opacity(0.9))
             }
@@ -208,12 +217,12 @@ struct UITuningPanel: View {
     @ViewBuilder
     private var detailContent: some View {
         switch selectedSubcategory {
-        case .letterpress:
-            LogoLetterpressSection(config: config)
-        case .metalShader:
-            LogoMetalShaderSection(config: config)
         case .appearance:
             CardAppearanceSection(config: config)
+        case .cardMaterial:
+            CardMaterialSection(config: config)
+        case .layout:
+            CardLayoutSection(config: config)
         case .interactions:
             CardInteractionsSection(config: config)
         case .stateEffects:
@@ -222,6 +231,8 @@ struct UITuningPanel: View {
             PanelBackgroundSection(config: config)
         case .panelMaterial:
             PanelMaterialSection(config: config)
+        case .logoAppearance:
+            LogoAppearanceSection(config: config)
         case .allStates:
             StatusColorsSection(config: config)
         }
@@ -316,7 +327,7 @@ private struct SubcategoryRow: View {
                     .font(.system(size: 10, weight: .medium))
                     .foregroundColor(isSelected ? .white : .white.opacity(0.5))
 
-                Text(subcategory.rawValue)
+                Text(subcategory.displayName)
                     .font(.system(size: 11, weight: isSelected ? .semibold : .regular))
                     .foregroundColor(isSelected ? .white : .white.opacity(0.7))
 

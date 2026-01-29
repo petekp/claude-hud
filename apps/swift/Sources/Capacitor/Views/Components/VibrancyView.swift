@@ -162,29 +162,74 @@ extension GlassConfig {
     var solidCardConfigHash: String {
         "solid-\(cardTintOpacity)-\(cardCornerRadius)-\(cardBorderOpacity)-\(cardHighlightOpacity)-\(cardHoverBorderOpacity)-\(cardHoverHighlightOpacity)"
     }
+
+    var logoConfigHash: String {
+        "logo-\(logoScale)-\(logoOpacity)-\(logoUseVibrancy)-\(logoMaterialType)-\(logoBlendingMode)-\(logoEmphasized)-\(logoForceDarkAppearance)-\(logoSwiftUIBlendMode)"
+    }
 }
 
 struct DarkFrostedCard: View {
     var isHovered: Bool = false
     var tintOpacity: Double? = nil
+    var layoutMode: LayoutMode = .vertical
     var config: GlassConfig? = nil
     private var effectiveConfig: GlassConfig { config ?? GlassConfig.shared }
 
-    var body: some View {
-        let cornerRadius = effectiveConfig.cardCornerRadius
-        let baseTintOpacity = tintOpacity ?? effectiveConfig.cardTintOpacity
-        let borderOpacity = isHovered ? effectiveConfig.cardHoverBorderOpacity : effectiveConfig.cardBorderOpacity
-        let highlightOpacity = isHovered ? effectiveConfig.cardHoverHighlightOpacity : effectiveConfig.cardHighlightOpacity
+    #if DEBUG
+    private var selectedMaterial: NSVisualEffectView.Material {
+        switch effectiveConfig.cardMaterialType {
+        case 0: return .hudWindow
+        case 1: return .popover
+        case 2: return .menu
+        case 3: return .sidebar
+        case 4: return .fullScreenUI
+        default: return .hudWindow
+        }
+    }
 
+    private var selectedBlendingMode: NSVisualEffectView.BlendingMode {
+        switch effectiveConfig.cardBlendingMode {
+        case 0: return .behindWindow
+        case 1: return .withinWindow
+        default: return .behindWindow
+        }
+    }
+
+    private var selectedSwiftUIBlendMode: BlendMode {
+        switch effectiveConfig.cardSwiftUIBlendMode {
+        case 0: return .normal
+        case 1: return .plusLighter
+        case 2: return .softLight
+        case 3: return .overlay
+        case 4: return .screen
+        case 5: return .multiply
+        default: return .normal
+        }
+    }
+    #endif
+
+    var body: some View {
+        let cornerRadius = effectiveConfig.cardCornerRadius(for: layoutMode)
+        let baseTintOpacity = tintOpacity ?? effectiveConfig.cardTintOpacity
+        let highlightOpacity = isHovered ? effectiveConfig.cardHoverHighlightOpacity : effectiveConfig.cardHighlightOpacity
         let effectiveTintOpacity = isHovered ? baseTintOpacity * 0.8 : baseTintOpacity
 
         ZStack {
+            #if DEBUG
+            VibrancyView(
+                material: selectedMaterial,
+                blendingMode: selectedBlendingMode,
+                isEmphasized: effectiveConfig.cardEmphasized,
+                forceDarkAppearance: effectiveConfig.cardForceDarkAppearance
+            )
+            #else
             VibrancyView(
                 material: .hudWindow,
                 blendingMode: .behindWindow,
                 isEmphasized: false,
                 forceDarkAppearance: true
             )
+            #endif
 
             Color.black.opacity(effectiveTintOpacity)
 
@@ -196,21 +241,13 @@ struct DarkFrostedCard: View {
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing
             )
+            #if DEBUG
+            .blendMode(selectedSwiftUIBlendMode)
+            #endif
         }
         .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
-        .overlay(
-            RoundedRectangle(cornerRadius: cornerRadius)
-                .strokeBorder(
-                    LinearGradient(
-                        colors: [
-                            .white.opacity(borderOpacity),
-                            .white.opacity(borderOpacity * 0.4)
-                        ],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    ),
-                    lineWidth: 0.5
-                )
-        )
+        #if DEBUG
+        .id(effectiveConfig.cardConfigHash)
+        #endif
     }
 }

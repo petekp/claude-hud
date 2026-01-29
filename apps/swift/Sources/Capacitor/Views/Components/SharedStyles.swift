@@ -75,6 +75,10 @@ struct SkeletonView: View {
 struct SkeletonCard: View {
     @Environment(\.floatingMode) private var floatingMode
 
+    private var cornerRadius: CGFloat {
+        GlassConfig.shared.cardCornerRadius(for: .vertical)
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
@@ -97,15 +101,15 @@ struct SkeletonCard: View {
         .padding(12)
         .background {
             if floatingMode {
-                DarkFrostedCard(tintOpacity: 0.15)
+                DarkFrostedCard(tintOpacity: 0.15, layoutMode: .vertical)
             } else {
-                RoundedRectangle(cornerRadius: 12)
+                RoundedRectangle(cornerRadius: cornerRadius)
                     .fill(Color.hudCard)
             }
         }
-        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
         .overlay(
-            RoundedRectangle(cornerRadius: 12)
+            RoundedRectangle(cornerRadius: cornerRadius)
                 .strokeBorder(Color.white.opacity(0.05), lineWidth: 0.5)
         )
     }

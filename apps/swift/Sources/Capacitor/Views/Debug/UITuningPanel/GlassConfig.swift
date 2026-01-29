@@ -69,71 +69,60 @@ class GlassConfig: ObservableObject {
         hasher.combine(cardHighlightOpacity)
         hasher.combine(cardHoverBorderOpacity)
         hasher.combine(cardHoverHighlightOpacity)
+        hasher.combine(cardMaterialType)
+        hasher.combine(cardBlendingMode)
+        hasher.combine(cardEmphasized)
+        hasher.combine(cardForceDarkAppearance)
+        hasher.combine(cardSwiftUIBlendMode)
         hasher.combine(statusReadyHue)
         hasher.combine(statusWorkingHue)
         return hasher.finalize()
     }
 
-    // Logo letterpress effect (tuned)
-    @Published var logoFontSize: Double = 14.55
-    @Published var logoTracking: Double = 2.61
-    @Published var logoBaseOpacity: Double = 1.0
-    @Published var logoShadowOpacity: Double = 0.01
-    @Published var logoShadowOffsetX: Double = -2.96
-    @Published var logoShadowOffsetY: Double = -2.93
-    @Published var logoShadowBlur: Double = 0.04
-    @Published var logoHighlightOpacity: Double = 0.01
-    @Published var logoHighlightOffsetX: Double = -2.95
-    @Published var logoHighlightOffsetY: Double = -2.95
-    @Published var logoHighlightBlur: Double = 0.0
-    @Published var logoShadowBlendMode: BlendMode = .colorBurn
-    @Published var logoHighlightBlendMode: BlendMode = .softLight
-
-    // Logo Glass Shader (tuned)
-    @Published var logoShaderEnabled: Bool = true
-    @Published var logoShaderMaskToText: Bool = true
-    @Published var logoGlassFresnelPower: Double = 4.02
-    @Published var logoGlassFresnelIntensity: Double = 1.88
-    @Published var logoGlassChromaticAmount: Double = 1.32
-    @Published var logoGlassCausticScale: Double = 1.24
-    @Published var logoGlassCausticSpeed: Double = 1.30
-    @Published var logoGlassCausticIntensity: Double = 0.99
-    @Published var logoGlassCausticAngle: Double = 81.31
-    @Published var logoGlassClarity: Double = 0.34
-    @Published var logoGlassHighlightSharpness: Double = 7.91
-    @Published var logoGlassHighlightAngle: Double = 355.43
-    @Published var logoGlassInternalReflection: Double = 0.44
-    @Published var logoGlassInternalAngle: Double = 75.18
-    @Published var logoGlassPrismaticEnabled: Bool = true
-    @Published var logoGlassPrismAmount: Double = 0.12
-
-    // Logo Shader Compositing (tuned)
-    @Published var logoShaderOpacity: Double = 0.63
-    @Published var logoShaderBlendMode: BlendMode = .overlay
-    @Published var logoShaderVibrancyEnabled: Bool = true
-    @Published var logoShaderVibrancyBlur: Double = 0.03
-
     // Panel background
-    @Published var panelTintOpacity: Double = 0.33
-    @Published var panelCornerRadius: Double = 22
-    @Published var panelBorderOpacity: Double = 0.36
-    @Published var panelHighlightOpacity: Double = 0.07
-    @Published var panelTopHighlightOpacity: Double = 0.14
+    @Published var panelTintOpacity: Double = 0.18
+    @Published var panelCornerRadius: Double = 18.87
+    @Published var panelBorderOpacity: Double = 0.14
+    @Published var panelHighlightOpacity: Double = 0.12
+    @Published var panelTopHighlightOpacity: Double = 0.19
     @Published var panelShadowOpacity: Double = 0.00
     @Published var panelShadowRadius: Double = 0
     @Published var panelShadowY: Double = 0
 
     // Card background
-    @Published var cardTintOpacity: Double = 0.58
-    @Published var cardCornerRadius: Double = 13
-    @Published var cardBorderOpacity: Double = 0.28
-    @Published var cardHighlightOpacity: Double = 0.14
-    @Published var cardHoverBorderOpacity: Double = 0.95
-    @Published var cardHoverHighlightOpacity: Double = 0.16
+    @Published var cardTintOpacity: Double = 0.46
+    @Published var cardCornerRadius: Double = 17.59
+    @Published var cardBorderOpacity: Double = 0.18
+    @Published var cardHighlightOpacity: Double = 0.10
+    @Published var cardHoverBorderOpacity: Double = 0.34
+    @Published var cardHoverHighlightOpacity: Double = 0.15
+
+    // Card material settings (NSVisualEffectView)
+    @Published var cardMaterialType: Int = 0  // 0=hudWindow, 1=popover, 2=menu, 3=sidebar, 4=fullScreenUI
+    @Published var cardBlendingMode: Int = 1  // 0=behindWindow, 1=withinWindow
+    @Published var cardEmphasized: Bool = true
+    @Published var cardForceDarkAppearance: Bool = true
+
+    // Card SwiftUI blend mode for highlight overlay
+    @Published var cardSwiftUIBlendMode: Int = 5  // 0=normal, 1=plusLighter, 2=softLight, 3=overlay, 4=screen, 5=multiply
 
     // Material settings
     @Published var useEmphasizedMaterial: Bool = true
     @Published var materialType: Int = 0  // 0=hudWindow, 1=popover, 2=menu, 3=sidebar, 4=fullScreenUI
+
+    // MARK: - Logo Settings
+    @Published var logoScale: Double = 0.90
+    @Published var logoOpacity: Double = 1.0
+
+    // Logo vibrancy (NSVisualEffectView)
+    @Published var logoUseVibrancy: Bool = true
+    @Published var logoMaterialType: Int = 0  // 0=hudWindow, 1=popover, 2=menu, 3=sidebar, 4=fullScreenUI
+    @Published var logoBlendingMode: Int = 1  // 0=behindWindow, 1=withinWindow
+    @Published var logoEmphasized: Bool = false
+    @Published var logoForceDarkAppearance: Bool = true
+
+    // Logo SwiftUI blend mode
+    @Published var logoSwiftUIBlendMode: Int = 2  // 0=normal, 1=plusLighter, 2=softLight, 3=overlay, 4=screen, 5=multiply, 6=difference
 
     // Status Colors - Ready (cyan-green)
     @Published var statusReadyHue: Double = 0.406
@@ -159,22 +148,22 @@ class GlassConfig: ObservableObject {
     @Published var statusIdleOpacity: Double = 0.40
 
     // Ready ripple effect (continuous)
-    @Published var rippleSpeed: Double = 4.73
+    @Published var rippleSpeed: Double = 8.61
     @Published var rippleCount: Int = 3
     @Published var rippleMaxOpacity: Double = 1.00
-    @Published var rippleLineWidth: Double = 45.15
-    @Published var rippleBlurAmount: Double = 29.62
-    @Published var rippleOriginX: Double = 0.89
-    @Published var rippleOriginY: Double = 0.00
+    @Published var rippleLineWidth: Double = 60.00
+    @Published var rippleBlurAmount: Double = 33.23
+    @Published var rippleOriginX: Double = 0.00
+    @Published var rippleOriginY: Double = 1.00
     @Published var rippleFadeInZone: Double = 0.17
-    @Published var rippleFadeOutPower: Double = 3.29
+    @Published var rippleFadeOutPower: Double = 3.10
 
     // Ready border glow effect
     @Published var borderGlowInnerWidth: Double = 2.00
-    @Published var borderGlowOuterWidth: Double = 3.49
-    @Published var borderGlowInnerBlur: Double = 4.0
-    @Published var borderGlowOuterBlur: Double = 0.13
-    @Published var borderGlowBaseOpacity: Double = 0.50
+    @Published var borderGlowOuterWidth: Double = 1.73
+    @Published var borderGlowInnerBlur: Double = 3.01
+    @Published var borderGlowOuterBlur: Double = 0.00
+    @Published var borderGlowBaseOpacity: Double = 0.45
     @Published var borderGlowPulseIntensity: Double = 1.00
     @Published var borderGlowRotationMultiplier: Double = 0.50
 
@@ -248,8 +237,8 @@ class GlassConfig: ObservableObject {
 
     // Pressed state
     @Published var cardPressedScale: Double = 1.00
-    @Published var cardPressedSpringResponse: Double = 0.06
-    @Published var cardPressedSpringDamping: Double = 0.48
+    @Published var cardPressedSpringResponse: Double = 0.09
+    @Published var cardPressedSpringDamping: Double = 0.64
     @Published var cardPressedShadowOpacity: Double = 0.12
     @Published var cardPressedShadowRadius: Double = 2.0
     @Published var cardPressedShadowY: Double = 1.0
@@ -267,6 +256,28 @@ class GlassConfig: ObservableObject {
     // Spring parameters for expand phase
     @Published var compactingExpandDamping: Double = 0.8
     @Published var compactingExpandOmega: Double = 4.0
+
+    // MARK: - Layout Settings (Card List)
+    @Published var cardListSpacing: Double = 8.0              // Gap between cards in vertical list
+    @Published var cardPaddingHorizontal: Double = 12.0       // Horizontal internal padding for vertical cards
+    @Published var cardPaddingVertical: Double = 12.0         // Vertical internal padding for vertical cards
+    @Published var listHorizontalPadding: Double = 12.0       // Horizontal padding for list container
+
+    // MARK: - Layout Settings (Dock)
+    @Published var dockCardSpacing: Double = 14.0             // Gap between cards in horizontal dock
+    @Published var dockCardPaddingHorizontal: Double = 14.0   // Horizontal internal padding for dock cards
+    @Published var dockCardPaddingVertical: Double = 14.0     // Vertical internal padding for dock cards
+    @Published var dockHorizontalPadding: Double = 16.0       // Horizontal padding for dock container
+
+    // MARK: - Layout Rounded Accessors (whole pixels)
+    var cardListSpacingRounded: CGFloat { round(cardListSpacing) }
+    var cardPaddingH: CGFloat { round(cardPaddingHorizontal) }
+    var cardPaddingV: CGFloat { round(cardPaddingVertical) }
+    var listHorizontalPaddingRounded: CGFloat { round(listHorizontalPadding) }
+    var dockCardSpacingRounded: CGFloat { round(dockCardSpacing) }
+    var dockCardPaddingH: CGFloat { round(dockCardPaddingHorizontal) }
+    var dockCardPaddingV: CGFloat { round(dockCardPaddingVertical) }
+    var dockHorizontalPaddingRounded: CGFloat { round(dockHorizontalPadding) }
 
     // State Preview
     @Published var previewState: PreviewState = .none
@@ -342,64 +353,61 @@ class GlassConfig: ObservableObject {
     func cardPressedSpringResponse(for layout: LayoutMode) -> Double { cardPressedSpringResponse }
     func cardPressedSpringDamping(for layout: LayoutMode) -> Double { cardPressedSpringDamping }
 
+    // MARK: - Corner Radius Accessors
+
+    /// Returns the card corner radius for the given layout mode.
+    /// Dock mode uses a slightly smaller radius for the more compact cards.
+    func cardCornerRadius(for layout: LayoutMode) -> CGFloat {
+        switch layout {
+        case .vertical:
+            return cardCornerRadius
+        case .dock:
+            // Dock cards are smaller, so we scale down proportionally
+            return max(8, cardCornerRadius * 0.58)
+        }
+    }
+
+    /// Computes the inner corner radius for nested elements.
+    /// Use this when an element is inset from the card edge.
+    /// Formula: innerRadius = max(0, outerRadius - inset)
+    func cardInsetCornerRadius(for layout: LayoutMode, inset: CGFloat) -> CGFloat {
+        max(0, cardCornerRadius(for: layout) - inset)
+    }
+
     func reset() {
-        // Logo letterpress (tuned)
-        logoFontSize = 14.55
-        logoTracking = 2.61
-        logoBaseOpacity = 1.0
-        logoShadowOpacity = 0.01
-        logoShadowOffsetX = -2.96
-        logoShadowOffsetY = -2.93
-        logoShadowBlur = 0.04
-        logoHighlightOpacity = 0.01
-        logoHighlightOffsetX = -2.95
-        logoHighlightOffsetY = -2.95
-        logoHighlightBlur = 0.0
-        logoShadowBlendMode = .colorBurn
-        logoHighlightBlendMode = .softLight
-
-        // Logo glass shader (tuned)
-        logoShaderEnabled = true
-        logoShaderMaskToText = true
-        logoGlassFresnelPower = 4.02
-        logoGlassFresnelIntensity = 1.88
-        logoGlassChromaticAmount = 1.32
-        logoGlassCausticScale = 1.24
-        logoGlassCausticSpeed = 1.30
-        logoGlassCausticIntensity = 0.99
-        logoGlassCausticAngle = 81.31
-        logoGlassClarity = 0.34
-        logoGlassHighlightSharpness = 7.91
-        logoGlassHighlightAngle = 355.43
-        logoGlassInternalReflection = 0.44
-        logoGlassInternalAngle = 75.18
-        logoGlassPrismaticEnabled = true
-        logoGlassPrismAmount = 0.12
-
-        // Logo shader compositing (tuned)
-        logoShaderOpacity = 0.63
-        logoShaderBlendMode = .overlay
-        logoShaderVibrancyEnabled = true
-        logoShaderVibrancyBlur = 0.03
-
-        panelTintOpacity = 0.33
-        panelCornerRadius = 22
-        panelBorderOpacity = 0.36
-        panelHighlightOpacity = 0.07
-        panelTopHighlightOpacity = 0.14
+        panelTintOpacity = 0.18
+        panelCornerRadius = 18.87
+        panelBorderOpacity = 0.14
+        panelHighlightOpacity = 0.12
+        panelTopHighlightOpacity = 0.19
         panelShadowOpacity = 0.00
         panelShadowRadius = 0
         panelShadowY = 0
 
-        cardTintOpacity = 0.58
-        cardCornerRadius = 13
-        cardBorderOpacity = 0.28
-        cardHighlightOpacity = 0.14
-        cardHoverBorderOpacity = 0.95
-        cardHoverHighlightOpacity = 0.16
+        cardTintOpacity = 0.46
+        cardCornerRadius = 17.59
+        cardBorderOpacity = 0.18
+        cardHighlightOpacity = 0.10
+        cardHoverBorderOpacity = 0.34
+        cardHoverHighlightOpacity = 0.15
+
+        cardMaterialType = 0
+        cardBlendingMode = 1
+        cardEmphasized = true
+        cardForceDarkAppearance = true
+        cardSwiftUIBlendMode = 5
 
         useEmphasizedMaterial = true
         materialType = 0
+
+        logoScale = 0.90
+        logoOpacity = 1.0
+        logoUseVibrancy = true
+        logoMaterialType = 0
+        logoBlendingMode = 1
+        logoEmphasized = false
+        logoForceDarkAppearance = true
+        logoSwiftUIBlendMode = 2
 
         statusReadyHue = 0.406
         statusReadySaturation = 0.83
@@ -419,21 +427,21 @@ class GlassConfig: ObservableObject {
 
         statusIdleOpacity = 0.40
 
-        rippleSpeed = 4.73
+        rippleSpeed = 8.61
         rippleCount = 3
         rippleMaxOpacity = 1.00
-        rippleLineWidth = 45.15
-        rippleBlurAmount = 29.62
-        rippleOriginX = 0.89
-        rippleOriginY = 0.00
+        rippleLineWidth = 60.00
+        rippleBlurAmount = 33.23
+        rippleOriginX = 0.00
+        rippleOriginY = 1.00
         rippleFadeInZone = 0.17
-        rippleFadeOutPower = 3.29
+        rippleFadeOutPower = 3.10
 
         borderGlowInnerWidth = 2.00
-        borderGlowOuterWidth = 3.49
-        borderGlowInnerBlur = 4.0
-        borderGlowOuterBlur = 0.13
-        borderGlowBaseOpacity = 0.50
+        borderGlowOuterWidth = 1.73
+        borderGlowInnerBlur = 3.01
+        borderGlowOuterBlur = 0.00
+        borderGlowBaseOpacity = 0.45
         borderGlowPulseIntensity = 1.00
         borderGlowRotationMultiplier = 0.50
 
@@ -472,8 +480,8 @@ class GlassConfig: ObservableObject {
         cardHoverShadowRadius = 12.0
         cardHoverShadowY = 4.0
         cardPressedScale = 1.00
-        cardPressedSpringResponse = 0.06
-        cardPressedSpringDamping = 0.48
+        cardPressedSpringResponse = 0.09
+        cardPressedSpringDamping = 0.64
         cardPressedShadowOpacity = 0.12
         cardPressedShadowRadius = 2.0
         cardPressedShadowY = 1.0
@@ -490,56 +498,52 @@ class GlassConfig: ObservableObject {
         compactingExpandDamping = 0.8
         compactingExpandOmega = 4.0
 
+        // Layout
+        cardListSpacing = 8.0
+        cardPaddingHorizontal = 12.0
+        cardPaddingVertical = 12.0
+        listHorizontalPadding = 12.0
+        dockCardSpacing = 14.0
+        dockCardPaddingHorizontal = 14.0
+        dockCardPaddingVertical = 14.0
+        dockHorizontalPadding = 16.0
+
         previewState = .none
     }
 
     func exportForLLM() -> String {
         let allParams: [(String, String, Double, Double)] = [
             // Panel Background
-            ("Panel", "panelTintOpacity", 0.33, panelTintOpacity),
-            ("Panel", "panelCornerRadius", 22, panelCornerRadius),
-            ("Panel", "panelBorderOpacity", 0.36, panelBorderOpacity),
-            ("Panel", "panelHighlightOpacity", 0.07, panelHighlightOpacity),
-            ("Panel", "panelTopHighlightOpacity", 0.14, panelTopHighlightOpacity),
+            ("Panel", "panelTintOpacity", 0.18, panelTintOpacity),
+            ("Panel", "panelCornerRadius", 18.87, panelCornerRadius),
+            ("Panel", "panelBorderOpacity", 0.14, panelBorderOpacity),
+            ("Panel", "panelHighlightOpacity", 0.12, panelHighlightOpacity),
+            ("Panel", "panelTopHighlightOpacity", 0.19, panelTopHighlightOpacity),
             ("Panel", "panelShadowOpacity", 0.00, panelShadowOpacity),
             ("Panel", "panelShadowRadius", 0, panelShadowRadius),
             ("Panel", "panelShadowY", 0, panelShadowY),
-            // Logo Letterpress (tuned)
-            ("Logo Letterpress", "logoFontSize", 14.55, logoFontSize),
-            ("Logo Letterpress", "logoTracking", 2.61, logoTracking),
-            ("Logo Letterpress", "logoBaseOpacity", 1.0, logoBaseOpacity),
-            ("Logo Letterpress", "logoShadowOpacity", 0.01, logoShadowOpacity),
-            ("Logo Letterpress", "logoShadowOffsetX", -2.96, logoShadowOffsetX),
-            ("Logo Letterpress", "logoShadowOffsetY", -2.93, logoShadowOffsetY),
-            ("Logo Letterpress", "logoShadowBlur", 0.04, logoShadowBlur),
-            ("Logo Letterpress", "logoHighlightOpacity", 0.01, logoHighlightOpacity),
-            ("Logo Letterpress", "logoHighlightOffsetX", -2.95, logoHighlightOffsetX),
-            ("Logo Letterpress", "logoHighlightOffsetY", -2.95, logoHighlightOffsetY),
-            ("Logo Letterpress", "logoHighlightBlur", 0.0, logoHighlightBlur),
-            // Logo Glass Shader (tuned defaults)
-            ("Logo Glass", "logoGlassFresnelPower", 4.02, logoGlassFresnelPower),
-            ("Logo Glass", "logoGlassFresnelIntensity", 1.88, logoGlassFresnelIntensity),
-            ("Logo Glass", "logoGlassChromaticAmount", 1.32, logoGlassChromaticAmount),
-            ("Logo Glass", "logoGlassCausticScale", 1.24, logoGlassCausticScale),
-            ("Logo Glass", "logoGlassCausticSpeed", 1.30, logoGlassCausticSpeed),
-            ("Logo Glass", "logoGlassCausticIntensity", 0.99, logoGlassCausticIntensity),
-            ("Logo Glass", "logoGlassCausticAngle", 81.31, logoGlassCausticAngle),
-            ("Logo Glass", "logoGlassClarity", 0.34, logoGlassClarity),
-            ("Logo Glass", "logoGlassHighlightSharpness", 7.91, logoGlassHighlightSharpness),
-            ("Logo Glass", "logoGlassHighlightAngle", 355.43, logoGlassHighlightAngle),
-            ("Logo Glass", "logoGlassInternalReflection", 0.44, logoGlassInternalReflection),
-            ("Logo Glass", "logoGlassInternalAngle", 75.18, logoGlassInternalAngle),
-            ("Logo Glass", "logoGlassPrismAmount", 0.12, logoGlassPrismAmount),
-            // Logo Compositing (tuned defaults)
-            ("Logo Compositing", "logoShaderOpacity", 0.63, logoShaderOpacity),
-            ("Logo Compositing", "logoShaderVibrancyBlur", 0.03, logoShaderVibrancyBlur),
             // Card Background
-            ("Card", "cardTintOpacity", 0.58, cardTintOpacity),
-            ("Card", "cardCornerRadius", 13, cardCornerRadius),
-            ("Card", "cardBorderOpacity", 0.28, cardBorderOpacity),
-            ("Card", "cardHighlightOpacity", 0.14, cardHighlightOpacity),
-            ("Card", "cardHoverBorderOpacity", 0.95, cardHoverBorderOpacity),
-            ("Card", "cardHoverHighlightOpacity", 0.16, cardHoverHighlightOpacity),
+            ("Card", "cardTintOpacity", 0.46, cardTintOpacity),
+            ("Card", "cardCornerRadius", 17.59, cardCornerRadius),
+            ("Card", "cardBorderOpacity", 0.18, cardBorderOpacity),
+            ("Card", "cardHighlightOpacity", 0.10, cardHighlightOpacity),
+            ("Card", "cardHoverBorderOpacity", 0.34, cardHoverBorderOpacity),
+            ("Card", "cardHoverHighlightOpacity", 0.15, cardHoverHighlightOpacity),
+            // Card Material
+            ("Card Material", "cardMaterialType", 0, Double(cardMaterialType)),
+            ("Card Material", "cardBlendingMode", 1, Double(cardBlendingMode)),
+            ("Card Material", "cardEmphasized", 1, cardEmphasized ? 1.0 : 0.0),
+            ("Card Material", "cardForceDarkAppearance", 1.0, cardForceDarkAppearance ? 1.0 : 0.0),
+            ("Card Material", "cardSwiftUIBlendMode", 5, Double(cardSwiftUIBlendMode)),
+            // Logo
+            ("Logo", "logoScale", 0.90, logoScale),
+            ("Logo", "logoOpacity", 1.0, logoOpacity),
+            ("Logo", "logoUseVibrancy", 1.0, logoUseVibrancy ? 1.0 : 0.0),
+            ("Logo", "logoMaterialType", 0, Double(logoMaterialType)),
+            ("Logo", "logoBlendingMode", 1.0, Double(logoBlendingMode)),
+            ("Logo", "logoEmphasized", 0, logoEmphasized ? 1.0 : 0.0),
+            ("Logo", "logoForceDarkAppearance", 1.0, logoForceDarkAppearance ? 1.0 : 0.0),
+            ("Logo", "logoSwiftUIBlendMode", 2.0, Double(logoSwiftUIBlendMode)),
             // Status Colors - Ready
             ("Status Ready", "statusReadyHue", 0.406, statusReadyHue),
             ("Status Ready", "statusReadySaturation", 0.83, statusReadySaturation),
@@ -559,21 +563,21 @@ class GlassConfig: ObservableObject {
             // Status Colors - Idle
             ("Status Idle", "statusIdleOpacity", 0.40, statusIdleOpacity),
             // Ready Ripple
-            ("Ready Ripple", "rippleSpeed", 4.73, rippleSpeed),
+            ("Ready Ripple", "rippleSpeed", 8.61, rippleSpeed),
             ("Ready Ripple", "rippleCount", 3, Double(rippleCount)),
             ("Ready Ripple", "rippleMaxOpacity", 1.00, rippleMaxOpacity),
-            ("Ready Ripple", "rippleLineWidth", 45.15, rippleLineWidth),
-            ("Ready Ripple", "rippleBlurAmount", 29.62, rippleBlurAmount),
-            ("Ready Ripple", "rippleOriginX", 0.89, rippleOriginX),
-            ("Ready Ripple", "rippleOriginY", 0.00, rippleOriginY),
+            ("Ready Ripple", "rippleLineWidth", 60.00, rippleLineWidth),
+            ("Ready Ripple", "rippleBlurAmount", 33.23, rippleBlurAmount),
+            ("Ready Ripple", "rippleOriginX", 0.00, rippleOriginX),
+            ("Ready Ripple", "rippleOriginY", 1.00, rippleOriginY),
             ("Ready Ripple", "rippleFadeInZone", 0.17, rippleFadeInZone),
-            ("Ready Ripple", "rippleFadeOutPower", 3.29, rippleFadeOutPower),
+            ("Ready Ripple", "rippleFadeOutPower", 3.10, rippleFadeOutPower),
             // Border Glow
             ("Border Glow", "borderGlowInnerWidth", 2.00, borderGlowInnerWidth),
-            ("Border Glow", "borderGlowOuterWidth", 3.49, borderGlowOuterWidth),
-            ("Border Glow", "borderGlowInnerBlur", 4.0, borderGlowInnerBlur),
-            ("Border Glow", "borderGlowOuterBlur", 0.13, borderGlowOuterBlur),
-            ("Border Glow", "borderGlowBaseOpacity", 0.50, borderGlowBaseOpacity),
+            ("Border Glow", "borderGlowOuterWidth", 1.73, borderGlowOuterWidth),
+            ("Border Glow", "borderGlowInnerBlur", 3.01, borderGlowInnerBlur),
+            ("Border Glow", "borderGlowOuterBlur", 0.00, borderGlowOuterBlur),
+            ("Border Glow", "borderGlowBaseOpacity", 0.45, borderGlowBaseOpacity),
             ("Border Glow", "borderGlowPulseIntensity", 1.00, borderGlowPulseIntensity),
             ("Border Glow", "borderGlowRotationMultiplier", 0.50, borderGlowRotationMultiplier),
             // Waiting Pulse
@@ -645,33 +649,26 @@ class GlassConfig: ObservableObject {
             ("Card Hover", "cardHoverShadowRadius", 12.0, cardHoverShadowRadius),
             ("Card Hover", "cardHoverShadowY", 4.0, cardHoverShadowY),
             ("Card Pressed", "cardPressedScale", 1.00, cardPressedScale),
-            ("Card Pressed", "cardPressedSpringResponse", 0.06, cardPressedSpringResponse),
-            ("Card Pressed", "cardPressedSpringDamping", 0.48, cardPressedSpringDamping),
+            ("Card Pressed", "cardPressedSpringResponse", 0.09, cardPressedSpringResponse),
+            ("Card Pressed", "cardPressedSpringDamping", 0.64, cardPressedSpringDamping),
             ("Card Pressed", "cardPressedShadowOpacity", 0.12, cardPressedShadowOpacity),
             ("Card Pressed", "cardPressedShadowRadius", 2.0, cardPressedShadowRadius),
             ("Card Pressed", "cardPressedShadowY", 1.0, cardPressedShadowY),
+            // Layout - List
+            ("Layout List", "cardListSpacing", 8.0, cardListSpacing),
+            ("Layout List", "cardPaddingHorizontal", 12.0, cardPaddingHorizontal),
+            ("Layout List", "cardPaddingVertical", 12.0, cardPaddingVertical),
+            ("Layout List", "listHorizontalPadding", 12.0, listHorizontalPadding),
+            // Layout - Dock
+            ("Layout Dock", "dockCardSpacing", 14.0, dockCardSpacing),
+            ("Layout Dock", "dockCardPaddingHorizontal", 14.0, dockCardPaddingHorizontal),
+            ("Layout Dock", "dockCardPaddingVertical", 14.0, dockCardPaddingVertical),
+            ("Layout Dock", "dockHorizontalPadding", 16.0, dockHorizontalPadding),
         ]
 
         let changed = allParams.filter { abs($0.2 - $0.3) > 0.001 }
 
-        // Blend mode params: (category, name, default, current) - tuned defaults
-        let blendModeParams: [(String, String, BlendMode, BlendMode)] = [
-            ("Logo Letterpress", "logoShadowBlendMode", .colorBurn, logoShadowBlendMode),
-            ("Logo Letterpress", "logoHighlightBlendMode", .softLight, logoHighlightBlendMode),
-            ("Logo Compositing", "logoShaderBlendMode", .overlay, logoShaderBlendMode),
-        ]
-        let changedBlendModes = blendModeParams.filter { $0.2 != $0.3 }
-
-        // Boolean params: (category, name, default, current)
-        let boolParams: [(String, String, Bool, Bool)] = [
-            ("Logo Glass", "logoShaderEnabled", true, logoShaderEnabled),
-            ("Logo Glass", "logoShaderMaskToText", true, logoShaderMaskToText),
-            ("Logo Glass", "logoGlassPrismaticEnabled", true, logoGlassPrismaticEnabled),
-            ("Logo Compositing", "logoShaderVibrancyEnabled", true, logoShaderVibrancyEnabled),
-        ]
-        let changedBools = boolParams.filter { $0.2 != $0.3 }
-
-        if changed.isEmpty && changedBlendModes.isEmpty && changedBools.isEmpty {
+        if changed.isEmpty {
             return "## Visual Parameters\n\nNo changes from defaults."
         }
 
@@ -692,40 +689,8 @@ class GlassConfig: ObservableObject {
             }
         }
 
-        // Add blend mode changes
-        if !changedBlendModes.isEmpty {
-            output += "// Blend Modes\n"
-            for (_, name, defaultVal, currentVal) in changedBlendModes {
-                output += "\(name): .\(blendModeName(defaultVal)) → .\(blendModeName(currentVal))\n"
-            }
-        }
-
-        // Add boolean changes
-        if !changedBools.isEmpty {
-            output += "// Toggles\n"
-            for (_, name, defaultVal, currentVal) in changedBools {
-                output += "\(name): \(defaultVal) → \(currentVal)\n"
-            }
-        }
-
         output += "```"
 
         return output
-    }
-
-    private func blendModeName(_ mode: BlendMode) -> String {
-        switch mode {
-        case .normal: return "normal"
-        case .multiply: return "multiply"
-        case .screen: return "screen"
-        case .overlay: return "overlay"
-        case .plusLighter: return "plusLighter"
-        case .softLight: return "softLight"
-        case .hardLight: return "hardLight"
-        case .colorBurn: return "colorBurn"
-        case .colorDodge: return "colorDodge"
-        case .luminosity: return "luminosity"
-        default: return "unknown"
-        }
     }
 }

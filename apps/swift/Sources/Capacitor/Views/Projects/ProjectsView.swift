@@ -3,6 +3,7 @@ import SwiftUI
 struct ProjectsView: View {
     @EnvironmentObject var appState: AppState
     @Environment(\.floatingMode) private var floatingMode
+    @ObservedObject private var glassConfig = GlassConfig.shared
     @State private var pausedCollapsed = true
     @State private var draggedProject: Project?
 
@@ -34,7 +35,7 @@ struct ProjectsView: View {
 
     var body: some View {
         ScrollView {
-            LazyVStack(spacing: 8) {
+            LazyVStack(spacing: glassConfig.cardListSpacingRounded) {
                 // Setup status card - show regardless of project state
                 if let diagnostic = appState.hookDiagnostic, !diagnostic.isHealthy {
                     SetupStatusCard(
@@ -165,9 +166,9 @@ struct ProjectsView: View {
                     }
                 }
             }
-            .padding(.horizontal, 12)
-            .padding(.top, floatingMode ? 64 : 8)
-            .padding(.bottom, floatingMode ? 16 : 8)
+            .padding(.horizontal, glassConfig.listHorizontalPaddingRounded)
+            .padding(.top, floatingMode ? 56 : 12)
+            .padding(.bottom, floatingMode ? 64 : 8)
         }
         .background(floatingMode ? Color.clear : Color.hudBackground)
         .onChange(of: pausedProjects.count) { oldCount, newCount in

@@ -11,19 +11,16 @@ Native macOS dashboard for Claude Code—displays project statistics, session st
 ## Commands
 
 ```bash
-# Build and run
-cargo build -p hud-core --release && cd apps/swift && swift build && swift run
+# Quick iteration (most common)
+./scripts/dev/restart-app.sh      # Rebuild Swift + restart app
 
-# Rust
+# Rust (when changing core/)
 cargo fmt                         # Format (required before commits)
 cargo clippy -- -D warnings       # Lint
 cargo test                        # Test
 
-# Swift (from apps/swift/)
-swift build && swift run          # Build and run
-
-# Restart app (pre-approved)
-./scripts/dev/restart-app.sh
+# Full rebuild (after Rust changes)
+cargo build -p hud-core --release && cd apps/swift && swift build && swift run
 ```
 
 **First-time setup:** `./scripts/dev/setup.sh`
@@ -34,7 +31,7 @@ swift build && swift run          # Build and run
 capacitor/
 ├── core/hud-core/src/      # Rust: engine.rs, sessions.rs, projects.rs, ideas.rs
 ├── core/hud-hook/src/      # Rust: CLI hook handler (handle.rs, cwd.rs)
-├── apps/swift/Sources/     # Swift: App.swift, Models/, Views/, Theme/
+├── apps/swift/Sources/     # Swift: App.swift, Models/, Views/ (Footer/, Projects/, Navigation/)
 └── .claude/docs/           # Architecture docs, feature specs
 ```
 
@@ -70,6 +67,8 @@ Hooks → `~/.capacitor/sessions.json` → Capacitor reads
 
 ## Common Gotchas
 
+- **Rebuild after Swift changes** — Run `./scripts/dev/restart-app.sh` after modifying Swift UI code to verify changes compile and render correctly
+- **Layout padding for floating mode** — Header/footer clearance uses 64pt, content edge uses 12pt. Update ProjectsView + ProjectDetailView together.
 - **Always run `cargo fmt`** — CI enforces formatting
 - **Dev builds need dylib** — After Rust rebuilds: `cp target/release/libhud_core.dylib apps/swift/.build/arm64-apple-macosx/debug/`
 - **Hook symlink, not copy** — Use `ln -s target/release/hud-hook ~/.local/bin/hud-hook` (copying triggers Gatekeeper SIGKILL)

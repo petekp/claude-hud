@@ -177,7 +177,8 @@ struct ProjectCardView: View {
                 onDetails: onInfoTap
             )
         }
-        .padding(12)
+        .padding(.horizontal, glassConfig.cardPaddingH)
+        .padding(.vertical, glassConfig.cardPaddingV)
         .animation(.spring(response: 0.4, dampingFraction: 0.8), value: projectStatus?.blocker)
     }
 
@@ -218,12 +219,13 @@ struct ProjectCardView: View {
     // MARK: - Background Styles
 
     private var floatingCardBackground: some View {
-        DarkFrostedCard(isHovered: isHovered, config: glassConfig)
+        DarkFrostedCard(isHovered: isHovered, layoutMode: .vertical, config: glassConfig)
     }
 
     private var solidCardBackground: some View {
-        ZStack {
-            RoundedRectangle(cornerRadius: 12)
+        let cornerRadius = GlassConfig.shared.cardCornerRadius(for: .vertical)
+        return ZStack {
+            RoundedRectangle(cornerRadius: cornerRadius)
                 .fill(Color.hudCard)
 
             VStack(spacing: 0) {
@@ -235,20 +237,7 @@ struct ProjectCardView: View {
                 .frame(height: 1)
                 Spacer()
             }
-            .clipShape(RoundedRectangle(cornerRadius: 12))
-
-            RoundedRectangle(cornerRadius: 12)
-                .strokeBorder(
-                    LinearGradient(
-                        colors: [
-                            .white.opacity(isHovered ? 0.18 : 0.1),
-                            .white.opacity(isHovered ? 0.08 : 0.05)
-                        ],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    ),
-                    lineWidth: 0.5
-                )
+            .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
         }
     }
 }

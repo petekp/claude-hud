@@ -25,8 +25,11 @@ struct DockProjectCard: View {
     @State private var previousState: SessionState?
     @State private var lastChimeTime: Date?
 
-    private let cornerRadius: CGFloat = 10
     private let chimeCooldown: TimeInterval = 3.0
+
+    private var cornerRadius: CGFloat {
+        GlassConfig.shared.cardCornerRadius(for: .dock)
+    }
 
     private var currentState: SessionState? {
         sessionState?.state
@@ -87,7 +90,6 @@ struct DockProjectCard: View {
                 floatingCardBackground: floatingCardBackground,
                 solidCardBackground: solidCardBackground,
                 animationSeed: project.path,
-                cornerRadius: cornerRadius,
                 layoutMode: .dock,
                 isPressed: isPressed
             )
@@ -177,11 +179,12 @@ struct DockProjectCard: View {
                 style: .compact
             )
         }
-        .padding(14)
+        .padding(.horizontal, glassConfig.dockCardPaddingH)
+        .padding(.vertical, glassConfig.dockCardPaddingV)
     }
 
     private var floatingCardBackground: some View {
-        DarkFrostedCard(isHovered: isHovered, config: glassConfig)
+        DarkFrostedCard(isHovered: isHovered, layoutMode: .dock, config: glassConfig)
     }
 
     private var solidCardBackground: some View {
@@ -199,19 +202,6 @@ struct DockProjectCard: View {
                 Spacer()
             }
             .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
-
-            RoundedRectangle(cornerRadius: cornerRadius)
-                .strokeBorder(
-                    LinearGradient(
-                        colors: [
-                            .white.opacity(isHovered ? 0.18 : 0.1),
-                            .white.opacity(isHovered ? 0.08 : 0.05)
-                        ],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    ),
-                    lineWidth: 0.5
-                )
         }
     }
 

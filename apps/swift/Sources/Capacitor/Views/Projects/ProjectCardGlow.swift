@@ -106,10 +106,13 @@ struct GlowParameters {
 
 struct ReadyBorderGlow: View {
     let seed: String
-    var cornerRadius: CGFloat = 12
     var layoutMode: LayoutMode = .vertical
     @Environment(\.prefersReducedMotion) private var reduceMotion
     @ObservedObject private var config = GlassConfig.shared
+
+    private var cornerRadius: CGFloat {
+        config.cardCornerRadius(for: layoutMode)
+    }
 
     private var timeOffset: Double {
         var hasher = Hasher()
@@ -134,7 +137,7 @@ struct ReadyBorderGlow: View {
 
     private var animatedBorderGlow: some View {
         TimelineView(.animation) { timeline in
-            ReadyBorderGlowContent(date: timeline.date, config: config, timeOffset: timeOffset, cornerRadius: cornerRadius, layoutMode: layoutMode)
+            ReadyBorderGlowContent(date: timeline.date, config: config, timeOffset: timeOffset, layoutMode: layoutMode)
         }
         .allowsHitTesting(false)
     }
@@ -143,16 +146,18 @@ struct ReadyBorderGlow: View {
 struct ReadyBorderGlowContent: View {
     let date: Date
     let timeOffset: Double
-    let cornerRadius: CGFloat
     let layoutMode: LayoutMode
     let config: GlassConfig?
 
-    init(date: Date, config: GlassConfig?, timeOffset: Double, cornerRadius: CGFloat = 12, layoutMode: LayoutMode = .vertical) {
+    init(date: Date, config: GlassConfig?, timeOffset: Double, layoutMode: LayoutMode = .vertical) {
         self.date = date
         self.config = config
         self.timeOffset = timeOffset
-        self.cornerRadius = cornerRadius
         self.layoutMode = layoutMode
+    }
+
+    private var cornerRadius: CGFloat {
+        (config ?? GlassConfig.shared).cardCornerRadius(for: layoutMode)
     }
 
     var body: some View {
@@ -421,10 +426,13 @@ struct WaitingAmbientPulse: View {
 /// Synchronized border pulse for the Waiting state with spring animation
 struct WaitingBorderPulse: View {
     let seed: String
-    var cornerRadius: CGFloat = 12
     var layoutMode: LayoutMode = .vertical
     @Environment(\.prefersReducedMotion) private var reduceMotion
     @ObservedObject private var config = GlassConfig.shared
+
+    private var cornerRadius: CGFloat {
+        config.cardCornerRadius(for: layoutMode)
+    }
 
     var body: some View {
         if reduceMotion {
@@ -654,7 +662,7 @@ struct WorkingStripeOverlay: View {
 
     private func vignetteMask(params: WorkingStripeParameters) -> some View {
         GeometryReader { geometry in
-            let cornerRadius: CGFloat = layoutMode == .dock ? 10 : 12
+            let cornerRadius = config.cardCornerRadius(for: layoutMode)
             let frameWidth = params.vignetteInnerRadius * min(geometry.size.width, geometry.size.height)
             let blurAmount = frameWidth * params.vignetteOuterRadius
 
@@ -676,8 +684,8 @@ struct WorkingStripeOverlay: View {
     }
 
     private func vignetteBackground(params: WorkingStripeParameters) -> some View {
-        GeometryReader { geometry in
-            let cornerRadius: CGFloat = layoutMode == .dock ? 10 : 12
+        GeometryReader { _ in
+            let cornerRadius = config.cardCornerRadius(for: layoutMode)
 
             RoundedRectangle(cornerRadius: cornerRadius)
                 .fill(params.vignetteColor)
@@ -773,10 +781,13 @@ struct WorkingStripeOverlay: View {
 
 struct WorkingBorderGlow: View {
     let seed: String
-    var cornerRadius: CGFloat = 12
     var layoutMode: LayoutMode = .vertical
     @Environment(\.prefersReducedMotion) private var reduceMotion
     @ObservedObject private var config = GlassConfig.shared
+
+    private var cornerRadius: CGFloat {
+        config.cardCornerRadius(for: layoutMode)
+    }
 
     private var timeOffset: Double {
         var hasher = Hasher()

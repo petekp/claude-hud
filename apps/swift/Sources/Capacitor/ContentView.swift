@@ -97,15 +97,15 @@ struct ContentView: View {
     }
 
     private var verticalLayout: some View {
-        ZStack(alignment: .top) {
+        ZStack {
             NavigationContainer()
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
 
-            HeaderView()
-        }
-        .overlay(alignment: .bottomTrailing) {
-            PinButton(isPinned: $alwaysOnTopStorage)
-                .padding(16)
+            VStack(spacing: 0) {
+                HeaderView()
+                Spacer()
+                FooterView(isPinned: $alwaysOnTopStorage)
+            }
         }
         .clipShape(RoundedRectangle(cornerRadius: floatingMode ? 22 : 0))
     }

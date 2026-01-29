@@ -3,16 +3,11 @@ import SwiftUI
 struct DockLayoutView: View {
     @EnvironmentObject var appState: AppState
     @Environment(\.floatingMode) private var floatingMode
+    @ObservedObject private var glassConfig = GlassConfig.shared
     @State private var scrolledID: String?
     @State private var draggedProject: Project?
 
-    #if DEBUG
-    @ObservedObject private var glassConfig = GlassConfig.shared
-    #endif
-
     private let cardWidth: CGFloat = 262
-    private let cardSpacing: CGFloat = 14
-    private let horizontalPadding: CGFloat = 16
 
     private var activeProjects: [Project] {
         let ordered = appState.orderedProjects(appState.projects)
@@ -22,8 +17,12 @@ struct DockLayoutView: View {
     }
 
     var body: some View {
+        // Capture layout values once at body evaluation to avoid constraint loops
+        let cardSpacing = glassConfig.dockCardSpacingRounded
+        let horizontalPadding = glassConfig.dockHorizontalPaddingRounded
+
         GeometryReader { geometry in
-            let cardsPerPage = calculateCardsPerPage(width: geometry.size.width)
+            let cardsPerPage = calculateCardsPerPage(width: geometry.size.width, cardSpacing: cardSpacing, horizontalPadding: horizontalPadding)
             let totalPages = max(1, Int(ceil(Double(activeProjects.count) / Double(cardsPerPage))))
             let currentPage = calculateCurrentPage(cardsPerPage: cardsPerPage)
 
@@ -134,7 +133,7 @@ struct DockLayoutView: View {
         }
     }
 
-    private func calculateCardsPerPage(width: CGFloat) -> Int {
+    private func calculateCardsPerPage(width: CGFloat, cardSpacing: CGFloat, horizontalPadding: CGFloat) -> Int {
         let availableWidth = width - (horizontalPadding * 2)
         let cardWithSpacing = cardWidth + cardSpacing
         return max(1, Int(availableWidth / cardWithSpacing))
@@ -144,12 +143,21 @@ struct DockLayoutView: View {
         guard let sessionState = appState.getSessionState(for: project),
               sessionState.state == .ready,
               let stateChangedAtStr = sessionState.stateChangedAt,
-              let stateChangedAt = Double(stateChangedAtStr) else {
+              let date = parseISO8601(stateChangedAtStr) else {
             return false
         }
+        let hoursSince = Date().timeIntervalSince(date) / 3600
+        return hoursSince > 24
+    }
 
-        let staleThreshold: TimeInterval = 24 * 60 * 60
-        return Date().timeIntervalSince1970 - stateChangedAt > staleThreshold
+    private func parseISO8601(_ string: String) -> Date? {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        if let date = formatter.date(from: string) {
+            return date
+        }
+        formatter.formatOptions = [.withInternetDateTime]
+        return formatter.date(from: string)
     }
 }
 

@@ -4,7 +4,7 @@ import os.log
 private let logger = Logger(subsystem: "com.capacitor.app", category: "ResourceBundle")
 
 enum ResourceBundle {
-    /// The bundle containing app resources (logomark, assets, etc.)
+    /// The bundle containing app resources (assets, etc.)
     /// Works in both SPM dev builds and distributed app bundles.
     static let bundle: Bundle? = {
         let bundleName = "Capacitor_Capacitor"

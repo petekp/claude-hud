@@ -265,9 +265,47 @@ class AppState: ObservableObject {
         guard let engine = engine else { return }
         do {
             try engine.addProject(path: path)
+            prependToProjectOrder(path)
             loadDashboard()
         } catch {
             self.error = error.localizedDescription
+        }
+    }
+
+    private func prependToProjectOrder(_ path: String) {
+        customProjectOrder.removeAll { $0 == path }
+        customProjectOrder.insert(path, at: 0)
+        saveProjectOrder()
+    }
+
+    func connectProjectViaFileBrowser() {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.allowsMultipleSelection = false
+        panel.message = "Select a project folder to connect"
+        panel.prompt = "Connect"
+
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+
+        guard let result = validateProject(url.path) else {
+            toast = ToastMessage("Could not validate project", isError: true)
+            return
+        }
+
+        switch result.resultType {
+        case "valid", "missing_claude_md", "suggest_parent", "not_a_project":
+            addProject(url.path)
+            pendingDragDropTip = true
+            toast = ToastMessage("Connected \(url.lastPathComponent)")
+        case "already_tracked":
+            toast = ToastMessage("\(url.lastPathComponent) already connected", isError: false)
+        case "dangerous_path":
+            toast = ToastMessage("Path too broad to track", isError: true)
+        case "path_not_found":
+            toast = ToastMessage("Path not found", isError: true)
+        default:
+            toast = ToastMessage("Could not connect project", isError: true)
         }
     }
 
@@ -285,6 +323,7 @@ class AppState: ObservableObject {
         DispatchQueue.global(qos: .userInitiated).async {
             let fm = FileManager.default
             var addedCount = 0
+            var addedPaths: [String] = []
             var alreadyTrackedPaths: [String] = []
             var failedNames: [String] = []
 
@@ -302,6 +341,7 @@ class AppState: ObservableObject {
                     do {
                         try engine.addProject(path: url.path)
                         addedCount += 1
+                        addedPaths.append(url.path)
                     } catch {
                         failedNames.append(url.lastPathComponent)
                     }
@@ -315,6 +355,7 @@ class AppState: ObservableObject {
             }
 
             let finalAddedCount = addedCount
+            let finalAddedPaths = addedPaths
             let finalAlreadyTrackedPaths = alreadyTrackedPaths
             let finalFailedNames = failedNames
 
@@ -337,6 +378,10 @@ class AppState: ObservableObject {
                 }
 
                 if finalAddedCount > 0 {
+                    // Prepend newly added projects to the order (reversed so first dropped is at top)
+                    for path in finalAddedPaths.reversed() {
+                        self.prependToProjectOrder(path)
+                    }
                     withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
                         self.loadDashboard()
                     }

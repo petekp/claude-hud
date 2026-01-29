@@ -2,243 +2,6 @@ import SwiftUI
 
 #if DEBUG
 
-// MARK: - Logo Letterpress
-
-struct LogoLetterpressSection: View {
-    @ObservedObject var config: GlassConfig
-
-    var body: some View {
-        Group(content: {
-            StickySection(title: "Typography", onReset: resetTypography) {
-                HStack {
-                    Text("Preview:")
-                        .font(.system(size: 11))
-                        .foregroundColor(.white.opacity(0.5))
-                    CapacitorLogo()
-                    Spacer()
-                }
-                .padding(.bottom, 4)
-
-                TuningRow(label: "Font Size", value: $config.logoFontSize, range: 8...24)
-                TuningRow(label: "Tracking", value: $config.logoTracking, range: 0...5)
-                TuningRow(label: "Base Opacity", value: $config.logoBaseOpacity, range: 0...1)
-            }
-
-            StickySection(title: "Inner Shadow", onReset: resetShadow) {
-                TuningRow(label: "Opacity", value: $config.logoShadowOpacity, range: 0...1)
-                TuningRow(label: "Offset X", value: $config.logoShadowOffsetX, range: -3...3)
-                TuningRow(label: "Offset Y", value: $config.logoShadowOffsetY, range: -3...3)
-                TuningRow(label: "Blur", value: $config.logoShadowBlur, range: 0...4)
-
-                TuningBlendModeRow(
-                    label: "Blend Mode",
-                    selection: $config.logoShadowBlendMode,
-                    options: BlendModeOption.shadowModes
-                )
-            }
-
-            StickySection(title: "Inner Highlight", onReset: resetHighlight) {
-                TuningRow(label: "Opacity", value: $config.logoHighlightOpacity, range: 0...1)
-                TuningRow(label: "Offset X", value: $config.logoHighlightOffsetX, range: -3...3)
-                TuningRow(label: "Offset Y", value: $config.logoHighlightOffsetY, range: -3...3)
-                TuningRow(label: "Blur", value: $config.logoHighlightBlur, range: 0...4)
-
-                TuningBlendModeRow(
-                    label: "Blend Mode",
-                    selection: $config.logoHighlightBlendMode,
-                    options: BlendModeOption.highlightModes
-                )
-            }
-        })
-    }
-
-    private func resetTypography() {
-        config.logoFontSize = 14.55
-        config.logoTracking = 2.61
-        config.logoBaseOpacity = 0.9
-    }
-
-    private func resetShadow() {
-        config.logoShadowOpacity = 0.01
-        config.logoShadowOffsetX = -2.96
-        config.logoShadowOffsetY = -2.93
-        config.logoShadowBlur = 0.04
-        config.logoShadowBlendMode = .colorBurn
-    }
-
-    private func resetHighlight() {
-        config.logoHighlightOpacity = 0.01
-        config.logoHighlightOffsetX = -2.95
-        config.logoHighlightOffsetY = -2.95
-        config.logoHighlightBlur = 0.0
-        config.logoHighlightBlendMode = .softLight
-    }
-}
-
-// MARK: - Logo Glass Shader
-
-struct LogoMetalShaderSection: View {
-    @ObservedObject var config: GlassConfig
-    @State private var animationTime: Double = 0
-    private let timer = Timer.publish(every: 1/60, on: .main, in: .common).autoconnect()
-
-    private var metalStatus: (loaded: Bool, message: String) {
-        if MetalShaders.library != nil {
-            return (true, "Metal shader loaded")
-        } else {
-            return (false, "Using SwiftUI fallback")
-        }
-    }
-
-    init(config: GlassConfig) {
-        self.config = config
-        MetalShaders.initialize()
-    }
-
-    var body: some View {
-        Group {
-            StickySection(title: "Preview", onReset: nil) {
-                VStack(alignment: .leading, spacing: 8) {
-                    GlassShaderLogoPreview(config: config, time: animationTime)
-                        .frame(height: 40)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .onReceive(timer) { _ in
-                            if config.logoShaderEnabled {
-                                animationTime += 1/60
-                            }
-                        }
-
-                    HStack(spacing: 6) {
-                        Circle()
-                            .fill(metalStatus.loaded ? Color.green : Color.orange)
-                            .frame(width: 8, height: 8)
-                        Text(metalStatus.message)
-                            .font(.system(size: 10))
-                            .foregroundColor(.white.opacity(0.5))
-                    }
-
-                    TuningToggleRow(label: "Enable Shader", isOn: $config.logoShaderEnabled)
-                    TuningToggleRow(label: "Mask to Text", isOn: $config.logoShaderMaskToText)
-                }
-            }
-
-            StickySection(title: "Fresnel & Edges", onReset: resetFresnel) {
-                TuningRow(label: "Fresnel Power", value: $config.logoGlassFresnelPower, range: 0.5...5.0)
-                TuningRow(label: "Fresnel Intensity", value: $config.logoGlassFresnelIntensity, range: 0...2.0)
-                TuningRow(label: "Chromatic Aberration", value: $config.logoGlassChromaticAmount, range: 0...2.0)
-            }
-
-            StickySection(title: "Caustics", onReset: resetCaustics) {
-                TuningRow(label: "Scale", value: $config.logoGlassCausticScale, range: 1.0...10.0)
-                TuningRow(label: "Speed", value: $config.logoGlassCausticSpeed, range: 0.1...3.0)
-                TuningRow(label: "Intensity", value: $config.logoGlassCausticIntensity, range: 0...1.0)
-                TuningRow(label: "Angle", value: $config.logoGlassCausticAngle, range: 0...360, format: "%.0f°")
-            }
-
-            StickySection(title: "Specular Highlight", onReset: resetHighlight) {
-                TuningRow(label: "Sharpness", value: $config.logoGlassHighlightSharpness, range: 1.0...8.0)
-                TuningRow(label: "Angle", value: $config.logoGlassHighlightAngle, range: 0...360, format: "%.0f°")
-            }
-
-            StickySection(title: "Glass Properties", onReset: resetGlass) {
-                TuningRow(label: "Clarity", value: $config.logoGlassClarity, range: 0.2...1.0)
-                TuningRow(label: "Internal Reflection", value: $config.logoGlassInternalReflection, range: 0...1.0)
-                TuningRow(label: "Internal Angle", value: $config.logoGlassInternalAngle, range: 0...360, format: "%.0f°")
-            }
-
-            StickySection(title: "Prismatic Effect", onReset: resetPrismatic) {
-                TuningToggleRow(label: "Enable Prismatic", isOn: $config.logoGlassPrismaticEnabled)
-                TuningRow(label: "Prism Amount", value: $config.logoGlassPrismAmount, range: 0...1.0)
-            }
-
-            StickySection(title: "Compositing", onReset: resetCompositing) {
-                TuningRow(label: "Opacity", value: $config.logoShaderOpacity, range: 0...1.0)
-
-                TuningBlendModeRow(
-                    label: "Blend Mode",
-                    selection: $config.logoShaderBlendMode,
-                    options: BlendModeOption.compositingModes
-                )
-
-                SectionDivider()
-
-                TuningToggleRow(label: "Enable Vibrancy", isOn: $config.logoShaderVibrancyEnabled)
-                TuningRow(label: "Vibrancy Blur", value: $config.logoShaderVibrancyBlur, range: 0...20)
-            }
-        }
-    }
-
-    private func resetFresnel() {
-        config.logoGlassFresnelPower = 4.02
-        config.logoGlassFresnelIntensity = 1.88
-        config.logoGlassChromaticAmount = 1.32
-    }
-
-    private func resetCaustics() {
-        config.logoGlassCausticScale = 1.24
-        config.logoGlassCausticSpeed = 1.30
-        config.logoGlassCausticIntensity = 0.99
-        config.logoGlassCausticAngle = 81.31
-    }
-
-    private func resetHighlight() {
-        config.logoGlassHighlightSharpness = 7.91
-        config.logoGlassHighlightAngle = 355.43
-    }
-
-    private func resetGlass() {
-        config.logoGlassClarity = 0.34
-        config.logoGlassInternalReflection = 0.44
-        config.logoGlassInternalAngle = 75.18
-    }
-
-    private func resetPrismatic() {
-        config.logoGlassPrismaticEnabled = true
-        config.logoGlassPrismAmount = 0.12
-    }
-
-    private func resetCompositing() {
-        config.logoShaderOpacity = 0.63
-        config.logoShaderBlendMode = .overlay
-        config.logoShaderVibrancyEnabled = true
-        config.logoShaderVibrancyBlur = 0.03
-    }
-}
-
-struct GlassShaderLogoPreview: View {
-    @ObservedObject var config: GlassConfig
-    let time: Double
-
-    private let logoText = "CAPACITOR"
-
-    var body: some View {
-        let baseView = Text(logoText)
-            .font(.system(size: 13, weight: .black, design: .monospaced))
-            .tracking(0.5)
-            .foregroundColor(.white)
-
-        if config.logoShaderEnabled {
-            let shaderContent: some View = Group {
-                if config.logoShaderMaskToText {
-                    GlassShaderView(config: config, time: time)
-                        .mask(baseView)
-                } else {
-                    baseView
-                        .background {
-                            GlassShaderView(config: config, time: time)
-                        }
-                }
-            }
-
-            shaderContent
-                .opacity(config.logoShaderOpacity)
-                .blendMode(config.logoShaderBlendMode)
-        } else {
-            baseView.opacity(0.5)
-        }
-    }
-}
-
 // MARK: - Card Appearance
 
 struct CardAppearanceSection: View {
@@ -268,15 +31,77 @@ struct CardAppearanceSection: View {
     }
 
     private func resetBackground() {
-        config.cardTintOpacity = 0.58
-        config.cardCornerRadius = 13
+        config.cardTintOpacity = 0.46
+        config.cardCornerRadius = 17.59
     }
 
     private func resetBorder() {
-        config.cardBorderOpacity = 0.28
-        config.cardHighlightOpacity = 0.14
-        config.cardHoverBorderOpacity = 0.37
-        config.cardHoverHighlightOpacity = 0.16
+        config.cardBorderOpacity = 0.18
+        config.cardHighlightOpacity = 0.10
+        config.cardHoverBorderOpacity = 0.34
+        config.cardHoverHighlightOpacity = 0.15
+    }
+}
+
+// MARK: - Card Material
+
+struct CardMaterialSection: View {
+    @ObservedObject var config: GlassConfig
+
+    var body: some View {
+        Group(content: {
+            StickySection(title: "Vibrancy (NSVisualEffectView)", onReset: resetVibrancy) {
+                TuningPickerRow(
+                    label: "Material",
+                    selection: $config.cardMaterialType,
+                    options: [
+                        ("HUD Window", 0),
+                        ("Popover", 1),
+                        ("Menu", 2),
+                        ("Sidebar", 3),
+                        ("Full Screen UI", 4)
+                    ]
+                )
+
+                TuningPickerRow(
+                    label: "Blending Mode",
+                    selection: $config.cardBlendingMode,
+                    options: [
+                        ("Behind Window", 0),
+                        ("Within Window", 1)
+                    ]
+                )
+
+                TuningToggleRow(label: "Emphasized", isOn: $config.cardEmphasized)
+                TuningToggleRow(label: "Force Dark", isOn: $config.cardForceDarkAppearance)
+            }
+
+            StickySection(title: "SwiftUI Blend Mode", onReset: resetBlendMode) {
+                TuningPickerRow(
+                    label: "Highlight Blend",
+                    selection: $config.cardSwiftUIBlendMode,
+                    options: [
+                        ("Normal", 0),
+                        ("Plus Lighter", 1),
+                        ("Soft Light", 2),
+                        ("Overlay", 3),
+                        ("Screen", 4),
+                        ("Multiply", 5)
+                    ]
+                )
+            }
+        })
+    }
+
+    private func resetVibrancy() {
+        config.cardMaterialType = 0
+        config.cardBlendingMode = 1
+        config.cardEmphasized = true
+        config.cardForceDarkAppearance = true
+    }
+
+    private func resetBlendMode() {
+        config.cardSwiftUIBlendMode = 5
     }
 }
 
@@ -360,11 +185,49 @@ struct CardInteractionsSection: View {
 
     private func resetPressed() {
         config.cardPressedScale = 1.00
-        config.cardPressedSpringResponse = 0.06
-        config.cardPressedSpringDamping = 0.48
+        config.cardPressedSpringResponse = 0.09
+        config.cardPressedSpringDamping = 0.64
         config.cardPressedShadowOpacity = 0.12
         config.cardPressedShadowRadius = 2.0
         config.cardPressedShadowY = 1.0
+    }
+}
+
+// MARK: - Card Layout
+
+struct CardLayoutSection: View {
+    @ObservedObject var config: GlassConfig
+
+    var body: some View {
+        Group(content: {
+            StickySection(title: "List Layout", onReset: resetList) {
+                TuningRow(label: "Card Spacing", value: $config.cardListSpacing, range: 0...24, step: 1, format: "%.0f")
+                TuningRow(label: "Card Padding H", value: $config.cardPaddingHorizontal, range: 4...24, step: 1, format: "%.0f")
+                TuningRow(label: "Card Padding V", value: $config.cardPaddingVertical, range: 4...24, step: 1, format: "%.0f")
+                TuningRow(label: "List Padding H", value: $config.listHorizontalPadding, range: 0...32, step: 1, format: "%.0f")
+            }
+
+            StickySection(title: "Dock Layout", onReset: resetDock) {
+                TuningRow(label: "Card Spacing", value: $config.dockCardSpacing, range: 0...32, step: 1, format: "%.0f")
+                TuningRow(label: "Card Padding H", value: $config.dockCardPaddingHorizontal, range: 4...24, step: 1, format: "%.0f")
+                TuningRow(label: "Card Padding V", value: $config.dockCardPaddingVertical, range: 4...24, step: 1, format: "%.0f")
+                TuningRow(label: "Dock Padding H", value: $config.dockHorizontalPadding, range: 0...32, step: 1, format: "%.0f")
+            }
+        })
+    }
+
+    private func resetList() {
+        config.cardListSpacing = 8.0
+        config.cardPaddingHorizontal = 12.0
+        config.cardPaddingVertical = 12.0
+        config.listHorizontalPadding = 12.0
+    }
+
+    private func resetDock() {
+        config.dockCardSpacing = 14.0
+        config.dockCardPaddingHorizontal = 14.0
+        config.dockCardPaddingVertical = 14.0
+        config.dockHorizontalPadding = 16.0
     }
 }
 
@@ -483,21 +346,21 @@ struct CardStateEffectsSection: View {
     }
 
     private func resetReady() {
-        config.rippleSpeed = 4.9
-        config.rippleCount = 4
+        config.rippleSpeed = 8.61
+        config.rippleCount = 3
         config.rippleMaxOpacity = 1.00
-        config.rippleLineWidth = 30.0
-        config.rippleBlurAmount = 41.5
-        config.rippleOriginX = 0.89
-        config.rippleOriginY = 0.00
-        config.rippleFadeInZone = 0.10
-        config.rippleFadeOutPower = 4.0
-        config.borderGlowInnerWidth = 0.49
-        config.borderGlowOuterWidth = 2.88
-        config.borderGlowInnerBlur = 0.5
-        config.borderGlowOuterBlur = 1.5
-        config.borderGlowBaseOpacity = 0.30
-        config.borderGlowPulseIntensity = 0.50
+        config.rippleLineWidth = 60.00
+        config.rippleBlurAmount = 33.23
+        config.rippleOriginX = 0.00
+        config.rippleOriginY = 1.00
+        config.rippleFadeInZone = 0.17
+        config.rippleFadeOutPower = 3.10
+        config.borderGlowInnerWidth = 2.00
+        config.borderGlowOuterWidth = 1.73
+        config.borderGlowInnerBlur = 3.01
+        config.borderGlowOuterBlur = 0.00
+        config.borderGlowBaseOpacity = 0.45
+        config.borderGlowPulseIntensity = 1.00
     }
 
     private func resetWorkingStripes() {
@@ -581,11 +444,11 @@ struct PanelBackgroundSection: View {
     }
 
     private func resetPanel() {
-        config.panelTintOpacity = 0.33
-        config.panelCornerRadius = 22
-        config.panelBorderOpacity = 0.36
-        config.panelHighlightOpacity = 0.07
-        config.panelTopHighlightOpacity = 0.14
+        config.panelTintOpacity = 0.18
+        config.panelCornerRadius = 18.87
+        config.panelBorderOpacity = 0.14
+        config.panelHighlightOpacity = 0.12
+        config.panelTopHighlightOpacity = 0.19
         config.panelShadowOpacity = 0.00
         config.panelShadowRadius = 0
         config.panelShadowY = 0
@@ -698,6 +561,87 @@ struct StatusColorsSection: View {
 
     private func resetIdle() {
         config.statusIdleOpacity = 0.40
+    }
+}
+
+// MARK: - Logo Appearance
+
+struct LogoAppearanceSection: View {
+    @ObservedObject var config: GlassConfig
+
+    var body: some View {
+        Group(content: {
+            StickySection(title: "Size & Opacity", onReset: resetSizeOpacity) {
+                TuningRow(label: "Scale", value: $config.logoScale, range: 0.5...3.0)
+                TuningRow(label: "Opacity", value: $config.logoOpacity, range: 0...1)
+            }
+
+            StickySection(title: "SwiftUI Blend Mode", onReset: resetBlendMode) {
+                TuningPickerRow(
+                    label: "Blend Mode",
+                    selection: $config.logoSwiftUIBlendMode,
+                    options: [
+                        ("Normal", 0),
+                        ("Plus Lighter", 1),
+                        ("Soft Light", 2),
+                        ("Overlay", 3),
+                        ("Screen", 4),
+                        ("Multiply", 5),
+                        ("Difference", 6),
+                        ("Color Dodge", 7),
+                        ("Hard Light", 8),
+                        ("Luminosity", 9)
+                    ]
+                )
+            }
+
+            StickySection(title: "Vibrancy (NSVisualEffectView)", onReset: resetVibrancy) {
+                TuningToggleRow(label: "Use Vibrancy", isOn: $config.logoUseVibrancy)
+
+                if config.logoUseVibrancy {
+                    TuningPickerRow(
+                        label: "Material",
+                        selection: $config.logoMaterialType,
+                        options: [
+                            ("HUD Window", 0),
+                            ("Popover", 1),
+                            ("Menu", 2),
+                            ("Sidebar", 3),
+                            ("Full Screen UI", 4)
+                        ]
+                    )
+
+                    TuningPickerRow(
+                        label: "Blending Mode",
+                        selection: $config.logoBlendingMode,
+                        options: [
+                            ("Behind Window", 0),
+                            ("Within Window", 1)
+                        ]
+                    )
+
+                    TuningToggleRow(label: "Emphasized", isOn: $config.logoEmphasized)
+                    TuningToggleRow(label: "Force Dark", isOn: $config.logoForceDarkAppearance)
+                }
+            }
+        })
+    }
+
+    private func resetSizeOpacity() {
+        config.logoScale = 0.90
+        config.logoOpacity = 1.0
+    }
+
+    private func resetBlendMode() {
+        config.logoSwiftUIBlendMode = 2
+    }
+
+    private func resetVibrancy() {
+        config.logoUseVibrancy = true
+        config.logoMaterialType = 0
+        config.logoBlendingMode = 1
+        config.logoEmphasized = false
+        config.logoForceDarkAppearance = true
     }
 }
 

@@ -20,8 +20,7 @@ let package = Package(
     ],
     dependencies: [
         .package(url: "https://github.com/daprice/Variablur.git", from: "1.0.0"),
-        .package(url: "https://github.com/sparkle-project/Sparkle.git", from: "2.6.0"),
-        .package(url: "https://github.com/schwa/MetalCompilerPlugin.git", branch: "main")
+        .package(url: "https://github.com/sparkle-project/Sparkle.git", from: "2.6.0")
     ],
     targets: [
         // System library wrapper for the Rust FFI
@@ -40,14 +39,12 @@ let package = Package(
             path: "Sources/Capacitor",
             resources: [
                 .process("Resources/Assets.xcassets"),
-                .process("Resources/logomark.pdf")
+                .process("Resources/logomark.pdf"),
+                .process("Resources/logo.pdf")
             ],
             linkerSettings: [
                 .linkedLibrary("hud_core"),
                 .unsafeFlags(["-L", "../../target/release"])
-            ],
-            plugins: [
-                .plugin(name: "MetalCompilerPlugin", package: "MetalCompilerPlugin")
             ]
         ),
         // Unit tests
