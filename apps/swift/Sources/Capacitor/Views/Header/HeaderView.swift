@@ -16,14 +16,14 @@ struct HeaderView: View {
         VStack(spacing: 0) {
             // Header content
             HStack {
-                // Keep BackButton in hierarchy but control visibility via opacity
-                // This prevents layout thrashing that can cause Auto Layout recursion crashes
-                BackButton(title: "Projects") {
-                    appState.showProjectList()
+                // Show BackButton only when not on list view
+                // Use conditional to avoid dead zones from invisible views blocking window drag
+                if !isOnListView {
+                    BackButton(title: "Projects") {
+                        appState.showProjectList()
+                    }
+                    .transition(.opacity.animation(.easeInOut(duration: 0.15)))
                 }
-                .opacity(isOnListView ? 0 : 1)
-                .animation(.easeInOut(duration: 0.15), value: isOnListView)
-                .allowsHitTesting(!isOnListView)
 
                 Spacer()
 
@@ -34,20 +34,12 @@ struct HeaderView: View {
             .padding(.bottom, 6)
             .background {
                 if floatingMode {
-                    // Double-click area for window compact cycling
-                    Color.clear
-                        .contentShape(Rectangle())
-                        .onTapGesture(count: 2) {
-                            WindowFrameStore.shared.cycleCompactState()
-                        }
-                        .background(
-                            VibrancyView(
-                                material: .hudWindow,
-                                blendingMode: .behindWindow,
-                                isEmphasized: false,
-                                forceDarkAppearance: true
-                            )
-                        )
+                    VibrancyView(
+                        material: .hudWindow,
+                        blendingMode: .behindWindow,
+                        isEmphasized: false,
+                        forceDarkAppearance: true
+                    )
                 } else {
                     Color.hudBackground
                 }

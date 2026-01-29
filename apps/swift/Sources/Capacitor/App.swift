@@ -67,6 +67,12 @@ struct CapacitorApp: App {
         .commands {
             CommandGroup(replacing: .newItem) { }
 
+            CommandGroup(replacing: .appInfo) {
+                Button("About Capacitor") {
+                    appDelegate.showAboutPanel()
+                }
+            }
+
             CommandGroup(after: .appInfo) {
                 if updaterController.isAvailable {
                     Button("Check for Updates...") {
@@ -340,6 +346,33 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         validateHookSetup()
     }
 
+    /// Shows a custom About panel with the Capacitor logomark and version info
+    @objc func showAboutPanel() {
+        let capacitorGreen = NSColor(red: 0x67/255.0, green: 0xFC/255.0, blue: 0x94/255.0, alpha: 1.0)
+
+        // Load logomark from resource bundle (same approach as WelcomeView)
+        var aboutIcon: NSImage?
+        if let logomarkURL = ResourceBundle.url(forResource: "logomark", withExtension: "pdf"),
+           let logomark = NSImage(contentsOf: logomarkURL) {
+            aboutIcon = logomark.tinted(with: capacitorGreen, size: NSSize(width: 48, height: 48))
+        }
+
+        // Get version - use hardcoded value since SPM debug builds don't have correct Info.plist
+        // This matches the version in Cargo.toml
+        let version = "0.1.26"
+
+        var options: [NSApplication.AboutPanelOptionKey: Any] = [
+            .applicationName: "Capacitor",
+            .applicationVersion: version,
+        ]
+
+        if let icon = aboutIcon {
+            options[.applicationIcon] = icon
+        }
+
+        NSApp.orderFrontStandardAboutPanel(options: options)
+    }
+
     private func validateHookSetup() {
         guard let engine = try? HudEngine() else { return }
 
@@ -398,6 +431,29 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         if let window = NSApp.windows.first {
             window.makeKeyAndOrderFront(nil)
         }
+    }
+}
+
+// MARK: - NSImage Tinting Extension
+
+extension NSImage {
+    /// Creates a new image tinted with the specified color at the given size
+    func tinted(with color: NSColor, size: NSSize) -> NSImage {
+        let image = NSImage(size: size)
+        image.lockFocus()
+
+        let rect = NSRect(origin: .zero, size: size)
+
+        // Draw the original image first
+        self.draw(in: rect, from: .zero, operation: .copy, fraction: 1.0)
+
+        // Apply tint color using sourceAtop (colors only where image has content)
+        color.set()
+        rect.fill(using: .sourceAtop)
+
+        image.unlockFocus()
+        image.isTemplate = false
+        return image
     }
 }
 

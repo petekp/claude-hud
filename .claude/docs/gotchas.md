@@ -63,6 +63,62 @@ Then capture with: `./Capacitor 2> /tmp/telemetry.log &`
 
 **Note:** Remove telemetry helpers before committing—they're for debugging only.
 
+### NSImage Tinting Compositing Order
+
+When tinting an NSImage with a color, the compositing order matters:
+
+**Wrong:** Fill color first, then draw image
+```swift
+color.set()
+rect.fill(using: .destinationIn)  // ❌ Results in blank image
+self.draw(in: rect, ...)
+```
+
+**Right:** Draw image first with `.copy`, then apply color with `.sourceAtop`
+```swift
+self.draw(in: rect, from: .zero, operation: .copy, fraction: 1.0)
+color.set()
+rect.fill(using: .sourceAtop)  // ✅ Colors only where image has content
+```
+
+The `.sourceAtop` operation applies color only to non-transparent pixels of the already-drawn image.
+
+### SwiftUI Hit Testing: Conditional Rendering vs Hidden Views
+
+Using `opacity(0)` with `allowsHitTesting(false)` still creates dead zones that block window dragging:
+
+**Wrong:**
+```swift
+BackButton()
+    .opacity(isOnListView ? 0 : 1)
+    .allowsHitTesting(!isOnListView)  // ❌ Still blocks window drag
+```
+
+**Right:**
+```swift
+if !isOnListView {
+    BackButton()  // ✅ Completely removed from view hierarchy
+}
+```
+
+**Why:** Even with hit testing disabled, invisible views can interfere with `NSWindow.isMovableByWindowBackground`. Use conditional rendering to fully remove views from the hierarchy.
+
+### SwiftUI Gestures Block NSView Events
+
+SwiftUI's `onTapGesture(count: 2)` intercepts the underlying `mouseDown` events, preventing `NSWindow.performDrag(with:)` from working:
+
+**Problem:** Adding double-click gesture to header breaks window dragging
+```swift
+.onTapGesture(count: 2) {
+    // This intercepts mouseDown, breaking window drag
+}
+```
+
+**Solutions:**
+1. Use `NSViewRepresentable` with `mouseDown` that checks `event.clickCount`
+2. Remove the gesture if window dragging is more important
+3. Apply gesture only to specific non-draggable areas
+
 ### Never Use Bundle.module
 Use `ResourceBundle.url(forResource:withExtension:)` instead—crashes in distributed builds.
 

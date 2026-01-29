@@ -1,19 +1,68 @@
 # Agent Changelog
 
 > This file helps coding agents understand project evolution, key decisions,
-> and deprecated patterns. Updated: 2026-01-29 (UI polish: progressive blur, resize handles)
+> and deprecated patterns. Updated: 2026-01-29 (v0.1.26: simplified window behavior, About panel)
 
 ## Current State Summary
 
-Capacitor is a native macOS SwiftUI app (Apple Silicon, macOS 14+) that acts as a sidecar dashboard for Claude Code. The architecture uses a Rust core (`hud-core`) with UniFFI bindings to Swift. State tracking relies on Claude Code hooks that write to `~/.capacitor/`, with session-based locks (`{session_id}-{pid}.lock`) as the authoritative signal for active sessions. Shell integration provides ambient project awareness via precmd hooks. Hooks run asynchronously to avoid blocking Claude Code execution. All file I/O uses `fs_err` for enriched error messages, and structured logging via `tracing` writes to `~/.capacitor/hud-hook-debug.{date}.log`. **Terminal activation now uses Rust-only path:** The legacy Swift decision logic was removed (~277 lines); Rust decides (`activation.rs`), Swift executes (macOS APIs). **Terminal activation fully hardened and validated:** v0.1.25 plus two post-release fixes—stale TTY query (`TerminalLauncher.swift`) and HOME exclusion from path matching (`activation.rs`). Test matrix validated 15+ scenarios. **Bulletproof Hooks complete:** Phase 4 Test Hooks button added for manual verification. **Audit complete:** A comprehensive 12-session side-effects analysis validated all major subsystems. **UI polish:** Progressive blur gradient masks on header/footer, larger resize handles for floating mode.
+Capacitor is a native macOS SwiftUI app (Apple Silicon, macOS 14+) that acts as a sidecar dashboard for Claude Code. The architecture uses a Rust core (`hud-core`) with UniFFI bindings to Swift. State tracking relies on Claude Code hooks that write to `~/.capacitor/`, with session-based locks (`{session_id}-{pid}.lock`) as the authoritative signal for active sessions. Shell integration provides ambient project awareness via precmd hooks. Hooks run asynchronously to avoid blocking Claude Code execution. All file I/O uses `fs_err` for enriched error messages, and structured logging via `tracing` writes to `~/.capacitor/hud-hook-debug.{date}.log`. **Terminal activation now uses Rust-only path:** The legacy Swift decision logic was removed (~277 lines); Rust decides (`activation.rs`), Swift executes (macOS APIs). **Terminal activation fully hardened and validated:** v0.1.25 plus two post-release fixes—stale TTY query (`TerminalLauncher.swift`) and HOME exclusion from path matching (`activation.rs`). Test matrix validated 15+ scenarios. **Bulletproof Hooks complete:** Phase 4 Test Hooks button added for manual verification. **Audit complete:** A comprehensive 12-session side-effects analysis validated all major subsystems. **UI polish:** Progressive blur gradient masks on header/footer. **v0.1.26:** Removed custom resize handles (use default macOS behavior), added custom About panel with tinted logomark.
 
 ## Stale Information Detected
 
-None currently. Last audit: 2026-01-28 (post v0.1.25 hardening).
+None currently. Last audit: 2026-01-29 (v0.1.26 release).
 
 ## Timeline
 
-### 2026-01-29 — UI Polish: Progressive Blur and Resize Handles
+### 2026-01-29 — v0.1.26: Simplified Window Behavior and About Panel
+
+**What changed:**
+
+1. **Removed custom WindowResizeHandles** (commit `377586e`)
+   - Deleted `WindowResizeHandles.swift` (~237 lines)
+   - Window now uses default `isMovableByWindowBackground = true` behavior
+   - Custom resize handles caused conflicts with window dragging (dual drag/resize on edges, cursor flickering)
+   - Default macOS behavior is simpler and more reliable
+
+2. **Fixed header dead zones** (`HeaderView.swift`)
+   - Changed BackButton from `opacity(0)` + `allowsHitTesting(false)` to conditional rendering (`if !isOnListView`)
+   - Invisible views still block `NSWindow.isMovableByWindowBackground` even with hit testing disabled
+   - Removed `onTapGesture(count: 2)` that blocked window dragging
+
+3. **Custom About panel** (`App.swift`)
+   - Added `showAboutPanel()` method to AppDelegate with tinted Capacitor logomark (#67FC94)
+   - Uses `ResourceBundle.url(forResource:)` for SPM resource loading (not `NSImage(named:)`)
+   - Added `NSImage.tinted(with:size:)` extension for compositing
+   - Icon rendered at 48×48 pixels
+
+4. **New gotchas documented** (`.claude/docs/gotchas.md`)
+   - NSImage tinting compositing order: draw image with `.copy` first, then fill color with `.sourceAtop`
+   - SwiftUI hit testing: use conditional rendering, not `opacity(0) + allowsHitTesting(false)`
+   - SwiftUI gestures block NSView events: `onTapGesture(count: 2)` intercepts `mouseDown`
+
+**Why:**
+- Custom resize handles were over-engineered; default macOS behavior works well for floating windows
+- SwiftUI's hit testing model has subtle behaviors that can break window dragging
+- Users expected a custom About panel with the app's branding
+
+**Agent impact:**
+- **Do not re-add custom window resize handles** — use `isMovableByWindowBackground = true`
+- For hiding views that shouldn't block events, use conditional `if` statements, not `opacity(0)`
+- Avoid `onTapGesture` on draggable areas; use `NSViewRepresentable` if double-click needed
+- For resource loading in SPM builds, use `ResourceBundle.url(forResource:withExtension:)`
+- NSImage tinting: compositing order matters — draw first, then fill
+
+**Files changed:**
+- `Views/Components/WindowResizeHandles.swift` (DELETED)
+- `Views/Header/HeaderView.swift` (conditional rendering, removed double-click gesture)
+- `ContentView.swift` (removed resize handles overlay)
+- `App.swift` (About panel, NSImage tinting extension)
+- `.claude/docs/gotchas.md` (3 new sections)
+
+**Commits:** `377586e` (resize handles removal), others pending commit
+
+---
+
+### 2026-01-29 — UI Polish: Progressive Blur (kept) and Header/Footer Padding
 
 **What changed:**
 
@@ -23,34 +72,23 @@ None currently. Last audit: 2026-01-28 (post v0.1.25 hardening).
    - Applied to header (fades down) and footer (fades up) with 30pt zones
    - Uses standard vibrancy without additional glass overlays (kept simple after testing alternatives)
 
-2. **WindowResizeHandles component** (`Views/Components/WindowResizeHandles.swift`)
-   - Custom NSViewRepresentable that adds invisible 10pt hit zones around window edges
-   - 15pt corners for diagonal resize
-   - Handles full drag-to-resize loop manually (floating mode removes `.titled` styleMask)
-   - Shows appropriate resize cursors (↔ for sides, ↕ for top/bottom)
-   - Respects window min/max size constraints
-
-3. **Header/footer padding reduction** (~25%)
+2. **Header/footer padding reduction** (~25%)
    - Header: top padding 12→9 (floating) / 8→6 (docked), bottom 8→6
    - Footer: vertical padding 8→6, bottom extra 8→6
    - Tighter, more compact appearance
 
 **Why:**
 - Progressive blur: Smooth visual transition where content meets navigation bars (masking scrolling content)
-- Resize handles: Floating windows without title bars have nearly invisible resize edges (~2px); users couldn't grab them
 - Padding reduction: Overall tighter/denser UI feel
 
 **Agent impact:**
 - `ProgressiveBlurView` is reusable—use `.progressiveBlur(edge:height:)` modifier on any view
-- Resize handles only enabled in floating mode (docked mode has standard window chrome)
 - Header/footer heights are now more compact—keep this in mind for layout calculations
 
 **Files changed:**
 - `Views/Components/ProgressiveBlurView.swift` (new)
-- `Views/Components/WindowResizeHandles.swift` (new)
 - `Views/Header/HeaderView.swift` (progressive blur + padding)
 - `Views/Footer/FooterView.swift` (progressive blur + padding)
-- `ContentView.swift` (resize handles overlay)
 
 ---
 
@@ -858,6 +896,11 @@ Fixed terminal activation to check shell-cwd.json BEFORE tmux sessions.
 
 | Don't | Do Instead | Deprecated Since |
 |-------|------------|------------------|
+| Use custom WindowResizeHandles overlay | Use `isMovableByWindowBackground = true` (default macOS behavior) | 2026-01-29 |
+| Use `opacity(0)` + `allowsHitTesting(false)` to hide views | Use conditional `if` statement to remove from view hierarchy | 2026-01-29 |
+| Use `onTapGesture(count: 2)` on draggable areas | Use `NSViewRepresentable` with `mouseDown` and `event.clickCount` | 2026-01-29 |
+| Fill color first then draw image for tinting | Draw image with `.copy`, then fill color with `.sourceAtop` | 2026-01-29 |
+| Use `NSImage(named:)` in SPM builds | Use `ResourceBundle.url(forResource:withExtension:)` | 2026-01-29 |
 | Use shell record's `tmux_client_tty` directly for TTY discovery | Query fresh TTY via `getCurrentTmuxClientTty()` at activation time | 2026-01-28 |
 | Allow HOME to match project paths via parent matching | Use `paths_match_excluding_home()` which excludes HOME from parent matching | 2026-01-28 |
 | Check if client attached to *specific* tmux session | Check if *any* tmux client exists (`hasTmuxClientAttached()`) | 2026-01-28 |
