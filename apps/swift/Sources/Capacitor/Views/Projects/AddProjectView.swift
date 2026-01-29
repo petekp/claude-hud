@@ -173,7 +173,7 @@ struct AddProjectView: View {
     private func validationTitle(for result: ValidationResultFfi) -> String {
         switch result.resultType {
         case "valid":
-            return result.hasClaudeMd ? "Ready to Add" : "Valid Project"
+            return result.hasClaudeMd ? "Ready to Connect" : "Valid Project"
         case "suggest_parent":
             return "Did You Mean...?"
         case "missing_claude_md":
@@ -185,7 +185,7 @@ struct AddProjectView: View {
         case "dangerous_path":
             return "Path Too Broad"
         case "already_tracked":
-            return "Already Tracked"
+            return "Already Connected"
         default:
             return "Validation Result"
         }
@@ -196,7 +196,7 @@ struct AddProjectView: View {
         HStack(spacing: 12) {
             switch result.resultType {
             case "valid":
-                Button("Add Project") {
+                Button("Connect Project") {
                     addProjectAndReturn(result.path)
                 }
                 .buttonStyle(ValidationPrimaryButtonStyle())
@@ -224,14 +224,14 @@ struct AddProjectView: View {
 
             case "missing_claude_md":
                 VStack(spacing: 8) {
-                    Button("Create CLAUDE.md & Add") {
+                    Button("Create CLAUDE.md & Connect") {
                         if appState.createClaudeMd(for: result.path) {
                             addProjectAndReturn(result.path)
                         }
                     }
                     .buttonStyle(ValidationPrimaryButtonStyle())
 
-                    Button("Add Without CLAUDE.md") {
+                    Button("Connect Without CLAUDE.md") {
                         addProjectAndReturn(result.path)
                     }
                     .buttonStyle(ValidationSecondaryButtonStyle())
@@ -239,7 +239,7 @@ struct AddProjectView: View {
 
             case "not_a_project":
                 VStack(spacing: 8) {
-                    Button("Create CLAUDE.md & Add") {
+                    Button("Create CLAUDE.md & Connect") {
                         if appState.createClaudeMd(for: result.path) {
                             addProjectAndReturn(result.path)
                         }
@@ -260,10 +260,18 @@ struct AddProjectView: View {
 
             case "already_tracked":
                 VStack(spacing: 8) {
-                    Button("Go to Project") {
-                        goToExistingProject(path: result.path)
+                    // If paused, offer to move to In Progress; otherwise go to project
+                    if appState.manuallyDormant.contains(result.path) {
+                        Button("Move to In Progress") {
+                            moveToInProgressAndReturn(path: result.path)
+                        }
+                        .buttonStyle(ValidationPrimaryButtonStyle())
+                    } else {
+                        Button("Go to Project") {
+                            goToExistingProject(path: result.path)
+                        }
+                        .buttonStyle(ValidationPrimaryButtonStyle())
                     }
-                    .buttonStyle(ValidationPrimaryButtonStyle())
 
                     Button("Choose Different Folder") {
                         resetValidation()
@@ -290,7 +298,7 @@ struct AddProjectView: View {
         panel.canChooseFiles = false
         panel.canChooseDirectories = true
         panel.allowsMultipleSelection = false
-        panel.message = "Select a project folder to add"
+        panel.message = "Select a project folder to connect"
         panel.prompt = "Select"
 
         if panel.runModal() == .OK, let url = panel.url {
@@ -346,6 +354,13 @@ struct AddProjectView: View {
         } else {
             appState.showProjectList()
         }
+    }
+
+    private func moveToInProgressAndReturn(path: String) {
+        withAnimation(.spring(response: 0.4, dampingFraction: 0.75)) {
+            appState.manuallyDormant.remove(path)
+        }
+        appState.showProjectList()
     }
 
     private func displayPath(_ path: String) -> String {

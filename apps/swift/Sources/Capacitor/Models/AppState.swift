@@ -299,7 +299,15 @@ class AppState: ObservableObject {
             pendingDragDropTip = true
             toast = ToastMessage("Connected \(url.lastPathComponent)")
         case "already_tracked":
-            toast = ToastMessage("\(url.lastPathComponent) already connected", isError: false)
+            // If paused, move to In Progress; otherwise just acknowledge
+            if manuallyDormant.contains(result.path) {
+                _ = withAnimation(.spring(response: 0.4, dampingFraction: 0.75)) {
+                    manuallyDormant.remove(result.path)
+                }
+                toast = ToastMessage("Moved \(url.lastPathComponent) to In Progress")
+            } else {
+                toast = ToastMessage("\(url.lastPathComponent) already in progress", isError: false)
+            }
         case "dangerous_path":
             toast = ToastMessage("Path too broad to track", isError: true)
         case "path_not_found":
@@ -309,10 +317,10 @@ class AppState: ObservableObject {
         }
     }
 
-    /// Adds multiple projects from a drag-and-drop operation.
+    /// Connects multiple projects from a drag-and-drop operation.
     ///
     /// Toast priority: errors first, then success. For mixed results, shows
-    /// "project-a, project-b and X more failed (Y added)" to surface failures
+    /// "project-a, project-b and X more failed (Y connected)" to surface failures
     /// prominently while still acknowledging successes.
     ///
     /// Already-tracked projects are silently moved from Paused to In Progress
@@ -391,7 +399,7 @@ class AppState: ObservableObject {
                 if !finalFailedNames.isEmpty {
                     let message = Self.formatMixedResultsToast(
                         failedNames: finalFailedNames,
-                        addedCount: finalAddedCount
+                        connectedCount: finalAddedCount
                     )
                     self.toast = .error(message)
                 } else if finalAddedCount == 0 {
@@ -408,8 +416,8 @@ class AppState: ObservableObject {
     }
 
     /// Formats a mixed results toast with truncation.
-    /// Examples: "project-a failed (2 added)", "project-a, project-b and 3 more failed (1 added)"
-    private static func formatMixedResultsToast(failedNames: [String], addedCount: Int) -> String {
+    /// Examples: "project-a failed (2 connected)", "project-a, project-b and 3 more failed (1 connected)"
+    private static func formatMixedResultsToast(failedNames: [String], connectedCount: Int) -> String {
         let failedCount = failedNames.count
 
         // Build the failed portion with truncation (max 2 names shown)
@@ -423,9 +431,9 @@ class AppState: ObservableObject {
             failedPortion = "\(failedNames[0]), \(failedNames[1]) and \(remainder) more failed"
         }
 
-        // Add success suffix if any were added
-        if addedCount > 0 {
-            return "\(failedPortion) (\(addedCount) added)"
+        // Add success suffix if any were connected
+        if connectedCount > 0 {
+            return "\(failedPortion) (\(connectedCount) connected)"
         } else {
             return failedPortion
         }

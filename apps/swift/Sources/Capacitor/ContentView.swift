@@ -51,7 +51,7 @@ struct ContentView: View {
 
                 TipTooltipContainer(
                     showTip: $showDragDropTip,
-                    message: "Tip: Drag folders anywhere to add faster"
+                    message: "Tip: Drag folders anywhere to connect faster"
                 )
 
                 if isDragHovered {
@@ -137,7 +137,7 @@ struct ContentView: View {
                     .font(.system(size: 40, weight: .light))
                     .foregroundColor(.hudAccent.opacity(0.8))
 
-                Text("Drop to add projects")
+                Text("Drop to connect projects")
                     .font(.system(size: 14, weight: .medium))
                     .foregroundColor(.white.opacity(0.8))
             }

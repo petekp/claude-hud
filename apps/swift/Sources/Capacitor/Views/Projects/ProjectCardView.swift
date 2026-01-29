@@ -177,6 +177,7 @@ struct ProjectCardView: View {
                 onDetails: onInfoTap
             )
         }
+        .frame(minHeight: 40) // Match action button height for consistent card sizing
         .padding(.horizontal, glassConfig.cardPaddingH)
         .padding(.vertical, glassConfig.cardPaddingV)
         .animation(.spring(response: 0.4, dampingFraction: 0.8), value: projectStatus?.blocker)
