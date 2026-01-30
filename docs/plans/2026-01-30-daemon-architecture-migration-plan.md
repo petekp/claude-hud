@@ -87,7 +87,11 @@ A **local daemon** is the **only writer** of state. Hooks and the Swift app beco
 
 - `Event.SessionStart`
 - `Event.UserPromptSubmit`
+- `Event.PreToolUse`
 - `Event.PostToolUse`
+- `Event.PermissionRequest`
+- `Event.PreCompact`
+- `Event.Notification`
 - `Event.SessionEnd`
 - `Event.Stop`
 - `Event.ShellCwd`
@@ -208,6 +212,7 @@ A **local daemon** is the **only writer** of state. Hooks and the Swift app beco
 - Centralize PID+proc_started logic in daemon.
 - Deprecate lock directories or keep as compatibility shim only.
 - Add `process_liveness` table and update per incoming event.
+- Expose `get_process_liveness` query for daemon-first PID identity checks.
 
 ### Phase 5 — Launchd + Reliability (2–4 days)
 
