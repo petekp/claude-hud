@@ -4,7 +4,7 @@
 //! intentionally small in Phase 3: an append-only events table and a
 //! materialized shell_state table for fast reads.
 
-use capacitor_daemon_protocol::EventEnvelope;
+use capacitor_daemon_protocol::{EventEnvelope, EventType};
 use rusqlite::{params, Connection, OpenFlags};
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -123,16 +123,21 @@ impl Db {
     pub fn rebuild_shell_state_from_events(&self) -> Result<ShellState, String> {
         self.with_connection(|conn| {
             let by_pid: HashMap<i64, ShellEntry> = {
+                let shell_type = serde_json::to_string(&EventType::ShellCwd)
+                    .unwrap_or_else(|_| "shell_cwd".to_string())
+                    .trim_matches('"')
+                    .to_string();
+
                 let mut stmt = conn
                     .prepare(
                         "SELECT payload FROM events \
-                         WHERE event_type = ?1 \
-                         ORDER BY rowid ASC",
+                     WHERE event_type = ?1 \
+                     ORDER BY rowid ASC",
                     )
                     .map_err(|err| format!("Failed to prepare events replay query: {}", err))?;
 
                 let rows = stmt
-                    .query_map(params!["ShellCwd"], |row| row.get::<_, String>(0))
+                    .query_map(params![shell_type], |row| row.get::<_, String>(0))
                     .map_err(|err| format!("Failed to read event payloads: {}", err))?;
 
                 let mut by_pid: HashMap<i64, ShellEntry> = HashMap::new();
@@ -262,5 +267,89 @@ impl Db {
             .map_err(|err| format!("Failed to set busy_timeout: {}", err))?;
 
         Ok(conn)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use capacitor_daemon_protocol::{EventEnvelope, EventType};
+
+    fn shell_event(
+        event_id: &str,
+        pid: u32,
+        cwd: &str,
+        tty: &str,
+        recorded_at: &str,
+    ) -> EventEnvelope {
+        EventEnvelope {
+            event_id: event_id.to_string(),
+            recorded_at: recorded_at.to_string(),
+            event_type: EventType::ShellCwd,
+            session_id: None,
+            pid: Some(pid),
+            cwd: Some(cwd.to_string()),
+            tool: None,
+            file_path: None,
+            parent_app: Some("Terminal".to_string()),
+            tty: Some(tty.to_string()),
+            tmux_session: None,
+            tmux_client_tty: None,
+            notification_type: None,
+            stop_hook_active: None,
+            metadata: None,
+        }
+    }
+
+    #[test]
+    fn rebuilds_shell_state_from_events() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let db_path = temp_dir.path().join("state.db");
+        let db = Db::new(db_path).expect("db init");
+
+        db.insert_event(&shell_event(
+            "evt-1",
+            123,
+            "/repo",
+            "/dev/ttys001",
+            "2026-01-30T00:00:00Z",
+        ))
+        .expect("insert evt-1");
+        db.insert_event(&shell_event(
+            "evt-2",
+            123,
+            "/repo/app",
+            "/dev/ttys001",
+            "2026-01-30T00:01:00Z",
+        ))
+        .expect("insert evt-2");
+        db.insert_event(&shell_event(
+            "evt-3",
+            456,
+            "/repo/cli",
+            "/dev/ttys002",
+            "2026-01-30T00:02:00Z",
+        ))
+        .expect("insert evt-3");
+
+        let state = db
+            .rebuild_shell_state_from_events()
+            .expect("rebuild shell state");
+
+        assert_eq!(state.shells.len(), 2);
+        let first = state.shells.get("123").expect("pid 123");
+        assert_eq!(first.cwd, "/repo/app");
+        assert_eq!(first.tty, "/dev/ttys001");
+        assert_eq!(first.updated_at, "2026-01-30T00:01:00Z");
+
+        let second = state.shells.get("456").expect("pid 456");
+        assert_eq!(second.cwd, "/repo/cli");
+        assert_eq!(second.tty, "/dev/ttys002");
+        assert_eq!(second.updated_at, "2026-01-30T00:02:00Z");
+
+        let loaded = db.load_shell_state().expect("load shell state");
+        assert_eq!(loaded.shells.len(), 2);
+        assert_eq!(loaded.shells.get("123").unwrap().cwd, "/repo/app");
+        assert_eq!(loaded.shells.get("456").unwrap().cwd, "/repo/cli");
     }
 }
