@@ -16,7 +16,7 @@
 //! 3. When PID exits: release this session's lock (remove directory)
 
 use fs_err as fs;
-use hud_core::state::{is_pid_alive, release_lock_by_session};
+use hud_core::state::{is_pid_alive_verified, release_lock_by_session};
 use std::path::Path;
 use std::thread;
 use std::time::{Duration, Instant};
@@ -31,7 +31,8 @@ pub fn run(session_id: &str, cwd: &str, pid: u32, lock_dir: &Path) {
 
     // Monitor the PID until it exits, tracking whether it actually died
     let pid_exited = loop {
-        if !is_pid_alive(pid) {
+        let proc_started = read_lock_proc_started(lock_dir);
+        if !is_pid_alive_verified(pid, proc_started) {
             break true; // PID actually exited
         }
 
@@ -115,4 +116,11 @@ fn read_lock_pid(lock_dir: &Path) -> Option<u32> {
     let pid_path = lock_dir.join("pid");
     let pid_str = fs::read_to_string(pid_path).ok()?;
     pid_str.trim().parse().ok()
+}
+
+fn read_lock_proc_started(lock_dir: &Path) -> Option<u64> {
+    let meta_path = lock_dir.join("meta.json");
+    let meta_str = fs::read_to_string(meta_path).ok()?;
+    let meta: serde_json::Value = serde_json::from_str(&meta_str).ok()?;
+    meta.get("proc_started").and_then(|value| value.as_u64())
 }
