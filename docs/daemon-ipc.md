@@ -25,7 +25,7 @@ The daemon is the **single writer** for state. Clients send events and read stat
 
 ### Fields
 - `protocol_version` (required): must be `1`
-- `method` (required): `get_health` or `event`
+- `method` (required): `get_health`, `get_shell_state`, or `event`
 - `id` (optional): echoed back in responses
 - `params` (optional): method-specific payload
 
@@ -63,6 +63,29 @@ Response data:
   "pid": 12345,
   "version": "0.1.27",
   "protocol_version": 1
+}
+```
+
+### `get_shell_state`
+
+Returns the latest shell CWD state tracked by daemon events. The payload matches
+`~/.capacitor/shell-cwd.json`.
+
+Response data:
+
+```json
+{
+  "version": 1,
+  "shells": {
+    "1234": {
+      "cwd": "/Users/pete/Code/project",
+      "tty": "/dev/ttys003",
+      "parent_app": "tmux",
+      "tmux_session": "dev",
+      "tmux_client_tty": "/dev/ttys004",
+      "updated_at": "2026-01-30T12:00:00Z"
+    }
+  }
 }
 ```
 

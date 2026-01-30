@@ -8,6 +8,7 @@ use fs_err as fs;
 use std::io::{Read, Write};
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
 use tracing::{error, info, warn};
@@ -16,6 +17,10 @@ use tracing_subscriber::EnvFilter;
 use capacitor_daemon_protocol::{
     parse_event, ErrorInfo, Method, Request, Response, MAX_REQUEST_BYTES, PROTOCOL_VERSION,
 };
+
+mod state;
+
+use state::SharedState;
 
 const SOCKET_NAME: &str = "daemon.sock";
 const READ_TIMEOUT_SECS: u64 = 2;
@@ -52,10 +57,13 @@ fn main() {
 
     info!(path = %socket_path.display(), "Capacitor daemon started");
 
+    let shared_state = Arc::new(SharedState::default());
+
     for stream in listener.incoming() {
         match stream {
             Ok(stream) => {
-                thread::spawn(|| handle_connection(stream));
+                let state = Arc::clone(&shared_state);
+                thread::spawn(|| handle_connection(stream, state));
             }
             Err(err) => {
                 warn!(error = %err, "Failed to accept daemon connection");
@@ -89,7 +97,7 @@ fn remove_existing_socket(socket_path: &Path) -> Result<(), String> {
     Ok(())
 }
 
-fn handle_connection(mut stream: UnixStream) {
+fn handle_connection(mut stream: UnixStream, state: Arc<SharedState>) {
     let request = match read_request(&mut stream) {
         Ok(request) => request,
         Err(err) => {
@@ -99,7 +107,7 @@ fn handle_connection(mut stream: UnixStream) {
         }
     };
 
-    let response = handle_request(request);
+    let response = handle_request(request, state);
     let _ = write_response(&mut stream, response);
 }
 
@@ -166,7 +174,7 @@ fn read_request(stream: &mut UnixStream) -> Result<Request, ErrorInfo> {
     })
 }
 
-fn handle_request(request: Request) -> Response {
+fn handle_request(request: Request, state: Arc<SharedState>) -> Response {
     if request.protocol_version != PROTOCOL_VERSION {
         return Response::error(
             request.id,
@@ -185,11 +193,22 @@ fn handle_request(request: Request) -> Response {
             });
             Response::ok(request.id, data)
         }
-        Method::Event => handle_event(request),
+        Method::GetShellState => {
+            let snapshot = state.shell_state_snapshot();
+            match serde_json::to_value(snapshot) {
+                Ok(value) => Response::ok(request.id, value),
+                Err(err) => Response::error(
+                    request.id,
+                    "serialization_error",
+                    format!("Failed to serialize shell state: {}", err),
+                ),
+            }
+        }
+        Method::Event => handle_event(request, state),
     }
 }
 
-fn handle_event(request: Request) -> Response {
+fn handle_event(request: Request, state: Arc<SharedState>) -> Response {
     let params = match request.params {
         Some(params) => params,
         None => return Response::error(request.id, "invalid_params", "event payload is required"),
@@ -206,6 +225,8 @@ fn handle_event(request: Request) -> Response {
         pid = ?event.pid,
         "Received event"
     );
+
+    state.update_from_event(&event);
 
     Response::ok(request.id, serde_json::json!({"accepted": true}))
 }
