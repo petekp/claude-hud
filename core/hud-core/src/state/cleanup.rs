@@ -25,7 +25,7 @@ use std::path::Path;
 
 use chrono::{Duration, Utc};
 
-use super::lock::{is_pid_alive, read_lock_info};
+use super::lock::{is_pid_alive, is_pid_alive_verified, read_lock_info};
 use super::store::StateStore;
 use crate::activity::{ActivityStore, CLEANUP_THRESHOLD};
 
@@ -113,6 +113,13 @@ pub fn cleanup_orphaned_lock_holders() -> CleanupStats {
     }
 
     stats
+}
+
+fn is_lock_pid_alive(info: &super::types::LockInfo) -> bool {
+    match info.proc_started {
+        Some(started) => is_pid_alive_verified(info.pid, Some(started)),
+        None => is_pid_alive(info.pid),
+    }
 }
 
 /// Parses the --pid argument from a lock-holder command line.
@@ -263,7 +270,7 @@ fn cleanup_stale_locks(lock_base: &Path) -> CleanupStats {
         }
 
         let should_remove = match read_lock_info(&path) {
-            Some(info) => !is_pid_alive(info.pid),
+            Some(info) => !is_lock_pid_alive(&info),
             None => true, // Corrupt or unreadable lock — remove it
         };
 
@@ -331,7 +338,7 @@ fn cleanup_legacy_locks(lock_base: &Path) -> CleanupStats {
 
         // Read lock info and check if PID is dead
         let should_remove = match read_lock_info(&path) {
-            Some(info) => !is_pid_alive(info.pid),
+            Some(info) => !is_lock_pid_alive(&info),
             None => true, // Corrupt or unreadable lock — remove it
         };
 
@@ -427,7 +434,7 @@ fn collect_active_session_ids(lock_base: &Path) -> HashSet<String> {
 
         if let Some(info) = read_lock_info(&path) {
             // Only consider alive locks
-            if is_pid_alive(info.pid) {
+            if is_lock_pid_alive(&info) {
                 // For session-based locks, session_id is in meta.json
                 if let Some(sid) = info.session_id {
                     session_ids.insert(sid);

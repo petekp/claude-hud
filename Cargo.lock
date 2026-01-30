@@ -500,6 +500,7 @@ checksum = "2304e00983f87ffb38b55b444b5e3b60a884b5d30c0fca7d82fe33449bbe55ea"
 name = "hud-core"
 version = "0.1.27"
 dependencies = [
+ "capacitor-daemon-protocol",
  "chrono",
  "dirs",
  "fs-err 3.2.2",
