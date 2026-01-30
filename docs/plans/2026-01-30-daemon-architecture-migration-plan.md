@@ -78,7 +78,7 @@ A **local daemon** is the **only writer** of state. Hooks and the Swift app beco
 ### Transport
 
 - Unix Domain Socket at `~/.capacitor/daemon.sock`.
-- Simple JSON-RPC (or length-prefixed JSON) for phase 1.
+- Newline-delimited JSON (one request per line) for phase 1.
 
 ### Message Types
 
@@ -116,11 +116,11 @@ A **local daemon** is the **only writer** of state. Hooks and the Swift app beco
 
 1. `events`
    - id (pk)
-   - ts
-   - type
-   - payload (json)
+   - recorded_at (RFC3339 string)
+   - event_type (snake_case string from protocol serialization)
    - session_id
    - pid
+   - payload (full `EventEnvelope` JSON)
 
 2. `sessions`
    - session_id
@@ -138,7 +138,7 @@ A **local daemon** is the **only writer** of state. Hooks and the Swift app beco
    - tool
    - timestamp
 
-4. `shells`
+4. `shell_state`
    - pid
    - cwd
    - tty
@@ -157,6 +157,8 @@ A **local daemon** is the **only writer** of state. Hooks and the Swift app beco
 - `session_id + pid` is the **unique key** for sessions.
 - Session-level rollups can be computed on query.
 - Activity remains bounded by count/time windows per session.
+- Phase 3 persists only `events` + `shell_state`; other tables are added in later phases.
+- Always derive `event_type` strings using the shared protocol serializer (avoid hardcoding).
 
 ---
 
@@ -192,6 +194,7 @@ A **local daemon** is the **only writer** of state. Hooks and the Swift app beco
 - Replace in-memory state with SQLite WAL.
 - Append to `events` table for replay.
 - Rebuild state on startup if cache tables empty/corrupt.
+- Add replay integration test (event log → rebuilt state).
 
 ### Phase 4 — Liveness + Locks Simplification (2–4 days)
 
@@ -249,6 +252,7 @@ A **local daemon** is the **only writer** of state. Hooks and the Swift app beco
 - Daemon event parsing
 - State transitions per event type
 - SQLite persistence + replay
+- Event log → `shell_state` rebuild (tempfile-backed integration test)
 
 ### Integration Tests
 
@@ -287,18 +291,18 @@ A **local daemon** is the **only writer** of state. Hooks and the Swift app beco
 - Should JSON snapshots be kept forever (debug) or phased out?
 - Should daemon export metrics (Prometheus-style) or just logs?
 - How should event schema evolve without breaking old hooks?
-- Should the daemon seed shell state from disk on startup to avoid empty state after restarts?
+- Do we need any legacy disk seeding now that replay from the event log restores shell state?
 - Do we need an in-app toggle for daemon enablement (GUI apps don’t inherit shell env vars)?
 
 ---
 
 ## 12. Quick Start for Agents
 
-1. Create `core/hud-daemon` with minimal IPC loop.
+1. Create `core/daemon` with minimal IPC loop.
 2. Implement `GetHealth` and `Event.SessionStart`.
 3. Add IPC client in `hud-hook` with fallback.
 4. Add Swift daemon client and read integration.
-5. Enable via `HUD_DAEMON_ENABLED=1` for dev.
+5. Enable via `CAPACITOR_DAEMON_ENABLED=1` for dev.
 
 ---
 
