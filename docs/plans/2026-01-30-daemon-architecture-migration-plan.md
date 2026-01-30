@@ -170,21 +170,24 @@ A **local daemon** is the **only writer** of state. Hooks and the Swift app beco
 
 ### Phase 1 — Daemon MVP (2–4 days)
 
-- Create new crate `core/hud-daemon`.
-- Implement IPC server + in-memory state.
-- Implement `GetHealth` + one read endpoint.
-- Add logging to `~/.capacitor/hud-daemon.log`.
+- Create new crate `core/daemon`.
+- Add shared protocol crate `core/daemon-protocol` to prevent schema drift.
+- Implement IPC server + in-memory state (shell CWD first).
+- Implement `get_health` + `get_shell_state`.
+- Add logging to `~/.capacitor/daemon.log` (or tracing defaults during dev).
 
 ### Phase 2 — Hook Client (3–5 days)
 
 - Add a small IPC client to `hud-hook`.
 - On event: send to daemon; on failure, **fallback to current file writes**.
-- Add env flag `HUD_DAEMON_ENABLED=1` (default off in prod initially).
+- Add env flag `CAPACITOR_DAEMON_ENABLED=1` (default off in prod initially).
+- Allow socket override via `CAPACITOR_DAEMON_SOCKET`.
 
 ### Phase 3 — App Client (3–5 days)
 
-- Add `DaemonClient` in Swift.
+- Add `DaemonClient` in Swift (Unix socket, newline framing, timeout/size limits).
 - App reads daemon state if available, otherwise fallback to JSON.
+- Wire first read path to daemon (`ShellStateStore` → `get_shell_state`).
 - Surface daemon status in Setup/Diagnostics UI.
 
 ### Phase 4 — Transactional Storage (4–7 days)
@@ -216,21 +219,23 @@ A **local daemon** is the **only writer** of state. Hooks and the Swift app beco
 
 ### Repository changes
 
-- Add `core/hud-daemon/` crate
+- Add `core/daemon/` crate
+- Add `core/daemon-protocol/` shared IPC schema crate
 - Update workspace `Cargo.toml`
 - Add logging config for daemon (tracing)
 - Add SQLite dependency (rusqlite or sqlx)
 
 ### Hook changes
 
-- Add IPC client (connect to daemon.sock)
-- Feature flag guard
+- Add IPC client (connect to `~/.capacitor/daemon.sock`)
+- Feature flag guard (`CAPACITOR_DAEMON_ENABLED`)
+- Socket override (`CAPACITOR_DAEMON_SOCKET`)
 - Fallback to file writes on IPC failure
 
 ### Swift changes
 
-- Add `DaemonClient.swift` (socket client)
-- Integrate in `AppState` or `ShellStateStore`
+- Add `DaemonClient.swift` (socket client + response framing)
+- Integrate in `ShellStateStore` (daemon-first, JSON fallback)
 - Add UI status indicator for daemon health
 
 ### Docs
@@ -285,6 +290,8 @@ A **local daemon** is the **only writer** of state. Hooks and the Swift app beco
 - Should JSON snapshots be kept forever (debug) or phased out?
 - Should daemon export metrics (Prometheus-style) or just logs?
 - How should event schema evolve without breaking old hooks?
+- Should the daemon seed shell state from disk on startup to avoid empty state after restarts?
+- Do we need an in-app toggle for daemon enablement (GUI apps don’t inherit shell env vars)?
 
 ---
 
