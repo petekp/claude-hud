@@ -1,17 +1,56 @@
 # Agent Changelog
 
 > This file helps coding agents understand project evolution, key decisions,
-> and deprecated patterns. Updated: 2026-01-29 (v0.1.26: simplified window behavior, About panel)
+> and deprecated patterns. Updated: 2026-01-30 (v0.1.27: hook audit remediation + activation matching parity)
 
 ## Current State Summary
 
-Capacitor is a native macOS SwiftUI app (Apple Silicon, macOS 14+) that acts as a sidecar dashboard for Claude Code. The architecture uses a Rust core (`hud-core`) with UniFFI bindings to Swift. State tracking relies on Claude Code hooks that write to `~/.capacitor/`, with session-based locks (`{session_id}-{pid}.lock`) as the authoritative signal for active sessions. Shell integration provides ambient project awareness via precmd hooks. Hooks run asynchronously to avoid blocking Claude Code execution. All file I/O uses `fs_err` for enriched error messages, and structured logging via `tracing` writes to `~/.capacitor/hud-hook-debug.{date}.log`. **Terminal activation now uses Rust-only path:** The legacy Swift decision logic was removed (~277 lines); Rust decides (`activation.rs`), Swift executes (macOS APIs). **Terminal activation fully hardened and validated:** v0.1.25 plus two post-release fixes—stale TTY query (`TerminalLauncher.swift`) and HOME exclusion from path matching (`activation.rs`). Test matrix validated 15+ scenarios. **Bulletproof Hooks complete:** Phase 4 Test Hooks button added for manual verification. **Audit complete:** A comprehensive 12-session side-effects analysis validated all major subsystems. **UI polish:** Progressive blur gradient masks on header/footer. **v0.1.26:** Removed custom resize handles (use default macOS behavior), added custom About panel with tinted logomark.
+Capacitor is a native macOS SwiftUI app (Apple Silicon, macOS 14+) that acts as a sidecar dashboard for Claude Code. The architecture uses a Rust core (`hud-core`) with UniFFI bindings to Swift. State tracking relies on Claude Code hooks that write to `~/.capacitor/`, with session-based locks (`{session_id}-{pid}.lock`) as the authoritative signal for active sessions. Shell integration provides ambient project awareness via precmd hooks. Hooks run asynchronously to avoid blocking Claude Code execution. All file I/O uses `fs_err` for enriched error messages, and structured logging via `tracing` writes to `~/.capacitor/hud-hook-debug.{date}.log`. **Terminal activation now uses Rust-only path:** The legacy Swift decision logic was removed (~277 lines); Rust decides (`activation.rs`), Swift executes (macOS APIs). **Terminal activation fully hardened and validated:** v0.1.25 plus two post-release fixes—stale TTY query (`TerminalLauncher.swift`) and HOME exclusion from path matching (`activation.rs`). Test matrix validated 15+ scenarios. **Bulletproof Hooks complete:** Phase 4 Test Hooks button added for manual verification. **Audit complete:** A comprehensive 12-session side-effects analysis validated all major subsystems. **UI polish:** Progressive blur gradient masks on header/footer. **v0.1.26:** Removed custom resize handles (use default macOS behavior), added custom About panel with tinted logomark. **v0.1.27:** Hook audit remediations (safer hook tests, heartbeat gating, activity migration) and activation matching parity across Rust/Swift (case-insensitive on macOS). Version detection now auto-detects from multiple sources with CI fallback documented.
 
 ## Stale Information Detected
 
-None currently. Last audit: 2026-01-29 (v0.1.26 release).
+None currently. Last audit: 2026-01-30 (v0.1.27 release).
 
 ## Timeline
+
+### 2026-01-30 — v0.1.27: Hooks Audit Remediation + Activation Matching Parity
+
+**What changed:**
+
+1. **Hook test safety + heartbeat gating** (commit `9a987d0`)
+   - `run_hook_test()` writes an isolated sessions-format file instead of touching live `sessions.json`
+   - Health checks now verify `sessions.json` is writable when present
+   - Heartbeat updates only after parsing a valid hook event (no false positives)
+
+2. **Activity migration consolidation** (`hud-hook`)
+   - Writes native `activity[]` entries with `project_path`
+   - Migrates legacy `files[]` arrays on write; resolves relative paths against session CWD
+   - Added coverage for legacy absolute-path entries and duplicate suppression
+
+3. **Lock robustness + test resilience**
+   - `create_session_lock()` refreshes stale locks on PID reuse by validating `proc_started`
+   - Lock tests skip cleanly when process start time is unavailable (CI-friendly)
+
+4. **Activation matching parity (macOS)**
+   - Path matching is now case-insensitive in Rust resolver and Swift tmux selection
+   - New normalization helper: `normalize_path_for_matching` (no filesystem access)
+
+5. **Version detection improvements**
+   - App auto-detects version from multiple sources; CI fallback documented
+
+**Why:**
+- Finalize hooks functionality audit findings without risking live state corruption
+- Ensure shell/tmux matching behaves consistently across Rust + Swift on macOS
+- Avoid flaky test failures in environments with limited process metadata access
+
+**Agent impact:**
+- Use `normalize_path_for_matching` for activation comparisons; keep action paths unmodified
+- Do not write to live `sessions.json` for hook tests; always use isolated files
+- Reference the new audit docs at `.claude/docs/audit/hooks-functionality-2026-01-29/` and `.claude/docs/audit/terminal-shell-ide-audit.md`
+
+**Commits:** `9a987d0`, `7271c5a`, `9e98dde`, `366930b`
+
+---
 
 ### 2026-01-29 — v0.1.26: Simplified Window Behavior and About Panel
 
