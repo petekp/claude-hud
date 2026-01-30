@@ -172,6 +172,7 @@ dependencies = [
 name = "capacitor-daemon"
 version = "0.1.27"
 dependencies = [
+ "chrono",
  "dirs",
  "fs-err 3.2.2",
  "serde",
