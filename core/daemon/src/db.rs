@@ -5,12 +5,12 @@
 //! materialized shell_state table for fast reads.
 
 use capacitor_daemon_protocol::{EventEnvelope, EventType};
-use rusqlite::{params, Connection, OpenFlags};
+use rusqlite::{params, Connection, OpenFlags, OptionalExtension};
 use std::collections::HashMap;
 use std::path::PathBuf;
 
 use crate::process::get_process_start_time;
-use crate::state::{ShellEntry, ShellState};
+use crate::state::{ProcessLivenessRow, ShellEntry, ShellState};
 
 pub struct Db {
     path: PathBuf,
@@ -108,6 +108,23 @@ impl Db {
         })
     }
 
+    pub fn get_process_liveness(&self, pid: u32) -> Result<Option<ProcessLivenessRow>, String> {
+        self.with_connection(|conn| {
+            conn.query_row(
+                "SELECT pid, proc_started, last_seen_at FROM process_liveness WHERE pid = ?1",
+                params![pid as i64],
+                |row| {
+                    Ok(ProcessLivenessRow {
+                        pid: row.get::<_, i64>(0)? as u32,
+                        proc_started: row.get::<_, Option<i64>>(1)?,
+                        last_seen_at: row.get::<_, String>(2)?,
+                    })
+                },
+            )
+            .optional()
+            .map_err(|err| format!("Failed to query process liveness: {}", err))
+        })
+    }
     pub fn load_shell_state(&self) -> Result<ShellState, String> {
         self.with_connection(|conn| {
             let mut stmt = conn
@@ -303,7 +320,6 @@ impl Db {
 mod tests {
     use super::*;
     use capacitor_daemon_protocol::{EventEnvelope, EventType};
-    use rusqlite::OptionalExtension;
 
     fn shell_event(
         event_id: &str,
@@ -401,25 +417,11 @@ mod tests {
             .expect("upsert process liveness");
 
         let row = db
-            .with_connection(|conn| {
-                conn.query_row(
-                    "SELECT pid, proc_started, last_seen_at FROM process_liveness WHERE pid = ?1",
-                    params![std::process::id() as i64],
-                    |row| {
-                        Ok((
-                            row.get::<_, i64>(0)?,
-                            row.get::<_, Option<i64>>(1)?,
-                            row.get::<_, String>(2)?,
-                        ))
-                    },
-                )
-                .optional()
-                .map_err(|err| format!("Failed to query process_liveness row: {}", err))
-            })
-            .expect("query process_liveness");
+            .get_process_liveness(std::process::id())
+            .expect("query process liveness")
+            .expect("process row exists");
 
-        let row = row.expect("process row exists");
-        assert_eq!(row.0 as u32, std::process::id());
-        assert_eq!(row.2, recorded_at);
+        assert_eq!(row.pid, std::process::id());
+        assert_eq!(row.last_seen_at, recorded_at);
     }
 }

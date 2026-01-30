@@ -15,7 +15,8 @@ use tracing::{error, info, warn};
 use tracing_subscriber::EnvFilter;
 
 use capacitor_daemon_protocol::{
-    parse_event, ErrorInfo, Method, Request, Response, MAX_REQUEST_BYTES, PROTOCOL_VERSION,
+    parse_event, parse_process_liveness, ErrorInfo, Method, Request, Response, MAX_REQUEST_BYTES,
+    PROTOCOL_VERSION,
 };
 
 mod db;
@@ -225,6 +226,36 @@ fn handle_request(request: Request, state: Arc<SharedState>) -> Response {
                     request.id,
                     "serialization_error",
                     format!("Failed to serialize shell state: {}", err),
+                ),
+            }
+        }
+        Method::GetProcessLiveness => {
+            let params = match request.params {
+                Some(params) => params,
+                None => return Response::error(request.id, "invalid_params", "pid is required"),
+            };
+            let parsed = match parse_process_liveness(params) {
+                Ok(parsed) => parsed,
+                Err(err) => return Response::error_with_info(request.id, err),
+            };
+
+            match state.process_liveness_snapshot(parsed.pid) {
+                Ok(Some(snapshot)) => match serde_json::to_value(snapshot) {
+                    Ok(value) => Response::ok(request.id, value),
+                    Err(err) => Response::error(
+                        request.id,
+                        "serialization_error",
+                        format!("Failed to serialize process liveness: {}", err),
+                    ),
+                },
+                Ok(None) => Response::ok(
+                    request.id,
+                    serde_json::json!({ "found": false, "pid": parsed.pid }),
+                ),
+                Err(err) => Response::error(
+                    request.id,
+                    "liveness_error",
+                    format!("Failed to fetch process liveness: {}", err),
                 ),
             }
         }
