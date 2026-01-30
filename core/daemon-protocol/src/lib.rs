@@ -16,6 +16,7 @@ pub const MAX_REQUEST_BYTES: usize = 1024 * 1024; // 1MB
 pub enum Method {
     GetHealth,
     GetShellState,
+    GetProcessLiveness,
     Event,
 }
 
@@ -28,6 +29,12 @@ pub struct Request {
     pub id: Option<String>,
     #[serde(default)]
     pub params: Option<Value>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ProcessLivenessRequest {
+    pub pid: u32,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -192,6 +199,15 @@ pub fn parse_event(params: Value) -> Result<EventEnvelope, ErrorInfo> {
     })?;
     envelope.validate()?;
     Ok(envelope)
+}
+
+pub fn parse_process_liveness(params: Value) -> Result<ProcessLivenessRequest, ErrorInfo> {
+    serde_json::from_value(params).map_err(|err| {
+        ErrorInfo::new(
+            "invalid_params",
+            format!("process liveness params are invalid JSON: {}", err),
+        )
+    })
 }
 
 fn require_session_fields(event: &EventEnvelope) -> Result<(), ErrorInfo> {

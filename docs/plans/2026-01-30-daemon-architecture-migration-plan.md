@@ -96,6 +96,7 @@ A **local daemon** is the **only writer** of state. Hooks and the Swift app beco
 
 - `GetSessions`
 - `GetShellState`
+- `GetProcessLiveness`
 - `GetActivity`
 - `GetHealth`
 

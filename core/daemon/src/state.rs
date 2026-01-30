@@ -9,6 +9,7 @@ use std::collections::HashMap;
 use std::sync::Mutex;
 
 use crate::db::Db;
+use crate::process::get_process_start_time;
 
 pub struct SharedState {
     db: Db,
@@ -65,6 +66,27 @@ impl SharedState {
             .unwrap_or_default()
     }
 
+    pub fn process_liveness_snapshot(&self, pid: u32) -> Result<Option<ProcessLiveness>, String> {
+        let row = self.db.get_process_liveness(pid)?;
+        Ok(row.map(|row| {
+            let current_start = get_process_start_time(pid);
+            let stored_start = row.proc_started.map(|value| value as u64);
+            let identity_matches = match (stored_start, current_start) {
+                (Some(stored), Some(current)) => Some(stored.abs_diff(current) <= 2),
+                _ => None,
+            };
+
+            ProcessLiveness {
+                pid: row.pid,
+                proc_started: stored_start,
+                last_seen_at: row.last_seen_at,
+                current_start_time: current_start,
+                is_alive: current_start.is_some(),
+                identity_matches,
+            }
+        }))
+    }
+
     fn update_shell_state_cache(&self, event: &EventEnvelope) {
         let (pid, cwd, tty) = match (event.pid, &event.cwd, &event.tty) {
             (Some(pid), Some(cwd), Some(tty)) => (pid, cwd, tty),
@@ -84,6 +106,26 @@ impl SharedState {
             state.shells.insert(pid.to_string(), entry);
         }
     }
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ProcessLivenessRow {
+    pub pid: u32,
+    pub proc_started: Option<i64>,
+    pub last_seen_at: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ProcessLiveness {
+    pub pid: u32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub proc_started: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub current_start_time: Option<u64>,
+    pub last_seen_at: String,
+    pub is_alive: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub identity_matches: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize)]

@@ -25,7 +25,7 @@ The daemon is the **single writer** for state. Clients send events and read stat
 
 ### Fields
 - `protocol_version` (required): must be `1`
-- `method` (required): `get_health`, `get_shell_state`, or `event`
+- `method` (required): `get_health`, `get_shell_state`, `get_process_liveness`, or `event`
 - `id` (optional): echoed back in responses
 - `params` (optional): method-specific payload
 
@@ -86,6 +86,44 @@ Response data:
       "updated_at": "2026-01-30T12:00:00Z"
     }
   }
+}
+```
+
+### `get_process_liveness`
+
+Returns the daemon's last-known PID identity information, plus a best-effort
+current liveness check.
+
+Request:
+
+```json
+{
+  "protocol_version": 1,
+  "method": "get_process_liveness",
+  "id": "req-3",
+  "params": { "pid": 12345 }
+}
+```
+
+Response data (found):
+
+```json
+{
+  "pid": 12345,
+  "proc_started": 1706570812,
+  "current_start_time": 1706570812,
+  "last_seen_at": "2026-01-30T00:03:00Z",
+  "is_alive": true,
+  "identity_matches": true
+}
+```
+
+Response data (not found):
+
+```json
+{
+  "found": false,
+  "pid": 12345
 }
 ```
 
