@@ -1,7 +1,11 @@
 # ADR-004: Simplify State Storage (Per-Session Directories vs Event Log)
 
-**Status:** Proposed (recommended option selected, pending implementation)\n
-**Date:** 2026-01-27\n
+**Status:** Superseded by ADR-005: Daemon-Based State Service
+
+**Date:** 2026-01-27
+
+**Superseded:** 2026-01-30
+
 **Context:** Reduce regressions by reducing shared mutable state and duplicated writers.
 
 ## Why this ADR exists
@@ -211,4 +215,3 @@ Rationale:
 - Should hooks also write a tiny `latest.json` snapshot (atomic) to speed up reads, or should only the app write derived snapshots?\n
 - How much event history do we retain per session (size cap vs time-based)?\n
 - Do we need a per-session file lock (`flock`) for append to guarantee correctness on all macOS filesystems?
-
