@@ -1,3 +1,4 @@
+import Darwin
 import Foundation
 
 enum ShellType: String, CaseIterable {
@@ -61,7 +62,9 @@ enum ShellType: String, CaseIterable {
     }
 
     static var current: ShellType {
-        let shell = ProcessInfo.processInfo.environment["SHELL"] ?? "/bin/zsh"
+        let shell = ProcessInfo.processInfo.environment["SHELL"]
+            ?? loginShellPath()
+            ?? "/bin/zsh"
         let shellName = URL(fileURLWithPath: shell).lastPathComponent
 
         switch shellName {
@@ -70,6 +73,12 @@ enum ShellType: String, CaseIterable {
         case "fish": return .fish
         default: return .unsupported
         }
+    }
+
+    private static func loginShellPath() -> String? {
+        let uid = getuid()
+        guard let pwd = getpwuid(uid) else { return nil }
+        return String(cString: pwd.pointee.pw_shell)
     }
 
     var configFileURL: URL? {

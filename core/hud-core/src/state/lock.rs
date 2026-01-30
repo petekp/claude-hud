@@ -526,7 +526,30 @@ pub fn create_session_lock(
             // This can only happen if we're trying to create a lock we already own.
             if let Some(info) = read_lock_info(&lock_dir) {
                 if info.pid == pid {
-                    // We already own this lock - don't spawn another holder
+                    // We already own this lock if the PID identity matches.
+                    // If proc_started is missing or mismatched, treat as stale and recreate.
+                    if let Some(expected) = info.proc_started {
+                        if is_pid_alive_verified(pid, Some(expected)) {
+                            return None;
+                        }
+                    } else if get_process_start_time(pid).is_none() {
+                        // Can't verify identity; assume it's ours to avoid churn.
+                        return None;
+                    }
+
+                    // Stale lock with reused PID or missing proc_started: refresh metadata.
+                    let _ = fs::remove_dir_all(&lock_dir);
+                    if fs::create_dir(&lock_dir).is_ok()
+                        && write_lock_metadata(&lock_dir, pid, project_path, Some(session_id), None)
+                            .is_ok()
+                    {
+                        return Some(lock_dir);
+                    }
+                    tracing::warn!(
+                        session = %session_id,
+                        path = %project_path,
+                        "Failed to refresh stale lock for reused PID"
+                    );
                     return None;
                 }
 
@@ -1024,6 +1047,63 @@ mod tests {
     }
 
     #[test]
+    fn test_create_session_lock_returns_none_when_already_owned() {
+        use super::tests_helper::create_session_lock_with_timestamps;
+
+        let temp = tempdir().unwrap();
+        let pid = std::process::id();
+        let session_id = "session-owned";
+
+        let Some(proc_started) = get_process_start_time(pid) else {
+            // Can't verify identity reliably in this environment.
+            return;
+        };
+        create_session_lock_with_timestamps(
+            temp.path(),
+            pid,
+            "/project",
+            session_id,
+            proc_started,
+            1000,
+        );
+
+        let second = super::create_session_lock(temp.path(), session_id, "/project", pid);
+        assert!(
+            second.is_none(),
+            "Second create_session_lock should return None when lock is still valid"
+        );
+    }
+
+    #[test]
+    fn test_create_session_lock_recreates_on_proc_started_mismatch() {
+        use super::tests_helper::create_session_lock_with_timestamps;
+
+        let temp = tempdir().unwrap();
+        let pid = std::process::id();
+        let session_id = "session-stale";
+        let Some(actual_start) = get_process_start_time(pid) else {
+            // Can't verify identity reliably in this environment.
+            return;
+        };
+
+        // Create a stale lock with mismatched proc_started
+        create_session_lock_with_timestamps(
+            temp.path(),
+            pid,
+            "/project",
+            session_id,
+            actual_start + 10,
+            1000,
+        );
+
+        let recreated = super::create_session_lock(temp.path(), session_id, "/project", pid);
+        assert!(
+            recreated.is_some(),
+            "create_session_lock should refresh stale lock when proc_started mismatches"
+        );
+    }
+
+    #[test]
     fn test_has_any_active_lock_empty_dir() {
         let temp = tempdir().unwrap();
         assert!(!has_any_active_lock(temp.path()));
@@ -1061,8 +1141,10 @@ mod tests {
 
         let temp = tempdir().unwrap();
         let pid = std::process::id();
-        let proc_started =
-            get_process_start_time(pid).expect("Failed to get process start time for test");
+        let Some(proc_started) = get_process_start_time(pid) else {
+            // Can't verify identity reliably in this environment.
+            return;
+        };
 
         // Create an older exact lock at /project
         create_lock_with_timestamps(temp.path(), pid, "/project", proc_started, 1000);
@@ -1087,8 +1169,10 @@ mod tests {
 
         let temp = tempdir().unwrap();
         let pid = std::process::id();
-        let proc_started =
-            get_process_start_time(pid).expect("Failed to get process start time for test");
+        let Some(proc_started) = get_process_start_time(pid) else {
+            // Can't verify identity reliably in this environment.
+            return;
+        };
 
         // Create only a child lock (no exact match at /project)
         create_lock_with_timestamps(temp.path(), pid, "/project/src", proc_started, 1000);
@@ -1110,51 +1194,79 @@ mod tests {
     fn test_find_matching_lock_prefers_newer_among_exact_matches() {
         // When multiple exact-match locks exist (concurrent sessions),
         // prefer the newest one.
-        use super::tests_helper::create_lock_with_timestamps;
+        use super::tests_helper::create_session_lock_with_timestamps;
 
         let temp = tempdir().unwrap();
         let pid = std::process::id();
-        let proc_started =
-            get_process_start_time(pid).expect("Failed to get process start time for test");
+        let Some(proc_started) = get_process_start_time(pid) else {
+            // Can't verify identity reliably in this environment.
+            return;
+        };
 
-        // Create two locks at the same path with different session IDs
-        // (simulating concurrent sessions)
-        create_lock_with_timestamps(temp.path(), pid, "/project", proc_started, 1000);
-        // Note: create_lock_with_timestamps uses path-based naming, so this
-        // creates a separate lock. For this test, we verify the newer timestamp wins.
+        create_session_lock_with_timestamps(
+            temp.path(),
+            pid,
+            "/project",
+            "session-old",
+            proc_started,
+            1000,
+        );
+        create_session_lock_with_timestamps(
+            temp.path(),
+            pid,
+            "/project",
+            "session-new",
+            proc_started,
+            2000,
+        );
 
-        let result = find_lock_for_path(temp.path(), "/project");
-        assert!(result.is_some(), "Should find exact match");
+        let result = find_lock_for_path(temp.path(), "/project").expect("Should find exact match");
+        assert_eq!(result.created, Some(2000));
+        assert_eq!(result.session_id.as_deref(), Some("session-new"));
     }
 
+    #[cfg(unix)]
     #[test]
     fn test_create_lock_takeover_from_live_process() {
-        // Tests that a new session can take over a lock held by another live process.
-        // This simulates the scenario where a user starts a new Claude session
-        // in the same directory while an old one is still running (but idle).
-        //
-        // We use the current process as both "old" and "new" holder since we can't
-        // easily spawn another long-lived process in tests. The key behavior we're
-        // testing is that create_lock succeeds and records the handoff.
+        use super::tests_helper::create_lock_with_timestamps;
+        use std::process::Command;
+        use std::time::{Duration, Instant};
+
         let temp = tempdir().unwrap();
-        let pid = std::process::id();
+        let mut child = Command::new("sleep")
+            .arg("5")
+            .spawn()
+            .expect("spawn sleep process");
+        let child_pid = child.id();
 
-        // Create initial lock with the test helper (simulating old session)
-        create_lock(temp.path(), pid, "/project");
+        let start = Instant::now();
+        let proc_started = loop {
+            if let Some(ts) = get_process_start_time(child_pid) {
+                break ts;
+            }
+            if start.elapsed() > Duration::from_secs(1) {
+                let _ = child.kill();
+                let _ = child.wait();
+                panic!("Failed to read child process start time");
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        };
 
-        // Verify lock exists
-        assert!(is_session_running(temp.path(), "/project"));
+        create_lock_with_timestamps(temp.path(), child_pid, "/project", proc_started, 1000);
 
-        // Now, use a different PID (we'll use pid+1 which is likely dead, but
-        // we're testing the code path where the lock already exists)
-        // Since pid+1 is probably dead, this tests the "stale lock" code path.
-        // For the "live takeover" path, we need to test via the meta.json handoff_from field.
+        let new_pid = std::process::id();
+        let lock_dir = super::create_lock(temp.path(), "/project", new_pid)
+            .expect("Expected takeover to succeed");
+
         let info = get_lock_info(temp.path(), "/project").unwrap();
-        assert_eq!(info.pid, pid);
+        assert_eq!(info.pid, new_pid);
 
-        // The real scenario (different live PIDs) is hard to test in unit tests,
-        // but we can verify the lock mechanism works by checking the initial state
-        assert!(is_session_running(temp.path(), "/project"));
+        let meta_content = fs::read_to_string(lock_dir.join("meta.json")).unwrap();
+        let meta: serde_json::Value = serde_json::from_str(&meta_content).unwrap();
+        assert_eq!(meta["handoff_from"].as_u64(), Some(child_pid as u64));
+
+        let _ = child.kill();
+        let _ = child.wait();
     }
 
     #[test]

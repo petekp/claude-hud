@@ -25,6 +25,7 @@
 //! Swift: executes returned ActivationAction
 //! ```
 
+use crate::state::normalize_path_for_matching;
 use crate::types::ParentApp;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -200,15 +201,13 @@ pub fn resolve_activation(
     shell_state: Option<&ShellCwdStateFfi>,
     tmux_context: &TmuxContextFfi,
 ) -> ActivationDecision {
-    let normalized_path = normalize_path(project_path);
+    let action_path = normalize_path_for_actions(project_path);
 
     // Priority 1: Find existing shell in shell-cwd.json
     // Pass tmux context so shell selection can prioritize tmux shells when appropriate
     if let Some(state) = shell_state {
-        if let Some((pid, shell)) =
-            find_shell_at_path(&state.shells, &normalized_path, tmux_context)
-        {
-            return resolve_for_existing_shell(pid, shell, tmux_context, &normalized_path);
+        if let Some((pid, shell)) = find_shell_at_path(&state.shells, project_path, tmux_context) {
+            return resolve_for_existing_shell(pid, shell, tmux_context, &action_path);
         }
     }
 
@@ -217,20 +216,20 @@ pub fn resolve_activation(
         return resolve_for_tmux_session(
             session_name,
             tmux_context.has_attached_client,
-            &normalized_path,
+            &action_path,
         );
     }
 
     // Priority 3: Launch new terminal
-    let project_name = normalized_path
+    let project_name = action_path
         .rsplit('/')
         .next()
-        .unwrap_or(&normalized_path)
+        .unwrap_or(&action_path)
         .to_string();
 
     ActivationDecision {
         primary: ActivationAction::LaunchNewTerminal {
-            project_path: normalized_path,
+            project_path: action_path,
             project_name,
         },
         fallback: None,
@@ -245,7 +244,8 @@ pub fn resolve_activation(
 /// **Priority (highest to lowest):**
 /// 1. Live shells beat dead shells (process still running)
 /// 2. When tmux client is attached: shells with `tmux_session` beat those without
-/// 3. Among same-tier shells: most recently updated wins
+/// 3. Path specificity: exact > child > parent
+/// 4. Among same-tier shells: most recently updated wins
 ///
 /// This ensures predictable behavior:
 /// - If you're using tmux with an attached client, we'll always pick the tmux shell
@@ -256,9 +256,12 @@ fn find_shell_at_path<'a>(
     project_path: &str,
     tmux_context: &TmuxContextFfi,
 ) -> Option<(u32, &'a ShellEntryFfi)> {
+    let project_path_normalized = normalize_path_for_matching(project_path);
+    let home_dir_normalized = normalize_path_for_matching(&tmux_context.home_dir);
     let mut best_shell: Option<(u32, &ShellEntryFfi)> = None;
     let mut best_is_live = false;
     let mut best_has_tmux = false;
+    let mut best_match_rank: u8 = 0;
     let mut best_timestamp: Option<DateTime<Utc>> = None;
 
     // Only prefer tmux shells when a client is actually attached
@@ -266,10 +269,12 @@ fn find_shell_at_path<'a>(
     let prefer_tmux = tmux_context.has_attached_client;
 
     for (pid_str, shell) in shells {
-        let shell_path = normalize_path(&shell.cwd);
-        if !paths_match_excluding_home(&shell_path, project_path, &tmux_context.home_dir) {
+        let shell_path = normalize_path_for_matching(&shell.cwd);
+        let Some(match_type) =
+            match_type_excluding_home(&shell_path, &project_path_normalized, &home_dir_normalized)
+        else {
             continue;
-        }
+        };
 
         let pid: u32 = match pid_str.parse() {
             Ok(p) => p,
@@ -278,6 +283,7 @@ fn find_shell_at_path<'a>(
 
         let shell_time = parse_timestamp(&shell.updated_at);
         let shell_has_tmux = shell.tmux_session.is_some();
+        let shell_match_rank = match_type.rank();
 
         // Determine if current best dominates this candidate
         // Priority order: live > dead, then (if prefer_tmux) tmux > non-tmux, then newer > older
@@ -290,11 +296,21 @@ fn find_shell_at_path<'a>(
                     match (shell_has_tmux, best_has_tmux) {
                         (false, true) => true,  // Non-tmux can't beat tmux when client attached
                         (true, false) => false, // Tmux beats non-tmux when client attached
-                        _ => is_timestamp_older_or_equal(shell_time, best_timestamp),
+                        _ => {
+                            if shell_match_rank != best_match_rank {
+                                shell_match_rank < best_match_rank
+                            } else {
+                                is_timestamp_older_or_equal(shell_time, best_timestamp)
+                            }
+                        }
                     }
                 } else {
-                    // No tmux client attached - just use timestamp
-                    is_timestamp_older_or_equal(shell_time, best_timestamp)
+                    // No tmux client attached - compare path specificity, then timestamp
+                    if shell_match_rank != best_match_rank {
+                        shell_match_rank < best_match_rank
+                    } else {
+                        is_timestamp_older_or_equal(shell_time, best_timestamp)
+                    }
                 }
             }
         };
@@ -303,6 +319,7 @@ fn find_shell_at_path<'a>(
             best_shell = Some((pid, shell));
             best_is_live = shell.is_live;
             best_has_tmux = shell_has_tmux;
+            best_match_rank = shell_match_rank;
             best_timestamp = shell_time;
         }
     }
@@ -341,15 +358,39 @@ fn is_timestamp_older_or_equal(
 /// This allows activating a shell in `/project/src` when clicking `/project`.
 #[uniffi::export]
 pub fn paths_match(a: &str, b: &str) -> bool {
-    if a == b {
+    let normalized_a = normalize_path_for_matching(a);
+    let normalized_b = normalize_path_for_matching(b);
+
+    if normalized_a == normalized_b {
         return true;
     }
 
     // Check if one is a subdirectory of the other (e.g., /proj matches /proj/src)
-    let (shorter, longer) = if a.len() < b.len() { (a, b) } else { (b, a) };
+    let (shorter, longer) = if normalized_a.len() < normalized_b.len() {
+        (normalized_a.as_str(), normalized_b.as_str())
+    } else {
+        (normalized_b.as_str(), normalized_a.as_str())
+    };
     longer
         .strip_prefix(shorter)
         .is_some_and(|rest| rest.starts_with('/'))
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum PathMatch {
+    Exact,
+    Child,
+    Parent,
+}
+
+impl PathMatch {
+    fn rank(self) -> u8 {
+        match self {
+            Self::Exact => 2,
+            Self::Child => 1,
+            Self::Parent => 0,
+        }
+    }
 }
 
 /// Check if two paths match, excluding HOME as a parent.
@@ -358,11 +399,22 @@ pub fn paths_match(a: &str, b: &str) -> bool {
 /// A shell at `/Users/pete` should NOT match `/Users/pete/Code/myproject` just
 /// because HOME is technically a parent directory.
 ///
-/// Used internally by `find_shell_at_path()` to prevent HOME shells from matching
-/// all projects.
+/// Used in tests to validate HOME exclusion behavior.
+#[cfg(test)]
 fn paths_match_excluding_home(shell_path: &str, project_path: &str, home_dir: &str) -> bool {
+    let shell_path = normalize_path_for_matching(shell_path);
+    let project_path = normalize_path_for_matching(project_path);
+    let home_dir = normalize_path_for_matching(home_dir);
+    match_type_excluding_home(&shell_path, &project_path, &home_dir).is_some()
+}
+
+fn match_type_excluding_home(
+    shell_path: &str,
+    project_path: &str,
+    home_dir: &str,
+) -> Option<PathMatch> {
     if shell_path == project_path {
-        return true;
+        return Some(PathMatch::Exact);
     }
 
     let (shorter, longer) = if shell_path.len() < project_path.len() {
@@ -373,12 +425,19 @@ fn paths_match_excluding_home(shell_path: &str, project_path: &str, home_dir: &s
 
     // HOME is too broad to be a useful parent - exclude it from parent matching
     if shorter == home_dir {
-        return false;
+        return None;
     }
 
     longer
         .strip_prefix(shorter)
         .is_some_and(|rest| rest.starts_with('/'))
+        .then(|| {
+            if shorter == project_path {
+                PathMatch::Child
+            } else {
+                PathMatch::Parent
+            }
+        })
 }
 
 /// Resolve activation for an existing shell found in shell-cwd.json.
@@ -402,7 +461,15 @@ fn resolve_for_existing_shell(
                         session_name: s.clone(),
                     })
             } else {
-                None
+                let project_name = project_path
+                    .rsplit('/')
+                    .next()
+                    .unwrap_or(project_path)
+                    .to_string();
+                Some(ActivationAction::LaunchNewTerminal {
+                    project_path: project_path.to_string(),
+                    project_name,
+                })
             };
 
             return ActivationDecision {
@@ -555,7 +622,7 @@ fn resolve_for_tmux_session(
 }
 
 /// Normalize a path by stripping trailing slashes.
-fn normalize_path(path: &str) -> String {
+fn normalize_path_for_actions(path: &str) -> String {
     if path == "/" {
         path.to_string()
     } else {
@@ -892,6 +959,14 @@ mod tests {
                 ..
             }
         ));
+
+        assert!(matches!(
+            decision.fallback,
+            Some(ActivationAction::LaunchNewTerminal {
+                project_path,
+                project_name,
+            }) if project_path == "/Users/pete/Code/myproject" && project_name == "myproject"
+        ));
     }
 
     #[test]
@@ -918,6 +993,14 @@ mod tests {
                 ide_type: IdeType::VsCode,
                 ..
             }
+        ));
+
+        assert!(matches!(
+            decision.fallback,
+            Some(ActivationAction::LaunchNewTerminal {
+                project_path,
+                project_name,
+            }) if project_path == "/Users/pete/Code/myproject" && project_name == "myproject"
         ));
     }
 
@@ -1252,6 +1335,73 @@ mod tests {
         ));
     }
 
+    #[test]
+    fn test_exact_match_beats_parent_even_if_older() {
+        let parent_shell = make_shell_entry_with_time(
+            "/Users/pete/Code/monorepo",
+            "/dev/ttys001",
+            ParentApp::Ghostty,
+            None,
+            "2026-01-27T11:00:00Z", // Newer
+        );
+
+        let exact_shell = make_shell_entry_with_time(
+            "/Users/pete/Code/monorepo/app",
+            "/dev/ttys002",
+            ParentApp::Terminal,
+            None,
+            "2026-01-27T10:00:00Z", // Older
+        );
+
+        let state = make_shell_state(vec![("11111", parent_shell), ("22222", exact_shell)]);
+
+        let decision = resolve_activation(
+            "/Users/pete/Code/monorepo/app",
+            Some(&state),
+            &tmux_context_none(),
+        );
+
+        assert!(matches!(
+            decision.primary,
+            ActivationAction::ActivateByTty {
+                terminal_type: TerminalType::TerminalApp,
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn test_child_match_beats_parent_even_if_older() {
+        let parent_shell = make_shell_entry_with_time(
+            "/Users/pete/Code",
+            "/dev/ttys001",
+            ParentApp::Terminal,
+            None,
+            "2026-01-27T11:00:00Z", // Newer
+        );
+
+        let child_shell = make_shell_entry_with_time(
+            "/Users/pete/Code/myproject/src",
+            "/dev/ttys002",
+            ParentApp::Ghostty,
+            None,
+            "2026-01-27T10:00:00Z", // Older
+        );
+
+        let state = make_shell_state(vec![("11111", parent_shell), ("22222", child_shell)]);
+
+        let decision = resolve_activation(
+            "/Users/pete/Code/myproject",
+            Some(&state),
+            &tmux_context_none(),
+        );
+
+        assert!(matches!(
+            decision.primary,
+            ActivationAction::ActivateApp { ref app_name } if app_name == "Ghostty"
+        ));
+    }
+
     // ─────────────────────────────────────────────────────────────────────────────
     // Scenario: Shell state priority over tmux context
     // ─────────────────────────────────────────────────────────────────────────────
@@ -1400,6 +1550,15 @@ mod tests {
     }
 
     #[test]
+    #[cfg(target_os = "macos")]
+    fn test_paths_match_case_insensitive_on_macos() {
+        assert!(paths_match(
+            "/Users/Pete/Code/Project",
+            "/users/pete/code/project"
+        ));
+    }
+
+    #[test]
     fn test_paths_match_subdir() {
         assert!(paths_match(
             "/Users/pete/Code/project/src",
@@ -1539,12 +1698,12 @@ mod tests {
 
     #[test]
     fn test_normalize_path_strips_trailing_slash() {
-        assert_eq!(normalize_path("/foo/bar/"), "/foo/bar");
-        assert_eq!(normalize_path("/foo/bar"), "/foo/bar");
+        assert_eq!(normalize_path_for_actions("/foo/bar/"), "/foo/bar");
+        assert_eq!(normalize_path_for_actions("/foo/bar"), "/foo/bar");
     }
 
     #[test]
     fn test_normalize_path_preserves_root() {
-        assert_eq!(normalize_path("/"), "/");
+        assert_eq!(normalize_path_for_actions("/"), "/");
     }
 }

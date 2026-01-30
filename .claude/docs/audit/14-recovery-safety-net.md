@@ -126,7 +126,7 @@ Does (in order):
 2. If invalid JSON: **do not modify**. Provide user instructions.\n
 3. Install/repair `~/.local/bin/hud-hook` symlink.\n
 4. Register hooks in settings.json (merge only into hooks).\n
-5. Verify by checking for a heartbeat update after a “Test hook” invocation (optional).
+5. Verify by checking for a heartbeat update after a **real hook event** (e.g., start a Claude session). The “Test Hooks” button only reads heartbeat/state—it doesn’t generate one.
 
 Safety:
 - Always atomic writes when modifying settings.\n
@@ -220,4 +220,3 @@ This safety net gives them:\n
 - clear diagnosis\n
 - one-click repair/reset\n
 - an export artifact they can send to you for support
-

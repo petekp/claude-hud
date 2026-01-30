@@ -6,21 +6,26 @@
 
 ---
 
+## Update (2026-01-29)
+
+- `hud-hook` now writes the native `activity` format (with `project_path`) and migrates legacy `files` arrays on write.
+- `ActivityStore::load()` remains backward-compatible for older hook-format files.
+
 ## Overview
 
 The activity tracking system records which files Claude edits during sessions. This enables **monorepo package tracking** — when Claude is running in `/monorepo` but editing files in `/monorepo/packages/auth`, the auth package can show as "Working" even though the lock is at the parent.
 
-**Data Flow:**
+**Data Flow (current):**
 
 ```
 PostToolUse (Edit/Write/Read/NotebookEdit)
     │
     ▼
 hud-hook: record_file_activity()     ──► ~/.capacitor/file-activity.json
-    │                                     (writes "files" format)
+    │                                     (writes native "activity" format; migrates legacy "files")
     ▼
-hud-core: ActivityStore::load()      ──► Reads file, converts to "activity" format
-    │                                     (boundary detection at load-time)
+hud-core: ActivityStore::load()      ──► Reads file, converts legacy "files" when present
+    │                                     (boundary detection for legacy entries)
     ▼
 sessions.rs: detect_session_state()  ──► Falls back to activity when no lock found
 ```

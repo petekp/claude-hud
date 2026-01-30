@@ -21,10 +21,10 @@ All files below are in Capacitor’s namespace (`~/.capacitor/`) and are safe to
 | `~/.capacitor/sessions.json` | `hud-hook handle` (hook events), `hud-core cleanup` | `hud-core resolver`, Swift UI via UniFFI | Session record store (v3 schema) keyed by **session_id** |
 | `~/.capacitor/sessions/{session_id}-{pid}.lock/` | `hud-hook handle` (SessionStart/UserPromptSubmit), `hud-hook lock-holder` (release) | `hud-core lock/resolver`, `hud-core cleanup` | Liveness proof for an active Claude process at an **exact path** |
 | `~/.capacitor/ended-sessions/{session_id}` | `hud-hook handle` (SessionEnd), `hud-core cleanup` (prune) | `hud-hook handle` (ignore late events) | Tombstone to prevent late events resurrecting ended sessions |
-| `~/.capacitor/file-activity.json` | `hud-hook handle` (PostToolUse etc) | `hud-core ActivityStore`, `hud-core sessions` | Secondary signal to mark a project Working when locks/records are absent at that path |
+| `~/.capacitor/file-activity.json` | `hud-hook handle` (PostToolUse etc) | `hud-core ActivityStore`, `hud-core sessions` | Secondary signal to mark a project Working when locks/records are absent at that path (native format; legacy hook format migrated) |
 | `~/.capacitor/shell-cwd.json` | `hud-hook cwd` | `ShellStateStore.swift`, `TerminalLauncher.swift` | Ambient shell CWD tracking for activation + highlight fallback |
 | `~/.capacitor/shell-history.jsonl` | `hud-hook cwd` | `ShellHistoryStore.swift` (debug) | Append-only shell navigation history |
-| `~/.capacitor/hud-hook-heartbeat` | `hud-hook handle` (touch on every hook) | Swift setup/health UI | “Hooks are firing” proof-of-life |
+| `~/.capacitor/hud-hook-heartbeat` | `hud-hook handle` (touch on every valid hook event) | Swift setup/health UI | “Hooks are firing” proof-of-life |
 
 ## Canonical external paths (non-Capacitor namespaces)
 

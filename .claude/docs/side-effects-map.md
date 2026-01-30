@@ -98,11 +98,12 @@ pub fn append_to_history(path: &Path, event: &HistoryEvent) -> Result<(), CwdErr
 - **Writer:** `hud-hook` (`handle.rs`) via `record_file_activity()` / `remove_session_activity()`
 - **Trigger:** PostToolUse events for file-touching tools (Edit/Write/Read/NotebookEdit)
 - **Purpose:** Secondary signal to mark a project as Working when no lock/record exists at that exact path (monorepo package tracking)
-- **Atomicity:** ⚠️ Currently written via a read-modify-write pattern in `hud-hook` (see audit/09)
+- **Format:** Native `activity` array with `project_path` (legacy `files` format is migrated on write)
+- **Atomicity:** ⚠️ Read-modify-write in `hud-hook` (atomic temp-file write, but no cross-process lock)
 
 #### Hook Heartbeat (`~/.capacitor/hud-hook-heartbeat`)
 - **Writer:** `hud-hook` (`handle.rs`) via `touch_heartbeat()`
-- **Trigger:** Every hook invocation (runs before parsing stdin)
+- **Trigger:** Every valid, actionable hook event (after parsing + session_id/tombstone checks)
 - **Purpose:** Proof-of-life for the hook system (“hooks are firing”)
 - **Content:** Single line UNIX timestamp (file is truncated each write)
 

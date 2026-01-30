@@ -552,20 +552,56 @@ final class TerminalLauncher {
         let result = await runBashScriptWithResultAsync("tmux list-windows -a -F '#{session_name}\t#{pane_current_path}' 2>/dev/null")
         guard result.exitCode == 0, let output = result.output else { return nil }
 
+        func normalizePath(_ path: String) -> String {
+            if path == "/" { return "/" }
+            var normalized = path
+            while normalized.hasSuffix("/") && normalized != "/" {
+                normalized.removeLast()
+            }
+            return normalized.lowercased()
+        }
+
+        func matchRank(shellPath: String, projectPath: String, homeDir: String) -> Int? {
+            if shellPath == projectPath {
+                return 2
+            }
+
+            let (shorter, longer) = shellPath.count < projectPath.count
+                ? (shellPath, projectPath)
+                : (projectPath, shellPath)
+
+            if shorter == homeDir {
+                return nil
+            }
+
+            guard longer.hasPrefix(shorter + "/") else { return nil }
+            return shorter == projectPath ? 1 : 0
+        }
+
+        let normalizedProjectPath = normalizePath(projectPath)
+        let homeDir = normalizePath(NSHomeDirectory())
+        var bestMatch: (rank: Int, session: String)?
+
         for line in output.split(separator: "\n") {
             let parts = line.split(separator: "\t", maxSplits: 1)
             guard parts.count == 2 else { continue }
             let sessionName = String(parts[0])
-            let panePath = String(parts[1])
+            let panePath = normalizePath(String(parts[1]))
 
-            // Match exact path OR if one is subdirectory of other (align with Rust paths_match)
-            if panePath == projectPath ||
-               panePath.hasPrefix(projectPath + "/") ||
-               projectPath.hasPrefix(panePath + "/") {
-                return sessionName
+            guard let rank = matchRank(
+                shellPath: panePath,
+                projectPath: normalizedProjectPath,
+                homeDir: homeDir
+            ) else { continue }
+
+            if bestMatch == nil || rank > bestMatch!.rank {
+                bestMatch = (rank, sessionName)
+                if rank == 2 {
+                    break
+                }
             }
         }
-        return nil
+        return bestMatch?.session
     }
 
     private func isLiveShell(_ entry: (key: String, value: ShellEntry)) -> Bool {
@@ -1018,7 +1054,7 @@ private enum TerminalScripts {
     private static var findOrCreateSession: String {
         """
         EXISTING_SESSION=$(tmux list-windows -a -F '#{session_name}:#{pane_current_path}' 2>/dev/null | \\
-            grep ":$PROJECT_PATH$" | cut -d: -f1 | head -1)
+            awk -F ':' -v path="$PROJECT_PATH" '$2 == path { print $1; exit }')
 
         if [ -n "$EXISTING_SESSION" ]; then
             SESSION="$EXISTING_SESSION"
@@ -1030,14 +1066,11 @@ private enum TerminalScripts {
 
     private static var switchToExistingSession: String {
         """
-        # Escape session and path for tmux arguments
-        SESSION_ESC=$(shell_escape_single "$SESSION")
-        PATH_ESC=$(shell_escape_single "$PROJECT_PATH")
-        if tmux has-session -t "'$SESSION_ESC'" 2>/dev/null; then
-            tmux switch-client -t "'$SESSION_ESC'" 2>/dev/null
+        if tmux has-session -t "$SESSION" 2>/dev/null; then
+            tmux switch-client -t "$SESSION" 2>/dev/null
         else
-            tmux new-session -d -s "'$SESSION_ESC'" -c "'$PATH_ESC'"
-            tmux switch-client -t "'$SESSION_ESC'" 2>/dev/null
+            tmux new-session -d -s "$SESSION" -c "$PROJECT_PATH"
+            tmux switch-client -t "$SESSION" 2>/dev/null
         fi
         """
     }

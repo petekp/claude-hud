@@ -9,15 +9,14 @@
 //! There are two activity implementations in the codebase:
 //!
 //! 1. **Hook handler** (`hud-hook/src/handle.rs`): Lightweight JSON manipulation
-//!    that runs on every tool use event. Writes raw file paths without boundary
-//!    detection to keep the hook fast (<5ms latency target).
+//!    that runs on every tool use event. Writes the native `activity` format
+//!    (with `project_path`) and migrates legacy hook-format files when present.
 //!
 //! 2. **ActivityStore** (this module): Full-featured store used by the engine.
-//!    Performs project boundary detection on load, converting hook format to
-//!    native format with attributed project paths.
+//!    Supports both native format and legacy hook format for backward compatibility.
 //!
-//! The formats are compatible—`ActivityStore::load()` handles both and converts
-//! hook format to native format automatically.
+//! The formats are compatible—`ActivityStore::load()` handles both. Legacy hook
+//! format is converted to native format on load when encountered.
 //!
 //! ## Design Principles (from Rust Engineering guide)
 //!

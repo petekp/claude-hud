@@ -548,7 +548,7 @@ public protocol HudEngineProtocol: AnyObject {
     /**
      * Checks the health of the hook binary by examining its heartbeat file.
      *
-     * The hook binary touches `~/.capacitor/hud-hook-heartbeat` on every event.
+     * The hook binary touches `~/.capacitor/hud-hook-heartbeat` on every valid hook event.
      * If the file's mtime is older than 60 seconds while sessions are active,
      * the hooks have likely stopped firing (binary crash, SIGKILL, etc.).
      *
@@ -982,7 +982,7 @@ open class HudEngine:
     /**
      * Checks the health of the hook binary by examining its heartbeat file.
      *
-     * The hook binary touches `~/.capacitor/hud-hook-heartbeat` on every event.
+     * The hook binary touches `~/.capacitor/hud-hook-heartbeat` on every valid hook event.
      * If the file's mtime is older than 60 seconds while sessions are active,
      * the hooks have likely stopped firing (binary crash, SIGKILL, etc.).
      *
@@ -6718,7 +6718,7 @@ private var initializationResult: InitializationResult = {
     if uniffi_hud_core_checksum_method_hudengine_check_dependency() != 39610 {
         return InitializationResult.apiChecksumMismatch
     }
-    if uniffi_hud_core_checksum_method_hudengine_check_hook_health() != 9175 {
+    if uniffi_hud_core_checksum_method_hudengine_check_hook_health() != 32052 {
         return InitializationResult.apiChecksumMismatch
     }
     if uniffi_hud_core_checksum_method_hudengine_check_setup_status() != 11613 {

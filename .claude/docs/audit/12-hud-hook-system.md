@@ -22,6 +22,13 @@
 
 ---
 
+## Update (2026-01-29)
+
+- Hook activity now writes native `activity` format and migrates legacy `files` entries on write.
+- Heartbeat updates occur after parsing a valid hook event (verification runs no longer refresh it).
+
+---
+
 ## Subsystem Decomposition
 
 | # | Subsystem | Files | Side Effects | Priority |
@@ -90,9 +97,9 @@ Simple subcommand dispatch with error handling. No issues found.
 **Problem:**
 `hud-hook` still writes the legacy “files” format, while `hud-core` expects the “activity” format and converts on load. This leaves two parallel implementations and incurs conversion overhead on every read.
 
-**Evidence:**
-- `handle.rs` writes sessions `{ "files": [...] }` (no `project_path`).
-- `ActivityStore::load()` detects and converts the hook format by running boundary detection for every entry.
+**Evidence (pre-fix):**
+- `handle.rs` wrote sessions `{ "files": [...] }` (no `project_path`).
+- `ActivityStore::load()` detected and converted the hook format by running boundary detection for every entry.
 
 **Recommendation:**
 Unify on a single format. Prefer using `ActivityStore` from `hud-core` directly in `hud-hook` (or duplicate only the minimal conversion logic but write the native format).

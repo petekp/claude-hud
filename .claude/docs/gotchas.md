@@ -294,7 +294,7 @@ Heartbeat check returns `Healthy` if any active lock exists, even with stale hea
 ## Activity Tracking
 
 ### Hook Format Detection in ActivityStore::load()
-The activity store supports two formats: hook format (`"files"` array from hud-hook) and native format (`"activity"` array with `project_path`). When loading, the code checks for hook format markers before attempting native format parsing.
+The activity store supports two formats: legacy hook format (`"files"` array from older hud-hook versions) and native format (`"activity"` array with `project_path`). The hook now writes native format and migrates legacy files on write, but `ActivityStore::load()` still checks for hook format markers before attempting native format parsing to preserve backward compatibility.
 
 **Why this matters:** Hook format JSON successfully deserializes as native format (due to `serde(default)`), but with empty `activity` arrays. Without explicit hook marker detection, file activity data gets silently discarded, breaking the activity-based fallback for state resolution.
 

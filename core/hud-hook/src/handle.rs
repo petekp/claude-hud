@@ -17,6 +17,7 @@
 
 use chrono::Utc;
 use fs_err as fs;
+use hud_core::boundaries::find_project_boundary;
 use hud_core::state::{
     count_other_session_locks, create_session_lock, release_lock_by_session, HookEvent, HookInput,
     StateStore,
@@ -45,9 +46,6 @@ pub fn run() -> Result<(), String> {
         return Ok(());
     }
 
-    // Touch heartbeat file immediately to prove hooks are firing
-    touch_heartbeat();
-
     // Read JSON from stdin
     let mut input = String::new();
     io::stdin()
@@ -62,6 +60,15 @@ pub fn run() -> Result<(), String> {
     let hook_input: HookInput =
         serde_json::from_str(&input).map_err(|e| format!("Failed to parse hook input: {}", e))?;
 
+    handle_hook_input(hook_input)
+}
+
+fn handle_hook_input(hook_input: HookInput) -> Result<(), String> {
+    let home = dirs::home_dir().ok_or("Cannot determine home directory")?;
+    handle_hook_input_with_home(hook_input, &home)
+}
+
+fn handle_hook_input_with_home(hook_input: HookInput, home: &Path) -> Result<(), String> {
     // Get the event type
     let event = match hook_input.to_event() {
         Some(e) => e,
@@ -81,7 +88,6 @@ pub fn run() -> Result<(), String> {
     };
 
     // Get paths
-    let home = dirs::home_dir().ok_or("Cannot determine home directory")?;
     let tombstones_dir = home.join(TOMBSTONES_DIR);
 
     // Check if this session has already ended (tombstone exists)
@@ -98,6 +104,9 @@ pub fn run() -> Result<(), String> {
         );
         return Ok(());
     }
+
+    // Touch heartbeat for valid, actionable hook events
+    touch_heartbeat(home);
 
     // If SessionStart arrives for a tombstoned session, clear the tombstone
     if event == HookEvent::SessionStart && has_tombstone(&tombstones_dir, &session_id) {
@@ -403,11 +412,7 @@ fn get_ppid() -> Option<u32> {
     }
 }
 
-fn touch_heartbeat() {
-    let home = match dirs::home_dir() {
-        Some(h) => h,
-        None => return,
-    };
+fn touch_heartbeat(home: &Path) {
     let heartbeat_path = home.join(HEARTBEAT_FILE);
 
     if let Some(parent) = heartbeat_path.parent() {
@@ -435,17 +440,14 @@ fn touch_heartbeat() {
 /// `hud-core/src/activity.rs`. The separation exists because:
 ///
 /// 1. **Hook must stay fast**: This code runs on every tool use event. Direct JSON
-///    manipulation is faster than loading the full `ActivityStore` with boundary detection.
+///    manipulation is faster than loading the full `ActivityStore`.
 ///
-/// 2. **Different write patterns**: The hook writes raw file paths; the engine's
-///    `ActivityStore` performs project boundary detection on load. This keeps the
-///    hook binary small and fast.
+/// 2. **Write format parity**: The hook writes the native `activity` format used by
+///    `ActivityStore` (with `project_path`) so the engine can read without conversion.
+///    Legacy hook-format files with `files` arrays are migrated on write.
 ///
 /// 3. **Atomicity**: Both implementations use atomic writes, but through different means.
 ///    This implementation uses `write_file_atomic()` with tempfile.
-///
-/// The activity file format is compatible between both implementations—`ActivityStore::load()`
-/// can parse the hook's format and convert it to native format with boundary detection.
 fn record_file_activity(
     activity_file: &PathBuf,
     session_id: &str,
@@ -461,6 +463,10 @@ fn record_file_activity(
     } else {
         format!("{}/{}", cwd, file_path)
     };
+
+    let project_path = find_project_boundary(&resolved_path)
+        .map(|b| b.path)
+        .unwrap_or_else(|| cwd.to_string());
 
     // Load existing activity
     let mut activity: Value = fs::read_to_string(activity_file)
@@ -484,26 +490,100 @@ fn record_file_activity(
     let sessions = activity["sessions"].as_object_mut().unwrap();
     let session = sessions
         .entry(session_id.to_string())
-        .or_insert_with(|| json!({"cwd": cwd, "files": []}));
+        .or_insert_with(|| json!({"cwd": cwd, "activity": []}));
 
-    // Ensure files array exists
-    if !session.get("files").map(|f| f.is_array()).unwrap_or(false) {
-        session["files"] = json!([]);
+    // Ensure activity array exists
+    if !session
+        .get("activity")
+        .map(|a| a.is_array())
+        .unwrap_or(false)
+    {
+        session["activity"] = json!([]);
+    }
+
+    // Migrate legacy hook format ("files") to native format ("activity")
+    if session.get("files").map(|f| f.is_array()).unwrap_or(false) {
+        let files = session["files"].as_array().cloned().unwrap_or_default();
+        let session_cwd = session
+            .get("cwd")
+            .and_then(|v| v.as_str())
+            .unwrap_or(cwd)
+            .to_string();
+
+        let mut existing_keys = std::collections::HashSet::new();
+        if let Some(existing) = session["activity"].as_array() {
+            for entry in existing {
+                let key = format!(
+                    "{}|{}|{}",
+                    entry
+                        .get("file_path")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or_default(),
+                    entry
+                        .get("timestamp")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or_default(),
+                    entry
+                        .get("tool")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or_default()
+                );
+                existing_keys.insert(key);
+            }
+        }
+
+        let activity_entries = session["activity"].as_array_mut().unwrap();
+        for file in files {
+            let Some(file_path) = file.get("file_path").and_then(|v| v.as_str()) else {
+                continue;
+            };
+            let resolved_file_path = if Path::new(file_path).is_absolute() {
+                file_path.to_string()
+            } else {
+                format!("{}/{}", session_cwd, file_path)
+            };
+            let tool = file
+                .get("tool")
+                .and_then(|v| v.as_str())
+                .unwrap_or_default();
+            let timestamp = file
+                .get("timestamp")
+                .and_then(|v| v.as_str())
+                .unwrap_or_default();
+            let key = format!("{}|{}|{}", resolved_file_path, timestamp, tool);
+            if existing_keys.contains(&key) {
+                continue;
+            }
+            let project_path = find_project_boundary(&resolved_file_path)
+                .map(|b| b.path)
+                .unwrap_or_else(|| session_cwd.clone());
+            activity_entries.push(json!({
+                "project_path": project_path,
+                "file_path": resolved_file_path,
+                "tool": tool,
+                "timestamp": timestamp,
+            }));
+        }
+
+        if let Some(obj) = session.as_object_mut() {
+            obj.remove("files");
+        }
     }
 
     // Add new file activity at the start
     let timestamp = Utc::now().to_rfc3339();
     let entry = json!({
+        "project_path": project_path,
         "file_path": resolved_path,
         "tool": tool_name,
         "timestamp": timestamp,
     });
 
-    let files = session["files"].as_array_mut().unwrap();
-    files.insert(0, entry);
+    let activity_entries = session["activity"].as_array_mut().unwrap();
+    activity_entries.insert(0, entry);
 
     // Limit to 100 entries
-    files.truncate(100);
+    activity_entries.truncate(100);
 
     // Update cwd
     session["cwd"] = json!(cwd);
@@ -599,6 +679,62 @@ fn write_file_atomic(path: &Path, content: &str) -> std::io::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tempfile::tempdir;
+
+    fn make_hook_input(event_name: &str, session_id: Option<&str>, cwd: Option<&str>) -> HookInput {
+        HookInput {
+            hook_event_name: Some(event_name.to_string()),
+            session_id: session_id.map(|id| id.to_string()),
+            cwd: cwd.map(|path| path.to_string()),
+            trigger: None,
+            notification_type: None,
+            stop_hook_active: None,
+            tool_name: None,
+            tool_use_id: None,
+            tool_input: None,
+            tool_response: None,
+            source: None,
+            reason: None,
+            agent_id: None,
+            agent_transcript_path: None,
+        }
+    }
+
+    #[test]
+    fn test_handle_hook_input_skips_tombstoned_session_without_heartbeat() {
+        let temp = tempdir().unwrap();
+        let session_id = "session-tombstoned";
+        let tombstone_dir = temp.path().join(TOMBSTONES_DIR);
+        fs::create_dir_all(&tombstone_dir).unwrap();
+        fs::write(tombstone_dir.join(session_id), "").unwrap();
+
+        let hook_input = make_hook_input("UserPromptSubmit", Some(session_id), Some("/tmp/test"));
+        handle_hook_input_with_home(hook_input, temp.path()).unwrap();
+
+        let heartbeat_path = temp.path().join(HEARTBEAT_FILE);
+        assert!(
+            !heartbeat_path.exists(),
+            "Heartbeat should not be touched for tombstoned sessions"
+        );
+        assert!(
+            !temp.path().join(STATE_FILE).exists(),
+            "State file should not be created when skipping tombstoned events"
+        );
+    }
+
+    #[test]
+    fn test_handle_hook_input_missing_session_id_does_not_touch_heartbeat() {
+        let temp = tempdir().unwrap();
+        let hook_input = make_hook_input("UserPromptSubmit", None, Some("/tmp/test"));
+
+        handle_hook_input_with_home(hook_input, temp.path()).unwrap();
+
+        let heartbeat_path = temp.path().join(HEARTBEAT_FILE);
+        assert!(
+            !heartbeat_path.exists(),
+            "Heartbeat should not be touched when session_id is missing"
+        );
+    }
 
     #[test]
     fn test_process_event_session_start() {
@@ -703,5 +839,231 @@ mod tests {
         let (action, _, _) = process_event(&event, Some(SessionState::Working), &input);
 
         assert_eq!(action, Action::Skip);
+    }
+
+    #[test]
+    fn test_record_file_activity_migrates_legacy_relative_paths() {
+        let temp = tempdir().unwrap();
+        let project_dir = temp.path().join("project");
+        let src_dir = project_dir.join("src");
+        fs::create_dir_all(&src_dir).unwrap();
+        fs::write(project_dir.join("CLAUDE.md"), "# test").unwrap();
+
+        let legacy_file = src_dir.join("main.rs");
+        fs::write(&legacy_file, "fn main() {}").unwrap();
+        let new_file = src_dir.join("lib.rs");
+        fs::write(&new_file, "pub fn lib() {}").unwrap();
+
+        let activity_file = temp.path().join("activity.json");
+        let legacy_content = serde_json::json!({
+            "version": 1,
+            "sessions": {
+                "session-1": {
+                    "cwd": project_dir.to_string_lossy(),
+                    "files": [
+                        {
+                            "file_path": "src/main.rs",
+                            "tool": "Edit",
+                            "timestamp": "2026-01-30T00:00:00Z"
+                        }
+                    ]
+                }
+            }
+        });
+        fs::write(
+            &activity_file,
+            serde_json::to_string_pretty(&legacy_content).unwrap(),
+        )
+        .unwrap();
+
+        record_file_activity(
+            &activity_file,
+            "session-1",
+            project_dir.to_string_lossy().as_ref(),
+            "src/lib.rs",
+            "Read",
+        );
+
+        let updated = fs::read_to_string(&activity_file).unwrap();
+        let value: serde_json::Value = serde_json::from_str(&updated).unwrap();
+        let session = &value["sessions"]["session-1"];
+
+        assert!(
+            session.get("files").is_none(),
+            "legacy files array should be removed after migration"
+        );
+
+        let activity = session["activity"].as_array().expect("activity array");
+        let legacy_path = legacy_file.to_string_lossy().to_string();
+        let project_path = project_dir.to_string_lossy().to_string();
+        assert!(
+            activity
+                .iter()
+                .any(|entry| entry["file_path"].as_str() == Some(legacy_path.as_str())),
+            "legacy entry should be resolved to absolute file path"
+        );
+        assert!(
+            activity
+                .iter()
+                .any(|entry| entry["project_path"].as_str() == Some(project_path.as_str())),
+            "migrated entry should include project_path"
+        );
+    }
+
+    #[test]
+    fn test_record_file_activity_merges_legacy_files_with_existing_activity() {
+        let temp = tempdir().unwrap();
+        let project_dir = temp.path().join("project");
+        let src_dir = project_dir.join("src");
+        fs::create_dir_all(&src_dir).unwrap();
+        fs::write(project_dir.join("CLAUDE.md"), "# test").unwrap();
+
+        let main_file = src_dir.join("main.rs");
+        let lib_file = src_dir.join("lib.rs");
+        let new_file = src_dir.join("new.rs");
+        fs::write(&main_file, "fn main() {}").unwrap();
+        fs::write(&lib_file, "pub fn lib() {}").unwrap();
+        fs::write(&new_file, "pub fn new() {}").unwrap();
+
+        let activity_file = temp.path().join("activity.json");
+        let legacy_timestamp = "2026-01-30T00:00:00Z";
+        let legacy_content = serde_json::json!({
+            "version": 1,
+            "sessions": {
+                "session-1": {
+                    "cwd": project_dir.to_string_lossy(),
+                    "activity": [
+                        {
+                            "project_path": project_dir.to_string_lossy(),
+                            "file_path": main_file.to_string_lossy(),
+                            "tool": "Edit",
+                            "timestamp": legacy_timestamp
+                        }
+                    ],
+                    "files": [
+                        {
+                            "file_path": "src/main.rs",
+                            "tool": "Edit",
+                            "timestamp": legacy_timestamp
+                        },
+                        {
+                            "file_path": "src/lib.rs",
+                            "tool": "Read",
+                            "timestamp": "2026-01-30T00:01:00Z"
+                        }
+                    ]
+                }
+            }
+        });
+        fs::write(
+            &activity_file,
+            serde_json::to_string_pretty(&legacy_content).unwrap(),
+        )
+        .unwrap();
+
+        record_file_activity(
+            &activity_file,
+            "session-1",
+            project_dir.to_string_lossy().as_ref(),
+            "src/new.rs",
+            "Write",
+        );
+
+        let updated = fs::read_to_string(&activity_file).unwrap();
+        let value: serde_json::Value = serde_json::from_str(&updated).unwrap();
+        let session = &value["sessions"]["session-1"];
+
+        assert!(
+            session.get("files").is_none(),
+            "legacy files array should be removed after migration"
+        );
+
+        let activity = session["activity"].as_array().expect("activity array");
+        let new_path = new_file.to_string_lossy().to_string();
+        assert_eq!(activity[0]["file_path"].as_str(), Some(new_path.as_str()));
+        assert_eq!(activity[0]["tool"].as_str(), Some("Write"));
+
+        let main_path = main_file.to_string_lossy().to_string();
+        let lib_path = lib_file.to_string_lossy().to_string();
+        let main_count = activity
+            .iter()
+            .filter(|entry| entry["file_path"].as_str() == Some(main_path.as_str()))
+            .count();
+        assert_eq!(main_count, 1, "duplicate legacy entry should be deduped");
+        assert!(
+            activity
+                .iter()
+                .any(|entry| entry["file_path"].as_str() == Some(lib_path.as_str())),
+            "legacy lib.rs entry should be migrated"
+        );
+    }
+
+    #[test]
+    fn test_record_file_activity_migrates_legacy_absolute_paths() {
+        let temp = tempdir().unwrap();
+        let project_dir = temp.path().join("project");
+        let src_dir = project_dir.join("src");
+        fs::create_dir_all(&src_dir).unwrap();
+        fs::write(project_dir.join("CLAUDE.md"), "# test").unwrap();
+
+        let legacy_file = src_dir.join("main.rs");
+        let new_file = src_dir.join("lib.rs");
+        fs::write(&legacy_file, "fn main() {}").unwrap();
+        fs::write(&new_file, "pub fn lib() {}").unwrap();
+
+        let activity_file = temp.path().join("activity.json");
+        let legacy_path = legacy_file.to_string_lossy().to_string();
+        let project_path = project_dir.to_string_lossy().to_string();
+        let legacy_content = serde_json::json!({
+            "version": 1,
+            "sessions": {
+                "session-1": {
+                    "cwd": project_path,
+                    "files": [
+                        {
+                            "file_path": legacy_path,
+                            "tool": "Edit",
+                            "timestamp": "2026-01-30T00:00:00Z"
+                        }
+                    ]
+                }
+            }
+        });
+        fs::write(
+            &activity_file,
+            serde_json::to_string_pretty(&legacy_content).unwrap(),
+        )
+        .unwrap();
+
+        record_file_activity(
+            &activity_file,
+            "session-1",
+            project_dir.to_string_lossy().as_ref(),
+            "src/lib.rs",
+            "Read",
+        );
+
+        let updated = fs::read_to_string(&activity_file).unwrap();
+        let value: serde_json::Value = serde_json::from_str(&updated).unwrap();
+        let session = &value["sessions"]["session-1"];
+
+        assert!(
+            session.get("files").is_none(),
+            "legacy files array should be removed after migration"
+        );
+
+        let activity = session["activity"].as_array().expect("activity array");
+        assert!(
+            activity
+                .iter()
+                .any(|entry| entry["file_path"].as_str()
+                    == Some(legacy_file.to_string_lossy().as_ref())),
+            "absolute legacy path should be preserved"
+        );
+        assert!(
+            activity.iter().any(|entry| entry["project_path"].as_str()
+                == Some(project_dir.to_string_lossy().as_ref())),
+            "migrated entry should include project_path"
+        );
     }
 }
