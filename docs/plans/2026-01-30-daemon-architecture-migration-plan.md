@@ -247,6 +247,11 @@ A **local daemon** is the **only writer** of state. Hooks and the Swift app beco
 - Socket override (`CAPACITOR_DAEMON_SOCKET`)
 - Fallback to file writes on IPC failure
 
+### HUD core changes
+
+- Add daemon liveness client (`get_process_liveness`) behind `CAPACITOR_DAEMON_ENABLED`
+- Route lock + cleanup liveness checks through daemon when enabled (fallback to local checks)
+
 ### Swift changes
 
 - Add `DaemonClient.swift` (socket client + response framing)
@@ -275,6 +280,7 @@ A **local daemon** is the **only writer** of state. Hooks and the Swift app beco
 - `hud-hook` -> daemon -> query
 - Daemon down -> fallback to file mode
 - Daemon restart with replay
+- Cleanup uses daemon liveness when enabled; legacy locks still safe
 
 ### Regression Tests
 
