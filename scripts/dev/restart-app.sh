@@ -5,6 +5,29 @@ set -o pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
+# Parse flags
+FORCE_REBUILD=false
+SWIFT_ONLY=false
+for arg in "$@"; do
+    case $arg in
+        --force|-f)
+            FORCE_REBUILD=true
+            ;;
+        --swift-only|-s)
+            SWIFT_ONLY=true
+            ;;
+        --help|-h)
+            echo "Usage: restart-app.sh [OPTIONS]"
+            echo ""
+            echo "Options:"
+            echo "  -f, --force       Force full rebuild (touch source to invalidate cache)"
+            echo "  -s, --swift-only  Skip Rust build, only rebuild Swift"
+            echo "  -h, --help        Show this help message"
+            exit 0
+            ;;
+    esac
+done
+
 # Architecture validation - Apple Silicon only
 if [ "$(uname -m)" != "arm64" ]; then
     echo "Error: This project requires Apple Silicon (arm64)." >&2
@@ -40,27 +63,46 @@ if pgrep -x Capacitor > /dev/null; then
 fi
 
 cd "$PROJECT_ROOT"
-cargo build -p hud-core -p capacitor-daemon -p hud-hook --release || { echo "Rust build failed"; exit 1; }
 
-# Fix the dylib's install name so Swift can find it at runtime.
-# Without this, the library embeds an absolute path that breaks when moved.
-install_name_tool -id "@rpath/libhud_core.dylib" target/release/libhud_core.dylib
+# Force rebuild by touching App.swift to invalidate Swift's incremental build cache
+if [ "$FORCE_REBUILD" = true ]; then
+    echo "Force rebuild: invalidating Swift build cache..."
+    touch apps/swift/Sources/Capacitor/App.swift
+fi
 
-# Always regenerate UniFFI bindings to prevent checksum mismatch crashes
-cargo run --bin uniffi-bindgen generate \
-    --library target/release/libhud_core.dylib \
-    --language swift \
-    --out-dir apps/swift/bindings/
+# Rust build (skip if --swift-only)
+if [ "$SWIFT_ONLY" = true ]; then
+    echo "Skipping Rust build (--swift-only)"
+else
+    cargo build -p hud-core -p capacitor-daemon -p hud-hook --release || { echo "Rust build failed"; exit 1; }
+fi
 
-# Copy bindings to Bridge directory
-cp apps/swift/bindings/hud_core.swift apps/swift/Sources/Capacitor/Bridge/
+# Rust post-build steps (skip if --swift-only)
+if [ "$SWIFT_ONLY" != true ]; then
+    # Fix the dylib's install name so Swift can find it at runtime.
+    # Without this, the library embeds an absolute path that breaks when moved.
+    install_name_tool -id "@rpath/libhud_core.dylib" target/release/libhud_core.dylib
+
+    # Always regenerate UniFFI bindings to prevent checksum mismatch crashes
+    cargo run --bin uniffi-bindgen generate \
+        --library target/release/libhud_core.dylib \
+        --language swift \
+        --out-dir apps/swift/bindings/
+
+    # Copy bindings to Bridge directory
+    cp apps/swift/bindings/hud_core.swift apps/swift/Sources/Capacitor/Bridge/
+fi
 
 cd "$PROJECT_ROOT/apps/swift"
 
 # Get the actual build directory (portable across toolchain/layout changes)
 SWIFT_DEBUG_DIR=$(swift build --show-bin-path)
 mkdir -p "$SWIFT_DEBUG_DIR"
-cp "$PROJECT_ROOT/target/release/libhud_core.dylib" "$SWIFT_DEBUG_DIR/"
+
+# Copy dylib (skip if --swift-only, assume it's already there)
+if [ "$SWIFT_ONLY" != true ]; then
+    cp "$PROJECT_ROOT/target/release/libhud_core.dylib" "$SWIFT_DEBUG_DIR/"
+fi
 
 # Copy hud-hook binary so Bundle.main can find it (matches release bundle structure).
 # Prefer the repo build to avoid stale ~/.local/bin binaries.
