@@ -119,6 +119,44 @@ SwiftUI's `onTapGesture(count: 2)` intercepts the underlying `mouseDown` events,
 2. Remove the gesture if window dragging is more important
 3. Apply gesture only to specific non-draggable areas
 
+### SwiftUI Rapid State Changes Cause Recursive Layout Crashes
+
+When `objectWillChange.send()` is called synchronously during rapid state changes (e.g., killing multiple Claude Code sessions), SwiftUI can crash with `EXC_BREAKPOINT` in `-[NSWindow(NSDisplayCycle) _postWindowNeedsUpdateConstraints]`.
+
+**Root cause:** Multiple overlapping layout passes occur when:
+1. State changes trigger `objectWillChange.send()` immediately
+2. Views have `.animation()` modifiers that trigger layout on state changes
+3. Multiple sessions change state within the same frame
+
+**Symptom:** Crash log shows recursive `_informContainerThatSubviewsNeedUpdateConstraints` calls and `NSHostingView` geometry updates.
+
+**Solution:** Debounce `objectWillChange.send()` to coalesce rapid updates:
+```swift
+private var refreshDebounceWork: DispatchWorkItem?
+private var isRefreshScheduled = false
+
+func refreshSessionStates() {
+    // Update state synchronously
+    sessionStateManager.refreshSessionStates(for: projects)
+
+    // Debounce UI notification
+    guard !isRefreshScheduled else { return }
+    isRefreshScheduled = true
+
+    refreshDebounceWork?.cancel()
+    let workItem = DispatchWorkItem { [weak self] in
+        self?.isRefreshScheduled = false
+        self?.objectWillChange.send()
+    }
+    refreshDebounceWork = workItem
+
+    // 16ms (~1 frame at 60fps) coalesces updates within a single frame
+    DispatchQueue.main.asyncAfter(deadline: .now() + 0.016, execute: workItem)
+}
+```
+
+**See:** `AppState.swift:216-235`, crash log `Capacitor-2026-01-29-102502.ips`
+
 ### Multi-Source Version Detection
 
 Release builds and dev builds have different "sources of truth" for version:

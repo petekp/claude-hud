@@ -89,7 +89,13 @@ struct ProjectCardView: View {
     // MARK: - Body
 
     var body: some View {
+        // Capture layout values once at body evaluation to avoid constraint loops
+        let paddingH = glassConfig.cardPaddingH
+        let paddingV = glassConfig.cardPaddingV
+
         cardContent
+            .padding(.horizontal, paddingH)
+            .padding(.vertical, paddingV)
             .cardStyling(
                 isHovered: isHovered,
                 isReady: isReady,
@@ -171,8 +177,6 @@ struct ProjectCardView: View {
             )
         }
         .frame(minHeight: 40) // Match action button height for consistent card sizing
-        .padding(.horizontal, glassConfig.cardPaddingH)
-        .padding(.vertical, glassConfig.cardPaddingV)
         .animation(.spring(response: 0.4, dampingFraction: 0.8), value: projectStatus?.blocker)
     }
 

@@ -100,6 +100,11 @@ class AppState: ObservableObject {
     private var engine: HudEngine?
     private var stalenessTimer: Timer?
 
+    /// Debounce work item for coalescing rapid state updates.
+    /// Prevents recursive layout crashes when multiple sessions change simultaneously.
+    private var refreshDebounceWork: DispatchWorkItem?
+    private var isRefreshScheduled = false
+
     // MARK: - Computed Properties (bridging to managers)
 
     var activeProjectPath: String? {
@@ -227,7 +232,22 @@ class AppState: ObservableObject {
         sessionStateManager.refreshSessionStates(for: projects)
         activeProjectResolver.resolve()
         DebugLog.write("AppState.refreshSessionStates activeProject=\(activeProjectResolver.activeProject?.path ?? "nil") source=\(String(describing: activeProjectResolver.activeSource))")
-        objectWillChange.send()
+
+        // Debounce objectWillChange to prevent recursive layout crashes
+        // when multiple sessions change rapidly (e.g., killing many sessions at once).
+        // This coalesces rapid state changes into a single UI update.
+        guard !isRefreshScheduled else { return }
+        isRefreshScheduled = true
+
+        refreshDebounceWork?.cancel()
+        let workItem = DispatchWorkItem { [weak self] in
+            self?.isRefreshScheduled = false
+            self?.objectWillChange.send()
+        }
+        refreshDebounceWork = workItem
+
+        // 16ms delay (~1 frame at 60fps) to coalesce updates within a single frame
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.016, execute: workItem)
     }
 
     func refreshProjectStatuses() {

@@ -76,7 +76,13 @@ struct DockProjectCard: View {
     }
 
     var body: some View {
+        // Capture layout values once at body evaluation to avoid constraint loops
+        let dockPaddingH = glassConfig.dockCardPaddingH
+        let dockPaddingV = glassConfig.dockCardPaddingV
+
         cardContent
+            .padding(.horizontal, dockPaddingH)
+            .padding(.vertical, dockPaddingV)
             .frame(width: 262)
             .cardStyling(
                 isHovered: isHovered,
@@ -179,8 +185,6 @@ struct DockProjectCard: View {
                 style: .compact
             )
         }
-        .padding(.horizontal, glassConfig.dockCardPaddingH)
-        .padding(.vertical, glassConfig.dockCardPaddingV)
     }
 
     private var floatingCardBackground: some View {

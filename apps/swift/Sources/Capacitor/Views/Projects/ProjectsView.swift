@@ -34,8 +34,13 @@ struct ProjectsView: View {
     }
 
     var body: some View {
+        // Capture layout values once at body evaluation to avoid constraint loops
+        // (same pattern as DockLayoutView crash fix)
+        let cardListSpacing = glassConfig.cardListSpacingRounded
+        let listHorizontalPadding = glassConfig.listHorizontalPaddingRounded
+
         ScrollView {
-            LazyVStack(spacing: glassConfig.cardListSpacingRounded) {
+            LazyVStack(spacing: cardListSpacing) {
                 #if DEBUG
                 if let status = appState.daemonStatus, status.isEnabled {
                     DaemonStatusBadge(status: status)
@@ -56,7 +61,6 @@ struct ProjectsView: View {
                 DebugActiveStateCard()
                     .padding(.bottom, 6)
                 #endif
-
                 // Setup status card - show regardless of project state
                 if let diagnostic = appState.hookDiagnostic, !diagnostic.isHealthy {
                     SetupStatusCard(
@@ -187,7 +191,7 @@ struct ProjectsView: View {
                     }
                 }
             }
-            .padding(.horizontal, glassConfig.listHorizontalPaddingRounded)
+            .padding(.horizontal, listHorizontalPadding)
             .padding(.top, floatingMode ? 56 : 12)
             .padding(.bottom, floatingMode ? 64 : 8)
         }
