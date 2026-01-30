@@ -17,7 +17,21 @@ pub struct SharedState {
 
 impl SharedState {
     pub fn new(db: Db) -> Self {
-        let shell_state = db.load_shell_state().unwrap_or_default();
+        let shell_state = match db.load_shell_state() {
+            Ok(state) if !state.shells.is_empty() => state,
+            Ok(state) => match db.rebuild_shell_state_from_events() {
+                Ok(rebuilt) if !rebuilt.shells.is_empty() => rebuilt,
+                Ok(_) => state,
+                Err(err) => {
+                    tracing::warn!(error = %err, "Failed to rebuild shell_state from events");
+                    state
+                }
+            },
+            Err(err) => {
+                tracing::warn!(error = %err, "Failed to load shell_state table");
+                db.rebuild_shell_state_from_events().unwrap_or_default()
+            }
+        };
         Self {
             db,
             shell_state: Mutex::new(shell_state),

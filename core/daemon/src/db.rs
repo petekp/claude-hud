@@ -6,6 +6,7 @@
 
 use capacitor_daemon_protocol::EventEnvelope;
 use rusqlite::{params, Connection, OpenFlags};
+use std::collections::HashMap;
 use std::path::PathBuf;
 
 use crate::state::{ShellEntry, ShellState};
@@ -119,6 +120,91 @@ impl Db {
         })
     }
 
+    pub fn rebuild_shell_state_from_events(&self) -> Result<ShellState, String> {
+        self.with_connection(|conn| {
+            let by_pid: HashMap<i64, ShellEntry> = {
+                let mut stmt = conn
+                    .prepare(
+                        "SELECT payload FROM events \
+                         WHERE event_type = ?1 \
+                         ORDER BY rowid ASC",
+                    )
+                    .map_err(|err| format!("Failed to prepare events replay query: {}", err))?;
+
+                let rows = stmt
+                    .query_map(params!["ShellCwd"], |row| row.get::<_, String>(0))
+                    .map_err(|err| format!("Failed to read event payloads: {}", err))?;
+
+                let mut by_pid: HashMap<i64, ShellEntry> = HashMap::new();
+                for row in rows {
+                    let payload =
+                        row.map_err(|err| format!("Failed to decode event payload: {}", err))?;
+                    let event: EventEnvelope = match serde_json::from_str(&payload) {
+                        Ok(event) => event,
+                        Err(err) => {
+                            tracing::warn!(
+                                error = %err,
+                                "Skipping malformed event payload during replay"
+                            );
+                            continue;
+                        }
+                    };
+
+                    let (pid, cwd, tty) = match (event.pid, event.cwd.as_ref(), event.tty.as_ref())
+                    {
+                        (Some(pid), Some(cwd), Some(tty)) => (pid as i64, cwd, tty),
+                        _ => continue,
+                    };
+
+                    let entry = ShellEntry {
+                        cwd: cwd.clone(),
+                        tty: tty.clone(),
+                        parent_app: event.parent_app.clone(),
+                        tmux_session: event.tmux_session.clone(),
+                        tmux_client_tty: event.tmux_client_tty.clone(),
+                        updated_at: event.recorded_at.clone(),
+                    };
+
+                    by_pid.insert(pid, entry);
+                }
+
+                by_pid
+            };
+
+            let mut state = ShellState::default();
+            for (pid, entry) in &by_pid {
+                state.shells.insert(pid.to_string(), entry.clone());
+            }
+
+            let tx = conn.transaction().map_err(|err| {
+                format!("Failed to start shell_state replay transaction: {}", err)
+            })?;
+            tx.execute("DELETE FROM shell_state", [])
+                .map_err(|err| format!("Failed to clear shell_state table: {}", err))?;
+            for (pid, entry) in by_pid {
+                tx.execute(
+                    "INSERT INTO shell_state \
+                        (pid, cwd, tty, parent_app, tmux_session, tmux_client_tty, updated_at) \
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                    params![
+                        pid,
+                        entry.cwd,
+                        entry.tty,
+                        entry.parent_app,
+                        entry.tmux_session,
+                        entry.tmux_client_tty,
+                        entry.updated_at
+                    ],
+                )
+                .map_err(|err| format!("Failed to rebuild shell_state table: {}", err))?;
+            }
+            tx.commit()
+                .map_err(|err| format!("Failed to commit shell_state replay: {}", err))?;
+
+            Ok(state)
+        })
+    }
+
     fn init_schema(&self) -> Result<(), String> {
         self.with_connection(|conn| {
             conn.execute_batch(
@@ -149,10 +235,10 @@ impl Db {
 
     fn with_connection<T>(
         &self,
-        op: impl FnOnce(&Connection) -> Result<T, String>,
+        op: impl FnOnce(&mut Connection) -> Result<T, String>,
     ) -> Result<T, String> {
-        let conn = self.open()?;
-        op(&conn)
+        let mut conn = self.open()?;
+        op(&mut conn)
     }
 
     fn open(&self) -> Result<Connection, String> {
