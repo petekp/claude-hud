@@ -44,6 +44,7 @@
 //!
 //! This ensures monorepo packages track state independently from their parent.
 
+use super::daemon::process_liveness;
 use super::path_utils::{normalize_path_for_comparison, normalize_path_for_hashing};
 use super::types::LockInfo;
 use fs_err as fs;
@@ -185,7 +186,26 @@ fn is_pid_alive_with_legacy_checks(pid: u32) -> bool {
 /// Verify that a PID is alive AND matches the expected start time.
 /// If expected_start is None (legacy lock), applies additional verification checks.
 /// If expected_start is Some, verifies the process start time matches (within ±2 seconds tolerance).
-fn is_pid_alive_verified(pid: u32, expected_start: Option<u64>) -> bool {
+pub fn is_pid_alive_verified(pid: u32, expected_start: Option<u64>) -> bool {
+    if let Some(snapshot) = process_liveness(pid) {
+        if snapshot.is_alive == Some(false) {
+            return false;
+        }
+        if let Some(identity_matches) = snapshot.identity_matches {
+            return identity_matches;
+        }
+        if let (Some(expected), Some(current)) = (expected_start, snapshot.current_start_time) {
+            return expected.abs_diff(current) <= 2;
+        }
+        if let (Some(expected), Some(stored)) = (expected_start, snapshot.proc_started) {
+            return expected.abs_diff(stored) <= 2;
+        }
+    }
+
+    is_pid_alive_verified_local(pid, expected_start)
+}
+
+fn is_pid_alive_verified_local(pid: u32, expected_start: Option<u64>) -> bool {
     // Basic PID check first - if the process doesn't exist at all, return early
     if !is_pid_alive(pid) {
         return false;

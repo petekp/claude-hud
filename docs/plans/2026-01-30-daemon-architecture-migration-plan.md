@@ -213,6 +213,7 @@ A **local daemon** is the **only writer** of state. Hooks and the Swift app beco
 - Deprecate lock directories or keep as compatibility shim only.
 - Add `process_liveness` table and update per incoming event.
 - Expose `get_process_liveness` query for daemon-first PID identity checks.
+- Route `hud-core` cleanup/lock checks through daemon liveness when enabled (fallback to local checks).
 
 ### Phase 5 — Launchd + Reliability (2–4 days)
 

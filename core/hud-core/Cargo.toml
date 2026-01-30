@@ -28,6 +28,7 @@ md5 = "0.7"
 sysinfo = "0.30"
 ulid = "1.0"
 tempfile = "3.14"
+capacitor-daemon-protocol = { path = "../daemon-protocol" }
 
 [build-dependencies]
 uniffi = { version = "0.28", features = ["build"] }
