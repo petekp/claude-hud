@@ -383,9 +383,9 @@ final class TerminalLauncher {
             logger.info("TTY discovery failed for '\(hostTty)' and no Ghostty running")
             return false
 
-        case let .launchTerminalWithTmux(sessionName, _):
-            logger.info("  ▸ launchTerminalWithTmux: session=\(sessionName)")
-            launchTerminalWithTmuxSession(sessionName)
+        case let .launchTerminalWithTmux(sessionName, projectPath):
+            logger.info("  ▸ launchTerminalWithTmux: session=\(sessionName), path=\(projectPath)")
+            launchTerminalWithTmuxSession(sessionName, projectPath: projectPath)
             logger.info("  ▸ launchTerminalWithTmux: launched")
             return true
 
@@ -510,12 +510,20 @@ final class TerminalLauncher {
         return tty.isEmpty ? nil : tty
     }
 
-    private func launchTerminalWithTmuxSession(_ session: String) {
-        logger.debug("Launching terminal with tmux attach for session '\(session)'")
+    private func launchTerminalWithTmuxSession(_ session: String, projectPath: String? = nil) {
+        logger.debug("Launching terminal with tmux session '\(session)' at path '\(projectPath ?? "default")'")
         let escapedSession = shellEscape(session)
-        let tmuxCmd = "tmux attach-session -t \(escapedSession)"
+        // Use -A flag: attach if session exists, create if it doesn't
+        // Use -c to set working directory when creating new session
+        let tmuxCmd: String
+        if let path = projectPath {
+            let escapedPath = shellEscape(path)
+            tmuxCmd = "tmux new-session -A -s \(escapedSession) -c \(escapedPath)"
+        } else {
+            tmuxCmd = "tmux new-session -A -s \(escapedSession)"
+        }
 
-        // Launch terminal with tmux attach command
+        // Launch terminal with tmux command
         let script = """
             if [ -d "/Applications/Ghostty.app" ]; then
                 open -na "Ghostty.app" --args -e sh -c "\(tmuxCmd)"
