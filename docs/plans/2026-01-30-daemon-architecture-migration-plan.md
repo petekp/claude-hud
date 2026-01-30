@@ -49,7 +49,7 @@ A **local daemon** is the **only writer** of state. Hooks and the Swift app beco
 
 - Ingest events from hooks (SessionStart, PostToolUse, ShellCwd, etc.)
 - Maintain canonical state (sessions, activity, shell state, tombstones)
-- Verify PID liveness and process identity consistently
+- Track PID identity (`proc_started`) centrally via `process_liveness`
 - Expose read APIs for the Swift app
 - Export JSON snapshots for backwards compatibility (optional during migration)
 
@@ -70,6 +70,7 @@ A **local daemon** is the **only writer** of state. Hooks and the Swift app beco
 5. **Exact-path session correctness**: session state is never inferred from parent directories.
 6. **Activity is secondary**: activity should never override explicit session state.
 7. **Daemon is invisible**: must auto-start and auto-recover without user action.
+8. **PID identity is daemon-owned**: process identity should be sourced from `process_liveness`.
 
 ---
 
@@ -162,7 +163,7 @@ A **local daemon** is the **only writer** of state. Hooks and the Swift app beco
 - `session_id + pid` is the **unique key** for sessions.
 - Session-level rollups can be computed on query.
 - Activity remains bounded by count/time windows per session.
-- Phase 3 persists only `events` + `shell_state`; other tables are added in later phases.
+- Phase 3 persists only `events` + `shell_state`; `process_liveness` begins in Phase 4.
 - Always derive `event_type` strings using the shared protocol serializer (avoid hardcoding).
 
 ---
@@ -230,6 +231,7 @@ A **local daemon** is the **only writer** of state. Hooks and the Swift app beco
 - Update workspace `Cargo.toml`
 - Add logging config for daemon (tracing)
 - Add SQLite dependency (rusqlite or sqlx)
+- Add process inspection dependency (sysinfo) for `proc_started`
 
 ### Hook changes
 
@@ -259,6 +261,7 @@ A **local daemon** is the **only writer** of state. Hooks and the Swift app beco
 - State transitions per event type
 - SQLite persistence + replay
 - Event log → `shell_state` rebuild (tempfile-backed integration test)
+- Process liveness upsert (pid, proc_started, last_seen_at)
 
 ### Integration Tests
 
@@ -298,6 +301,7 @@ A **local daemon** is the **only writer** of state. Hooks and the Swift app beco
 - Should daemon export metrics (Prometheus-style) or just logs?
 - How should event schema evolve without breaking old hooks?
 - Do we need any legacy disk seeding now that replay from the event log restores shell state?
+- How long should `process_liveness` rows be retained (TTL vs cleanup on demand)?
 - Do we need an in-app toggle for daemon enablement (GUI apps don’t inherit shell env vars)?
 
 ---
