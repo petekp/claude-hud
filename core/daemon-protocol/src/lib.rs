@@ -15,6 +15,7 @@ pub const MAX_REQUEST_BYTES: usize = 1024 * 1024; // 1MB
 #[serde(rename_all = "snake_case", deny_unknown_fields)]
 pub enum Method {
     GetHealth,
+    GetShellState,
     Event,
 }
 

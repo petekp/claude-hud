@@ -34,6 +34,7 @@ final class ShellStateStore {
 
     private let stateURL: URL
     private var pollTask: _Concurrency.Task<Void, Never>?
+    private let daemonClient = DaemonClient.shared
 
     private(set) var state: ShellCwdState?
 
@@ -45,7 +46,7 @@ final class ShellStateStore {
     func startPolling() {
         pollTask = _Concurrency.Task { @MainActor [weak self] in
             while !_Concurrency.Task.isCancelled {
-                self?.loadState()
+                await self?.loadState()
                 try? await _Concurrency.Task.sleep(nanoseconds: Constants.pollingIntervalNanoseconds)
             }
         }
@@ -56,7 +57,16 @@ final class ShellStateStore {
         pollTask = nil
     }
 
-    private func loadState() {
+    private func loadState() async {
+        if daemonClient.isEnabled, let daemonState = try? await daemonClient.fetchShellState() {
+            state = daemonState
+            return
+        }
+
+        loadStateFromDisk()
+    }
+
+    private func loadStateFromDisk() {
         guard let data = try? Data(contentsOf: stateURL) else {
             return
         }
