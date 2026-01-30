@@ -18,12 +18,19 @@ fi
 "$PROJECT_ROOT/scripts/sync-hooks.sh" 2>/dev/null || true
 
 # Kill any existing Capacitor instances (graceful first, then force)
-# Match the binary name at end of path to avoid killing unrelated processes
-pkill -f '/Capacitor$' 2>/dev/null || true
-sleep 0.3
+# Use killall for reliability - matches process name directly
+killall Capacitor 2>/dev/null || true
+sleep 0.5
 # Force kill any stragglers
-pkill -9 -f '/Capacitor$' 2>/dev/null || true
-sleep 0.2
+killall -9 Capacitor 2>/dev/null || true
+sleep 0.3
+
+# Verify no Capacitor processes remain
+if pgrep -x Capacitor > /dev/null; then
+    echo "Warning: Capacitor process still running after kill attempt" >&2
+    pgrep -x Capacitor | xargs kill -9 2>/dev/null || true
+    sleep 0.5
+fi
 
 cd "$PROJECT_ROOT"
 cargo build -p hud-core --release || { echo "Rust build failed"; exit 1; }
