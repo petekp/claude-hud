@@ -1,22 +1,42 @@
 //! In-memory state managed by the daemon.
 //!
-//! Phase 2 stores only shell CWD data so the Swift app can read it directly
-//! from the daemon. Session/state data will be added in later phases.
+//! Phase 3 persists an append-only event log plus a materialized shell CWD
+//! table, keeping shell state fast to query while other state remains event-only.
 
 use capacitor_daemon_protocol::{EventEnvelope, EventType};
 use serde::Serialize;
 use std::collections::HashMap;
 use std::sync::Mutex;
 
-#[derive(Default)]
+use crate::db::Db;
+
 pub struct SharedState {
+    db: Db,
     shell_state: Mutex<ShellState>,
 }
 
 impl SharedState {
+    pub fn new(db: Db) -> Self {
+        let shell_state = db.load_shell_state().unwrap_or_default();
+        Self {
+            db,
+            shell_state: Mutex::new(shell_state),
+        }
+    }
+
     pub fn update_from_event(&self, event: &EventEnvelope) {
+        if let Err(err) = self.db.insert_event(event) {
+            tracing::warn!(error = %err, "Failed to persist daemon event");
+            return;
+        }
+
         if event.event_type == EventType::ShellCwd {
-            self.update_shell_state(event);
+            if let Err(err) = self.db.upsert_shell_state(event) {
+                tracing::warn!(error = %err, "Failed to update shell_state table");
+                return;
+            }
+
+            self.update_shell_state_cache(event);
         }
     }
 
@@ -27,7 +47,7 @@ impl SharedState {
             .unwrap_or_default()
     }
 
-    fn update_shell_state(&self, event: &EventEnvelope) {
+    fn update_shell_state_cache(&self, event: &EventEnvelope) {
         let (pid, cwd, tty) = match (event.pid, &event.cwd, &event.tty) {
             (Some(pid), Some(cwd), Some(tty)) => (pid, cwd, tty),
             _ => return,

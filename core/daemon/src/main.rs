@@ -1,8 +1,8 @@
 //! Capacitor daemon entrypoint.
 //!
 //! This is a small, single-writer service that owns state updates for the app.
-//! Phase 1 keeps it minimal: a socket listener, strict request validation, and
-//! a stub event handler so hooks can integrate safely.
+//! Phase 3 keeps it minimal: a socket listener, strict request validation, and
+//! a SQLite-backed event log with a materialized shell state view.
 
 use fs_err as fs;
 use std::io::{Read, Write};
@@ -18,8 +18,10 @@ use capacitor_daemon_protocol::{
     parse_event, ErrorInfo, Method, Request, Response, MAX_REQUEST_BYTES, PROTOCOL_VERSION,
 };
 
+mod db;
 mod state;
 
+use db::Db;
 use state::SharedState;
 
 const SOCKET_NAME: &str = "daemon.sock";
@@ -57,7 +59,23 @@ fn main() {
 
     info!(path = %socket_path.display(), "Capacitor daemon started");
 
-    let shared_state = Arc::new(SharedState::default());
+    let db_path = match daemon_db_path() {
+        Ok(path) => path,
+        Err(err) => {
+            error!(error = %err, "Failed to resolve daemon database path");
+            std::process::exit(1);
+        }
+    };
+
+    let db = match Db::new(db_path) {
+        Ok(db) => db,
+        Err(err) => {
+            error!(error = %err, "Failed to initialize daemon database");
+            std::process::exit(1);
+        }
+    };
+
+    let shared_state = Arc::new(SharedState::new(db));
 
     for stream in listener.incoming() {
         match stream {
@@ -80,6 +98,11 @@ fn init_logging() {
 fn daemon_socket_path() -> Result<PathBuf, String> {
     let home = dirs::home_dir().ok_or_else(|| "Home directory not found".to_string())?;
     Ok(home.join(".capacitor").join(SOCKET_NAME))
+}
+
+fn daemon_db_path() -> Result<PathBuf, String> {
+    let home = dirs::home_dir().ok_or_else(|| "Home directory not found".to_string())?;
+    Ok(home.join(".capacitor").join("daemon").join("state.db"))
 }
 
 fn prepare_socket_dir(socket_path: &Path) -> Result<(), String> {
