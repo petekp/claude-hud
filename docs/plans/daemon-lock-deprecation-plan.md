@@ -51,6 +51,7 @@ This document defines the migration path from filesystem lock directories
 - Update cleanup to skip lock removal when running in read-only/off modes.
 - Add a diagnostic label indicating lock mode (full / read-only / disabled).
 - Implement `CAPACITOR_DAEMON_LOCK_MODE` in hooks (full/read-only/off).
+- Implement `CAPACITOR_DAEMON_LOCK_MODE` in `hud-core` cleanup (read-only/off skip deletions).
 
 ## Open Questions
 
