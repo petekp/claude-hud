@@ -35,6 +35,7 @@ const ACTIVITY_FILE: &str = ".capacitor/file-activity.json";
 const TOMBSTONES_DIR: &str = ".capacitor/ended-sessions";
 const HEARTBEAT_FILE: &str = ".capacitor/hud-hook-heartbeat";
 const LOCK_MODE_ENV: &str = "CAPACITOR_DAEMON_LOCK_MODE";
+const LOCK_HEALTH_ENV: &str = "CAPACITOR_DAEMON_LOCK_HEALTH";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum LockMode {
@@ -63,7 +64,14 @@ fn lock_mode_from_env(value: Option<&str>) -> LockMode {
 }
 
 fn lock_writes_enabled() -> bool {
-    matches!(lock_mode(), LockMode::Full)
+    matches!(lock_mode(), LockMode::Full) && lock_health_ok()
+}
+
+fn lock_health_ok() -> bool {
+    match env::var(LOCK_HEALTH_ENV) {
+        Ok(value) => matches!(value.as_str(), "1" | "true" | "TRUE" | "yes" | "YES"),
+        Err(_) => true,
+    }
 }
 
 pub fn run() -> Result<(), String> {
@@ -743,6 +751,23 @@ mod tests {
         assert_eq!(lock_mode_from_env(Some("off")), LockMode::Off);
         assert_eq!(lock_mode_from_env(Some("disabled")), LockMode::Off);
         assert_eq!(lock_mode_from_env(Some("unknown")), LockMode::Full);
+    }
+
+    #[test]
+    fn test_lock_health_ok_defaults_true() {
+        env::remove_var(LOCK_HEALTH_ENV);
+        assert!(lock_health_ok());
+    }
+
+    #[test]
+    fn test_lock_health_ok_parses_values() {
+        env::set_var(LOCK_HEALTH_ENV, "1");
+        assert!(lock_health_ok());
+        env::set_var(LOCK_HEALTH_ENV, "yes");
+        assert!(lock_health_ok());
+        env::set_var(LOCK_HEALTH_ENV, "false");
+        assert!(!lock_health_ok());
+        env::remove_var(LOCK_HEALTH_ENV);
     }
 
     fn make_hook_input(event_name: &str, session_id: Option<&str>, cwd: Option<&str>) -> HookInput {
