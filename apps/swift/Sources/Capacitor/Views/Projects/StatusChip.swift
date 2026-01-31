@@ -20,21 +20,11 @@ struct StatusChip: View {
 
     private var isStale: Bool {
         guard let timestamp = stateChangedAt,
-              let date = parseISO8601(timestamp) else {
+              let date = parseISO8601Date(timestamp) else {
             return true
         }
         let hoursSince = Date().timeIntervalSince(date) / 3600
         return hoursSince > 24
-    }
-
-    private func parseISO8601(_ string: String) -> Date? {
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        if let date = formatter.date(from: string) {
-            return date
-        }
-        formatter.formatOptions = [.withInternetDateTime]
-        return formatter.date(from: string)
     }
 
     private var chipOpacity: Double {
@@ -81,10 +71,10 @@ struct StatusChipsRow: View {
 #Preview("Status Chips") {
     VStack(alignment: .leading, spacing: 16) {
         Group {
-            StatusChip(state: .ready, stateChangedAt: ISO8601DateFormatter().string(from: Date().addingTimeInterval(-120)))
-            StatusChip(state: .working, stateChangedAt: ISO8601DateFormatter().string(from: Date().addingTimeInterval(-300)))
-            StatusChip(state: .waiting, stateChangedAt: ISO8601DateFormatter().string(from: Date().addingTimeInterval(-3600)))
-            StatusChip(state: .idle, stateChangedAt: ISO8601DateFormatter().string(from: Date().addingTimeInterval(-86400 * 3)))
+            StatusChip(state: .ready, stateChangedAt: ISO8601DateFormatter.shared.string(from: Date().addingTimeInterval(-120)))
+            StatusChip(state: .working, stateChangedAt: ISO8601DateFormatter.shared.string(from: Date().addingTimeInterval(-300)))
+            StatusChip(state: .waiting, stateChangedAt: ISO8601DateFormatter.shared.string(from: Date().addingTimeInterval(-3600)))
+            StatusChip(state: .idle, stateChangedAt: ISO8601DateFormatter.shared.string(from: Date().addingTimeInterval(-86400 * 3)))
             StatusChip(state: nil, stateChangedAt: nil)
         }
 
@@ -93,8 +83,8 @@ struct StatusChipsRow: View {
         Text("Compact Style").font(.caption).foregroundColor(.secondary)
 
         Group {
-            StatusChip(state: .ready, stateChangedAt: ISO8601DateFormatter().string(from: Date().addingTimeInterval(-120)), style: .compact)
-            StatusChip(state: .working, stateChangedAt: ISO8601DateFormatter().string(from: Date().addingTimeInterval(-300)), style: .compact)
+            StatusChip(state: .ready, stateChangedAt: ISO8601DateFormatter.shared.string(from: Date().addingTimeInterval(-120)), style: .compact)
+            StatusChip(state: .working, stateChangedAt: ISO8601DateFormatter.shared.string(from: Date().addingTimeInterval(-300)), style: .compact)
         }
     }
     .padding()

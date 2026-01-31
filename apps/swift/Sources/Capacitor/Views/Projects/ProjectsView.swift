@@ -27,7 +27,7 @@ struct ProjectsView: View {
         guard let state = appState.getSessionState(for: project),
               state.state == .ready,
               let stateChangedAt = state.stateChangedAt,
-              let date = ISO8601DateFormatter().date(from: stateChangedAt) else {
+              let date = parseISO8601Date(stateChangedAt) else {
             return false
         }
         return Date().timeIntervalSince(date) > 86400
@@ -157,9 +157,7 @@ struct ProjectsView: View {
 
                         if !pausedCollapsed {
                             VStack(spacing: 0) {
-                                ForEach(pausedProjects, id: \.path) { project in
-                                    let index = pausedProjects.firstIndex(where: { $0.path == project.path }) ?? 0
-
+                                ForEach(Array(pausedProjects.enumerated()), id: \.element.path) { index, project in
                                     CompactProjectCardView(
                                         project: project,
                                         onTap: {
