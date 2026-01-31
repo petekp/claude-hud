@@ -278,6 +278,7 @@ A **local daemon** is the **only writer** of state. Hooks and the Swift app beco
 - SQLite persistence + replay
 - Event log → `shell_state` rebuild (tempfile-backed integration test)
 - Process liveness upsert (pid, proc_started, last_seen_at)
+- Event log → `process_liveness` rebuild (tempfile-backed integration test)
 
 ### Integration Tests
 
