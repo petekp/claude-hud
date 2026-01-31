@@ -1,3 +1,4 @@
+import Darwin
 import Foundation
 import Network
 
@@ -61,9 +62,10 @@ final class DaemonClient {
     private init() {}
 
     var isEnabled: Bool {
-        guard let value = ProcessInfo.processInfo.environment[Constants.enabledEnv] else {
+        guard let raw = getenv(Constants.enabledEnv) else {
             return false
         }
+        let value = String(cString: raw)
         return ["1", "true", "TRUE", "yes", "YES"].contains(value)
     }
 
@@ -122,8 +124,8 @@ final class DaemonClient {
     }
 
     private func socketPath() throws -> String {
-        if let override = ProcessInfo.processInfo.environment[Constants.socketEnv] {
-            return override
+        if let override = getenv(Constants.socketEnv) {
+            return String(cString: override)
         }
         let home = FileManager.default.homeDirectoryForCurrentUser.path
         return (home as NSString).appendingPathComponent(".capacitor/\(Constants.socketName)")

@@ -194,7 +194,7 @@ A **local daemon** is the **only writer** of state. Hooks and the Swift app beco
 
 - Add a small IPC client to `hud-hook`.
 - On event: send to daemon; on failure, **fallback to current file writes**.
-- Add env flag `CAPACITOR_DAEMON_ENABLED=1` (default off in prod initially).
+- Add env flag `CAPACITOR_DAEMON_ENABLED=1` (now normalized into hook commands).
 - Allow socket override via `CAPACITOR_DAEMON_SOCKET`.
 
 ### Phase 3 — App Client + SQLite Persistence (4–7 days)
@@ -217,6 +217,7 @@ A **local daemon** is the **only writer** of state. Hooks and the Swift app beco
 - Route `hud-core` cleanup/lock checks through daemon liveness when enabled (fallback to local checks).
 - Update lock-holder PID checks to use daemon-aware identity verification when possible.
 - Rebuild `process_liveness` from event log on daemon startup if table is empty.
+- Prune `process_liveness` rows older than 24 hours on daemon startup.
 - Define lock-directory deprecation plan (read-only shim + timeline for removal).
   - See `docs/plans/daemon-lock-deprecation-plan.md`.
 - Gate lock writes in hooks via `CAPACITOR_DAEMON_LOCK_MODE` (full/read-only/off).
@@ -229,6 +230,8 @@ A **local daemon** is the **only writer** of state. Hooks and the Swift app beco
 - Add LaunchAgent (auto-start + auto-restart).
 - Add health checks; fallback if daemon down.
 - Add crash loop backoff.
+- Install LaunchAgent from the app at startup (label `com.capacitor.daemon`).
+- Default hook commands enable daemon routing (`CAPACITOR_DAEMON_ENABLED=1`).
 
 ### Phase 6 — Cleanup & Removal (1–3 days)
 
@@ -260,6 +263,7 @@ A **local daemon** is the **only writer** of state. Hooks and the Swift app beco
 - Support `CAPACITOR_DAEMON_LOCK_HEALTH` (0/1/auto) to gate lock creation + release
   - Implement a health probe (`GetHealth`) when `auto` is set.
   - Normalize hook commands to include `CAPACITOR_DAEMON_LOCK_HEALTH=auto` by default.
+- Normalize hook commands to include `CAPACITOR_DAEMON_ENABLED=1` for daemon-first routing.
 
 ### HUD core changes
 
@@ -312,6 +316,7 @@ A **local daemon** is the **only writer** of state. Hooks and the Swift app beco
 
 1. Start the daemon locally:
    - `cargo run -p capacitor-daemon`
+   - Alternatively, verify LaunchAgent is loaded: `launchctl print gui/$(id -u)/com.capacitor.daemon`
 2. Verify health via the socket:
    - Send `{"protocol_version":1,"method":"get_health","id":"health","params":null}` to `~/.capacitor/daemon.sock`
    - Expect `{ "status": "ok", ... }`
@@ -330,8 +335,8 @@ A **local daemon** is the **only writer** of state. Hooks and the Swift app beco
 
 ## 9. Rollout Strategy
 
-- **Alpha**: daemon optional, disabled by default
-- **Beta**: daemon enabled by default, fallback on failure
+- **Alpha**: daemon auto-start when app launches; hooks set `CAPACITOR_DAEMON_ENABLED=1`; fallback remains
+- **Beta**: daemon enabled by default everywhere, fallback on failure
 - **Stable**: daemon required, fallback removed (or hidden)
 
 ---
@@ -352,10 +357,10 @@ A **local daemon** is the **only writer** of state. Hooks and the Swift app beco
 - Should daemon export metrics (Prometheus-style) or just logs?
 - How should event schema evolve without breaking old hooks?
 - Do we need any legacy disk seeding now that replay from the event log restores shell state?
-- How long should `process_liveness` rows be retained (TTL vs cleanup on demand)?
+- `process_liveness` rows are pruned after 24 hours; revisit if telemetry shows stale entries matter.
 - Do we need an in-app toggle for daemon enablement (GUI apps don’t inherit shell env vars)?
 - Where should `CAPACITOR_DAEMON_LOCK_HEALTH` be sourced (daemon probe vs Swift app vs installer)?
-- Should `CAPACITOR_DAEMON_LOCK_HEALTH=auto` become the default when daemon is enabled?
+- `CAPACITOR_DAEMON_LOCK_HEALTH=auto` is now the default in hook commands; revisit if this causes regressions.
 
 ---
 
@@ -365,7 +370,7 @@ A **local daemon** is the **only writer** of state. Hooks and the Swift app beco
 2. Implement `GetHealth` and `Event.SessionStart`.
 3. Add IPC client in `hud-hook` with fallback.
 4. Add Swift daemon client and read integration.
-5. Enable via `CAPACITOR_DAEMON_ENABLED=1` for dev.
+5. Enable via `CAPACITOR_DAEMON_ENABLED=1` (or run the app to install LaunchAgent).
 
 ---
 

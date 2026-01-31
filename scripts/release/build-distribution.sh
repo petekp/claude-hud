@@ -89,8 +89,8 @@ echo ""
 # Step 1: Build Rust libraries (release mode)
 echo -e "${YELLOW}Step 1/8: Building Rust libraries...${NC}"
 cd "$PROJECT_ROOT"
-cargo build -p hud-core -p hud-hook --release
-echo -e "${GREEN}✓ Rust libraries built (hud-core + hud-hook)${NC}"
+cargo build -p hud-core -p hud-hook -p capacitor-daemon --release
+echo -e "${GREEN}✓ Rust libraries built (hud-core + hud-hook + capacitor-daemon)${NC}"
 echo ""
 
 # Step 2: Regenerate UniFFI Swift bindings
@@ -179,6 +179,16 @@ else
     exit 1
 fi
 
+# Copy capacitor-daemon binary (for LaunchAgent)
+DAEMON_BINARY="$PROJECT_ROOT/target/release/capacitor-daemon"
+if [ -f "$DAEMON_BINARY" ]; then
+    cp "$DAEMON_BINARY" "$APP_BUNDLE/Contents/Resources/capacitor-daemon"
+    echo -e "${GREEN}✓ capacitor-daemon binary copied${NC}"
+else
+    echo -e "${RED}ERROR: capacitor-daemon binary not found at $DAEMON_BINARY${NC}"
+    exit 1
+fi
+
 # Copy Info.plist (using variables for version)
 cat > "$APP_BUNDLE/Contents/Info.plist" << EOF
 <?xml version="1.0" encoding="UTF-8"?>
@@ -240,6 +250,12 @@ codesign --force --sign "$SIGNING_IDENTITY" \
     --options runtime \
     --timestamp \
     "$APP_BUNDLE/Contents/Resources/hud-hook"
+
+# Sign the capacitor-daemon binary (LaunchAgent target)
+codesign --force --sign "$SIGNING_IDENTITY" \
+    --options runtime \
+    --timestamp \
+    "$APP_BUNDLE/Contents/Resources/capacitor-daemon"
 
 # Sign Sparkle.framework (must sign before the app bundle)
 codesign --force --sign "$SIGNING_IDENTITY" \

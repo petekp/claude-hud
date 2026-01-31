@@ -130,6 +130,23 @@ else
     echo "  ✓ ~/.local/bin/hud-hook already removed"
 fi
 
+echo "→ Removing installed capacitor-daemon binary..."
+if [ -f "$HOME/.local/bin/capacitor-daemon" ]; then
+    rm "$HOME/.local/bin/capacitor-daemon"
+    echo "  ✓ Removed ~/.local/bin/capacitor-daemon"
+else
+    echo "  ✓ ~/.local/bin/capacitor-daemon already removed"
+fi
+
+echo "→ Removing LaunchAgent plist..."
+if [ -f "$HOME/Library/LaunchAgents/com.capacitor.daemon.plist" ]; then
+    launchctl bootout "gui/$(id -u)" "$HOME/Library/LaunchAgents/com.capacitor.daemon.plist" 2>/dev/null || true
+    rm "$HOME/Library/LaunchAgents/com.capacitor.daemon.plist"
+    echo "  ✓ Removed com.capacitor.daemon.plist"
+else
+    echo "  ✓ com.capacitor.daemon.plist already removed"
+fi
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Step 6: Build and bundle hud-hook for development
 #
@@ -137,10 +154,12 @@ fi
 # we copy it to the Swift build directory so Bundle.main can find it.
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""
-echo "→ Building hud-hook for development bundle..."
+echo "→ Building hud-hook + capacitor-daemon for development bundle..."
 cd "$REPO_ROOT"
 cargo build -p hud-hook --release 2>&1 | tail -3
 echo "  ✓ hud-hook built"
+cargo build -p capacitor-daemon --release 2>&1 | tail -3
+echo "  ✓ capacitor-daemon built"
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Step 7: Rebuild Swift app and bundle hud-hook
@@ -156,7 +175,8 @@ swift build 2>&1 | tail -3
 # Copy hud-hook to Swift build directory (mimics release bundle structure)
 SWIFT_DEBUG_DIR=$(swift build --show-bin-path)
 cp "$REPO_ROOT/target/release/hud-hook" "$SWIFT_DEBUG_DIR/"
-echo "  ✓ Swift build complete (hud-hook bundled)"
+cp "$REPO_ROOT/target/release/capacitor-daemon" "$SWIFT_DEBUG_DIR/"
+echo "  ✓ Swift build complete (hud-hook + capacitor-daemon bundled)"
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Step 8: Launch the app

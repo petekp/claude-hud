@@ -36,6 +36,17 @@ struct ProjectsView: View {
     var body: some View {
         ScrollView {
             LazyVStack(spacing: glassConfig.cardListSpacingRounded) {
+                if let status = appState.daemonStatus, status.isEnabled && !status.isHealthy {
+                    DaemonStatusCard(
+                        status: status,
+                        onRetry: {
+                            appState.ensureDaemonRunning()
+                            appState.checkDaemonHealth()
+                        }
+                    )
+                    .padding(.bottom, 4)
+                }
+
                 // Setup status card - show regardless of project state
                 if let diagnostic = appState.hookDiagnostic, !diagnostic.isHealthy {
                     SetupStatusCard(

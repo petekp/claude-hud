@@ -49,6 +49,12 @@ if [[ -f "$HOME/.local/bin/hud-hook" ]]; then
     echo -e "${YELLOW}Found:${NC} ~/.local/bin/hud-hook"
 fi
 
+# 2b. Check for daemon binary
+if [[ -f "$HOME/.local/bin/capacitor-daemon" ]]; then
+    ITEMS_TO_CLEAN+=("$HOME/.local/bin/capacitor-daemon")
+    echo -e "${YELLOW}Found:${NC} ~/.local/bin/capacitor-daemon"
+fi
+
 # 3. Check for capacitor data directory
 if [[ -d "$HOME/.capacitor" ]]; then
     ITEMS_TO_CLEAN+=("$HOME/.capacitor")
@@ -81,6 +87,13 @@ for prefs in "$HOME/Library/Preferences/com.capacitor.app.plist" \
         ITEMS_TO_CLEAN+=("$prefs")
     fi
 done
+
+# 7. Check for LaunchAgent plist
+LAUNCH_AGENT_PLIST="$HOME/Library/LaunchAgents/com.capacitor.daemon.plist"
+if [[ -f "$LAUNCH_AGENT_PLIST" ]]; then
+    ITEMS_TO_CLEAN+=("$LAUNCH_AGENT_PLIST")
+    echo -e "${YELLOW}Found:${NC} com.capacitor.daemon.plist"
+fi
 
 echo ""
 
@@ -135,6 +148,14 @@ for item in "${ITEMS_TO_CLEAN[@]}"; do
             if [[ "$DRY_RUN" == "false" ]]; then
                 defaults delete "$BUNDLE_ID" 2>/dev/null || true
                 rm -f "$item" 2>/dev/null || true
+            fi
+            echo -e "${GREEN}done${NC}"
+            ;;
+        "$HOME/Library/LaunchAgents/com.capacitor.daemon.plist")
+            echo -n "Removing LaunchAgent... "
+            if [[ "$DRY_RUN" == "false" ]]; then
+                launchctl bootout "gui/$(id -u)" "$HOME/Library/LaunchAgents/com.capacitor.daemon.plist" 2>/dev/null || true
+                rm -f "$HOME/Library/LaunchAgents/com.capacitor.daemon.plist"
             fi
             echo -e "${GREEN}done${NC}"
             ;;

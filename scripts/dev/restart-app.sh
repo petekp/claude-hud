@@ -26,7 +26,7 @@ pkill -9 -f '/Capacitor$' 2>/dev/null || true
 sleep 0.2
 
 cd "$PROJECT_ROOT"
-cargo build -p hud-core --release || { echo "Rust build failed"; exit 1; }
+cargo build -p hud-core -p capacitor-daemon --release || { echo "Rust build failed"; exit 1; }
 
 # Fix the dylib's install name so Swift can find it at runtime.
 # Without this, the library embeds an absolute path that breaks when moved.
@@ -53,6 +53,13 @@ if [ -f "$HOME/.local/bin/hud-hook" ]; then
     cp "$HOME/.local/bin/hud-hook" "$SWIFT_DEBUG_DIR/"
 elif [ -f "$PROJECT_ROOT/target/release/hud-hook" ]; then
     cp "$PROJECT_ROOT/target/release/hud-hook" "$SWIFT_DEBUG_DIR/"
+fi
+
+# Copy capacitor-daemon binary so Bundle.main can find it
+if [ -f "$HOME/.local/bin/capacitor-daemon" ]; then
+    cp "$HOME/.local/bin/capacitor-daemon" "$SWIFT_DEBUG_DIR/"
+elif [ -f "$PROJECT_ROOT/target/release/capacitor-daemon" ]; then
+    cp "$PROJECT_ROOT/target/release/capacitor-daemon" "$SWIFT_DEBUG_DIR/"
 fi
 
 swift build || { echo "Swift build failed"; exit 1; }

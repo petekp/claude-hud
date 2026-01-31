@@ -60,6 +60,10 @@ class AppState: ObservableObject {
 
     @Published var hookDiagnostic: HookDiagnosticReport?
 
+    // MARK: - Daemon Diagnostic
+
+    @Published var daemonStatus: DaemonStatus?
+
     // MARK: - Manual dormant overrides
 
     @Published var manuallyDormant: Set<String> = [] {
@@ -122,6 +126,7 @@ class AppState: ObservableObject {
         do {
             engine = try HudEngine()
 
+            ensureDaemonRunning()
             let cleanupStats = engine!.runStartupCleanup()
             let totalCleaned = cleanupStats.locksRemoved + cleanupStats.legacyLocksRemoved + cleanupStats.orphanedProcessesKilled + cleanupStats.sessionsRemoved
             if totalCleaned > 0 {
@@ -132,6 +137,7 @@ class AppState: ObservableObject {
             projectDetailsManager.configure(engine: engine)
             loadDashboard()
             checkHookDiagnostic()
+            checkDaemonHealth()
             setupStalenessTimer()
             startShellTracking()
         } catch {
@@ -144,6 +150,7 @@ class AppState: ObservableObject {
 
     private var hookHealthCheckCounter = 0
     private var statsRefreshCounter = 0
+    private var daemonHealthCheckCounter = 0
 
     private func setupStalenessTimer() {
         stalenessTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
@@ -157,6 +164,13 @@ class AppState: ObservableObject {
                 if self.hookHealthCheckCounter >= 10 {
                     self.hookHealthCheckCounter = 0
                     self.checkHookDiagnostic()
+                }
+
+                // Check daemon health every 15 seconds
+                self.daemonHealthCheckCounter += 1
+                if self.daemonHealthCheckCounter >= 15 {
+                    self.daemonHealthCheckCounter = 0
+                    self.checkDaemonHealth()
                 }
 
                 // Refresh stats (including latestSummary from JSONL) every 30 seconds
@@ -257,6 +271,64 @@ class AppState: ObservableObject {
             )
         }
         return engine.runHookTest()
+    }
+
+    // MARK: - Daemon Diagnostic
+
+    func ensureDaemonRunning() {
+        _Concurrency.Task.detached { [weak self] in
+            let errorMessage = DaemonService.ensureRunning()
+            await MainActor.run {
+                if let message = errorMessage {
+                    self?.daemonStatus = DaemonStatus(
+                        isEnabled: true,
+                        isHealthy: false,
+                        message: message,
+                        pid: nil,
+                        version: nil
+                    )
+                }
+            }
+            await self?.checkDaemonHealth()
+        }
+    }
+
+    func checkDaemonHealth() {
+        guard DaemonClient.shared.isEnabled else {
+            daemonStatus = DaemonStatus(
+                isEnabled: false,
+                isHealthy: false,
+                message: "Daemon disabled",
+                pid: nil,
+                version: nil
+            )
+            return
+        }
+
+        _Concurrency.Task { [weak self] in
+            do {
+                let health = try await DaemonClient.shared.fetchHealth()
+                await MainActor.run {
+                    self?.daemonStatus = DaemonStatus(
+                        isEnabled: true,
+                        isHealthy: health.status == "ok",
+                        message: health.status,
+                        pid: health.pid,
+                        version: health.version
+                    )
+                }
+            } catch {
+                await MainActor.run {
+                    self?.daemonStatus = DaemonStatus(
+                        isEnabled: true,
+                        isHealthy: false,
+                        message: "Daemon unavailable",
+                        pid: nil,
+                        version: nil
+                    )
+                }
+            }
+        }
     }
 
     // MARK: - Project Management
