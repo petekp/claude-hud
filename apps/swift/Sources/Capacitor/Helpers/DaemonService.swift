@@ -55,6 +55,13 @@ enum DaemonService {
                 }
             }
 
+            if let executableURL = Bundle.main.executableURL {
+                let siblingBinary = executableURL.deletingLastPathComponent().appendingPathComponent(Constants.binaryName)
+                if FileManager.default.fileExists(atPath: siblingBinary.path) {
+                    return siblingBinary.path
+                }
+            }
+
             return nil
         }
 
