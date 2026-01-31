@@ -47,6 +47,8 @@ This document defines the migration path from filesystem lock directories
 ## Implementation Checklist
 
 - Add a daemon health check to decide whether to write locks.
+- Define a daemon health probe (use `get_health` IPC with timeout).
+- Consider exporting `CAPACITOR_DAEMON_LOCK_HEALTH=0/1` from setup/launcher scripts.
 - Add a configuration gate to disable lock creation in Phase B.
 - Update cleanup to skip lock removal when running in read-only/off modes.
 - Add a diagnostic label indicating lock mode (full / read-only / disabled).
