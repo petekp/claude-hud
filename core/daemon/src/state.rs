@@ -25,6 +25,8 @@ const SESSION_TTL_IDLE_SECS: i64 = 10 * 60; // Idle
 const ACTIVE_STATE_STALE_SECS: i64 = 10; // Working/Waiting -> Ready when no updates
 const READY_STATE_STALE_SECS: i64 = 60; // Ready -> Idle when stale
 
+const PROCESS_LIVENESS_MAX_AGE_HOURS: i64 = 24;
+
 pub struct SharedState {
     db: Db,
     shell_state: Mutex<ShellState>,

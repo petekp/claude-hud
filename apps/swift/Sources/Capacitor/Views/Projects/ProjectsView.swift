@@ -46,7 +46,6 @@ struct ProjectsView: View {
                     DaemonStatusBadge(status: status)
                         .padding(.bottom, 4)
                 }
-
                 if let status = appState.daemonStatus, status.isEnabled && !status.isHealthy {
                     DaemonStatusCard(
                         status: status,
@@ -243,11 +242,10 @@ struct PausedSectionHeader: View {
     @Binding var isCollapsed: Bool
     @State private var isHovered = false
     @Environment(\.prefersReducedMotion) private var reduceMotion
-    @ObservedObject private var glassConfig = GlassConfig.shared
 
     var body: some View {
         Button(action: {
-            withAnimation(reduceMotion ? AppMotion.reducedMotionFallback : .spring(response: glassConfig.sectionToggleSpringResponse, dampingFraction: 0.85)) {
+            withAnimation(reduceMotion ? AppMotion.reducedMotionFallback : .spring(response: 0.3, dampingFraction: 0.8)) {
                 isCollapsed.toggle()
             }
         }) {

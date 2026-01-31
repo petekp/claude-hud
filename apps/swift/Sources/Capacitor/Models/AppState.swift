@@ -156,7 +156,6 @@ class AppState: ObservableObject {
     private var hookHealthCheckCounter = 0
     private var statsRefreshCounter = 0
     private var daemonHealthCheckCounter = 0
-    private var daemonFailureCount = 0
 
     private func setupStalenessTimer() {
         stalenessTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak self] _ in
@@ -331,7 +330,6 @@ class AppState: ObservableObject {
             do {
                 let health = try await DaemonClient.shared.fetchHealth()
                 await MainActor.run {
-                    self?.daemonFailureCount = 0
                     self?.daemonStatus = DaemonStatus(
                         isEnabled: true,
                         isHealthy: health.status == "ok",
@@ -342,12 +340,7 @@ class AppState: ObservableObject {
                 }
             } catch {
                 await MainActor.run {
-                    guard let self else { return }
-                    self.daemonFailureCount += 1
-                    if self.daemonFailureCount < 2 {
-                        return
-                    }
-                    self.daemonStatus = DaemonStatus(
+                    self?.daemonStatus = DaemonStatus(
                         isEnabled: true,
                         isHealthy: false,
                         message: "Daemon unavailable",

@@ -32,7 +32,7 @@ enum ShellType: String, CaseIterable {
             # Capacitor shell integration
             if [[ -x "$HOME/.local/bin/hud-hook" ]]; then
               _capacitor_precmd() {
-                CAPACITOR_DAEMON_ENABLED=1 "$HOME/.local/bin/hud-hook" cwd "$PWD" "$$" "$(tty)" 2>/dev/null &!
+                CAPACITOR_DAEMON_ENABLED=1 "$HOME/.local/bin/hud-hook" cwd "$PWD" "$$" "$TTY" 2>/dev/null &!
               }
               precmd_functions+=(_capacitor_precmd)
             fi
