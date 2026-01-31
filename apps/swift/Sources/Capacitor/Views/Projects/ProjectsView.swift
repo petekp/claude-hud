@@ -41,6 +41,17 @@ struct ProjectsView: View {
 
         ScrollView {
             LazyVStack(spacing: cardListSpacing) {
+                if let status = appState.daemonStatus, status.isEnabled && !status.isHealthy {
+                    DaemonStatusCard(
+                        status: status,
+                        onRetry: {
+                            appState.ensureDaemonRunning()
+                            appState.checkDaemonHealth()
+                        }
+                    )
+                    .padding(.bottom, 4)
+                }
+
                 // Setup status card - show regardless of project state
                 if let diagnostic = appState.hookDiagnostic, !diagnostic.isHealthy {
                     SetupStatusCard(
@@ -223,11 +234,10 @@ struct PausedSectionHeader: View {
     @Binding var isCollapsed: Bool
     @State private var isHovered = false
     @Environment(\.prefersReducedMotion) private var reduceMotion
-    @ObservedObject private var glassConfig = GlassConfig.shared
 
     var body: some View {
         Button(action: {
-            withAnimation(reduceMotion ? AppMotion.reducedMotionFallback : .spring(response: glassConfig.sectionToggleSpringResponse, dampingFraction: 0.85)) {
+            withAnimation(reduceMotion ? AppMotion.reducedMotionFallback : .spring(response: 0.3, dampingFraction: 0.8)) {
                 isCollapsed.toggle()
             }
         }) {

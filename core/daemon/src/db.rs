@@ -5,6 +5,7 @@
 //! materialized shell_state table for fast reads.
 
 use capacitor_daemon_protocol::{EventEnvelope, EventType};
+use chrono::{Duration, Utc};
 use rusqlite::{params, Connection, OpenFlags, OptionalExtension};
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -139,6 +140,18 @@ impl Db {
         }
 
         Ok(())
+    }
+
+    pub fn prune_process_liveness(&self, max_age_hours: i64) -> Result<u64, String> {
+        let cutoff = (Utc::now() - Duration::hours(max_age_hours)).to_rfc3339();
+        self.with_connection(|conn| {
+            conn.execute(
+                "DELETE FROM process_liveness WHERE last_seen_at < ?1",
+                params![cutoff],
+            )
+            .map(|count| count as u64)
+            .map_err(|err| format!("Failed to prune process_liveness: {}", err))
+        })
     }
 
     pub fn rebuild_process_liveness_from_events(&self) -> Result<(), String> {
@@ -531,5 +544,63 @@ mod tests {
             .expect("dead pid row");
         assert_eq!(dead.last_seen_at, "2026-01-30T00:06:00Z");
         assert!(dead.proc_started.is_none());
+    }
+
+    #[test]
+    fn prunes_process_liveness_rows() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let db_path = temp_dir.path().join("state.db");
+        let db = Db::new(db_path).expect("db init");
+
+        let stale_time = (Utc::now() - Duration::hours(48)).to_rfc3339();
+        let fresh_time = Utc::now().to_rfc3339();
+
+        let stale_event = EventEnvelope {
+            event_id: "evt-stale".to_string(),
+            recorded_at: stale_time,
+            event_type: EventType::SessionStart,
+            session_id: Some("session-stale".to_string()),
+            pid: Some(11111),
+            cwd: Some("/tmp".to_string()),
+            tool: None,
+            file_path: None,
+            parent_app: None,
+            tty: None,
+            tmux_session: None,
+            tmux_client_tty: None,
+            notification_type: None,
+            stop_hook_active: None,
+            metadata: None,
+        };
+        db.upsert_process_liveness(&stale_event)
+            .expect("insert stale");
+
+        let fresh_event = EventEnvelope {
+            event_id: "evt-fresh".to_string(),
+            recorded_at: fresh_time,
+            event_type: EventType::SessionStart,
+            session_id: Some("session-fresh".to_string()),
+            pid: Some(22222),
+            cwd: Some("/tmp".to_string()),
+            tool: None,
+            file_path: None,
+            parent_app: None,
+            tty: None,
+            tmux_session: None,
+            tmux_client_tty: None,
+            notification_type: None,
+            stop_hook_active: None,
+            metadata: None,
+        };
+        db.upsert_process_liveness(&fresh_event)
+            .expect("insert fresh");
+
+        let removed = db
+            .prune_process_liveness(24)
+            .expect("prune process_liveness");
+        assert_eq!(removed, 1);
+
+        assert!(db.get_process_liveness(11111).unwrap().is_none());
+        assert!(db.get_process_liveness(22222).unwrap().is_some());
     }
 }

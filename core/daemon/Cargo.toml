@@ -19,6 +19,7 @@ tracing.workspace = true
 tracing-subscriber.workspace = true
 fs-err.workspace = true
 capacitor-daemon-protocol = { path = "../daemon-protocol" }
+chrono.workspace = true
 rusqlite = "0.31"
 sysinfo = "0.30"
 

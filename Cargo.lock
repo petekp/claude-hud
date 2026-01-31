@@ -185,6 +185,7 @@ name = "capacitor-daemon"
 version = "0.1.27"
 dependencies = [
  "capacitor-daemon-protocol",
+ "chrono",
  "dirs",
  "fs-err 3.2.2",
  "rusqlite",

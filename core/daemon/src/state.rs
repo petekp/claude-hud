@@ -11,6 +11,8 @@ use std::sync::Mutex;
 use crate::db::Db;
 use crate::process::get_process_start_time;
 
+const PROCESS_LIVENESS_MAX_AGE_HOURS: i64 = 24;
+
 pub struct SharedState {
     db: Db,
     shell_state: Mutex<ShellState>,
@@ -35,6 +37,9 @@ impl SharedState {
         };
         if let Err(err) = db.ensure_process_liveness() {
             tracing::warn!(error = %err, "Failed to ensure process liveness table");
+        }
+        if let Err(err) = db.prune_process_liveness(PROCESS_LIVENESS_MAX_AGE_HOURS) {
+            tracing::warn!(error = %err, "Failed to prune process liveness table");
         }
         Self {
             db,

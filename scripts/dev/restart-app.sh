@@ -67,7 +67,7 @@ fi
 if [ "$SWIFT_ONLY" = true ]; then
     echo "Skipping Rust build (--swift-only)"
 else
-    cargo build -p hud-core --release || { echo "Rust build failed"; exit 1; }
+    cargo build -p hud-core -p capacitor-daemon --release || { echo "Rust build failed"; exit 1; }
 fi
 
 # Rust post-build steps (skip if --swift-only)
@@ -102,6 +102,13 @@ if [ -f "$HOME/.local/bin/hud-hook" ]; then
     cp "$HOME/.local/bin/hud-hook" "$SWIFT_DEBUG_DIR/"
 elif [ -f "$PROJECT_ROOT/target/release/hud-hook" ]; then
     cp "$PROJECT_ROOT/target/release/hud-hook" "$SWIFT_DEBUG_DIR/"
+fi
+
+# Copy capacitor-daemon binary so Bundle.main can find it
+if [ -f "$HOME/.local/bin/capacitor-daemon" ]; then
+    cp "$HOME/.local/bin/capacitor-daemon" "$SWIFT_DEBUG_DIR/"
+elif [ -f "$PROJECT_ROOT/target/release/capacitor-daemon" ]; then
+    cp "$PROJECT_ROOT/target/release/capacitor-daemon" "$SWIFT_DEBUG_DIR/"
 fi
 
 swift build || { echo "Swift build failed"; exit 1; }
