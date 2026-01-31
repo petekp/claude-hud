@@ -113,7 +113,7 @@ pub fn cleanup_orphaned_lock_holders() -> CleanupStats {
         };
 
         // Check if the monitored PID is still alive
-        if is_pid_alive(monitored) {
+        if is_monitored_pid_alive(monitored) {
             // Monitored process is still alive - this is a legitimate lock holder
             continue;
         }
@@ -153,6 +153,22 @@ fn is_lock_pid_alive(info: &super::types::LockInfo) -> bool {
         Some(started) => is_pid_alive_verified(info.pid, Some(started)),
         None => is_pid_alive(info.pid),
     }
+}
+
+fn is_monitored_pid_alive(pid: u32) -> bool {
+    if let Some(snapshot) = super::daemon::process_liveness(pid) {
+        if snapshot.is_alive == Some(false) {
+            return false;
+        }
+        if let Some(identity_matches) = snapshot.identity_matches {
+            return identity_matches;
+        }
+        if snapshot.is_alive == Some(true) {
+            return true;
+        }
+    }
+
+    is_pid_alive(pid)
 }
 
 /// Parses the --pid argument from a lock-holder command line.
