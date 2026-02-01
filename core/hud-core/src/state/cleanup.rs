@@ -636,8 +636,24 @@ fn cleanup_old_sessions(state_file: &Path) -> CleanupStats {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::env;
     use std::fs;
+    use std::sync::Mutex;
     use tempfile::tempdir;
+
+    static ENV_LOCK: Mutex<()> = Mutex::new(());
+
+    fn with_daemon_disabled<F: FnOnce()>(f: F) {
+        let _guard = ENV_LOCK.lock().unwrap();
+        let prev = env::var("CAPACITOR_DAEMON_ENABLED").ok();
+        env::remove_var("CAPACITOR_DAEMON_ENABLED");
+        f();
+        if let Some(value) = prev {
+            env::set_var("CAPACITOR_DAEMON_ENABLED", value);
+        } else {
+            env::remove_var("CAPACITOR_DAEMON_ENABLED");
+        }
+    }
 
     fn create_lock_with_pid(lock_base: &Path, path: &str, pid: u32) {
         let hash = format!("{:x}", md5::compute(path));
@@ -840,46 +856,48 @@ mod tests {
 
     #[test]
     fn run_startup_cleanup_combines_all_cleanups() {
-        let temp = tempdir().unwrap();
-        let lock_base = temp.path().join("sessions");
-        let state_file = temp.path().join("sessions.json");
-        fs::create_dir_all(&lock_base).unwrap();
+        with_daemon_disabled(|| {
+            let temp = tempdir().unwrap();
+            let lock_base = temp.path().join("sessions");
+            let state_file = temp.path().join("sessions.json");
+            fs::create_dir_all(&lock_base).unwrap();
 
-        // Create a stale lock (legacy format - 32 hex char hash)
-        create_lock_with_pid(&lock_base, "/stale/project", 99999999);
+            // Create a stale lock (legacy format - 32 hex char hash)
+            create_lock_with_pid(&lock_base, "/stale/project", 99999999);
 
-        // Create state file with an old session
-        let old_time = Utc::now() - Duration::hours(25);
-        let content = serde_json::json!({
-            "version": 3,
-            "sessions": {
-                "old-session": {
-                    "session_id": "old-session",
-                    "state": "ready",
-                    "cwd": "/old/project",
-                    "updated_at": old_time.to_rfc3339(),
-                    "state_changed_at": old_time.to_rfc3339()
+            // Create state file with an old session
+            let old_time = Utc::now() - Duration::hours(25);
+            let content = serde_json::json!({
+                "version": 3,
+                "sessions": {
+                    "old-session": {
+                        "session_id": "old-session",
+                        "state": "ready",
+                        "cwd": "/old/project",
+                        "updated_at": old_time.to_rfc3339(),
+                        "state_changed_at": old_time.to_rfc3339()
+                    }
                 }
-            }
+            });
+            fs::write(&state_file, serde_json::to_string_pretty(&content).unwrap()).unwrap();
+
+            let stats = run_startup_cleanup(&lock_base, &state_file);
+
+            // The stale lock is a legacy MD5-hash lock (create_lock_with_pid uses legacy format),
+            // so it's cleaned by legacy_locks cleanup. Modern session-based locks would be
+            // counted in locks_removed.
+            let total_locks_removed = stats.locks_removed + stats.legacy_locks_removed;
+            assert_eq!(
+                total_locks_removed, 1,
+                "Should remove 1 stale lock (either modern or legacy)"
+            );
+            // v4: The old session is first cleaned up by orphaned session cleanup
+            // (stale record without a lock), so sessions_removed may be 0
+            // The total removed should be 1 (either as orphaned or old)
+            let total_sessions_removed = stats.orphaned_sessions_removed + stats.sessions_removed;
+            assert_eq!(total_sessions_removed, 1, "Old session should be removed");
+            assert!(stats.errors.is_empty());
         });
-        fs::write(&state_file, serde_json::to_string_pretty(&content).unwrap()).unwrap();
-
-        let stats = run_startup_cleanup(&lock_base, &state_file);
-
-        // The stale lock is a legacy MD5-hash lock (create_lock_with_pid uses legacy format),
-        // so it's cleaned by legacy_locks cleanup. Modern session-based locks would be
-        // counted in locks_removed.
-        let total_locks_removed = stats.locks_removed + stats.legacy_locks_removed;
-        assert_eq!(
-            total_locks_removed, 1,
-            "Should remove 1 stale lock (either modern or legacy)"
-        );
-        // v4: The old session is first cleaned up by orphaned session cleanup
-        // (stale record without a lock), so sessions_removed may be 0
-        // The total removed should be 1 (either as orphaned or old)
-        let total_sessions_removed = stats.orphaned_sessions_removed + stats.sessions_removed;
-        assert_eq!(total_sessions_removed, 1, "Old session should be removed");
-        assert!(stats.errors.is_empty());
     }
 
     #[test]

@@ -263,7 +263,23 @@ mod tests {
     use crate::state::lock::tests_helper::create_lock;
     use crate::storage::StorageConfig;
     use chrono::{Duration as ChronoDuration, Utc};
+    use std::env;
+    use std::sync::Mutex;
     use tempfile::tempdir;
+
+    static ENV_LOCK: Mutex<()> = Mutex::new(());
+
+    fn with_daemon_disabled<F: FnOnce()>(f: F) {
+        let _guard = ENV_LOCK.lock().unwrap();
+        let prev = env::var("CAPACITOR_DAEMON_ENABLED").ok();
+        env::remove_var("CAPACITOR_DAEMON_ENABLED");
+        f();
+        if let Some(value) = prev {
+            env::set_var("CAPACITOR_DAEMON_ENABLED", value);
+        } else {
+            env::remove_var("CAPACITOR_DAEMON_ENABLED");
+        }
+    }
 
     // ─────────────────────────────────────────────────────────────────────────────
     // TDD: Path Configuration Tests (these should fail until we fix the adapter)
@@ -563,31 +579,35 @@ mod tests {
 
     #[test]
     fn test_state_mtime_returns_none_when_no_file() {
-        let temp = tempdir().unwrap();
-        let capacitor_root = temp.path().join("capacitor");
-        let claude_root = temp.path().join("claude");
-        std::fs::create_dir_all(&capacitor_root).unwrap();
-        std::fs::create_dir_all(&claude_root).unwrap();
+        with_daemon_disabled(|| {
+            let temp = tempdir().unwrap();
+            let capacitor_root = temp.path().join("capacitor");
+            let claude_root = temp.path().join("claude");
+            std::fs::create_dir_all(&capacitor_root).unwrap();
+            std::fs::create_dir_all(&claude_root).unwrap();
 
-        let storage = StorageConfig::with_roots(capacitor_root, claude_root);
-        let adapter = ClaudeAdapter::with_storage(storage);
-        assert!(adapter.state_mtime().is_none());
+            let storage = StorageConfig::with_roots(capacitor_root, claude_root);
+            let adapter = ClaudeAdapter::with_storage(storage);
+            assert!(adapter.state_mtime().is_none());
+        });
     }
 
     #[test]
     fn test_state_mtime_returns_some_when_file_exists() {
-        let temp = tempdir().unwrap();
-        let capacitor_root = temp.path().join("capacitor");
-        let claude_root = temp.path().join("claude");
-        std::fs::create_dir_all(&capacitor_root).unwrap();
-        std::fs::create_dir_all(&claude_root).unwrap();
+        with_daemon_disabled(|| {
+            let temp = tempdir().unwrap();
+            let capacitor_root = temp.path().join("capacitor");
+            let claude_root = temp.path().join("claude");
+            std::fs::create_dir_all(&capacitor_root).unwrap();
+            std::fs::create_dir_all(&claude_root).unwrap();
 
-        // Create state file in Capacitor namespace
-        let state_file = capacitor_root.join("sessions.json");
-        std::fs::write(&state_file, r#"{"version": 2, "sessions": {}}"#).unwrap();
+            // Create state file in Capacitor namespace
+            let state_file = capacitor_root.join("sessions.json");
+            std::fs::write(&state_file, r#"{"version": 2, "sessions": {}}"#).unwrap();
 
-        let storage = StorageConfig::with_roots(capacitor_root, claude_root);
-        let adapter = ClaudeAdapter::with_storage(storage);
-        assert!(adapter.state_mtime().is_some());
+            let storage = StorageConfig::with_roots(capacitor_root, claude_root);
+            let adapter = ClaudeAdapter::with_storage(storage);
+            assert!(adapter.state_mtime().is_some());
+        });
     }
 }
