@@ -211,6 +211,22 @@ pub fn sessions_snapshot() -> Option<DaemonSessionsSnapshot> {
     Some(DaemonSessionsSnapshot { sessions })
 }
 
+pub(crate) fn daemon_health() -> Option<bool> {
+    if !daemon_enabled() {
+        return None;
+    }
+
+    let request = Request {
+        protocol_version: PROTOCOL_VERSION,
+        method: Method::GetHealth,
+        id: Some("daemon-health".to_string()),
+        params: None,
+    };
+
+    let response = send_request(request).ok()?;
+    Some(response.ok)
+}
+
 pub(crate) fn daemon_enabled() -> bool {
     match env::var(ENABLE_ENV) {
         Ok(value) => matches!(value.as_str(), "1" | "true" | "TRUE" | "yes" | "YES"),
