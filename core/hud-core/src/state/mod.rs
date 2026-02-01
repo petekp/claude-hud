@@ -44,7 +44,7 @@
 //! - [`StateStore`]: Low-level access to session records
 
 mod cleanup;
-mod daemon;
+pub(crate) mod daemon;
 pub(crate) mod lock;
 mod path_utils;
 mod resolver;

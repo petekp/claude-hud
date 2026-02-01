@@ -10,6 +10,7 @@
 //! We never write to `~/.claude/` (sidecar purity).
 
 use crate::activity::ActivityStore;
+use crate::state::daemon::{activity_snapshot, DaemonActivitySnapshot};
 use crate::state::{resolve_state_with_details, StateStore};
 use crate::storage::StorageConfig;
 use crate::types::{ProjectSessionState, SessionState};
@@ -32,6 +33,15 @@ pub fn detect_session_state(project_path: &str) -> ProjectSessionState {
 pub fn detect_session_state_with_storage(
     storage: &StorageConfig,
     project_path: &str,
+) -> ProjectSessionState {
+    let daemon_activity = activity_snapshot(500);
+    detect_session_state_with_activity(storage, project_path, daemon_activity.as_ref())
+}
+
+fn detect_session_state_with_activity(
+    storage: &StorageConfig,
+    project_path: &str,
+    daemon_activity: Option<&DaemonActivitySnapshot>,
 ) -> ProjectSessionState {
     // Both locks and state file are in ~/.capacitor/ (our namespace, sidecar purity)
     let lock_dir = storage.sessions_dir();
@@ -83,38 +93,67 @@ pub fn detect_session_state_with_storage(
                 is_locked: details.is_from_lock,
             }
         }
-        None => {
-            // No session found via lock or fresh record - check for file activity
-            // This enables monorepo package tracking where cwd != project_path
-            let activity_file = storage.file_activity_file();
-            let activity_store = ActivityStore::load(&activity_file);
+        None => detect_activity_fallback(storage, project_path, daemon_activity),
+    }
+}
 
-            if activity_store
-                .has_recent_activity_in_path(project_path, crate::activity::ACTIVITY_THRESHOLD)
-            {
-                // Recent file edits in this project from a session elsewhere
-                ProjectSessionState {
-                    state: SessionState::Working,
-                    state_changed_at: None,
-                    updated_at: None,
-                    session_id: None, // We don't know which session (could track in activity)
-                    working_on: None,
-                    context: None,
-                    thinking: Some(true),
-                    is_locked: false, // No lock at this path, but still working
-                }
-            } else {
-                ProjectSessionState {
-                    state: SessionState::Idle,
-                    state_changed_at: None,
-                    updated_at: None,
-                    session_id: None,
-                    working_on: None,
-                    context: None,
-                    thinking: None,
-                    is_locked: false,
-                }
-            }
+fn detect_activity_fallback(
+    storage: &StorageConfig,
+    project_path: &str,
+    daemon_activity: Option<&DaemonActivitySnapshot>,
+) -> ProjectSessionState {
+    if let Some(snapshot) = daemon_activity {
+        if snapshot.has_recent_activity_in_path(project_path, crate::activity::ACTIVITY_THRESHOLD) {
+            return ProjectSessionState {
+                state: SessionState::Working,
+                state_changed_at: None,
+                updated_at: None,
+                session_id: None,
+                working_on: None,
+                context: None,
+                thinking: Some(true),
+                is_locked: false,
+            };
+        }
+
+        return ProjectSessionState {
+            state: SessionState::Idle,
+            state_changed_at: None,
+            updated_at: None,
+            session_id: None,
+            working_on: None,
+            context: None,
+            thinking: None,
+            is_locked: false,
+        };
+    }
+
+    // Daemon unavailable: fall back to file activity.
+    let activity_file = storage.file_activity_file();
+    let activity_store = ActivityStore::load(&activity_file);
+
+    if activity_store.has_recent_activity_in_path(project_path, crate::activity::ACTIVITY_THRESHOLD)
+    {
+        ProjectSessionState {
+            state: SessionState::Working,
+            state_changed_at: None,
+            updated_at: None,
+            session_id: None,
+            working_on: None,
+            context: None,
+            thinking: Some(true),
+            is_locked: false,
+        }
+    } else {
+        ProjectSessionState {
+            state: SessionState::Idle,
+            state_changed_at: None,
+            updated_at: None,
+            session_id: None,
+            working_on: None,
+            context: None,
+            thinking: None,
+            is_locked: false,
         }
     }
 }
@@ -133,11 +172,12 @@ pub fn get_all_session_states_with_storage(
     project_paths: &[String],
 ) -> std::collections::HashMap<String, ProjectSessionState> {
     let mut states = std::collections::HashMap::new();
+    let daemon_activity = activity_snapshot(500);
 
     for path in project_paths {
         states.insert(
             path.clone(),
-            detect_session_state_with_storage(storage, path),
+            detect_session_state_with_activity(storage, path, daemon_activity.as_ref()),
         );
     }
 

@@ -97,27 +97,28 @@ impl ShellEntry {
 // MARK: - Public API
 
 pub fn run(path: &str, pid: u32, tty: &str) -> Result<(), CwdError> {
-    let state_dir = get_state_dir()?;
-    fs::create_dir_all(&state_dir)?;
-
-    let cwd_path = state_dir.join("shell-cwd.json");
-    let history_path = state_dir.join("shell-history.jsonl");
-
     let normalized_path = normalize_path(path);
-    let mut state = load_state(&cwd_path)?;
-
-    let cwd_changed = has_cwd_changed(&state, pid, &normalized_path);
     let parent_app = detect_parent_app(pid);
     let entry = ShellEntry::new(normalized_path.clone(), tty.to_string(), parent_app);
 
-    crate::daemon_client::send_shell_cwd_event(
+    if crate::daemon_client::send_shell_cwd_event(
         pid,
         &normalized_path,
         tty,
         parent_app,
         entry.tmux_session.clone(),
         entry.tmux_client_tty.clone(),
-    );
+    ) {
+        return Ok(());
+    }
+
+    let state_dir = get_state_dir()?;
+    fs::create_dir_all(&state_dir)?;
+
+    let cwd_path = state_dir.join("shell-cwd.json");
+    let history_path = state_dir.join("shell-history.jsonl");
+    let mut state = load_state(&cwd_path)?;
+    let cwd_changed = has_cwd_changed(&state, pid, &normalized_path);
 
     state.shells.insert(pid.to_string(), entry);
 

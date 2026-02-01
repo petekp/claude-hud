@@ -187,7 +187,14 @@ A **local daemon** is the **only writer** of state. Hooks and the Swift app beco
 - Done: cleanup uses daemon liveness for lock-holder PID checks (fallback to PID-only when unavailable).
 - Done: daemon startup backoff to mitigate crash loops.
 - Done: orphaned-session cleanup skips when lock mode is read-only/off.
+- Done: hud-hook sends events/shell CWD to daemon and skips local state writes when daemon accepts; falls back to file writes when send fails (tombstones still maintained for fallback).
 - Remaining highest-leverage: confirm any remaining lock-mode edge cases before disabling locks by default.
+
+### Recent Learnings / Observations
+
+- When the daemon accepts events, the hook now **skips local writes entirely** (sessions.json, shell-cwd.json, file-activity.json, and lock creation/release). This effectively makes file artifacts stale while daemon is healthy.
+- Any remaining file-based readers must be **daemon-first or explicitly gated** on daemon health, or they’ll drift silently.
+- Decide whether “force lock writes” should still be possible when the daemon is healthy. If yes, we need a mode that allows lock writes even when daemon accepts events; if no, document that daemon acceptance implies lock suppression regardless of lock mode.
 
 ### Phase 0 — Design & Spec (1–2 days)
 
@@ -223,6 +230,8 @@ A **local daemon** is the **only writer** of state. Hooks and the Swift app beco
 - Add IPC read endpoints for sessions/activity/tombstones. (Done)
 - Extend IPC smoke test to cover sessions/activity/tombstones. (Done)
 - App session state now merges daemon session snapshots into the UI (project_path-based). (Done; lock liveness still heuristic)
+- Audit remaining file-based readers (sessions.json, file-activity.json, shell-cwd.json) and switch to daemon-first or gate on daemon health. (New)
+- Done: hud-core session activity fallback now prefers daemon activity snapshot; file activity used only when daemon is unavailable.
 
 ### Phase 4 — Liveness + Locks Simplification (2–4 days)
 
@@ -240,6 +249,7 @@ A **local daemon** is the **only writer** of state. Hooks and the Swift app beco
 - Gate lock writes via `CAPACITOR_DAEMON_LOCK_HEALTH=0/1/auto` (set by daemon health probe/launcher).
   - `auto` disables lock writes only when the daemon health probe returns ok.
 - When lock mode is `read-only` or `off`, cleanup must skip lock deletions.
+- Decide whether to support “force lock writes” even when daemon accepts events; document or implement override.
 
 ### Phase 5 — Launchd + Reliability (2–4 days)
 
