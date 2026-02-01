@@ -10,7 +10,11 @@
 //! We never write to `~/.claude/` (sidecar purity).
 
 use crate::activity::ActivityStore;
-use crate::state::daemon::{activity_snapshot, DaemonActivitySnapshot};
+use crate::state::daemon::{
+    activity_snapshot, sessions_snapshot, DaemonActivitySnapshot, DaemonSessionRecord,
+    DaemonSessionsSnapshot,
+};
+use crate::state::types::ACTIVE_STATE_STALE_SECS;
 use crate::state::{resolve_state_with_details, StateStore};
 use crate::storage::StorageConfig;
 use crate::types::{ProjectSessionState, SessionState};
@@ -34,8 +38,29 @@ pub fn detect_session_state_with_storage(
     storage: &StorageConfig,
     project_path: &str,
 ) -> ProjectSessionState {
+    let daemon_sessions = sessions_snapshot();
     let daemon_activity = activity_snapshot(500);
-    detect_session_state_with_activity(storage, project_path, daemon_activity.as_ref())
+    detect_session_state_with_snapshots(
+        storage,
+        project_path,
+        daemon_sessions.as_ref(),
+        daemon_activity.as_ref(),
+    )
+}
+
+fn detect_session_state_with_snapshots(
+    storage: &StorageConfig,
+    project_path: &str,
+    daemon_sessions: Option<&DaemonSessionsSnapshot>,
+    daemon_activity: Option<&DaemonActivitySnapshot>,
+) -> ProjectSessionState {
+    if let Some(snapshot) = daemon_sessions {
+        if let Some(record) = snapshot.latest_for_project(project_path) {
+            return project_state_from_daemon(record);
+        }
+    }
+
+    detect_session_state_with_activity(storage, project_path, daemon_activity)
 }
 
 fn detect_session_state_with_activity(
@@ -172,16 +197,90 @@ pub fn get_all_session_states_with_storage(
     project_paths: &[String],
 ) -> std::collections::HashMap<String, ProjectSessionState> {
     let mut states = std::collections::HashMap::new();
+    let daemon_sessions = sessions_snapshot();
     let daemon_activity = activity_snapshot(500);
 
     for path in project_paths {
         states.insert(
             path.clone(),
-            detect_session_state_with_activity(storage, path, daemon_activity.as_ref()),
+            detect_session_state_with_snapshots(
+                storage,
+                path,
+                daemon_sessions.as_ref(),
+                daemon_activity.as_ref(),
+            ),
         );
     }
 
     states
+}
+
+fn project_state_from_daemon(record: &DaemonSessionRecord) -> ProjectSessionState {
+    let mut state = map_daemon_state(&record.state);
+    let mut is_locked = match record.is_alive {
+        Some(true) => state != SessionState::Idle,
+        Some(false) => false,
+        None => state != SessionState::Idle,
+    };
+
+    if !is_locked {
+        if matches!(state, SessionState::Working | SessionState::Waiting) {
+            if let Some(age) = age_since(&record.updated_at) {
+                if age > ACTIVE_STATE_STALE_SECS {
+                    state = SessionState::Ready;
+                }
+            }
+        }
+
+        if state == SessionState::Ready {
+            if let Some(age) = age_since(&record.state_changed_at) {
+                if age > READY_STALE_THRESHOLD_SECS {
+                    state = SessionState::Idle;
+                }
+            }
+        }
+    }
+
+    if state == SessionState::Idle {
+        is_locked = false;
+    }
+
+    let is_working = state == SessionState::Working;
+
+    ProjectSessionState {
+        state,
+        state_changed_at: Some(record.state_changed_at.clone()),
+        updated_at: Some(record.updated_at.clone()),
+        session_id: Some(record.session_id.clone()),
+        working_on: None,
+        context: None,
+        thinking: Some(is_working),
+        is_locked,
+    }
+}
+
+fn map_daemon_state(value: &str) -> SessionState {
+    match value.to_ascii_lowercase().as_str() {
+        "working" => SessionState::Working,
+        "ready" => SessionState::Ready,
+        "compacting" => SessionState::Compacting,
+        "waiting" => SessionState::Waiting,
+        "idle" => SessionState::Idle,
+        _ => SessionState::Idle,
+    }
+}
+
+fn age_since(timestamp: &str) -> Option<i64> {
+    parse_rfc3339(timestamp).map(|ts| {
+        let now = chrono::Utc::now();
+        now.signed_duration_since(ts).num_seconds()
+    })
+}
+
+fn parse_rfc3339(value: &str) -> Option<chrono::DateTime<chrono::Utc>> {
+    chrono::DateTime::parse_from_rfc3339(value)
+        .ok()
+        .map(|dt| dt.with_timezone(&chrono::Utc))
 }
 
 /// Project status as stored in .claude/hud-status.json within each project.
