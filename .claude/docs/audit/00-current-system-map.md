@@ -6,7 +6,7 @@ It is written to prevent regressions caused by “fixing the visible symptom” 
 
 ## What this covers
 
-- **Session state detection** (Claude hooks + locks + records + activity fallback)
+- **Session state detection** (daemon + fallback locks/records/activity)
 - **Active project selection** (manual override vs Claude vs shell CWD)
 - **Terminal activation** (tmux + TTY matching + app activation)
 - **Cleanup & self-healing** (startup cleanup, tombstones, heartbeat)
@@ -18,13 +18,17 @@ All files below are in Capacitor’s namespace (`~/.capacitor/`) and are safe to
 
 | Path | Producer(s) | Consumer(s) | Purpose |
 |------|-------------|-------------|---------|
-| `~/.capacitor/sessions.json` | `hud-hook handle` (hook events), `hud-core cleanup` | `hud-core resolver`, Swift UI via UniFFI | Session record store (v3 schema) keyed by **session_id** |
-| `~/.capacitor/sessions/{session_id}-{pid}.lock/` | `hud-hook handle` (SessionStart/UserPromptSubmit), `hud-hook lock-holder` (release) | `hud-core lock/resolver`, `hud-core cleanup` | Liveness proof for an active Claude process at an **exact path** |
-| `~/.capacitor/ended-sessions/{session_id}` | `hud-hook handle` (SessionEnd), `hud-core cleanup` (prune) | `hud-hook handle` (ignore late events) | Tombstone to prevent late events resurrecting ended sessions |
-| `~/.capacitor/file-activity.json` | `hud-hook handle` (PostToolUse etc) | `hud-core ActivityStore`, `hud-core sessions` | Secondary signal to mark a project Working when locks/records are absent at that path (native format; legacy hook format migrated) |
-| `~/.capacitor/shell-cwd.json` | `hud-hook cwd` | `ShellStateStore.swift`, `TerminalLauncher.swift` | Ambient shell CWD tracking for activation + highlight fallback |
+| `~/.capacitor/daemon.sock` | `capacitor-daemon` (LaunchAgent) | `hud-hook`, Swift app, `hud-core` | IPC channel (primary state reads/writes) |
+| `~/.capacitor/daemon/state.db` | `capacitor-daemon` | `capacitor-daemon` | SQLite WAL store (authoritative state) |
+| `~/.capacitor/daemon/daemon.stdout.log` | LaunchAgent | User | Daemon stdout log |
+| `~/.capacitor/daemon/daemon.stderr.log` | LaunchAgent | User | Daemon stderr log |
+| `~/.capacitor/sessions.json` | `hud-hook handle` (fallback), `hud-core cleanup` | `hud-core` (fallback only) | Session record store (fallback; stale when daemon is healthy) |
+| `~/.capacitor/sessions/{session_id}-{pid}.lock/` | `hud-hook handle` (fallback), `hud-hook lock-holder` | `hud-core` lock/resolver/cleanup (fallback only) | Liveness proof for an active Claude process at an **exact path** |
+| `~/.capacitor/ended-sessions/{session_id}` | `hud-hook handle` | `hud-hook handle` | Tombstone to prevent late events resurrecting ended sessions |
+| `~/.capacitor/file-activity.json` | `hud-hook handle` (fallback) | `hud-core ActivityStore` (fallback only) | Secondary signal for Working (native format; legacy migrated) |
+| `~/.capacitor/shell-cwd.json` | `hud-hook cwd` (fallback) | `ShellStateStore.swift` (fallback only) | Ambient shell CWD tracking for activation + highlight fallback |
 | `~/.capacitor/shell-history.jsonl` | `hud-hook cwd` | `ShellHistoryStore.swift` (debug) | Append-only shell navigation history |
-| `~/.capacitor/hud-hook-heartbeat` | `hud-hook handle` (touch on every valid hook event) | Swift setup/health UI | “Hooks are firing” proof-of-life |
+| `~/.capacitor/hud-hook-heartbeat` | `hud-hook handle` | Swift setup/health UI | “Hooks are firing” proof-of-life |
 
 ## Canonical external paths (non-Capacitor namespaces)
 
@@ -33,37 +37,44 @@ All files below are in Capacitor’s namespace (`~/.capacitor/`) and are safe to
 | `~/.claude/settings.json` | Claude | Capacitor modifies **hooks only** | Claude + Capacitor | Must preserve non-hook config (`serde(flatten)` in `setup.rs`) |
 | `~/.local/bin/hud-hook` | User bin | Capacitor installer | Claude hooks | **Symlink** strategy is required (copy can trigger Gatekeeper SIGKILL in dev) |
 
-## High-level data flow
+## High-level data flow (daemon-first, fallback on failure)
 
 ```mermaid
 flowchart TD
     ClaudeHooks[ClaudeHooks] --> HudHookHandle[HudHook_handle.rs]
     ShellPrecmd[ShellPrecmdHook] --> HudHookCwd[HudHook_cwd.rs]
 
-    HudHookHandle --> SessionsJson["~/.capacitor/sessions.json"]
-    HudHookHandle --> Locks["~/.capacitor/sessions/{session_id}-{pid}.lock/"]
-    HudHookHandle --> Tombstones["~/.capacitor/ended-sessions/{session_id}"]
-    HudHookHandle --> FileActivity["~/.capacitor/file-activity.json"]
+    HudHookHandle --> DaemonSock["~/.capacitor/daemon.sock"]
+    HudHookCwd --> DaemonSock
+
+    DaemonSock --> DaemonState["~/.capacitor/daemon/state.db"]
+
+    HudHookHandle -.fallback.-> SessionsJson["~/.capacitor/sessions.json"]
+    HudHookHandle -.fallback.-> Locks["~/.capacitor/sessions/{session_id}-{pid}.lock/"]
+    HudHookHandle -.fallback.-> Tombstones["~/.capacitor/ended-sessions/{session_id}"]
+    HudHookHandle -.fallback.-> FileActivity["~/.capacitor/file-activity.json"]
     HudHookHandle --> Heartbeat["~/.capacitor/hud-hook-heartbeat"]
 
-    HudHookCwd --> ShellCwd["~/.capacitor/shell-cwd.json"]
-    HudHookCwd --> ShellHistory["~/.capacitor/shell-history.jsonl"]
+    HudHookCwd -.fallback.-> ShellCwd["~/.capacitor/shell-cwd.json"]
+    HudHookCwd -.fallback.-> ShellHistory["~/.capacitor/shell-history.jsonl"]
 
     AppLaunch[CapacitorAppLaunch] --> StartupCleanup[cleanup.rs]
-    StartupCleanup --> Locks
-    StartupCleanup --> SessionsJson
-    StartupCleanup --> Tombstones
+    StartupCleanup -.fallback.-> Locks
+    StartupCleanup -.fallback.-> SessionsJson
+    StartupCleanup -.fallback.-> Tombstones
 
     SwiftUI[SwiftUI] --> HudEngine[HudEngine]
-    HudEngine --> Resolver[resolver.rs]
-    Resolver --> Locks
-    Resolver --> SessionsJson
+    HudEngine --> DaemonSock
+    HudEngine -.fallback.-> Resolver[resolver.rs]
+    Resolver -.fallback.-> Locks
+    Resolver -.fallback.-> SessionsJson
 
-    HudEngine --> ActivityStore[activity.rs]
-    ActivityStore --> FileActivity
+    HudEngine -.fallback.-> ActivityStore[activity.rs]
+    ActivityStore -.fallback.-> FileActivity
 
     SwiftUI --> ShellStateStore[ShellStateStore.swift]
-    ShellStateStore --> ShellCwd
+    ShellStateStore --> DaemonSock
+    ShellStateStore -.fallback.-> ShellCwd
 
     SwiftUI --> ActiveResolver[ActiveProjectResolver.swift]
     ActiveResolver --> HudEngine
@@ -73,12 +84,13 @@ flowchart TD
     TerminalLauncher --> ShellCwd
 ```
 
-## Session lifecycle (hooks → side effects)
+## Session lifecycle (daemon-first, fallback on failure)
 
 ```mermaid
 sequenceDiagram
     participant Claude as ClaudeProcess
     participant Hook as hudHook_handle
+    participant Daemon as daemon.sock
     participant Store as sessionsJson
     participant Lock as lockDir
     participant Tomb as tombstonesDir
@@ -86,31 +98,34 @@ sequenceDiagram
 
     Claude->>Hook: HookEvent(SessionStart/UserPromptSubmit)
     Hook->>Hook: touch_heartbeat()
-    Hook->>Lock: create_session_lock()
-    Hook->>Store: StateStore.update()+save()
+    Hook->>Daemon: send Event
     Hook-->>Claude: exit
 
     Claude->>Hook: HookEvent(PostToolUse/PreToolUse/etc)
     Hook->>Hook: has_tombstone? if yes, skip
-    Hook->>Store: StateStore.update()+save()
-    Hook->>Act: record_file_activity() if tool matches
+    Hook->>Daemon: send Event
     Hook-->>Claude: exit
 
     Claude->>Hook: HookEvent(SessionEnd)
-    Hook->>Tomb: create_tombstone(session_id)
-    Hook->>Store: StateStore.remove()+save()
-    Hook->>Act: remove_session_activity()
-    Hook->>Lock: release_lock_by_session(session_id,pid)
+    Hook->>Daemon: send Event
     Hook-->>Claude: exit
+
+    Note over Hook,Store: Fallback when daemon send fails
+    Hook->>Lock: create_session_lock()
+    Hook->>Store: StateStore.update()+save()
+    Hook->>Act: record_file_activity()
+    Hook->>Tomb: create_tombstone(session_id)
 ```
 
 ## Project session state resolution (Rust)
 
-This is the logic behind each project card’s state (`Idle/Ready/Working/Waiting/Compacting`) and `is_locked`.
+This is the logic behind each project card’s state (`Idle/Ready/Working/Waiting/Compacting`) and `is_locked` when daemon snapshots are unavailable.
 
 ```mermaid
 flowchart TD
-    Query[ProjectPathQuery] --> Load[LoadStateStore(sessions.json)]
+    Query[ProjectPathQuery] --> DaemonCheck{DaemonSnapshotAvailable?}
+    DaemonCheck -->|Yes| DaemonState[Use daemon sessions/activity]
+    DaemonCheck -->|No| Load[LoadStateStore(sessions.json)]
     Load --> Resolve[resolve_state_with_details]
 
     Resolve --> LocksExist{AnyActiveLockForExactPath?}
@@ -174,9 +189,9 @@ flowchart TD
     ActivateTTY -->|No| ActivateApp[ActivateAppOnly]
 ```
 
-## Startup cleanup (Rust)
+## Startup cleanup (Rust, daemon-aware)
 
-This runs once per app launch to remove cruft and reduce stale-state confusion.
+This runs once per app launch to remove cruft and reduce stale-state confusion. When the daemon is healthy, file-based cleanup is skipped to avoid mutating stale fallback data.
 
 ```mermaid
 flowchart TD
@@ -187,13 +202,29 @@ flowchart TD
     OrphanSessions --> OldSessions[cleanup_old_sessions]
     OldSessions --> OldTombstones[cleanup_old_tombstones]
     OldTombstones --> Done[ReturnCleanupStats]
+    Note right of Start: OrphanSessions/OldSessions/Activity cleanup skipped when daemon healthy
 ```
 
 ## Cross-cutting invariants (assumptions you must not violate)
 
 These are the “contract points” between subsystems. Breaking them tends to create cascading regressions.
 
-- **Invariant_LockMeansLiveness**: A lock directory is trusted as liveness proof **only if PID verification passes**.\n  - If any subsystem can remove locks while the PID is alive, state will flicker to idle/ready incorrectly.\n  - (Known violation today: lock-holder 24h timeout bug, see audit 02.)\n+- **Invariant_ExactMatchOnlyForSessions**: Session state resolution does **not** inherit parent/child paths.\n  - Child sessions do not affect parent cards, and vice versa.\n+- **Invariant_CapacitorOwnsCapacitorNamespace**: Anything in `~/.capacitor/` must be safe to delete/reset.\n  - Every user-facing “Repair/Reset” flow depends on this.\n+- **Invariant_ClaudeNamespaceIsReadMostly**: We only modify `~/.claude/settings.json` hooks entries and preserve everything else.\n+- **Invariant_ActivationIsBestEffort**: Terminal activation failures must not change session detection state.\n+
+- **Invariant_LockMeansLiveness**: A lock directory is trusted as liveness proof **only if PID verification passes**.
+  - If any subsystem can remove locks while the PID is alive, state will flicker to idle/ready incorrectly.
+  - (Known violation today: lock-holder 24h timeout bug, see audit 02.)
+- **Invariant_DaemonAuthoritative**: When daemon health is OK, daemon snapshots are the source of truth and file artifacts are fallback-only.
+  - File cleanup should not mutate fallback data while daemon is healthy.
+- **Invariant_ExactMatchOnlyForSessions**: Session state resolution does **not** inherit parent/child paths.
+  - Child sessions do not affect parent cards, and vice versa.
+- **Invariant_CapacitorOwnsCapacitorNamespace**: Anything in `~/.capacitor/` must be safe to delete/reset.
+  - Every user-facing “Repair/Reset” flow depends on this.
+- **Invariant_ClaudeNamespaceIsReadMostly**: We only modify `~/.claude/settings.json` hooks entries and preserve everything else.
+- **Invariant_ActivationIsBestEffort**: Terminal activation failures must not change session detection state.
+
 ## Drift ledger (docs that have been historically misleading)
 
-These are common sources of agent regressions:\n+- `.claude/docs/side-effects-map.md` historically referenced outdated paths (legacy lock format, activity path).\n+- `docs/architecture-decisions/001-state-tracking-approach.md` contains legacy lock examples.\n+\n+This document (and the audits in `.claude/docs/audit/`) should be treated as the canonical reference for current behavior.\n+
+These are common sources of agent regressions:
+- `.claude/docs/side-effects-map.md` historically referenced outdated paths (legacy lock format, activity path).
+- `docs/architecture-decisions/001-state-tracking-approach.md` contains legacy lock examples.
+
+This document (and the audits in `.claude/docs/audit/`) should be treated as the canonical reference for current behavior.
