@@ -245,9 +245,9 @@ cd apps/swift && swift run
 ## How Session Tracking Works
 
 1. **Hooks** — Claude Code fires events (SessionStart, Stop, etc.) that run the `hud-hook` binary
-2. **State file** — The hook writes JSON to `~/.capacitor/sessions.json`
-3. **Lock files** — The hook creates locks at `~/.capacitor/sessions/{hash}.lock/`
-4. **Capacitor reads** — The app polls these files and resolves the current state
+2. **Daemon** — The hook forwards events to the local daemon (`~/.capacitor/daemon.sock`)
+3. **Fallback** — If the daemon is down, the hook writes JSON to `~/.capacitor/sessions.json`
+4. **Capacitor reads** — The app prefers daemon snapshots; file-based reads are fallback only
 
 The state resolver handles edge cases like:
 - Multiple sessions in the same project
@@ -264,7 +264,12 @@ Capacitor uses two namespaces:
 ├── config.json                 # App preferences
 ├── projects.json               # Tracked projects list
 ├── sessions.json               # Current session states
-├── sessions/                   # Lock directories ({hash}.lock/)
+├── sessions/                   # Lock directories ({session_id}-{pid}.lock/)
+├── daemon.sock                 # Daemon IPC socket
+├── daemon/                     # Daemon storage + logs
+│   ├── state.db                # SQLite state (WAL)
+│   ├── daemon.stdout.log       # LaunchAgent stdout
+│   └── daemon.stderr.log       # LaunchAgent stderr
 ├── stats-cache.json            # Token usage cache
 ├── summaries.json              # Session summaries
 ├── shell-cwd.json              # Active shell CWD tracking
