@@ -234,7 +234,7 @@ A **local daemon** is the **only writer** of state. Hooks and the Swift app beco
 - Add IPC read endpoints for sessions/activity/tombstones. (Done)
 - Extend IPC smoke test to cover sessions/activity/tombstones. (Done)
 - App session state now merges daemon session snapshots into the UI (project_path-based). (Done; lock liveness still heuristic)
-- Audit remaining file-based readers (sessions.json, file-activity.json, shell-cwd.json) and switch to daemon-first or gate on daemon health. (New)
+- Done: audited file-based readers (sessions.json, file-activity.json, shell-cwd.json) and switched to daemon-first or gated on daemon health.
 - Done: hud-core session activity fallback now prefers daemon activity snapshot; file activity used only when daemon is unavailable.
 - Done: hud-core session resolution now prefers daemon session snapshots when available; falls back to local locks/state when no daemon record matches.
 - Done: Claude agent adapter now prefers daemon session snapshots; file-based adapter reads are fallback-only.
