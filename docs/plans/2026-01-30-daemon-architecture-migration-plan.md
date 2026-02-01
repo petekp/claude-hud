@@ -198,6 +198,7 @@ A **local daemon** is the **only writer** of state. Hooks and the Swift app beco
 - Claude agent detection now prefers daemon session snapshots; when daemon is enabled, adapter mtime caching is effectively disabled to avoid stale file reads. If this becomes too chatty, add a daemon snapshot generation/etag for caching.
 - Daemon session snapshots currently omit some optional metadata (e.g., `working_on`, `permission_mode`, `project_dir`). Either extend the protocol or accept reduced detail in agent lists during daemon-first operation.
 - Staleness gating for Ready sessions now depends on daemon-provided `state_changed_at` + optional `is_alive`. Ensure the daemon always emits RFC3339 timestamps for these fields.
+- Startup cleanup now skips file-based session/activity pruning when the daemon health check succeeds, to avoid mutating stale fallback files while daemon is the source of truth.
 
 ### Phase 0 — Design & Spec (1–2 days)
 

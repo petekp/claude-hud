@@ -71,6 +71,10 @@ fn lock_deletions_enabled(mode: LockMode) -> bool {
     matches!(mode, LockMode::Full)
 }
 
+fn skip_file_cleanup_for_daemon() -> bool {
+    matches!(super::daemon::daemon_health(), Some(true))
+}
+
 /// Kills orphaned lock-holder processes whose monitored PID is dead.
 ///
 /// Lock-holder processes (`hud-hook lock-holder --pid <PID>`) monitor Claude processes
@@ -223,6 +227,7 @@ pub struct CleanupStats {
 /// Adding file locking would add complexity for marginal benefit.
 pub fn run_startup_cleanup(lock_base: &Path, state_file: &Path) -> CleanupStats {
     let mut stats = CleanupStats::default();
+    let skip_file_cleanup = skip_file_cleanup_for_daemon();
 
     // 0. Kill orphaned lock-holder processes FIRST (before cleaning lock files)
     // This prevents race conditions where we clean a lock file but leave the holder running
@@ -244,14 +249,18 @@ pub fn run_startup_cleanup(lock_base: &Path, state_file: &Path) -> CleanupStats 
     // This is important for v4 session-based locks: when a session ends,
     // its lock is released but the record may linger. Without the stale Ready
     // fallback, these orphaned records should be cleaned up.
-    let orphan_stats = cleanup_orphaned_sessions(lock_base, state_file);
-    stats.orphaned_sessions_removed = orphan_stats.orphaned_sessions_removed;
-    stats.errors.extend(orphan_stats.errors);
+    if !skip_file_cleanup {
+        let orphan_stats = cleanup_orphaned_sessions(lock_base, state_file);
+        stats.orphaned_sessions_removed = orphan_stats.orphaned_sessions_removed;
+        stats.errors.extend(orphan_stats.errors);
+    }
 
     // 4. Clean up old session records (> 24 hours)
-    let session_stats = cleanup_old_sessions(state_file);
-    stats.sessions_removed = session_stats.sessions_removed;
-    stats.errors.extend(session_stats.errors);
+    if !skip_file_cleanup {
+        let session_stats = cleanup_old_sessions(state_file);
+        stats.sessions_removed = session_stats.sessions_removed;
+        stats.errors.extend(session_stats.errors);
+    }
 
     // 5. Clean up old tombstones
     // Tombstones dir is sibling to lock_base: ~/.capacitor/ended-sessions/
@@ -264,26 +273,28 @@ pub fn run_startup_cleanup(lock_base: &Path, state_file: &Path) -> CleanupStats 
 
     // 6. Clean up old file activity entries
     // Activity file is sibling to state file: ~/.capacitor/file-activity.json
-    let activity_file = state_file.with_file_name("file-activity.json");
-    if activity_file.exists() {
-        let mut activity_store = ActivityStore::load(&activity_file);
-        let entries_before: u32 = activity_store
-            .sessions
-            .values()
-            .map(|s| s.activity.len() as u32)
-            .sum();
-        activity_store.cleanup_old_entries(CLEANUP_THRESHOLD);
-        let entries_after: u32 = activity_store
-            .sessions
-            .values()
-            .map(|s| s.activity.len() as u32)
-            .sum();
-        stats.activity_entries_removed = entries_before.saturating_sub(entries_after);
+    if !skip_file_cleanup {
+        let activity_file = state_file.with_file_name("file-activity.json");
+        if activity_file.exists() {
+            let mut activity_store = ActivityStore::load(&activity_file);
+            let entries_before: u32 = activity_store
+                .sessions
+                .values()
+                .map(|s| s.activity.len() as u32)
+                .sum();
+            activity_store.cleanup_old_entries(CLEANUP_THRESHOLD);
+            let entries_after: u32 = activity_store
+                .sessions
+                .values()
+                .map(|s| s.activity.len() as u32)
+                .sum();
+            stats.activity_entries_removed = entries_before.saturating_sub(entries_after);
 
-        if let Err(e) = activity_store.save(&activity_file) {
-            stats
-                .errors
-                .push(format!("Failed to save activity file: {}", e));
+            if let Err(e) = activity_store.save(&activity_file) {
+                stats
+                    .errors
+                    .push(format!("Failed to save activity file: {}", e));
+            }
         }
     }
 
