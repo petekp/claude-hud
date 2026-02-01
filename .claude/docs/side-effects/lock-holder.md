@@ -2,6 +2,8 @@
 
 Deep analysis of all side effects in the lock holder daemon subsystem.
 
+**Daemon note:** When the daemon is healthy, lock creation is suppressed and lock-holder processes should not spawn. This document describes fallback behavior.
+
 **Files analyzed:**
 - `core/hud-hook/src/lock_holder.rs` — Daemon logic
 - `core/hud-hook/src/handle.rs` — `spawn_lock_holder()` function
