@@ -27,12 +27,15 @@ In-depth side effect documentation for specific subsystems:
 
 | Category | Write Locations | Read Locations |
 |----------|-----------------|----------------|
-| Session State | `~/.capacitor/sessions.json` | Same |
-| Locks | `~/.capacitor/sessions/*.lock/` | Same |
-| Tombstones | `~/.capacitor/ended-sessions/*` | Same |
-| Shell Tracking | `~/.capacitor/shell-cwd.json`, `~/.capacitor/shell-history.jsonl` | Same |
-| Activity | `~/.capacitor/file-activity.json` | Same |
-| Hook Heartbeat | `~/.capacitor/hud-hook-heartbeat` | Same |
+| Daemon IPC | `~/.capacitor/daemon.sock` | `hud-hook`, Swift app, `hud-core` |
+| Daemon Storage | `~/.capacitor/daemon/state.db` | `capacitor-daemon` |
+| Daemon Logs | `~/.capacitor/daemon/daemon.stdout.log`, `daemon.stderr.log` | User |
+| Session State (fallback) | `~/.capacitor/sessions.json` | `hud-core` (fallback only) |
+| Locks (fallback) | `~/.capacitor/sessions/*.lock/` | `hud-core` (fallback only) |
+| Tombstones (fallback) | `~/.capacitor/ended-sessions/*` | `hud-hook` (fallback) |
+| Shell Tracking (fallback) | `~/.capacitor/shell-cwd.json`, `~/.capacitor/shell-history.jsonl` | Swift (fallback) |
+| Activity (fallback) | `~/.capacitor/file-activity.json` | `hud-core` (fallback only) |
+| Hook Heartbeat | `~/.capacitor/hud-hook-heartbeat` | Swift setup/health UI |
 | User Config | `~/.capacitor/config.json`, `projects.json` | Same |
 | Claude Config | `~/.claude/settings.json` (hooks only) | `~/.claude/settings.json`, `~/.claude/projects/` |
 | Logs | `~/.capacitor/hud-hook-debug.*.log` | N/A |
@@ -45,9 +48,15 @@ In-depth side effect documentation for specific subsystems:
 
 ### 1.1 Filesystem Writes
 
-#### Session State (`~/.capacitor/sessions.json`)
-- **Writer:** `store.rs` via `StateStore::save()`
-- **Trigger:** Hook events (SessionStart, ToolUse, etc.)
+#### Daemon Socket + Storage (`~/.capacitor/daemon/*`)
+- **Writer:** `capacitor-daemon`
+- **Trigger:** Hook/app IPC events
+- **Purpose:** Authoritative state storage + IPC
+- **Files:** `daemon.sock`, `state.db`, `daemon.stdout.log`, `daemon.stderr.log`
+
+#### Session State (`~/.capacitor/sessions.json`) — fallback only
+- **Writer:** `hud-hook` (when daemon unavailable) via `StateStore::save()`
+- **Trigger:** Hook events (SessionStart, ToolUse, etc.) when daemon send fails
 - **Atomicity:** Uses `tempfile` + `persist()` for atomic writes
 - **Content:** JSON map of session records keyed by **session ID**
 
@@ -56,7 +65,7 @@ In-depth side effect documentation for specific subsystems:
 pub fn save(&self) -> Result<(), String>
 ```
 
-#### Lock Directories (`~/.capacitor/sessions/{session_id}-{pid}.lock/`)
+#### Lock Directories (`~/.capacitor/sessions/{session_id}-{pid}.lock/`) — fallback only
 
 > **Deep dive:** [Lock System Side Effects](side-effects/lock-system.md)
 
@@ -72,8 +81,8 @@ pub fn save(&self) -> Result<(), String>
 pub fn create_session_lock(session_id: &str, pid: u32, path: &str) -> io::Result<PathBuf>
 ```
 
-#### Shell CWD State (`~/.capacitor/shell-cwd.json`)
-- **Writer:** `cwd.rs` via `run(path,pid,tty)`
+#### Shell CWD State (`~/.capacitor/shell-cwd.json`) — fallback only
+- **Writer:** `cwd.rs` via `run(path,pid,tty)` when daemon send fails
 - **Trigger:** shell precmd hook (runs on prompt display; updates when CWD changes)
 - **Atomicity:** Uses `tempfile` + `persist()` for atomic writes
 - **Content:** JSON with `shells` map (PID → shell entry)
@@ -94,8 +103,8 @@ pub fn run(path: &str, pid: u32, tty: &str) -> Result<(), CwdError>
 pub fn append_to_history(path: &Path, event: &HistoryEvent) -> Result<(), CwdError>
 ```
 
-#### Activity File (`~/.capacitor/file-activity.json`)
-- **Writer:** `hud-hook` (`handle.rs`) via `record_file_activity()` / `remove_session_activity()`
+#### Activity File (`~/.capacitor/file-activity.json`) — fallback only
+- **Writer:** `hud-hook` (`handle.rs`) via `record_file_activity()` / `remove_session_activity()` when daemon send fails
 - **Trigger:** PostToolUse events for file-touching tools (Edit/Write/Read/NotebookEdit)
 - **Purpose:** Secondary signal to mark a project as Working when no lock/record exists at that exact path (monorepo package tracking)
 - **Format:** Native `activity` array with `project_path` (legacy `files` format is migrated on write)
@@ -178,11 +187,13 @@ pub fn configure_hooks(&self) -> Result<ConfigResult, HudFfiError>
 
 | File | Reader | Purpose |
 |------|--------|---------|
-| `~/.capacitor/sessions.json` | `store.rs` | Load session state |
-| `~/.capacitor/sessions/*.lock/` | `lock.rs` | Check for active locks |
-| `~/.capacitor/shell-cwd.json` | `cwd.rs`, Swift | Shell state for activation |
-| `~/.capacitor/file-activity.json` | `activity.rs`, `sessions.rs` | Monorepo activity fallback |
-| `~/.capacitor/ended-sessions/*` | `handle.rs`, `cleanup.rs` | Tombstones |
+| `~/.capacitor/daemon.sock` | `hud-core`, Swift, `hud-hook` | Daemon IPC (authoritative) |
+| `~/.capacitor/daemon/state.db` | `capacitor-daemon` | Authoritative state store |
+| `~/.capacitor/sessions.json` | `store.rs` | Load session state (fallback) |
+| `~/.capacitor/sessions/*.lock/` | `lock.rs` | Check for active locks (fallback) |
+| `~/.capacitor/shell-cwd.json` | `cwd.rs`, Swift | Shell state for activation (fallback) |
+| `~/.capacitor/file-activity.json` | `activity.rs`, `sessions.rs` | Monorepo activity fallback (fallback) |
+| `~/.capacitor/ended-sessions/*` | `handle.rs` | Tombstones (fallback) |
 | `~/.capacitor/hud-hook-heartbeat` | Swift UI | Hook health proof |
 | `~/.capacitor/config.json` | `config.rs` | User preferences |
 | `~/.capacitor/projects.json` | `projects.rs` | Cached projects |
@@ -326,7 +337,7 @@ osascript -e "tell application \"iTerm\" to create window with default profile c
 
 | File | Reader | Purpose |
 |------|--------|---------|
-| `~/.capacitor/shell-cwd.json` | `ShellStateStore.swift` | Shell state for project activation |
+| `~/.capacitor/shell-cwd.json` | `ShellStateStore.swift` | Shell state for project activation (fallback) |
 | `~/.capacitor/shell-history.jsonl` | `ShellHistoryStore.swift` | Shell navigation history |
 | `/Applications/*.app` | `TerminalLauncher.swift` | Check which terminals are installed |
 
@@ -336,11 +347,11 @@ osascript -e "tell application \"iTerm\" to create window with default profile c
 
 | Trigger | Side Effects |
 |---------|--------------|
-| **App Launch** | Read all state files, cleanup stale locks (SIGTERM), verify hooks |
-| **SessionStart Hook** | Create lock dir, spawn lock-holder, write state, write activity |
-| **ToolUse Hook** | Update state, write activity |
-| **SessionEnd Hook** | Create tombstone, remove session record, release lock |
-| **Shell precmd** | Update shell-cwd.json, append to shell-history.jsonl (when CWD changes) |
+| **App Launch** | Read daemon state; fallback reads state files; cleanup stale locks (SIGTERM); verify hooks |
+| **SessionStart Hook** | Send event to daemon; fallback: create lock dir, spawn lock-holder, write state, write activity |
+| **ToolUse Hook** | Send event to daemon; fallback: update state, write activity |
+| **SessionEnd Hook** | Send event to daemon; fallback: create tombstone, remove session record, release lock |
+| **Shell precmd** | Send shell CWD to daemon; fallback: update shell-cwd.json, append shell-history.jsonl |
 | **Project Click** | AppleScript/osascript, tmux commands, app activation |
 | **Install Hooks** | Symlink binary, modify ~/.claude/settings.json |
 | **Window Move** | UserDefaults write |
