@@ -14,6 +14,32 @@ struct DaemonHealth: Decodable {
     }
 }
 
+struct DaemonSession: Decodable {
+    let sessionId: String
+    let pid: UInt32
+    let state: String
+    let cwd: String
+    let projectPath: String
+    let updatedAt: String
+    let stateChangedAt: String
+    let lastEvent: String?
+    /// Whether the session's process is still alive.
+    /// nil if pid is 0 (unknown), true if alive, false if dead.
+    let isAlive: Bool?
+
+    enum CodingKeys: String, CodingKey {
+        case sessionId = "session_id"
+        case pid
+        case state
+        case cwd
+        case projectPath = "project_path"
+        case updatedAt = "updated_at"
+        case stateChangedAt = "state_changed_at"
+        case lastEvent = "last_event"
+        case isAlive = "is_alive"
+    }
+}
+
 struct DaemonErrorInfo: Decodable {
     let code: String
     let message: String
@@ -91,6 +117,10 @@ final class DaemonClient {
             params: Optional<String>.none,
             decoder: decoder
         )
+    }
+
+    func fetchSessions() async throws -> [DaemonSession] {
+        try await performRequest(method: "get_sessions", params: Optional<String>.none)
     }
 
     private func performRequest<Params: Encodable, Payload: Decodable>(

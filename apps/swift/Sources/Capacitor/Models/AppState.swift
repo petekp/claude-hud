@@ -326,7 +326,7 @@ class AppState: ObservableObject {
                     if self.daemonFailureCount < 2 {
                         return
                     }
-                    self?.daemonStatus = DaemonStatus(
+                    self.daemonStatus = DaemonStatus(
                         isEnabled: true,
                         isHealthy: false,
                         message: "Daemon unavailable",

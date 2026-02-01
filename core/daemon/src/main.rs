@@ -18,10 +18,16 @@ use capacitor_daemon_protocol::{
     parse_event, parse_process_liveness, ErrorInfo, Method, Request, Response, MAX_REQUEST_BYTES,
     PROTOCOL_VERSION,
 };
+use serde_json::Value;
 
+mod activity;
 mod backoff;
+mod boundaries;
 mod db;
 mod process;
+mod reducer;
+mod replay;
+mod session_store;
 mod state;
 
 use db::Db;
@@ -274,6 +280,57 @@ fn handle_request(request: Request, state: Arc<SharedState>) -> Response {
                 ),
             }
         }
+        Method::GetSessions => match state.sessions_snapshot() {
+            Ok(sessions) => match serde_json::to_value(sessions) {
+                Ok(value) => Response::ok(request.id, value),
+                Err(err) => Response::error(
+                    request.id,
+                    "serialization_error",
+                    format!("Failed to serialize sessions: {}", err),
+                ),
+            },
+            Err(err) => Response::error(
+                request.id,
+                "sessions_error",
+                format!("Failed to fetch sessions: {}", err),
+            ),
+        },
+        Method::GetActivity => {
+            let (session_id, limit) = match parse_activity_params(request.params) {
+                Ok(values) => values,
+                Err(err) => return Response::error_with_info(request.id, err),
+            };
+            match state.activity_snapshot(session_id.as_deref(), limit) {
+                Ok(entries) => match serde_json::to_value(entries) {
+                    Ok(value) => Response::ok(request.id, value),
+                    Err(err) => Response::error(
+                        request.id,
+                        "serialization_error",
+                        format!("Failed to serialize activity: {}", err),
+                    ),
+                },
+                Err(err) => Response::error(
+                    request.id,
+                    "activity_error",
+                    format!("Failed to fetch activity: {}", err),
+                ),
+            }
+        }
+        Method::GetTombstones => match state.tombstones_snapshot() {
+            Ok(entries) => match serde_json::to_value(entries) {
+                Ok(value) => Response::ok(request.id, value),
+                Err(err) => Response::error(
+                    request.id,
+                    "serialization_error",
+                    format!("Failed to serialize tombstones: {}", err),
+                ),
+            },
+            Err(err) => Response::error(
+                request.id,
+                "tombstone_error",
+                format!("Failed to fetch tombstones: {}", err),
+            ),
+        },
         Method::Event => handle_event(request, state),
     }
 }
@@ -299,6 +356,27 @@ fn handle_event(request: Request, state: Arc<SharedState>) -> Response {
     state.update_from_event(&event);
 
     Response::ok(request.id, serde_json::json!({"accepted": true}))
+}
+
+fn parse_activity_params(params: Option<Value>) -> Result<(Option<String>, usize), ErrorInfo> {
+    let mut session_id = None;
+    let mut limit = 100usize;
+
+    if let Some(params) = params {
+        if !params.is_object() {
+            return Err(ErrorInfo::new("invalid_params", "params must be an object"));
+        }
+        if let Some(value) = params.get("session_id").and_then(|v| v.as_str()) {
+            if !value.trim().is_empty() {
+                session_id = Some(value.to_string());
+            }
+        }
+        if let Some(value) = params.get("limit").and_then(|v| v.as_u64()) {
+            limit = value.min(1000) as usize;
+        }
+    }
+
+    Ok((session_id, limit))
 }
 
 fn write_response(stream: &mut UnixStream, response: Response) -> std::io::Result<()> {

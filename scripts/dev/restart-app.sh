@@ -56,10 +56,11 @@ elif [ -f "$PROJECT_ROOT/target/release/hud-hook" ]; then
 fi
 
 # Copy capacitor-daemon binary so Bundle.main can find it
+# Use || true to handle "identical file" errors when source/dest are same (symlinks)
 if [ -f "$HOME/.local/bin/capacitor-daemon" ]; then
-    cp "$HOME/.local/bin/capacitor-daemon" "$SWIFT_DEBUG_DIR/"
+    cp "$HOME/.local/bin/capacitor-daemon" "$SWIFT_DEBUG_DIR/" 2>/dev/null || true
 elif [ -f "$PROJECT_ROOT/target/release/capacitor-daemon" ]; then
-    cp "$PROJECT_ROOT/target/release/capacitor-daemon" "$SWIFT_DEBUG_DIR/"
+    cp "$PROJECT_ROOT/target/release/capacitor-daemon" "$SWIFT_DEBUG_DIR/" 2>/dev/null || true
 fi
 
 swift build || { echo "Swift build failed"; exit 1; }

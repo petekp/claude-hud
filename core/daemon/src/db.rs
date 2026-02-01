@@ -5,16 +5,25 @@
 //! materialized shell_state table for fast reads.
 
 use capacitor_daemon_protocol::{EventEnvelope, EventType};
-use chrono::{Duration, Utc};
+use chrono::{DateTime, Duration, Utc};
 use rusqlite::{params, Connection, OpenFlags, OptionalExtension};
 use std::collections::HashMap;
 use std::path::PathBuf;
 
+use crate::activity::ActivityEntry;
 use crate::process::get_process_start_time;
+use crate::reducer::{SessionRecord, SessionState};
 use crate::state::{ProcessLivenessRow, ShellEntry, ShellState};
 
 pub struct Db {
     path: PathBuf,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+pub struct TombstoneRow {
+    pub session_id: String,
+    pub created_at: String,
+    pub expires_at: String,
 }
 
 impl Db {
@@ -49,6 +58,52 @@ impl Db {
             .map_err(|err| format!("Failed to insert event: {}", err))?;
 
             Ok(())
+        })
+    }
+
+    pub fn list_events(&self) -> Result<Vec<EventEnvelope>, String> {
+        self.with_connection(|conn| {
+            let mut stmt = conn
+                .prepare("SELECT payload FROM events ORDER BY recorded_at ASC, id ASC")
+                .map_err(|err| format!("Failed to prepare events query: {}", err))?;
+
+            let rows = stmt
+                .query_map([], |row| row.get::<_, String>(0))
+                .map_err(|err| format!("Failed to read event rows: {}", err))?;
+
+            let mut events = Vec::new();
+            for row in rows {
+                let payload = row.map_err(|err| format!("Failed to decode event row: {}", err))?;
+                let event: EventEnvelope = serde_json::from_str(&payload)
+                    .map_err(|err| format!("Failed to parse event payload: {}", err))?;
+                events.push(event);
+            }
+
+            Ok(events)
+        })
+    }
+
+    pub fn has_events(&self) -> Result<bool, String> {
+        let count = self.with_connection(|conn| {
+            conn.query_row("SELECT COUNT(*) FROM events", [], |row| {
+                row.get::<_, i64>(0)
+            })
+            .map_err(|err| format!("Failed to count events: {}", err))
+        })?;
+        Ok(count > 0)
+    }
+
+    pub fn latest_event_time(&self) -> Result<Option<DateTime<Utc>>, String> {
+        self.with_connection(|conn| {
+            let recorded_at: Option<String> = conn
+                .query_row(
+                    "SELECT recorded_at FROM events ORDER BY recorded_at DESC, id DESC LIMIT 1",
+                    [],
+                    |row| row.get(0),
+                )
+                .optional()
+                .map_err(|err| format!("Failed to query latest event timestamp: {}", err))?;
+            Ok(recorded_at.and_then(parse_rfc3339))
         })
     }
 
@@ -124,6 +179,342 @@ impl Db {
             )
             .optional()
             .map_err(|err| format!("Failed to query process liveness: {}", err))
+        })
+    }
+
+    pub fn upsert_tombstone(
+        &self,
+        session_id: &str,
+        created_at: &str,
+        expires_at: &str,
+    ) -> Result<(), String> {
+        self.with_connection(|conn| {
+            conn.execute(
+                "INSERT INTO tombstones (session_id, created_at, expires_at) \
+                 VALUES (?1, ?2, ?3) \
+                 ON CONFLICT(session_id) DO UPDATE SET \
+                    created_at = excluded.created_at, \
+                    expires_at = excluded.expires_at",
+                params![session_id, created_at, expires_at],
+            )
+            .map_err(|err| format!("Failed to upsert tombstone: {}", err))?;
+            Ok(())
+        })
+    }
+
+    pub fn get_tombstone(&self, session_id: &str) -> Result<Option<TombstoneRow>, String> {
+        self.with_connection(|conn| {
+            conn.query_row(
+                "SELECT session_id, created_at, expires_at FROM tombstones WHERE session_id = ?1",
+                params![session_id],
+                |row| {
+                    Ok(TombstoneRow {
+                        session_id: row.get(0)?,
+                        created_at: row.get(1)?,
+                        expires_at: row.get(2)?,
+                    })
+                },
+            )
+            .optional()
+            .map_err(|err| format!("Failed to query tombstone: {}", err))
+        })
+    }
+
+    pub fn delete_tombstone(&self, session_id: &str) -> Result<(), String> {
+        self.with_connection(|conn| {
+            conn.execute(
+                "DELETE FROM tombstones WHERE session_id = ?1",
+                params![session_id],
+            )
+            .map_err(|err| format!("Failed to delete tombstone: {}", err))?;
+            Ok(())
+        })
+    }
+
+    pub fn clear_tombstones(&self) -> Result<(), String> {
+        self.with_connection(|conn| {
+            conn.execute("DELETE FROM tombstones", [])
+                .map_err(|err| format!("Failed to clear tombstones: {}", err))?;
+            Ok(())
+        })
+    }
+
+    pub fn upsert_session(&self, record: &SessionRecord) -> Result<(), String> {
+        self.with_connection(|conn| {
+            conn.execute(
+                "INSERT INTO sessions (session_id, pid, state, cwd, project_path, updated_at, state_changed_at, last_event) \
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8) \
+                 ON CONFLICT(session_id) DO UPDATE SET \
+                    pid = excluded.pid, \
+                    state = excluded.state, \
+                    cwd = excluded.cwd, \
+                    project_path = excluded.project_path, \
+                    updated_at = excluded.updated_at, \
+                    state_changed_at = excluded.state_changed_at, \
+                    last_event = excluded.last_event",
+                params![
+                    record.session_id,
+                    record.pid,
+                    record.state.as_str(),
+                    record.cwd,
+                    record.project_path,
+                    record.updated_at,
+                    record.state_changed_at,
+                    record.last_event
+                ],
+            )
+            .map_err(|err| format!("Failed to upsert session: {}", err))?;
+            Ok(())
+        })
+    }
+
+    pub fn get_session(&self, session_id: &str) -> Result<Option<SessionRecord>, String> {
+        self.with_connection(|conn| {
+            conn.query_row(
+                "SELECT session_id, COALESCE(pid, 0), state, cwd, COALESCE(project_path, cwd), updated_at, state_changed_at, last_event \
+                 FROM sessions WHERE session_id = ?1",
+                params![session_id],
+                |row| {
+                    let state_raw: String = row.get(2)?;
+                    let state = SessionState::from_str(&state_raw).ok_or_else(|| {
+                        rusqlite::Error::FromSqlConversionFailure(
+                            state_raw.len(),
+                            rusqlite::types::Type::Text,
+                            Box::new(std::io::Error::new(
+                                std::io::ErrorKind::InvalidData,
+                                format!("Unknown session state: {}", state_raw),
+                            )),
+                        )
+                    })?;
+
+                    Ok(SessionRecord {
+                        session_id: row.get(0)?,
+                        pid: row.get(1)?,
+                        state,
+                        cwd: row.get(3)?,
+                        project_path: row.get(4)?,
+                        updated_at: row.get(5)?,
+                        state_changed_at: row.get(6)?,
+                        last_event: row.get(7)?,
+                    })
+                },
+            )
+            .optional()
+            .map_err(|err| format!("Failed to query session: {}", err))
+        })
+    }
+
+    pub fn list_sessions(&self) -> Result<Vec<SessionRecord>, String> {
+        self.with_connection(|conn| {
+            let mut stmt = conn
+                .prepare(
+                    "SELECT session_id, COALESCE(pid, 0), state, cwd, COALESCE(project_path, cwd), updated_at, state_changed_at, last_event \
+                     FROM sessions ORDER BY updated_at DESC",
+                )
+                .map_err(|err| format!("Failed to prepare sessions query: {}", err))?;
+
+            let rows = stmt
+                .query_map([], |row| {
+                    let state_raw: String = row.get(2)?;
+                    let state = SessionState::from_str(&state_raw).ok_or_else(|| {
+                        rusqlite::Error::FromSqlConversionFailure(
+                            state_raw.len(),
+                            rusqlite::types::Type::Text,
+                            Box::new(std::io::Error::new(
+                                std::io::ErrorKind::InvalidData,
+                                format!("Unknown session state: {}", state_raw),
+                            )),
+                        )
+                    })?;
+                    Ok(SessionRecord {
+                        session_id: row.get(0)?,
+                        pid: row.get(1)?,
+                        state,
+                        cwd: row.get(3)?,
+                        project_path: row.get(4)?,
+                        updated_at: row.get(5)?,
+                        state_changed_at: row.get(6)?,
+                        last_event: row.get(7)?,
+                    })
+                })
+                .map_err(|err| format!("Failed to query sessions: {}", err))?;
+
+            let mut sessions = Vec::new();
+            for row in rows {
+                sessions.push(row.map_err(|err| format!("Failed to decode session row: {}", err))?);
+            }
+            Ok(sessions)
+        })
+    }
+
+    pub fn delete_session(&self, session_id: &str) -> Result<(), String> {
+        self.with_connection(|conn| {
+            conn.execute(
+                "DELETE FROM sessions WHERE session_id = ?1",
+                params![session_id],
+            )
+            .map_err(|err| format!("Failed to delete session: {}", err))?;
+            Ok(())
+        })
+    }
+
+    pub fn clear_sessions(&self) -> Result<(), String> {
+        self.with_connection(|conn| {
+            conn.execute("DELETE FROM sessions", [])
+                .map_err(|err| format!("Failed to clear sessions: {}", err))?;
+            Ok(())
+        })
+    }
+
+    pub fn has_sessions(&self) -> Result<bool, String> {
+        let count = self.with_connection(|conn| {
+            conn.query_row("SELECT COUNT(*) FROM sessions", [], |row| {
+                row.get::<_, i64>(0)
+            })
+            .map_err(|err| format!("Failed to count sessions: {}", err))
+        })?;
+        Ok(count > 0)
+    }
+
+    pub fn latest_session_time(&self) -> Result<Option<DateTime<Utc>>, String> {
+        self.with_connection(|conn| {
+            let updated_at: Option<String> = conn
+                .query_row(
+                    "SELECT updated_at FROM sessions ORDER BY updated_at DESC, session_id DESC LIMIT 1",
+                    [],
+                    |row| row.get(0),
+                )
+                .optional()
+                .map_err(|err| format!("Failed to query latest session timestamp: {}", err))?;
+            Ok(updated_at.and_then(parse_rfc3339))
+        })
+    }
+
+    pub fn insert_activity(&self, entry: &ActivityEntry) -> Result<(), String> {
+        self.with_connection(|conn| {
+            conn.execute(
+                "INSERT INTO activity (session_id, project_path, file_path, tool_name, recorded_at) \
+                 VALUES (?1, ?2, ?3, ?4, ?5)",
+                params![
+                    entry.session_id,
+                    entry.project_path,
+                    entry.file_path,
+                    entry.tool_name,
+                    entry.recorded_at
+                ],
+            )
+            .map_err(|err| format!("Failed to insert activity: {}", err))?;
+            Ok(())
+        })
+    }
+
+    pub fn list_activity(
+        &self,
+        session_id: &str,
+        limit: usize,
+    ) -> Result<Vec<ActivityEntry>, String> {
+        self.with_connection(|conn| {
+            let mut stmt = conn
+                .prepare(
+                    "SELECT session_id, project_path, file_path, tool_name, recorded_at \
+                     FROM activity WHERE session_id = ?1 \
+                     ORDER BY recorded_at DESC \
+                     LIMIT ?2",
+                )
+                .map_err(|err| format!("Failed to prepare activity query: {}", err))?;
+
+            let rows = stmt
+                .query_map(params![session_id, limit as i64], |row| {
+                    Ok(ActivityEntry {
+                        session_id: row.get(0)?,
+                        project_path: row.get(1)?,
+                        file_path: row.get(2)?,
+                        tool_name: row.get(3)?,
+                        recorded_at: row.get(4)?,
+                    })
+                })
+                .map_err(|err| format!("Failed to query activity rows: {}", err))?;
+
+            let mut entries = Vec::new();
+            for row in rows {
+                entries.push(row.map_err(|err| format!("Failed to decode activity row: {}", err))?);
+            }
+            Ok(entries)
+        })
+    }
+
+    pub fn list_activity_all(&self, limit: usize) -> Result<Vec<ActivityEntry>, String> {
+        self.with_connection(|conn| {
+            let mut stmt = conn
+                .prepare(
+                    "SELECT session_id, project_path, file_path, tool_name, recorded_at \
+                     FROM activity ORDER BY recorded_at DESC LIMIT ?1",
+                )
+                .map_err(|err| format!("Failed to prepare activity query: {}", err))?;
+
+            let rows = stmt
+                .query_map(params![limit as i64], |row| {
+                    Ok(ActivityEntry {
+                        session_id: row.get(0)?,
+                        project_path: row.get(1)?,
+                        file_path: row.get(2)?,
+                        tool_name: row.get(3)?,
+                        recorded_at: row.get(4)?,
+                    })
+                })
+                .map_err(|err| format!("Failed to query activity rows: {}", err))?;
+
+            let mut entries = Vec::new();
+            for row in rows {
+                entries.push(row.map_err(|err| format!("Failed to decode activity row: {}", err))?);
+            }
+            Ok(entries)
+        })
+    }
+
+    pub fn list_tombstones(&self) -> Result<Vec<TombstoneRow>, String> {
+        self.with_connection(|conn| {
+            let mut stmt = conn
+                .prepare(
+                    "SELECT session_id, created_at, expires_at FROM tombstones ORDER BY created_at DESC",
+                )
+                .map_err(|err| format!("Failed to prepare tombstones query: {}", err))?;
+
+            let rows = stmt
+                .query_map([], |row| {
+                    Ok(TombstoneRow {
+                        session_id: row.get(0)?,
+                        created_at: row.get(1)?,
+                        expires_at: row.get(2)?,
+                    })
+                })
+                .map_err(|err| format!("Failed to query tombstones: {}", err))?;
+
+            let mut tombstones = Vec::new();
+            for row in rows {
+                tombstones
+                    .push(row.map_err(|err| format!("Failed to decode tombstone row: {}", err))?);
+            }
+            Ok(tombstones)
+        })
+    }
+
+    pub fn delete_activity_for_session(&self, session_id: &str) -> Result<(), String> {
+        self.with_connection(|conn| {
+            conn.execute(
+                "DELETE FROM activity WHERE session_id = ?1",
+                params![session_id],
+            )
+            .map_err(|err| format!("Failed to delete activity: {}", err))?;
+            Ok(())
+        })
+    }
+
+    pub fn clear_activity(&self) -> Result<(), String> {
+        self.with_connection(|conn| {
+            conn.execute("DELETE FROM activity", [])
+                .map_err(|err| format!("Failed to clear activity: {}", err))?;
+            Ok(())
         })
     }
 
@@ -354,9 +745,32 @@ impl Db {
                     proc_started INTEGER,
                     last_seen_at TEXT NOT NULL
                  );
+                 CREATE TABLE IF NOT EXISTS sessions (
+                    session_id TEXT PRIMARY KEY,
+                    pid INTEGER NOT NULL DEFAULT 0,
+                    state TEXT NOT NULL,
+                    cwd TEXT NOT NULL,
+                    project_path TEXT,
+                    updated_at TEXT NOT NULL,
+                    state_changed_at TEXT NOT NULL,
+                    last_event TEXT
+                 );
+                 CREATE TABLE IF NOT EXISTS activity (
+                    session_id TEXT NOT NULL,
+                    project_path TEXT NOT NULL,
+                    file_path TEXT NOT NULL,
+                    tool_name TEXT,
+                    recorded_at TEXT NOT NULL
+                 );
+                 CREATE TABLE IF NOT EXISTS tombstones (
+                    session_id TEXT PRIMARY KEY,
+                    created_at TEXT NOT NULL,
+                    expires_at TEXT NOT NULL
+                 );
                  COMMIT;",
             )
             .map_err(|err| format!("Failed to initialize schema: {}", err))?;
+            ensure_sessions_columns(conn)?;
             Ok(())
         })
     }
@@ -391,6 +805,41 @@ impl Db {
 
         Ok(conn)
     }
+}
+
+fn ensure_sessions_columns(conn: &Connection) -> Result<(), String> {
+    let mut stmt = conn
+        .prepare("PRAGMA table_info(sessions)")
+        .map_err(|err| format!("Failed to read sessions schema: {}", err))?;
+    let rows = stmt
+        .query_map([], |row| row.get::<_, String>(1))
+        .map_err(|err| format!("Failed to read sessions schema rows: {}", err))?;
+
+    let mut columns = Vec::new();
+    for row in rows {
+        columns.push(row.map_err(|err| format!("Failed to decode schema row: {}", err))?);
+    }
+
+    if !columns.iter().any(|name| name == "project_path") {
+        conn.execute("ALTER TABLE sessions ADD COLUMN project_path TEXT", [])
+            .map_err(|err| format!("Failed to add project_path column: {}", err))?;
+    }
+
+    if !columns.iter().any(|name| name == "pid") {
+        conn.execute(
+            "ALTER TABLE sessions ADD COLUMN pid INTEGER NOT NULL DEFAULT 0",
+            [],
+        )
+        .map_err(|err| format!("Failed to add pid column: {}", err))?;
+    }
+
+    Ok(())
+}
+
+fn parse_rfc3339(value: String) -> Option<DateTime<Utc>> {
+    DateTime::parse_from_rfc3339(&value)
+        .ok()
+        .map(|dt| dt.with_timezone(&Utc))
 }
 
 #[cfg(test)]
@@ -602,5 +1051,120 @@ mod tests {
 
         assert!(db.get_process_liveness(11111).unwrap().is_none());
         assert!(db.get_process_liveness(22222).unwrap().is_some());
+    }
+
+    #[test]
+    fn schema_includes_session_activity_and_tombstone_tables() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let db_path = temp_dir.path().join("state.db");
+        let db = Db::new(db_path).expect("db init");
+
+        let tables = db
+            .with_connection(|conn| {
+                let mut stmt = conn
+                    .prepare("SELECT name FROM sqlite_master WHERE type = 'table'")
+                    .map_err(|err| format!("Failed to query sqlite_master: {}", err))?;
+                let rows = stmt
+                    .query_map([], |row| row.get::<_, String>(0))
+                    .map_err(|err| format!("Failed to read sqlite_master rows: {}", err))?;
+                let mut names = Vec::new();
+                for row in rows {
+                    names.push(row.map_err(|err| format!("Failed to decode table name: {}", err))?);
+                }
+                Ok(names)
+            })
+            .expect("tables");
+
+        assert!(tables.contains(&"sessions".to_string()));
+        assert!(tables.contains(&"activity".to_string()));
+        assert!(tables.contains(&"tombstones".to_string()));
+    }
+
+    #[test]
+    fn upserts_and_deletes_tombstones() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let db_path = temp_dir.path().join("state.db");
+        let db = Db::new(db_path).expect("db init");
+
+        let created = "2026-01-31T00:00:00Z";
+        let expires = "2026-01-31T00:01:00Z";
+
+        db.upsert_tombstone("session-1", created, expires)
+            .expect("insert tombstone");
+        let row = db
+            .get_tombstone("session-1")
+            .expect("fetch tombstone")
+            .expect("row exists");
+        assert_eq!(row.created_at, created);
+        assert_eq!(row.expires_at, expires);
+
+        db.delete_tombstone("session-1").expect("delete tombstone");
+        let row = db.get_tombstone("session-1").expect("fetch tombstone");
+        assert!(row.is_none());
+    }
+
+    #[test]
+    fn upserts_and_fetches_sessions() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let db_path = temp_dir.path().join("state.db");
+        let db = Db::new(db_path).expect("db init");
+
+        let record = crate::reducer::SessionRecord {
+            session_id: "session-1".to_string(),
+            pid: 1234,
+            state: crate::reducer::SessionState::Ready,
+            cwd: "/repo".to_string(),
+            project_path: "/repo".to_string(),
+            updated_at: "2026-01-31T00:00:00Z".to_string(),
+            state_changed_at: "2026-01-31T00:00:00Z".to_string(),
+            last_event: Some("session_start".to_string()),
+        };
+
+        db.upsert_session(&record).expect("upsert session");
+
+        let loaded = db
+            .get_session("session-1")
+            .expect("fetch session")
+            .expect("session row");
+
+        assert_eq!(loaded.session_id, record.session_id);
+        assert_eq!(loaded.state, record.state);
+        assert_eq!(loaded.cwd, record.cwd);
+        assert_eq!(loaded.project_path, record.project_path);
+        assert_eq!(loaded.last_event, record.last_event);
+
+        let mut updated = record.clone();
+        updated.state = crate::reducer::SessionState::Working;
+        updated.state_changed_at = "2026-01-31T00:01:00Z".to_string();
+        updated.updated_at = "2026-01-31T00:01:00Z".to_string();
+        db.upsert_session(&updated).expect("upsert update");
+
+        let loaded = db
+            .get_session("session-1")
+            .expect("fetch session")
+            .expect("session row");
+        assert_eq!(loaded.state, crate::reducer::SessionState::Working);
+        assert_eq!(loaded.state_changed_at, "2026-01-31T00:01:00Z");
+    }
+
+    #[test]
+    fn inserts_and_lists_activity() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let db_path = temp_dir.path().join("state.db");
+        let db = Db::new(db_path).expect("db init");
+
+        let entry = crate::activity::ActivityEntry {
+            session_id: "session-1".to_string(),
+            project_path: "/repo".to_string(),
+            file_path: "/repo/src/main.rs".to_string(),
+            tool_name: Some("Edit".to_string()),
+            recorded_at: "2026-01-31T00:00:00Z".to_string(),
+        };
+
+        db.insert_activity(&entry).expect("insert activity");
+
+        let entries = db.list_activity("session-1", 10).expect("list activity");
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0], entry);
     }
 }

@@ -17,6 +17,9 @@ pub enum Method {
     GetHealth,
     GetShellState,
     GetProcessLiveness,
+    GetSessions,
+    GetActivity,
+    GetTombstones,
     Event,
 }
 
