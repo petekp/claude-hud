@@ -279,7 +279,6 @@ A **local daemon** is the **only writer** of state. Hooks and the Swift app beco
 - Remove JSON-based cleanup logic. (Done; startup cleanup only scans for legacy lock-holders)
 - Remove remaining file-based state helpers (ActivityStore/StateStore/resolver + tests + state_check bin). (Done)
 - Do not keep JSON snapshots.
-
 ### Phase 7 — Robustness & Policy (2–5 days)
 
 Goal: eliminate the remaining **signal-quality** brittleness by making session lifecycle,

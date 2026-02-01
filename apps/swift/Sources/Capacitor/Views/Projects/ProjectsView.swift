@@ -46,6 +46,8 @@ struct ProjectsView: View {
                     DaemonStatusBadge(status: status)
                         .padding(.bottom, 4)
                 }
+                #endif
+
                 if let status = appState.daemonStatus, status.isEnabled && !status.isHealthy {
                     DaemonStatusCard(
                         status: status,
@@ -57,6 +59,7 @@ struct ProjectsView: View {
                     .padding(.bottom, 4)
                 }
 
+                #if DEBUG
                 DebugActiveStateCard()
                     .padding(.bottom, 6)
                 #endif
