@@ -4,6 +4,7 @@ use std::path::PathBuf;
 use std::time::SystemTime;
 
 use crate::sessions::READY_STALE_THRESHOLD_SECS;
+use crate::state::daemon::{daemon_enabled, sessions_snapshot, DaemonSessionRecord};
 use crate::state::{resolve_state_with_details, StateStore};
 use crate::storage::StorageConfig;
 use crate::types::SessionState;
@@ -104,6 +105,12 @@ impl AgentAdapter for ClaudeAdapter {
     }
 
     fn detect_session(&self, project_path: &str) -> Option<AgentSession> {
+        if let Some(snapshot) = sessions_snapshot() {
+            if let Some(record) = snapshot.latest_for_project(project_path) {
+                return daemon_session_to_agent(record);
+            }
+        }
+
         let state_file = self.state_file_path()?;
         let lock_dir = self.lock_dir_path()?;
 
@@ -156,6 +163,14 @@ impl AgentAdapter for ClaudeAdapter {
     }
 
     fn all_sessions(&self) -> Vec<AgentSession> {
+        if let Some(snapshot) = sessions_snapshot() {
+            return snapshot
+                .sessions()
+                .iter()
+                .filter_map(|record| daemon_session_to_agent(record))
+                .collect();
+        }
+
         let state_file = match self.state_file_path() {
             Some(p) => p,
             None => return vec![],
@@ -188,9 +203,58 @@ impl AgentAdapter for ClaudeAdapter {
     }
 
     fn state_mtime(&self) -> Option<SystemTime> {
+        if daemon_enabled() {
+            return None;
+        }
         let state_file = self.state_file_path()?;
         std::fs::metadata(&state_file).ok()?.modified().ok()
     }
+}
+
+fn daemon_session_to_agent(record: &DaemonSessionRecord) -> Option<AgentSession> {
+    if record.is_alive == Some(false) {
+        return None;
+    }
+
+    let state = match record.state.as_str() {
+        "working" => SessionState::Working,
+        "ready" => SessionState::Ready,
+        "compacting" => SessionState::Compacting,
+        "waiting" => SessionState::Waiting,
+        "idle" => SessionState::Idle,
+        _ => SessionState::Idle,
+    };
+
+    if state == SessionState::Idle {
+        return None;
+    }
+
+    if state == SessionState::Ready
+        && record.is_alive != Some(true)
+        && is_stale_ready(&record.state_changed_at)
+    {
+        return None;
+    }
+
+    Some(AgentSession {
+        agent_type: AgentType::Claude,
+        agent_name: "Claude Code".to_string(),
+        state: ClaudeAdapter::map_state(state),
+        session_id: Some(record.session_id.clone()),
+        cwd: record.cwd.clone(),
+        detail: ClaudeAdapter::state_detail(state),
+        working_on: None,
+        updated_at: Some(record.updated_at.clone()),
+    })
+}
+
+fn is_stale_ready(state_changed_at: &str) -> bool {
+    let Ok(parsed) = chrono::DateTime::parse_from_rfc3339(state_changed_at) else {
+        return false;
+    };
+    let updated_at = parsed.with_timezone(&Utc);
+    let age = Utc::now().signed_duration_since(updated_at).num_seconds();
+    age > READY_STALE_THRESHOLD_SECS
 }
 
 #[cfg(test)]

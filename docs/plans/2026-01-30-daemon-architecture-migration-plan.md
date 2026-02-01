@@ -195,6 +195,9 @@ A **local daemon** is the **only writer** of state. Hooks and the Swift app beco
 - When the daemon accepts events, the hook now **skips local writes entirely** (sessions.json, shell-cwd.json, file-activity.json, and lock creation/release). This effectively makes file artifacts stale while daemon is healthy.
 - Any remaining file-based readers must be **daemon-first or explicitly gated** on daemon health, or they’ll drift silently.
 - Decide whether “force lock writes” should still be possible when the daemon is healthy. If yes, we need a mode that allows lock writes even when daemon accepts events; if no, document that daemon acceptance implies lock suppression regardless of lock mode.
+- Claude agent detection now prefers daemon session snapshots; when daemon is enabled, adapter mtime caching is effectively disabled to avoid stale file reads. If this becomes too chatty, add a daemon snapshot generation/etag for caching.
+- Daemon session snapshots currently omit some optional metadata (e.g., `working_on`, `permission_mode`, `project_dir`). Either extend the protocol or accept reduced detail in agent lists during daemon-first operation.
+- Staleness gating for Ready sessions now depends on daemon-provided `state_changed_at` + optional `is_alive`. Ensure the daemon always emits RFC3339 timestamps for these fields.
 
 ### Phase 0 — Design & Spec (1–2 days)
 
@@ -233,6 +236,7 @@ A **local daemon** is the **only writer** of state. Hooks and the Swift app beco
 - Audit remaining file-based readers (sessions.json, file-activity.json, shell-cwd.json) and switch to daemon-first or gate on daemon health. (New)
 - Done: hud-core session activity fallback now prefers daemon activity snapshot; file activity used only when daemon is unavailable.
 - Done: hud-core session resolution now prefers daemon session snapshots when available; falls back to local locks/state when no daemon record matches.
+- Done: Claude agent adapter now prefers daemon session snapshots; file-based adapter reads are fallback-only.
 
 ### Phase 4 — Liveness + Locks Simplification (2–4 days)
 
@@ -299,6 +303,7 @@ A **local daemon** is the **only writer** of state. Hooks and the Swift app beco
 - Add daemon liveness client (`get_process_liveness`) behind `CAPACITOR_DAEMON_ENABLED`
 - Route lock + cleanup liveness checks through daemon when enabled (fallback to local checks)
 - Skip lock cleanup deletions when lock mode is `read-only` or `off`
+- Move agent adapters (Claude) to daemon-first session snapshots; ensure metadata parity if needed
 
 ### Swift changes
 

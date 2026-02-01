@@ -109,6 +109,10 @@ pub struct DaemonSessionsSnapshot {
 }
 
 impl DaemonSessionsSnapshot {
+    pub fn sessions(&self) -> &[DaemonSessionRecord] {
+        &self.sessions
+    }
+
     pub fn latest_for_project(&self, project_path: &str) -> Option<&DaemonSessionRecord> {
         let normalized_query = crate::state::normalize_path_for_comparison(project_path);
         let mut best: Option<&DaemonSessionRecord> = None;
@@ -207,7 +211,7 @@ pub fn sessions_snapshot() -> Option<DaemonSessionsSnapshot> {
     Some(DaemonSessionsSnapshot { sessions })
 }
 
-fn daemon_enabled() -> bool {
+pub(crate) fn daemon_enabled() -> bool {
     match env::var(ENABLE_ENV) {
         Ok(value) => matches!(value.as_str(), "1" | "true" | "TRUE" | "yes" | "YES"),
         Err(_) => false,
