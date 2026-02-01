@@ -32,16 +32,12 @@ final class ShellStateStore {
         static let shellStalenessThresholdSeconds: TimeInterval = 10 * 60
     }
 
-    private let stateURL: URL
     private var pollTask: _Concurrency.Task<Void, Never>?
     private let daemonClient = DaemonClient.shared
 
     private(set) var state: ShellCwdState?
 
-    init() {
-        self.stateURL = FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent(".capacitor/shell-cwd.json")
-    }
+    init() {}
 
     func startPolling() {
         pollTask = _Concurrency.Task { @MainActor [weak self] in
@@ -58,36 +54,10 @@ final class ShellStateStore {
     }
 
     private func loadState() async {
-        if daemonClient.isEnabled, let daemonState = try? await daemonClient.fetchShellState() {
+        guard daemonClient.isEnabled else { return }
+        if let daemonState = try? await daemonClient.fetchShellState() {
             state = daemonState
-            return
         }
-
-        loadStateFromDisk()
-    }
-
-    private func loadStateFromDisk() {
-        guard let data = try? Data(contentsOf: stateURL) else {
-            return
-        }
-
-        let decoder = JSONDecoder()
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        decoder.dateDecodingStrategy = .custom { decoder in
-            let container = try decoder.singleValueContainer()
-            let dateStr = try container.decode(String.self)
-            if let date = formatter.date(from: dateStr) {
-                return date
-            }
-            throw DecodingError.dataCorruptedError(in: container, debugDescription: "Invalid date: \(dateStr)")
-        }
-
-        guard let decoded = try? decoder.decode(ShellCwdState.self, from: data) else {
-            return
-        }
-
-        state = decoded
     }
 
     /// Returns the most recently updated non-stale shell.

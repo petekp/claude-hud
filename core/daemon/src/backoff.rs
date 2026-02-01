@@ -17,6 +17,17 @@ struct BackoffState {
     starts: Vec<String>,
 }
 
+#[derive(Serialize)]
+pub struct BackoffSnapshot {
+    pub starts_in_window: usize,
+    pub window_secs: i64,
+    pub max_starts: usize,
+    pub backoff_step_secs: u64,
+    pub max_backoff_secs: u64,
+    pub last_start: Option<String>,
+    pub next_backoff_secs: Option<u64>,
+}
+
 pub fn apply_startup_backoff(path: &Path) {
     let now = Utc::now();
     let mut state = load_state(path).unwrap_or_default();
@@ -36,12 +47,35 @@ pub fn apply_startup_backoff(path: &Path) {
     }
 }
 
+pub fn snapshot(path: &Path) -> Option<BackoffSnapshot> {
+    let now = Utc::now();
+    let mut state = load_state(path).ok()?;
+    retain_recent_starts(now, &mut state);
+
+    let projected = state.starts.len().saturating_add(1);
+    let extra = projected.saturating_sub(MAX_STARTS) as u64;
+    let next_backoff_secs = if extra > 0 {
+        Some(cmp::min(
+            BACKOFF_STEP_SECS.saturating_mul(extra),
+            BACKOFF_MAX_SECS,
+        ))
+    } else {
+        None
+    };
+
+    Some(BackoffSnapshot {
+        starts_in_window: state.starts.len(),
+        window_secs: WINDOW_SECS,
+        max_starts: MAX_STARTS,
+        backoff_step_secs: BACKOFF_STEP_SECS,
+        max_backoff_secs: BACKOFF_MAX_SECS,
+        last_start: state.starts.last().cloned(),
+        next_backoff_secs,
+    })
+}
+
 fn compute_backoff(now: DateTime<Utc>, state: &mut BackoffState) -> Option<u64> {
-    state.starts.retain(|value| {
-        parse_timestamp(value)
-            .map(|timestamp| now.signed_duration_since(timestamp).num_seconds() <= WINDOW_SECS)
-            .unwrap_or(false)
-    });
+    retain_recent_starts(now, state);
 
     state.starts.push(now.to_rfc3339());
 
@@ -52,6 +86,14 @@ fn compute_backoff(now: DateTime<Utc>, state: &mut BackoffState) -> Option<u64> 
     let extra = state.starts.len().saturating_sub(MAX_STARTS) as u64;
     let backoff = BACKOFF_STEP_SECS.saturating_mul(extra);
     Some(cmp::min(backoff, BACKOFF_MAX_SECS))
+}
+
+fn retain_recent_starts(now: DateTime<Utc>, state: &mut BackoffState) {
+    state.starts.retain(|value| {
+        parse_timestamp(value)
+            .map(|timestamp| now.signed_duration_since(timestamp).num_seconds() <= WINDOW_SECS)
+            .unwrap_or(false)
+    });
 }
 
 fn parse_timestamp(value: &str) -> Option<DateTime<Utc>> {

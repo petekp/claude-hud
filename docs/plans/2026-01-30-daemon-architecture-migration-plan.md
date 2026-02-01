@@ -17,7 +17,7 @@ This document is an **exhaustive, agent-ready plan** to migrate Capacitor's stat
 - **Single writer** for all state (daemon).
 - **Transactional storage** (SQLite/WAL) with replayable event log.
 - Hooks + App become clients (IPC), no user-facing daemon command.
-- Backwards compatible during rollout: file-based **fallback** remains until stabilized.
+- **Daemon-only**: file-based fallback is removed; the daemon is required.
 
 ---
 
@@ -65,7 +65,7 @@ A **local daemon** is the **only writer** of state. Hooks and the Swift app beco
 
 1. **No user command changes**: `claude`, `codex`, hook triggers continue unchanged.
 2. **Single writer**: once daemon is enabled, all writes go through it.
-3. **Fallback always available**: if daemon is down, hook/app can use file-based mode.
+3. **No legacy fallback**: if daemon is down, hook/app surface errors; no file-based mode.
 4. **Symlink strategy stays**: `~/.local/bin/hud-hook` must remain a symlink.
 5. **Exact-path session correctness**: session state is never inferred from parent directories.
 6. **Activity is secondary**: activity should never override explicit session state.
@@ -179,31 +179,35 @@ A **local daemon** is the **only writer** of state. Hooks and the Swift app beco
 
 ### Current Progress (as of 2026-01-31)
 
-- Done: Swift `DaemonClient` (Unix socket + newline framing + timeout) and daemon-first `ShellStateStore` with JSON fallback.
-- Done: Daemon health UI (status card + periodic polling + retry).
+- Done: Swift `DaemonClient` (Unix socket + newline framing + timeout) and daemon-only `ShellStateStore` (no JSON fallback).
+- Done: Daemon health UI (debug-only).
 - Done: LaunchAgent install + bundled daemon binary install (app startup writes LaunchAgent + kickstarts).
 - Done: Default hook commands include `CAPACITOR_DAEMON_ENABLED=1` and `CAPACITOR_DAEMON_LOCK_HEALTH=auto`.
 - Done: `process_liveness` pruning on daemon startup (24h max age).
-- Done: cleanup uses daemon liveness for lock-holder PID checks (fallback to PID-only when unavailable).
+- Done: cleanup uses daemon liveness for lock-holder PID checks (remove PID-only fallback).
 - Done: daemon startup backoff to mitigate crash loops.
 - Done: orphaned-session cleanup skips when lock mode is read-only/off.
-- Done: hud-hook sends events/shell CWD to daemon and skips local state writes when daemon accepts; falls back to file writes when send fails (tombstones still maintained for fallback).
-- Remaining highest-leverage: confirm any remaining lock-mode edge cases before disabling locks by default.
+- Done: hud-hook sends events/shell CWD to daemon and **returns errors** when daemon is unavailable (no file writes).
+- Remaining highest-leverage: remove any lingering legacy lock-holder cleanup references once safe.
 
 ### Recent Learnings / Observations
 
-- When the daemon accepts events, the hook now **skips local writes entirely** (sessions.json, shell-cwd.json, file-activity.json, and lock creation/release). This effectively makes file artifacts stale while daemon is healthy.
-- Any remaining file-based readers must be **daemon-first or explicitly gated** on daemon health, or they’ll drift silently.
-- Decide whether “force lock writes” should still be possible when the daemon is healthy. If yes, we need a mode that allows lock writes even when daemon accepts events; if no, document that daemon acceptance implies lock suppression regardless of lock mode.
+- Daemon-only enforcement is now live in hooks and shell CWD: when daemon is unavailable, they return errors (no file fallback).
+- File-based readers are being removed; daemon is now the sole source of truth for project status and shell state.
+- Daemon health UI is debug-only; release builds should not surface daemon status.
+- File-based startup cleanup has been stripped down to only kill orphaned lock-holders (no sessions/activity/tombstone cleanup).
+- Hook and shell CWD legacy write paths have been deleted; tests tied to JSON/lock/tombstone files were removed accordingly.
+- Removed legacy JSON/storage helpers (`ActivityStore`, `StateStore`, resolver, `state_check` bin) and daemonized agent/session detection.
 - Claude agent detection now prefers daemon session snapshots; when daemon is enabled, adapter mtime caching is effectively disabled to avoid stale file reads. If this becomes too chatty, add a daemon snapshot generation/etag for caching.
 - Daemon session snapshots currently omit some optional metadata (e.g., `working_on`, `permission_mode`, `project_dir`). Either extend the protocol or accept reduced detail in agent lists during daemon-first operation.
 - Staleness gating for Ready sessions now depends on daemon-provided `state_changed_at` + optional `is_alive`. Ensure the daemon always emits RFC3339 timestamps for these fields.
-- Startup cleanup now skips file-based session/activity pruning when the daemon health check succeeds, to avoid mutating stale fallback files while daemon is the source of truth.
+- Remaining cleanup work: purge any lingering lock-holder cleanup references once all legacy processes are gone.
+- Swift UniFFI bindings were regenerated after daemon-only doc cleanup to keep Bridge comments in sync.
 
 ### Phase 0 — Design & Spec (1–2 days)
 
-- Write a short spec for IPC, data model, and fallback behavior.
-- Decide whether JSON snapshots are produced by daemon or removed entirely.
+- Write a short spec for IPC, data model, and daemon-only behavior.
+- Confirm JSON snapshots are removed entirely.
 - Confirm launchd strategy (LaunchAgent + auto-restart).
 
 ### Phase 1 — Daemon MVP (2–4 days)
@@ -217,14 +221,14 @@ A **local daemon** is the **only writer** of state. Hooks and the Swift app beco
 ### Phase 2 — Hook Client (3–5 days)
 
 - Add a small IPC client to `hud-hook`.
-- On event: send to daemon; on failure, **fallback to current file writes**.
+- On event: send to daemon; on failure, **return an error** (no file-based writes).
 - Add env flag `CAPACITOR_DAEMON_ENABLED=1` (now normalized into hook commands).
 - Allow socket override via `CAPACITOR_DAEMON_SOCKET`.
 
 ### Phase 3 — App Client + SQLite Persistence (4–7 days)
 
 - Add `DaemonClient` in Swift (Unix socket, newline framing, timeout/size limits). (Done)
-- App reads daemon state if available, otherwise fallback to JSON. (Done)
+- App reads daemon state only (no JSON fallback). (Done)
 - Wire first read path to daemon (`ShellStateStore` → `get_shell_state`). (Done)
 - Surface daemon status in Setup/Diagnostics UI. (Done)
 - Replace in-memory state with SQLite WAL. (Done; sessions/activity/tombstones persisted, shell_state cached)
@@ -234,42 +238,34 @@ A **local daemon** is the **only writer** of state. Hooks and the Swift app beco
 - Add IPC read endpoints for sessions/activity/tombstones. (Done)
 - Extend IPC smoke test to cover sessions/activity/tombstones. (Done)
 - App session state now merges daemon session snapshots into the UI (project_path-based). (Done; lock liveness still heuristic)
-- Done: audited file-based readers (sessions.json, file-activity.json, shell-cwd.json) and switched to daemon-first or gated on daemon health.
-- Done: hud-core session activity fallback now prefers daemon activity snapshot; file activity used only when daemon is unavailable.
-- Done: hud-core session resolution now prefers daemon session snapshots when available; falls back to local locks/state when no daemon record matches.
-- Done: Claude agent adapter now prefers daemon session snapshots; file-based adapter reads are fallback-only.
+- Done: audited file-based readers (sessions.json, file-activity.json, shell-cwd.json) and removed JSON fallbacks from the app and session detection.
 
 ### Phase 4 — Liveness + Locks Simplification (2–4 days)
 
 - Centralize PID+proc_started logic in daemon. (Done; daemon process_liveness + daemon-aware checks)
-- Deprecate lock directories or keep as compatibility shim only.
+- Remove lock directories entirely (daemon-only, no compatibility shim). (Done)
 - Add `process_liveness` table and update per incoming event. (Done)
 - Expose `get_process_liveness` query for daemon-first PID identity checks. (Done on daemon + hud-core client)
-- Route `hud-core` cleanup/lock checks through daemon liveness when enabled (fallback to local checks). (Done)
-- Update lock-holder PID checks to use daemon-aware identity verification when possible. (Done; uses daemon-aware `is_pid_alive_verified`)
+- Route `hud-core` cleanup checks through daemon liveness only. (Done; local fallback removed)
+- Remove lock-holder PID checks entirely; daemon-only builds no longer spawn lock-holders. (Done)
 - Rebuild `process_liveness` from event log on daemon startup if table is empty. (Done)
 - Prune `process_liveness` rows older than 24 hours on daemon startup. (Done)
-- Define lock-directory deprecation plan (read-only shim + timeline for removal).
-  - See `docs/plans/daemon-lock-deprecation-plan.md`.
-- Gate lock writes in hooks via `CAPACITOR_DAEMON_LOCK_MODE` (full/read-only/off).
-- Gate lock writes via `CAPACITOR_DAEMON_LOCK_HEALTH=0/1/auto` (set by daemon health probe/launcher).
-  - `auto` disables lock writes only when the daemon health probe returns ok.
-- When lock mode is `read-only` or `off`, cleanup must skip lock deletions.
-- Decide whether to support “force lock writes” even when daemon accepts events; document or implement override.
+- Lock-mode/lock-health toggles removed (daemon-only; no compatibility).
 
 ### Phase 5 — Launchd + Reliability (2–4 days)
 
 - Add LaunchAgent (auto-start + auto-restart). (Done)
-- Add health checks; fallback if daemon down. (Partially done: app probes health + JSON fallback, still need crash-loop policy.)
+- Add health checks; daemon required when down. (Done: app probes health; crash-loop policy improved with backoff snapshot.)
 - Add crash loop backoff.
 - Install LaunchAgent from the app at startup (label `com.capacitor.daemon`). (Done)
 - Default hook commands enable daemon routing (`CAPACITOR_DAEMON_ENABLED=1`). (Done)
 
 ### Phase 6 — Cleanup & Removal (1–3 days)
 
-- Remove file-based writes from hooks.
-- Remove JSON-based cleanup logic.
-- Keep JSON snapshots as read-only cache if desired.
+- Remove file-based writes from hooks. (Done)
+- Remove JSON-based cleanup logic. (Done; startup cleanup only scans for legacy lock-holders)
+- Remove remaining file-based state helpers (ActivityStore/StateStore/resolver + tests + state_check bin). (Done)
+- Do not keep JSON snapshots.
 
 ---
 
@@ -291,25 +287,22 @@ A **local daemon** is the **only writer** of state. Hooks and the Swift app beco
 - Add IPC client (connect to `~/.capacitor/daemon.sock`)
 - Feature flag guard (`CAPACITOR_DAEMON_ENABLED`)
 - Socket override (`CAPACITOR_DAEMON_SOCKET`)
-- Fallback to file writes on IPC failure
-- Use daemon-aware liveness checks in lock-holder when enabled (fallback to local checks)
-- Support `CAPACITOR_DAEMON_LOCK_MODE` to disable or read-only lock writes
-- Support `CAPACITOR_DAEMON_LOCK_HEALTH` (0/1/auto) to gate lock creation + release
-  - Implement a health probe (`GetHealth`) when `auto` is set.
-  - Normalize hook commands to include `CAPACITOR_DAEMON_LOCK_HEALTH=auto` by default.
+- Return errors on IPC failure (no file fallback)
+- Use daemon-only liveness checks (local fallback removed)
+- Drop lock-mode/lock-health toggles (daemon-only; no compatibility).
 - Normalize hook commands to include `CAPACITOR_DAEMON_ENABLED=1` for daemon-first routing.
 
 ### HUD core changes
 
 - Add daemon liveness client (`get_process_liveness`) behind `CAPACITOR_DAEMON_ENABLED`
-- Route lock + cleanup liveness checks through daemon when enabled (fallback to local checks)
-- Skip lock cleanup deletions when lock mode is `read-only` or `off`
+- Route cleanup liveness checks through daemon only
+- Remove lock-mode/lock-health toggles (daemon-only; no compatibility support)
 - Move agent adapters (Claude) to daemon-first session snapshots; ensure metadata parity if needed
 
 ### Swift changes
 
 - Add `DaemonClient.swift` (socket client + response framing)
-- Integrate in `ShellStateStore` (daemon-first, JSON fallback)
+- Integrate in `ShellStateStore` (daemon-only)
 - Add UI status indicator for daemon health
 - Install LaunchAgent + bundled daemon binary from the app (auto-start).
 
@@ -332,16 +325,15 @@ A **local daemon** is the **only writer** of state. Hooks and the Swift app beco
 - Event log → `process_liveness` rebuild (tempfile-backed integration test)
 - IPC smoke test: `GetHealth` + `Event` + `GetProcessLiveness`
 - IPC smoke test: `GetSessions` + `GetActivity` + `GetTombstones` (now validates full lifecycle)
-- Hook fallback: daemon down still writes `sessions.json`
-- Cleanup fallback: daemon down still keeps live locks intact
+- Hook daemon-down: error surfaced (no file writes)
+- Cleanup daemon-down: error surfaced (no local cleanup)
 
 ### Integration Tests
 
 - `hud-hook` -> daemon -> query
-- Daemon down -> fallback to file mode
+- Daemon down -> error surfaced (no fallback)
 - Daemon restart with replay
-- Cleanup uses daemon liveness when enabled; legacy locks still safe
-- Lock mode/health gating (read-only/off skips deletion; unhealthy daemon skips lock writes)
+- Cleanup uses daemon liveness only; legacy lock-holder processes should be gone
 
 ### Regression Tests
 
@@ -361,12 +353,11 @@ A **local daemon** is the **only writer** of state. Hooks and the Swift app beco
    - Send `Event.SessionStart` with your PID.
    - Call `GetProcessLiveness` for that PID.
    - Expect `found=true` and `identity_matches=true`.
-4. Verify daemon-down fallback:
+4. Verify daemon-down behavior:
    - Stop the daemon.
-   - Run a hook event (e.g., `SessionStart`) and confirm `~/.capacitor/sessions.json` updates.
-5. Verify lock gating:
-   - Set `CAPACITOR_DAEMON_LOCK_HEALTH=auto` and confirm lock creation stops when daemon is healthy.
-   - Stop daemon and confirm lock creation resumes (fallback).
+   - Run a hook event (e.g., `SessionStart`) and confirm the hook returns an error.
+5. Verify lock deprecation:
+   - Confirm lock directories are no longer created by hooks.
 
 **Manual run (2026-01-31):**
 - LaunchAgent installed and running (`launchctl print gui/$(id -u)/com.capacitor.daemon` shows running).
@@ -378,16 +369,16 @@ A **local daemon** is the **only writer** of state. Hooks and the Swift app beco
 
 ## 9. Rollout Strategy
 
-- **Alpha**: daemon auto-start when app launches; hooks set `CAPACITOR_DAEMON_ENABLED=1`; fallback remains
-- **Beta**: daemon enabled by default everywhere, fallback on failure
-- **Stable**: daemon required, fallback removed (or hidden)
+- **Alpha**: daemon auto-start when app launches; hooks set `CAPACITOR_DAEMON_ENABLED=1`; daemon required
+- **Beta**: daemon required everywhere
+- **Stable**: daemon required everywhere
 
 ---
 
 ## 10. Definition of Done
 
 - Daemon receives all hook events in prod builds
-- App reads state from daemon with fallback
+- App reads state from daemon only
 - SQLite WAL persistence with replay is stable
 - All prior audit issues (JSON race, PID reuse, silent wipe) are eliminated
 - Launchd auto-start is reliable and documented
@@ -396,14 +387,12 @@ A **local daemon** is the **only writer** of state. Hooks and the Swift app beco
 
 ## 11. Open Questions
 
-- Should JSON snapshots be kept forever (debug) or phased out?
+- (Removed) JSON snapshots are not part of the daemon-only plan.
 - Should daemon export metrics (Prometheus-style) or just logs?
 - How should event schema evolve without breaking old hooks?
 - Do we need any legacy disk seeding now that replay from the event log restores shell state?
 - `process_liveness` rows are pruned after 24 hours; revisit if telemetry shows stale entries matter.
 - Do we need an in-app toggle for daemon enablement (GUI apps don’t inherit shell env vars)?
-- Where should `CAPACITOR_DAEMON_LOCK_HEALTH` be sourced (daemon probe vs Swift app vs installer)?
-- `CAPACITOR_DAEMON_LOCK_HEALTH=auto` is now the default in hook commands; revisit if this causes regressions.
 
 ---
 
@@ -411,7 +400,7 @@ A **local daemon** is the **only writer** of state. Hooks and the Swift app beco
 
 1. Create `core/daemon` with minimal IPC loop.
 2. Implement `GetHealth` and `Event.SessionStart`.
-3. Add IPC client in `hud-hook` with fallback.
+3. Add IPC client in `hud-hook` (daemon-only, no fallback).
 4. Add Swift daemon client and read integration.
 5. Enable via `CAPACITOR_DAEMON_ENABLED=1` (or run the app to install LaunchAgent).
 

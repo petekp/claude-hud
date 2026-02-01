@@ -231,12 +231,19 @@ fn handle_request(request: Request, state: Arc<SharedState>) -> Response {
 
     match request.method {
         Method::GetHealth => {
-            let data = serde_json::json!({
+            let mut data = serde_json::json!({
                 "status": "ok",
                 "pid": std::process::id(),
                 "version": env!("CARGO_PKG_VERSION"),
                 "protocol_version": PROTOCOL_VERSION,
             });
+            if let Ok(path) = daemon_backoff_path() {
+                if let Some(snapshot) = backoff::snapshot(&path) {
+                    if let Ok(value) = serde_json::to_value(snapshot) {
+                        data["backoff"] = value;
+                    }
+                }
+            }
             Response::ok(request.id, data)
         }
         Method::GetShellState => {

@@ -1,7 +1,6 @@
 //! Daemon client helpers for state liveness checks.
 //!
-//! These are best-effort: failures should never block or crash callers. When
-//! the daemon is unavailable, callers should fall back to local checks.
+//! The daemon is authoritative; callers should not fall back to local checks.
 
 use capacitor_daemon_protocol::{Method, Request, Response, MAX_REQUEST_BYTES, PROTOCOL_VERSION};
 use chrono::{DateTime, Duration as ChronoDuration, Utc};
@@ -26,8 +25,10 @@ pub struct ProcessLivenessSnapshot {
     #[serde(default)]
     pub pid: Option<u32>,
     #[serde(default)]
+    #[allow(dead_code)]
     pub proc_started: Option<u64>,
     #[serde(default)]
+    #[allow(dead_code)]
     pub current_start_time: Option<u64>,
     #[serde(default)]
     #[allow(dead_code)]

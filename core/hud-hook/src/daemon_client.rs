@@ -1,7 +1,7 @@
 //! Client helper for sending hook events to the capacitor daemon.
 //!
-//! This is a best-effort path: failures should never block or crash the hook.
-//! When the daemon is unavailable, we fall back to the legacy file-based flow.
+//! The daemon is the only writer. Failures should be surfaced to the caller
+//! (no legacy file-based fallback).
 
 use capacitor_daemon_protocol::{
     EventEnvelope, EventType, Method, Request, Response, MAX_REQUEST_BYTES, PROTOCOL_VERSION,
@@ -111,6 +111,7 @@ pub fn send_shell_cwd_event(
     }
 }
 
+#[allow(dead_code)]
 pub fn daemon_health() -> Option<bool> {
     if !daemon_enabled() {
         return None;
@@ -137,7 +138,7 @@ pub fn daemon_health() -> Option<bool> {
     Some(matches!(status, Some("ok")))
 }
 
-fn daemon_enabled() -> bool {
+pub fn daemon_enabled() -> bool {
     match env::var(ENABLE_ENV) {
         Ok(value) => matches!(value.as_str(), "1" | "true" | "TRUE" | "yes" | "YES"),
         Err(_) => false,
