@@ -169,7 +169,8 @@ A **local daemon** is the **only writer** of state. Hooks and the Swift app beco
 - `session_id + pid` is the **unique key** for sessions.
 - Session-level rollups can be computed on query.
 - Activity remains bounded by count/time windows per session.
-- Phase 3 persists only `events` + `shell_state`; `process_liveness` begins in Phase 4.
+- Phase 3 persists `events` + `shell_state` + session/activity/tombstone rollups; `process_liveness` was pulled forward to support early daemon-side liveness checks.
+- Boundary detection for activity attribution now lives in the daemon (no `hud-core` dependency).
 - Always derive `event_type` strings using the shared protocol serializer (avoid hardcoding).
 
 ---
@@ -215,20 +216,23 @@ A **local daemon** is the **only writer** of state. Hooks and the Swift app beco
 - App reads daemon state if available, otherwise fallback to JSON. (Done)
 - Wire first read path to daemon (`ShellStateStore` → `get_shell_state`). (Done)
 - Surface daemon status in Setup/Diagnostics UI. (Done)
-- Replace in-memory state with SQLite WAL.
-- Append to `events` table for replay.
-- Rebuild state on startup if cache tables empty/corrupt.
-- Add replay integration test (event log → rebuilt state).
+- Replace in-memory state with SQLite WAL. (Done; sessions/activity/tombstones persisted, shell_state cached)
+- Append to `events` table for replay. (Done)
+- Rebuild state on startup if cache tables empty/corrupt. (Done)
+- Add replay integration test (event log → rebuilt state). (Done)
+- Add IPC read endpoints for sessions/activity/tombstones. (Done)
+- Extend IPC smoke test to cover sessions/activity/tombstones. (Done)
+- App session state now merges daemon session snapshots into the UI (project_path-based). (Done; lock liveness still heuristic)
 
 ### Phase 4 — Liveness + Locks Simplification (2–4 days)
 
 - Centralize PID+proc_started logic in daemon.
 - Deprecate lock directories or keep as compatibility shim only.
 - Add `process_liveness` table and update per incoming event. (Done)
-- Expose `get_process_liveness` query for daemon-first PID identity checks.
+- Expose `get_process_liveness` query for daemon-first PID identity checks. (Done on daemon; client plumbing pending)
 - Route `hud-core` cleanup/lock checks through daemon liveness when enabled (fallback to local checks).
 - Update lock-holder PID checks to use daemon-aware identity verification when possible.
-- Rebuild `process_liveness` from event log on daemon startup if table is empty.
+- Rebuild `process_liveness` from event log on daemon startup if table is empty. (Done)
 - Prune `process_liveness` rows older than 24 hours on daemon startup. (Done)
 - Define lock-directory deprecation plan (read-only shim + timeline for removal).
   - See `docs/plans/daemon-lock-deprecation-plan.md`.
@@ -264,6 +268,7 @@ A **local daemon** is the **only writer** of state. Hooks and the Swift app beco
 - Add SQLite dependency (rusqlite or sqlx)
 - Add process inspection dependency (sysinfo) for `proc_started`
 - Bundle `capacitor-daemon` into the app and install it to `~/.local/bin` via symlink.
+- Add daemon-local project boundary detector (to avoid `hud-core` dependency). (Done)
 
 ### Hook changes
 
@@ -309,6 +314,7 @@ A **local daemon** is the **only writer** of state. Hooks and the Swift app beco
 - Process liveness upsert (pid, proc_started, last_seen_at)
 - Event log → `process_liveness` rebuild (tempfile-backed integration test)
 - IPC smoke test: `GetHealth` + `Event` + `GetProcessLiveness`
+- IPC smoke test: `GetSessions` + `GetActivity` + `GetTombstones` (now validates full lifecycle)
 - Hook fallback: daemon down still writes `sessions.json`
 - Cleanup fallback: daemon down still keeps live locks intact
 
