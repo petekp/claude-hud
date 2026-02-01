@@ -241,12 +241,12 @@ A **local daemon** is the **only writer** of state. Hooks and the Swift app beco
 
 ### Phase 4 — Liveness + Locks Simplification (2–4 days)
 
-- Centralize PID+proc_started logic in daemon.
+- Centralize PID+proc_started logic in daemon. (Done; daemon process_liveness + daemon-aware checks)
 - Deprecate lock directories or keep as compatibility shim only.
 - Add `process_liveness` table and update per incoming event. (Done)
-- Expose `get_process_liveness` query for daemon-first PID identity checks. (Done on daemon; client plumbing pending)
-- Route `hud-core` cleanup/lock checks through daemon liveness when enabled (fallback to local checks).
-- Update lock-holder PID checks to use daemon-aware identity verification when possible.
+- Expose `get_process_liveness` query for daemon-first PID identity checks. (Done on daemon + hud-core client)
+- Route `hud-core` cleanup/lock checks through daemon liveness when enabled (fallback to local checks). (Done)
+- Update lock-holder PID checks to use daemon-aware identity verification when possible. (Done; uses daemon-aware `is_pid_alive_verified`)
 - Rebuild `process_liveness` from event log on daemon startup if table is empty. (Done)
 - Prune `process_liveness` rows older than 24 hours on daemon startup. (Done)
 - Define lock-directory deprecation plan (read-only shim + timeline for removal).
@@ -315,7 +315,7 @@ A **local daemon** is the **only writer** of state. Hooks and the Swift app beco
 
 ### Docs
 
-- Update system map, side-effects map, and gotchas
+- Update system map, side-effects map, and gotchas (system map + side-effects map updated)
 - Add daemon install/health notes
 
 ---
