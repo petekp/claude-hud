@@ -32,6 +32,24 @@ swift build -c release  # Release build
 swift run               # Run the app
 ```
 
+### Daemon Health (local)
+
+```bash
+# Check LaunchAgent state
+launchctl print gui/$(id -u)/com.capacitor.daemon
+
+# Confirm socket + logs exist
+ls -la ~/.capacitor/daemon.sock
+ls -la ~/.capacitor/daemon/daemon.stdout.log ~/.capacitor/daemon/daemon.stderr.log
+
+# Tail logs (useful when status card shows offline)
+tail -50 ~/.capacitor/daemon/daemon.stderr.log
+```
+
+Notes:
+- When the daemon is healthy, hooks send events over the socket and file-based state is fallback-only.
+- If LaunchAgent is loaded but no socket exists, check stderr log for crash-loop hints.
+
 ### Building for Distribution
 
 ```bash
@@ -102,7 +120,7 @@ Hook handling is implemented entirely in Rust (`core/hud-hook/`).
 3. **Build and install:**
    ```bash
    cargo build -p hud-hook --release
-   cp target/release/hud-hook ~/.local/bin/
+   ln -sf target/release/hud-hook ~/.local/bin/hud-hook
    ```
 
 4. **Test manually** with a real Claude session:

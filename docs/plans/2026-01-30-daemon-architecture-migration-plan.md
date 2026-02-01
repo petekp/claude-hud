@@ -316,7 +316,7 @@ A **local daemon** is the **only writer** of state. Hooks and the Swift app beco
 ### Docs
 
 - Update system map, side-effects map, and gotchas (system map + side-effects map updated)
-- Add daemon install/health notes
+- Add daemon install/health notes (added to development workflows)
 
 ---
 
