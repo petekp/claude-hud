@@ -27,7 +27,6 @@ uniffi::setup_scaffolding!();
 
 // Public modules
 pub mod activation;
-pub mod activity;
 pub mod agents;
 pub mod artifacts;
 pub mod boundaries;
@@ -47,7 +46,6 @@ pub mod validation;
 
 // Re-export commonly used items at crate root
 pub use activation::*;
-pub use activity::*;
 pub use agents::{AgentAdapter, AgentConfig, AgentRegistry, AgentSession, AgentState, AgentType};
 pub use artifacts::*;
 pub use boundaries::*;

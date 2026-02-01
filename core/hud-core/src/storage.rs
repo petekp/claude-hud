@@ -71,11 +71,6 @@ impl StorageConfig {
     // Global Files
     // ─────────────────────────────────────────────────────────────────────────────
 
-    /// Path to sessions.json (active session states).
-    pub fn sessions_file(&self) -> PathBuf {
-        self.root.join("sessions.json")
-    }
-
     /// Path to projects.json (tracked projects list).
     pub fn projects_file(&self) -> PathBuf {
         self.root.join("projects.json")
@@ -96,11 +91,6 @@ impl StorageConfig {
         self.root.join("stats-cache.json")
     }
 
-    /// Path to file-activity.json (file activity tracking).
-    pub fn file_activity_file(&self) -> PathBuf {
-        self.root.join("file-activity.json")
-    }
-
     /// Path to config.json (app preferences).
     pub fn config_file(&self) -> PathBuf {
         self.root.join("config.json")
@@ -109,11 +99,6 @@ impl StorageConfig {
     // ─────────────────────────────────────────────────────────────────────────────
     // Directories
     // ─────────────────────────────────────────────────────────────────────────────
-
-    /// Path to sessions/ directory (lock directories).
-    pub fn sessions_dir(&self) -> PathBuf {
-        self.root.join("sessions")
-    }
 
     /// Path to projects/ directory (per-project data).
     pub fn projects_dir(&self) -> PathBuf {
@@ -280,7 +265,6 @@ impl StorageConfig {
     /// Ensures the root directory and standard subdirectories exist.
     pub fn ensure_dirs(&self) -> std::io::Result<()> {
         std::fs::create_dir_all(&self.root)?;
-        std::fs::create_dir_all(self.sessions_dir())?;
         std::fs::create_dir_all(self.projects_dir())?;
         std::fs::create_dir_all(self.agents_dir())?;
         Ok(())
@@ -374,15 +358,6 @@ mod tests {
     // ─────────────────────────────────────────────────────────────────────────────
 
     #[test]
-    fn test_sessions_file_path() {
-        let config = StorageConfig::with_root(PathBuf::from("/tmp/capacitor"));
-        assert_eq!(
-            config.sessions_file(),
-            PathBuf::from("/tmp/capacitor/sessions.json")
-        );
-    }
-
-    #[test]
     fn test_projects_file_path() {
         let config = StorageConfig::with_root(PathBuf::from("/tmp/capacitor"));
         assert_eq!(
@@ -419,15 +394,6 @@ mod tests {
     }
 
     #[test]
-    fn test_file_activity_file_path() {
-        let config = StorageConfig::with_root(PathBuf::from("/tmp/capacitor"));
-        assert_eq!(
-            config.file_activity_file(),
-            PathBuf::from("/tmp/capacitor/file-activity.json")
-        );
-    }
-
-    #[test]
     fn test_config_file_path() {
         let config = StorageConfig::with_root(PathBuf::from("/tmp/capacitor"));
         assert_eq!(
@@ -439,15 +405,6 @@ mod tests {
     // ─────────────────────────────────────────────────────────────────────────────
     // Directory Path Tests
     // ─────────────────────────────────────────────────────────────────────────────
-
-    #[test]
-    fn test_sessions_dir_path() {
-        let config = StorageConfig::with_root(PathBuf::from("/tmp/capacitor"));
-        assert_eq!(
-            config.sessions_dir(),
-            PathBuf::from("/tmp/capacitor/sessions")
-        );
-    }
 
     #[test]
     fn test_projects_dir_path() {
@@ -627,7 +584,6 @@ mod tests {
         config.ensure_dirs().unwrap();
 
         assert!(temp.path().exists());
-        assert!(config.sessions_dir().exists());
         assert!(config.projects_dir().exists());
         assert!(config.agents_dir().exists());
     }

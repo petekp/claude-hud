@@ -242,29 +242,6 @@ impl SessionRecord {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct LockInfo {
-    pub pid: u32,
-    pub path: String,
-    /// Session ID that owns this lock (v4 session-based locks).
-    /// None for legacy path-based locks created before session-based locking.
-    #[serde(default)]
-    pub session_id: Option<String>,
-    /// Process start time (Unix timestamp) for PID identity verification.
-    /// None for legacy locks created before PID verification was added.
-    #[serde(default)]
-    pub proc_started: Option<u64>,
-    /// Lock creation time (Unix timestamp) for "newest lock wins" selection.
-    /// Uses the old field name "started" for backward compatibility with reading old locks.
-    /// New locks write to "created" field instead.
-    #[serde(default, alias = "started")]
-    pub created: Option<u64>,
-    /// Version of hud-core that created this lock.
-    /// Used to identify locks from old versions that might need special handling.
-    #[serde(default)]
-    pub lock_version: Option<String>,
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

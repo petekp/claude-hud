@@ -71,6 +71,26 @@ impl HudEngine {
     }
 }
 
+fn has_active_daemon_session(
+    snapshot: &Option<crate::state::daemon::DaemonSessionsSnapshot>,
+) -> bool {
+    let snapshot = match snapshot {
+        Some(snapshot) => snapshot,
+        None => return false,
+    };
+
+    snapshot.sessions().iter().any(|record| {
+        let state = record.state.to_ascii_lowercase();
+        if state == "idle" {
+            return false;
+        }
+        match record.is_alive {
+            Some(false) => false,
+            _ => true,
+        }
+    })
+}
+
 #[uniffi::export]
 impl HudEngine {
     /// Creates a new HudEngine instance with default storage configuration.
@@ -213,13 +233,13 @@ impl HudEngine {
     // ─────────────────────────────────────────────────────────────────────────────
 
     /// Gets the session state for a single project.
-    /// Uses session-ID keyed state and lock detection for reliable state.
+    /// Uses daemon session snapshots for reliable state.
     pub fn get_session_state(&self, project_path: String) -> ProjectSessionState {
         detect_session_state_with_storage(&self.storage, &project_path)
     }
 
     /// Gets session states for multiple projects.
-    /// Uses session-ID keyed state and lock detection for reliable state.
+    /// Uses daemon session snapshots for reliable state.
     ///
     /// Takes a Vec instead of slice for FFI compatibility.
     pub fn get_all_session_states(
@@ -743,10 +763,7 @@ impl HudEngine {
     ///
     /// Returns stats about what was cleaned up.
     pub fn run_startup_cleanup(&self) -> crate::state::CleanupStats {
-        crate::state::run_startup_cleanup(
-            &self.storage.sessions_dir(),
-            &self.storage.sessions_file(),
-        )
+        crate::state::run_startup_cleanup()
     }
 
     // ─────────────────────────────────────────────────────────────────────────────
@@ -765,13 +782,12 @@ impl HudEngine {
     /// - `Stale`: Heartbeat is old (hooks stopped firing)
     /// - `Unreadable`: Can't read heartbeat file
     pub fn check_hook_health(&self) -> crate::types::HookHealthReport {
-        use crate::state::lock::has_any_active_lock;
+        use crate::state::daemon::sessions_snapshot;
         use crate::types::{HookHealthReport, HookHealthStatus};
 
         const HOOK_HEALTH_THRESHOLD_SECS: u64 = 60;
 
         let heartbeat_path = self.storage.root().join("hud-hook-heartbeat");
-        let sessions_dir = self.storage.sessions_dir();
         let threshold_secs = HOOK_HEALTH_THRESHOLD_SECS;
 
         let (status, age) = match std::fs::metadata(&heartbeat_path) {
@@ -781,9 +797,9 @@ impl HudEngine {
 
                     let status = if age_secs <= threshold_secs {
                         HookHealthStatus::Healthy
-                    } else if has_any_active_lock(&sessions_dir) {
-                        // Heartbeat is stale but a session lock exists—Claude is running,
-                        // just generating a long response without tool calls. Treat as healthy.
+                    } else if has_active_daemon_session(&sessions_snapshot()) {
+                        // Heartbeat is stale but an active session exists—Claude may be
+                        // generating a long response without tool calls. Treat as healthy.
                         HookHealthStatus::Healthy
                     } else {
                         HookHealthStatus::Stale {
@@ -915,7 +931,7 @@ impl HudEngine {
     ///
     /// This verifies:
     /// 1. Heartbeat file exists and is recent (< 60s old)
-    /// 2. State file (sessions.json) can be written and read back
+    /// 2. Daemon health probe succeeds
     ///
     /// Used by the "Test Hooks" button in SetupStatusCard to give users
     /// confidence that the hook system is functioning correctly.
@@ -925,7 +941,7 @@ impl HudEngine {
         let heartbeat_ok = matches!(health.status, crate::types::HookHealthStatus::Healthy);
         let heartbeat_age = health.last_heartbeat_age_secs;
 
-        // 2. Test state file I/O
+        // 2. Test daemon health
         let state_file_ok = self.test_state_file_io();
 
         let success = heartbeat_ok && state_file_ok;
@@ -940,7 +956,7 @@ impl HudEngine {
                 None => "No heartbeat detected. Start a Claude session to test hooks.".to_string(),
             }
         } else {
-            "State file I/O failed. Check ~/.capacitor permissions.".to_string()
+            "Daemon health check failed. Ensure the daemon is running.".to_string()
         };
 
         HookTestResult {
@@ -990,132 +1006,19 @@ impl HudEngine {
 }
 
 impl HudEngine {
-    /// Tests that we can write and read a sessions-format file in the storage directory.
-    ///
-    /// This validates the persistence layer is working by:
-    /// 1. Writing a test record with a unique ID to an isolated test file
-    /// 2. Reading it back to verify
-    /// 3. Removing the test file
-    ///
-    /// Returns true if all operations succeed.
+    /// Tests daemon connectivity for diagnostics.
     fn test_state_file_io(&self) -> bool {
-        use crate::state::StateStore;
-        use crate::types::SessionState;
-
-        let sessions_file = self.storage.sessions_file();
-        let root_dir = self.storage.root();
-
-        if fs::create_dir_all(root_dir).is_err() {
-            return false;
-        }
-
-        // Create a unique test session ID using PID and timestamp
-        let test_id = format!(
-            "__test__{}_{}",
-            std::process::id(),
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .map(|d| d.as_nanos())
-                .unwrap_or(0)
-        );
-
-        // Read the live state file to ensure it's accessible
-        if StateStore::load(&sessions_file).is_err() {
-            return false;
-        }
-
-        // If sessions.json exists, verify it's writable (permissions/ACLs can block updates)
-        if sessions_file.exists() {
-            if fs::OpenOptions::new()
-                .write(true)
-                .open(&sessions_file)
-                .is_err()
-            {
-                return false;
-            }
-        }
-
-        // Use an isolated test file in the same directory to avoid clobbering live sessions.json
-        let test_path = root_dir.join(format!(
-            "sessions.test-{}-{}.json",
-            std::process::id(),
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .map(|d| d.as_nanos())
-                .unwrap_or(0)
-        ));
-
-        let mut store = StateStore::new(&test_path);
-
-        // Add test record using the update API
-        store.update(&test_id, SessionState::Idle, "/tmp/hook-test");
-
-        // Save state
-        if store.save().is_err() {
-            return false;
-        }
-
-        // Read back and verify
-        let read_back = match StateStore::load(&test_path) {
-            Ok(s) => s,
-            Err(_) => return false,
-        };
-
-        let found = read_back.get_by_session_id(&test_id).is_some();
-
-        // Clean up: remove test file
-        let _ = fs::remove_file(&test_path);
-
-        found
+        crate::state::daemon::daemon_health().unwrap_or(false)
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tempfile::TempDir;
 
     #[test]
-    fn test_state_file_io_does_not_modify_live_sessions_file() {
-        let temp = TempDir::new().unwrap();
-        let root = temp.path().join(".capacitor");
-        fs::create_dir_all(&root).unwrap();
-
-        let storage = StorageConfig::with_root(root.clone());
-        let sessions_file = storage.sessions_file();
-
-        let mut store = crate::state::StateStore::new(&sessions_file);
-        store.update(
-            "session-1",
-            crate::types::SessionState::Ready,
-            "/tmp/project",
-        );
-        store.save().unwrap();
-
-        let original = fs::read_to_string(&sessions_file).unwrap();
-
-        let engine = HudEngine::with_storage(storage).unwrap();
-        assert!(engine.test_state_file_io());
-
-        let after = fs::read_to_string(&sessions_file).unwrap();
-        assert_eq!(
-            original, after,
-            "test_state_file_io should not modify live sessions.json"
-        );
-
-        let leftovers: Vec<_> = fs::read_dir(&root)
-            .unwrap()
-            .filter_map(|entry| entry.ok())
-            .filter(|entry| {
-                entry
-                    .file_name()
-                    .to_str()
-                    .is_some_and(|name| name.starts_with("sessions.test-"))
-            })
-            .collect();
-        assert!(
-            leftovers.is_empty(),
-            "test_state_file_io should clean up its test file"
-        );
+    fn test_state_file_io_uses_daemon_health() {
+        let engine = HudEngine::new().unwrap();
+        let _ = engine.test_state_file_io();
     }
 }

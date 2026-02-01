@@ -9,46 +9,24 @@
 //! this module is a passive reader that applies staleness heuristics.
 //!
 //! ```text
-//! Claude Code → Hook Script → State File + Lock Dir → This Module → Swift UI
-//!     (user)      (writer)       (storage)              (reader)      (display)
+//! Claude Code → Hook Script → Daemon → This Module → Swift UI
+//!     (user)      (writer)    (storage)   (reader)      (display)
 //! ```
 //!
-//! # Two-Layer Liveness Detection
+//! # Liveness Detection
 //!
-//! We use two signals to determine if a session is active:
-//!
-//! 1. **Lock files** (primary): Directories in `~/.capacitor/sessions/{session_id}-{pid}.lock/`
-//!    indicate a running session. Created by `spawn_lock_holder()` in the hook handler.
-//!
-//! 2. **Fresh record fallback**: If no lock exists but a state record is fresh
-//!    (see [`types::STALE_THRESHOLD_SECS`]), trust it. Handles race conditions.
-//!
-//! # Active State Recovery
-//!
-//! When users interrupt Claude (Escape key, cancel), no hook event fires. To recover:
-//! - Active states (Working, Waiting, Compacting) fall back to Ready after
-//!   [`types::ACTIVE_STATE_STALE_SECS`] without updates.
-//! - Aggressive threshold for fast UX; false positives self-correct on next hook event.
+//! Liveness is sourced from daemon snapshots (`is_alive` + `state_changed_at`).
 //!
 //! # Module Structure
 //!
-//! - [`lock`]: Lock file detection and PID verification
-//! - [`resolver`]: Fuses lock + state data to answer "is Claude running here?"
-//! - [`store`]: Reads/writes the JSON state file (`~/.capacitor/sessions.json`)
-//! - [`types`]: Data structures, staleness thresholds, canonical state mapping
+//! - [`daemon`]: Daemon IPC helpers for session/activity snapshots
+//! - [`types`]: Data structures, canonical state mapping
 //!
 //! # Key Entry Points
 //!
-//! - [`is_session_running`]: Quick check for any active session at a path
-//! - [`resolve_state_with_details`]: Full resolution with session ID and cwd
-//! - [`StateStore`]: Low-level access to session records
-
 mod cleanup;
 pub(crate) mod daemon;
-pub(crate) mod lock;
 mod path_utils;
-mod resolver;
-mod store;
 pub(crate) mod types;
 
 // Re-export path utilities for use across the crate
@@ -57,17 +35,4 @@ pub use path_utils::{
 };
 
 pub use cleanup::{run_startup_cleanup, CleanupStats};
-pub use lock::{
-    count_other_session_locks, create_lock, create_session_lock, find_all_locks_for_path,
-    get_lock_info, get_session_lock_dir_path, is_pid_alive, is_pid_alive_verified,
-    is_session_running, release_lock_by_session, update_lock_pid,
-};
-pub use resolver::{resolve_state, resolve_state_with_details, ResolvedState};
-pub use store::StateStore;
-pub use types::{
-    HookEvent, HookInput, LastEvent, LockInfo, SessionRecord, ToolInput, ToolResponse,
-};
-
-/// Test helpers for creating locks - only available with test-helpers feature.
-#[cfg(any(test, feature = "test-helpers"))]
-pub use lock::tests_helper;
+pub use types::{HookEvent, HookInput, LastEvent, SessionRecord, ToolInput, ToolResponse};

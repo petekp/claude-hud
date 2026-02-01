@@ -44,7 +44,3 @@ chrono = { workspace = true }
 [[bin]]
 name = "uniffi-bindgen"
 path = "uniffi-bindgen.rs"
-
-[[bin]]
-name = "state-check"
-path = "src/bin/state_check.rs"

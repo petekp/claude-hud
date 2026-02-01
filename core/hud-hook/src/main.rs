@@ -7,16 +7,13 @@
 //!
 //! - `handle`: Main hook handler, reads JSON from stdin
 //! - `cwd`: Shell CWD tracking (called by shell precmd hooks)
-//! - `lock-holder`: Background daemon for lock management (spawned internally)
 
 mod cwd;
 mod daemon_client;
 mod handle;
-mod lock_holder;
 mod logging;
 
 use clap::{Parser, Subcommand};
-use std::path::PathBuf;
 
 #[derive(Parser)]
 #[command(name = "hud-hook")]
@@ -46,25 +43,6 @@ enum Commands {
         #[arg(value_name = "TTY")]
         tty: String,
     },
-
-    /// Lock holder daemon (spawned by handle command)
-    LockHolder {
-        /// Session ID for this lock (v4 session-based locking)
-        #[arg(long)]
-        session_id: String,
-
-        /// Working directory to monitor
-        #[arg(long)]
-        cwd: String,
-
-        /// Claude process PID to monitor
-        #[arg(long)]
-        pid: u32,
-
-        /// Lock directory path
-        #[arg(long)]
-        lock_dir: PathBuf,
-    },
 }
 
 fn main() {
@@ -83,14 +61,6 @@ fn main() {
             if let Err(e) = cwd::run(&path, pid, &tty) {
                 tracing::warn!(error = %e, "hud-hook cwd failed");
             }
-        }
-        Commands::LockHolder {
-            session_id,
-            cwd: cwd_path,
-            pid,
-            lock_dir,
-        } => {
-            lock_holder::run(&session_id, &cwd_path, pid, &lock_dir);
         }
     }
 }

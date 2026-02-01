@@ -1,47 +1,37 @@
 //! Session state management for Claude Code sessions.
 //!
-//! Handles reading session states from the v3 state store and
+//! Handles reading session states from the daemon and
 //! detecting the current state of Claude Code sessions.
 //!
-//! All session data lives in `~/.capacitor/` (our namespace):
-//! - Lock directories: `~/.capacitor/sessions/{hash}.lock/`
-//! - State file: `~/.capacitor/sessions.json`
-//!
-//! We never write to `~/.claude/` (sidecar purity).
+//! The daemon is the single writer; no file-based fallback.
 
-use crate::activity::ActivityStore;
 use crate::state::daemon::{
     activity_snapshot, sessions_snapshot, DaemonActivitySnapshot, DaemonSessionRecord,
     DaemonSessionsSnapshot,
 };
-use crate::state::types::ACTIVE_STATE_STALE_SECS;
-use crate::state::{resolve_state_with_details, StateStore};
+use crate::state::types::{ACTIVE_STATE_STALE_SECS, STALE_THRESHOLD_SECS};
 use crate::storage::StorageConfig;
 use crate::types::{ProjectSessionState, SessionState};
-use chrono::Utc;
 use fs_err as fs;
 use std::path::Path;
+use std::time::Duration;
 
-/// Ready state becomes Idle after this many seconds without a lock.
-/// This handles abandoned sessions where Claude finished but the user never returned.
-/// 15 minutes matches the Swift threshold that was previously applied client-side.
-pub const READY_STALE_THRESHOLD_SECS: i64 = 900;
+/// Activity is considered "recent" if within this threshold.
+const ACTIVITY_THRESHOLD: Duration = Duration::from_secs(5 * 60); // 5 minutes
 
-/// Detects session state using the v3 state module.
-/// Uses session-ID keyed state file and lock detection for reliable state.
-/// The resolver handles both lock-based detection and fresh record fallback.
+/// Detects session state from daemon snapshots.
 pub fn detect_session_state(project_path: &str) -> ProjectSessionState {
     detect_session_state_with_storage(&StorageConfig::default(), project_path)
 }
 
 pub fn detect_session_state_with_storage(
-    storage: &StorageConfig,
+    _storage: &StorageConfig,
     project_path: &str,
 ) -> ProjectSessionState {
     let daemon_sessions = sessions_snapshot();
     let daemon_activity = activity_snapshot(500);
     detect_session_state_with_snapshots(
-        storage,
+        _storage,
         project_path,
         daemon_sessions.as_ref(),
         daemon_activity.as_ref(),
@@ -49,7 +39,7 @@ pub fn detect_session_state_with_storage(
 }
 
 fn detect_session_state_with_snapshots(
-    storage: &StorageConfig,
+    _storage: &StorageConfig,
     project_path: &str,
     daemon_sessions: Option<&DaemonSessionsSnapshot>,
     daemon_activity: Option<&DaemonActivitySnapshot>,
@@ -60,75 +50,15 @@ fn detect_session_state_with_snapshots(
         }
     }
 
-    detect_session_state_with_activity(storage, project_path, daemon_activity)
+    project_state_from_activity(project_path, daemon_activity)
 }
 
-fn detect_session_state_with_activity(
-    storage: &StorageConfig,
-    project_path: &str,
-    daemon_activity: Option<&DaemonActivitySnapshot>,
-) -> ProjectSessionState {
-    // Both locks and state file are in ~/.capacitor/ (our namespace, sidecar purity)
-    let lock_dir = storage.sessions_dir();
-    let state_file = storage.sessions_file();
-
-    let store = StateStore::load(&state_file).unwrap_or_else(|_| StateStore::new(&state_file));
-
-    // v3 resolver handles both lock-based detection and fresh record fallback
-    let resolved = resolve_state_with_details(&lock_dir, &store, project_path);
-
-    match resolved {
-        Some(details) => {
-            let record = details
-                .session_id
-                .as_ref()
-                .and_then(|sid| store.get_by_session_id(sid));
-
-            // Check if Ready state should become Idle (stale Ready without lock)
-            let final_state = if details.state == SessionState::Ready && !details.is_from_lock {
-                if let Some(rec) = record.as_ref() {
-                    let age = Utc::now()
-                        .signed_duration_since(rec.state_changed_at)
-                        .num_seconds();
-                    if age > READY_STALE_THRESHOLD_SECS {
-                        SessionState::Idle
-                    } else {
-                        details.state
-                    }
-                } else {
-                    details.state
-                }
-            } else {
-                details.state
-            };
-
-            let is_working = final_state == SessionState::Working;
-            let working_on = record.as_ref().and_then(|r| r.working_on.clone());
-            let state_changed_at = record.as_ref().map(|r| r.state_changed_at.to_rfc3339());
-            let updated_at = record.map(|r| r.updated_at.to_rfc3339());
-
-            ProjectSessionState {
-                state: final_state,
-                state_changed_at,
-                updated_at,
-                session_id: details.session_id,
-                working_on,
-                context: None,
-                thinking: Some(is_working),
-                is_locked: details.is_from_lock,
-            }
-        }
-        None => detect_activity_fallback(storage, project_path, daemon_activity),
-    }
-}
-
-fn detect_activity_fallback(
-    storage: &StorageConfig,
+fn project_state_from_activity(
     project_path: &str,
     daemon_activity: Option<&DaemonActivitySnapshot>,
 ) -> ProjectSessionState {
     if let Some(snapshot) = daemon_activity {
-        if snapshot.has_recent_activity_in_path(project_path, crate::activity::ACTIVITY_THRESHOLD) {
+        if snapshot.has_recent_activity_in_path(project_path, ACTIVITY_THRESHOLD) {
             return ProjectSessionState {
                 state: SessionState::Working,
                 state_changed_at: None,
@@ -140,52 +70,21 @@ fn detect_activity_fallback(
                 is_locked: false,
             };
         }
-
-        return ProjectSessionState {
-            state: SessionState::Idle,
-            state_changed_at: None,
-            updated_at: None,
-            session_id: None,
-            working_on: None,
-            context: None,
-            thinking: None,
-            is_locked: false,
-        };
     }
 
-    // Daemon unavailable: fall back to file activity.
-    let activity_file = storage.file_activity_file();
-    let activity_store = ActivityStore::load(&activity_file);
-
-    if activity_store.has_recent_activity_in_path(project_path, crate::activity::ACTIVITY_THRESHOLD)
-    {
-        ProjectSessionState {
-            state: SessionState::Working,
-            state_changed_at: None,
-            updated_at: None,
-            session_id: None,
-            working_on: None,
-            context: None,
-            thinking: Some(true),
-            is_locked: false,
-        }
-    } else {
-        ProjectSessionState {
-            state: SessionState::Idle,
-            state_changed_at: None,
-            updated_at: None,
-            session_id: None,
-            working_on: None,
-            context: None,
-            thinking: None,
-            is_locked: false,
-        }
+    ProjectSessionState {
+        state: SessionState::Idle,
+        state_changed_at: None,
+        updated_at: None,
+        session_id: None,
+        working_on: None,
+        context: None,
+        thinking: None,
+        is_locked: false,
     }
 }
 
-/// Gets all session states using v3 state resolution.
-/// Uses session-ID keyed state file and lock detection for reliable state.
-/// Parent/child inheritance is handled by the resolver.
+/// Gets all session states using daemon session snapshots.
 pub fn get_all_session_states(
     project_paths: &[String],
 ) -> std::collections::HashMap<String, ProjectSessionState> {
@@ -234,7 +133,7 @@ fn project_state_from_daemon(record: &DaemonSessionRecord) -> ProjectSessionStat
 
         if state == SessionState::Ready {
             if let Some(age) = age_since(&record.state_changed_at) {
-                if age > READY_STALE_THRESHOLD_SECS {
+                if age > STALE_THRESHOLD_SECS {
                     state = SessionState::Idle;
                 }
             }
@@ -311,9 +210,7 @@ pub fn read_project_status(project_path: &str) -> Option<ProjectStatus> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::state::normalize_path_for_hashing;
-    use chrono::{Duration as ChronoDuration, Utc};
-    use std::path::PathBuf;
+    use fs_err as fs;
     use tempfile::TempDir;
 
     fn setup_storage() -> (TempDir, StorageConfig) {
@@ -324,14 +221,6 @@ mod tests {
         fs::create_dir_all(&claude_root).unwrap();
         let storage = StorageConfig::with_roots(capacitor_root, claude_root);
         (temp, storage)
-    }
-
-    /// Sets up storage with sessions dir in CAPACITOR namespace (correct location).
-    fn setup_storage_with_sessions() -> (TempDir, StorageConfig, PathBuf) {
-        let (temp, storage) = setup_storage();
-        let sessions_dir = storage.sessions_dir(); // ~/.capacitor/sessions/
-        fs::create_dir_all(&sessions_dir).unwrap();
-        (temp, storage, sessions_dir)
     }
 
     #[test]
@@ -359,107 +248,6 @@ mod tests {
         assert_eq!(state.state, SessionState::Idle);
         assert!(state.session_id.is_none());
         assert!(state.working_on.is_none());
-    }
-
-    #[test]
-    fn test_detect_session_state_ready_without_lock_when_recent() {
-        let (_temp, storage) = setup_storage();
-        let project_path = "/tmp/hud-core-test-recent-ready";
-
-        let mut store = StateStore::new(&storage.sessions_file());
-        store.update("session-1", SessionState::Ready, project_path);
-        store.save().unwrap();
-
-        let state = detect_session_state_with_storage(&storage, project_path);
-
-        assert_eq!(state.state, SessionState::Ready);
-        assert!(!state.is_locked);
-        assert_eq!(state.session_id.as_deref(), Some("session-1"));
-        assert!(state.state_changed_at.is_some());
-    }
-
-    #[test]
-    fn test_detect_session_state_stale_ready_without_lock_returns_idle() {
-        // v4: Stale Ready records without a lock should return Idle (session has ended)
-        // With session-based locks, if there's no lock, the session has been released.
-        let (_temp, storage) = setup_storage();
-        let project_path = "/tmp/hud-core-test-stale-ready";
-
-        let mut store = StateStore::new(&storage.sessions_file());
-        store.update("session-1", SessionState::Ready, project_path);
-        // 10 minutes: stale (> 5 min threshold)
-        let ten_mins_ago = Utc::now() - ChronoDuration::minutes(10);
-        store.set_timestamp_for_test("session-1", ten_mins_ago);
-        store.set_state_changed_at_for_test("session-1", ten_mins_ago);
-        store.save().unwrap();
-
-        let state = detect_session_state_with_storage(&storage, project_path);
-
-        // v4: Without a lock, stale records indicate the session has ended → Idle
-        assert_eq!(state.state, SessionState::Idle);
-        // No session_id when resolver returns None
-        assert!(state.session_id.is_none());
-    }
-
-    #[test]
-    fn test_detect_session_state_very_stale_ready_returns_idle() {
-        // Very stale Ready records (> 5 min) without a lock should return Idle
-        let (_temp, storage) = setup_storage();
-        let project_path = "/tmp/hud-core-test-very-stale-ready";
-
-        let mut store = StateStore::new(&storage.sessions_file());
-        store.update("session-1", SessionState::Ready, project_path);
-        // 20 minutes: very stale
-        let twenty_mins_ago = Utc::now() - ChronoDuration::minutes(20);
-        store.set_timestamp_for_test("session-1", twenty_mins_ago);
-        store.set_state_changed_at_for_test("session-1", twenty_mins_ago);
-        store.save().unwrap();
-
-        let state = detect_session_state_with_storage(&storage, project_path);
-
-        assert_eq!(state.state, SessionState::Idle);
-        // v4: No session_id when resolver returns None (session has ended)
-        assert!(state.session_id.is_none());
-    }
-
-    #[test]
-    fn test_detect_session_state_ignores_parent_state_without_lock() {
-        let (_temp, storage) = setup_storage();
-        let parent_path = "/tmp/hud-core-test-parent";
-        let child_path = "/tmp/hud-core-test-parent/child";
-
-        let mut store = StateStore::new(&storage.sessions_file());
-        store.update("session-1", SessionState::Ready, parent_path);
-        store.save().unwrap();
-
-        let state = detect_session_state_with_storage(&storage, child_path);
-
-        assert_eq!(state.state, SessionState::Idle);
-        assert!(state.session_id.is_none());
-    }
-
-    #[test]
-    fn test_detect_session_state_sets_state_changed_at_for_lock() {
-        use crate::state::lock::tests_helper::create_lock;
-
-        let (_temp, storage, sessions_dir) = setup_storage_with_sessions();
-        let project_path = "/tmp/hud-core-test-locked-ready";
-        create_lock(&sessions_dir, std::process::id(), project_path);
-
-        let mut store = StateStore::new(&storage.sessions_file());
-        store.update("session-1", SessionState::Working, project_path);
-        // Use a recent timestamp (within 15-sec active state threshold)
-        let expected = Utc::now() - ChronoDuration::seconds(5);
-        // Set both updated_at and state_changed_at for the test
-        store.set_timestamp_for_test("session-1", expected);
-        store.set_state_changed_at_for_test("session-1", expected);
-        store.save().unwrap();
-
-        let state = detect_session_state_with_storage(&storage, project_path);
-
-        assert_eq!(state.state, SessionState::Working);
-        assert!(state.is_locked);
-        assert_eq!(state.state_changed_at, Some(expected.to_rfc3339()));
     }
 
     #[test]
@@ -521,176 +309,5 @@ mod tests {
     fn test_read_project_status_missing_file() {
         let result = read_project_status("/definitely/not/a/real/path/xyz");
         assert!(result.is_none());
-    }
-
-    // ─────────────────────────────────────────────────────────────────────────────
-    // Lock Namespace Tests
-    // These tests verify locks are in ~/.capacitor/sessions/ (our namespace),
-    // NOT in ~/.claude/sessions/ (Claude's namespace - sidecar violation!)
-    // ─────────────────────────────────────────────────────────────────────────────
-
-    /// Helper to create a lock in the CAPACITOR namespace (correct location)
-    fn create_capacitor_lock(storage: &StorageConfig, project_path: &str, pid: u32) {
-        let sessions_dir = storage.sessions_dir(); // ~/.capacitor/sessions/
-        fs::create_dir_all(&sessions_dir).unwrap();
-
-        let normalized = normalize_path_for_hashing(project_path);
-        let hash = md5::compute(normalized.as_bytes());
-        let lock_dir = sessions_dir.join(format!("{:x}.lock", hash));
-        fs::create_dir_all(&lock_dir).unwrap();
-
-        // Write pid file
-        fs::write(lock_dir.join("pid"), pid.to_string()).unwrap();
-
-        // Write meta.json with proc_started for PID verification
-        let proc_started = crate::state::lock::get_process_start_time(pid).unwrap_or(0);
-        let created = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_secs();
-        let meta = format!(
-            r#"{{"pid": {}, "path": "{}", "proc_started": {}, "created": {}}}"#,
-            pid, project_path, proc_started, created
-        );
-        fs::write(lock_dir.join("meta.json"), meta).unwrap();
-    }
-
-    #[test]
-    fn test_detect_session_state_uses_capacitor_locks() {
-        // Verify that detect_session_state uses capacitor namespace for locks
-        let (_temp, storage) = setup_storage();
-        let test_path = "/test/session/state";
-        let current_pid = std::process::id();
-
-        // Create lock in capacitor namespace
-        create_capacitor_lock(&storage, test_path, current_pid);
-
-        // Create a state record with proper v3 format and recent timestamp
-        let state_file = storage.sessions_file();
-        let now = chrono::Utc::now().to_rfc3339();
-        let state_content = format!(
-            r#"{{
-                "version": 3,
-                "sessions": {{
-                    "test-session-123": {{
-                        "session_id": "test-session-123",
-                        "state": "working",
-                        "cwd": "{}",
-                        "project_dir": "{}",
-                        "updated_at": "{}",
-                        "state_changed_at": "{}"
-                    }}
-                }}
-            }}"#,
-            test_path, test_path, now, now
-        );
-        fs::create_dir_all(state_file.parent().unwrap()).unwrap();
-        fs::write(&state_file, state_content).unwrap();
-
-        let state = detect_session_state_with_storage(&storage, test_path);
-
-        // With a lock present and matching state record, should return the recorded state
-        assert_eq!(
-            state.state,
-            SessionState::Working,
-            "Session with lock in capacitor namespace should be detected"
-        );
-    }
-
-    // ─────────────────────────────────────────────────────────────────────────────
-    // Ready→Idle Staleness Tests (15 minute threshold)
-    // These tests verify that Ready state becomes Idle after 15 minutes without lock
-    // Previously handled in Swift, now moved to Rust for "dumb client" architecture
-    // ─────────────────────────────────────────────────────────────────────────────
-
-    /// Test: Fresh Ready state (< 15 min) without lock stays Ready
-    #[test]
-    fn test_ready_state_fresh_stays_ready() {
-        let (_temp, storage) = setup_storage();
-        let project_path = "/tmp/hud-core-test-ready-fresh";
-
-        let mut store = StateStore::new(&storage.sessions_file());
-        store.update("session-1", SessionState::Ready, project_path);
-        // Default timestamp is now, which is fresh
-        store.save().unwrap();
-
-        let state = detect_session_state_with_storage(&storage, project_path);
-
-        assert_eq!(state.state, SessionState::Ready);
-        assert!(!state.is_locked);
-    }
-
-    /// Test: Stale Ready state (> 15 min) without lock becomes Idle
-    #[test]
-    fn test_ready_state_stale_becomes_idle() {
-        let (_temp, storage) = setup_storage();
-        let project_path = "/tmp/hud-core-test-ready-stale";
-
-        let mut store = StateStore::new(&storage.sessions_file());
-        store.update("session-1", SessionState::Ready, project_path);
-        // Set state_changed_at to 16 minutes ago (beyond 15 min threshold)
-        let stale_time = Utc::now() - ChronoDuration::minutes(16);
-        store.set_state_changed_at_for_test("session-1", stale_time);
-        // Keep updated_at fresh so the record isn't filtered out by general staleness
-        store.set_timestamp_for_test("session-1", Utc::now() - ChronoDuration::seconds(30));
-        store.save().unwrap();
-
-        let state = detect_session_state_with_storage(&storage, project_path);
-
-        assert_eq!(
-            state.state,
-            SessionState::Idle,
-            "Ready state older than 15 minutes without lock should become Idle"
-        );
-    }
-
-    /// Test: Stale Ready state (> 15 min) WITH lock stays Ready (lock is authoritative)
-    #[test]
-    fn test_ready_state_stale_with_lock_stays_ready() {
-        use crate::state::lock::tests_helper::create_lock;
-
-        let (_temp, storage, sessions_dir) = setup_storage_with_sessions();
-        let project_path = "/tmp/hud-core-test-ready-stale-locked";
-        create_lock(&sessions_dir, std::process::id(), project_path);
-
-        let mut store = StateStore::new(&storage.sessions_file());
-        store.update("session-1", SessionState::Ready, project_path);
-        // Set state_changed_at to 16 minutes ago
-        let stale_time = Utc::now() - ChronoDuration::minutes(16);
-        store.set_state_changed_at_for_test("session-1", stale_time);
-        store.set_timestamp_for_test("session-1", Utc::now());
-        store.save().unwrap();
-
-        let state = detect_session_state_with_storage(&storage, project_path);
-
-        assert_eq!(
-            state.state,
-            SessionState::Ready,
-            "Ready state with active lock should stay Ready regardless of staleness"
-        );
-        assert!(state.is_locked);
-    }
-
-    /// Test: Ready state at exactly 15 min boundary stays Ready
-    #[test]
-    fn test_ready_state_at_boundary_stays_ready() {
-        let (_temp, storage) = setup_storage();
-        let project_path = "/tmp/hud-core-test-ready-boundary";
-
-        let mut store = StateStore::new(&storage.sessions_file());
-        store.update("session-1", SessionState::Ready, project_path);
-        // Set state_changed_at to exactly 15 minutes ago (at boundary, not past it)
-        let boundary_time = Utc::now() - ChronoDuration::seconds(900);
-        store.set_state_changed_at_for_test("session-1", boundary_time);
-        store.set_timestamp_for_test("session-1", Utc::now() - ChronoDuration::seconds(30));
-        store.save().unwrap();
-
-        let state = detect_session_state_with_storage(&storage, project_path);
-
-        assert_eq!(
-            state.state,
-            SessionState::Ready,
-            "Ready state at exactly 15 minutes should stay Ready (threshold is >15 min)"
-        );
     }
 }

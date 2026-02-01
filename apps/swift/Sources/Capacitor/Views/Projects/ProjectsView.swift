@@ -41,6 +41,12 @@ struct ProjectsView: View {
 
         ScrollView {
             LazyVStack(spacing: cardListSpacing) {
+#if DEBUG
+                if let status = appState.daemonStatus, status.isEnabled {
+                    DaemonStatusBadge(status: status)
+                        .padding(.bottom, 4)
+                }
+
                 if let status = appState.daemonStatus, status.isEnabled && !status.isHealthy {
                     DaemonStatusCard(
                         status: status,
@@ -51,6 +57,7 @@ struct ProjectsView: View {
                     )
                     .padding(.bottom, 4)
                 }
+#endif
 
                 // Setup status card - show regardless of project state
                 if let diagnostic = appState.hookDiagnostic, !diagnostic.isHealthy {

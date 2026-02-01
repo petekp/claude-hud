@@ -251,8 +251,7 @@ pub struct ProjectSessionState {
     /// Whether Claude is currently "thinking" (API call in flight).
     /// This provides real-time status when using the fetch-intercepting launcher.
     pub thinking: Option<bool>,
-    /// Whether a lock file is held for this project (indicates Claude is running).
-    /// This is checked via advisory file locks and is more reliable than state file alone.
+    /// Whether the daemon considers this project actively running.
     #[serde(default)]
     pub is_locked: bool,
 }
@@ -347,8 +346,8 @@ pub struct HookHealthReport {
 
 /// Result of running a comprehensive hook system test.
 ///
-/// This verifies both the heartbeat (hooks are firing) and state file I/O
-/// (persistence layer is working). Used by the "Test Hooks" button in the UI.
+/// This verifies both the heartbeat (hooks are firing) and daemon health.
+/// Used by the "Test Hooks" button in the UI.
 #[derive(Debug, Clone, uniffi::Record)]
 pub struct HookTestResult {
     /// True if all tests passed
@@ -357,7 +356,7 @@ pub struct HookTestResult {
     pub heartbeat_ok: bool,
     /// Age of the heartbeat file in seconds (None if file doesn't exist)
     pub heartbeat_age_secs: Option<u64>,
-    /// True if state file I/O test passed
+    /// True if daemon health check passed
     pub state_file_ok: bool,
     /// Human-readable summary message for display
     pub message: String,

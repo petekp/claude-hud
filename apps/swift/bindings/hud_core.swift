@@ -603,7 +603,7 @@ public protocol HudEngineProtocol: AnyObject {
 
     /**
      * Gets session states for multiple projects.
-     * Uses session-ID keyed state and lock detection for reliable state.
+     * Uses daemon session snapshots for reliable state.
      *
      * Takes a Vec instead of slice for FFI compatibility.
      */
@@ -658,7 +658,7 @@ public protocol HudEngineProtocol: AnyObject {
 
     /**
      * Gets the session state for a single project.
-     * Uses session-ID keyed state and lock detection for reliable state.
+     * Uses daemon session snapshots for reliable state.
      */
     func getSessionState(projectPath: String) -> ProjectSessionState
 
@@ -785,7 +785,7 @@ public protocol HudEngineProtocol: AnyObject {
      *
      * This verifies:
      * 1. Heartbeat file exists and is recent (< 60s old)
-     * 2. State file (sessions.json) can be written and read back
+     * 2. Daemon health probe succeeds
      *
      * Used by the "Test Hooks" button in SetupStatusCard to give users
      * confidence that the hook system is functioning correctly.
@@ -1062,7 +1062,7 @@ open class HudEngine:
 
     /**
      * Gets session states for multiple projects.
-     * Uses session-ID keyed state and lock detection for reliable state.
+     * Uses daemon session snapshots for reliable state.
      *
      * Takes a Vec instead of slice for FFI compatibility.
      */
@@ -1149,7 +1149,7 @@ open class HudEngine:
 
     /**
      * Gets the session state for a single project.
-     * Uses session-ID keyed state and lock detection for reliable state.
+     * Uses daemon session snapshots for reliable state.
      */
     open func getSessionState(projectPath: String) -> ProjectSessionState {
         return try! FfiConverterTypeProjectSessionState.lift(try! rustCall {
@@ -1338,7 +1338,7 @@ open class HudEngine:
      *
      * This verifies:
      * 1. Heartbeat file exists and is recent (< 60s old)
-     * 2. State file (sessions.json) can be written and read back
+     * 2. Daemon health probe succeeds
      *
      * Used by the "Test Hooks" button in SetupStatusCard to give users
      * confidence that the hook system is functioning correctly.
@@ -1938,7 +1938,7 @@ public func FfiConverterTypeCachedProjectStats_lower(_ value: CachedProjectStats
  */
 public struct CleanupStats {
     /**
-     * Number of orphaned lock directories removed (dead PIDs).
+     * Number of orphaned legacy lock directories removed (dead PIDs).
      */
     public var locksRemoved: UInt32
     /**
@@ -1974,7 +1974,7 @@ public struct CleanupStats {
     // declare one manually.
     public init(
         /**
-         * Number of orphaned lock directories removed (dead PIDs).
+         * Number of orphaned legacy lock directories removed (dead PIDs).
          */ locksRemoved: UInt32,
         /**
             * Number of legacy MD5-hash locks removed (dead PIDs).
@@ -2866,8 +2866,8 @@ public func FfiConverterTypeHookHealthReport_lower(_ value: HookHealthReport) ->
 /**
  * Result of running a comprehensive hook system test.
  *
- * This verifies both the heartbeat (hooks are firing) and state file I/O
- * (persistence layer is working). Used by the "Test Hooks" button in the UI.
+ * This verifies both the heartbeat (hooks are firing) and daemon health.
+ * Used by the "Test Hooks" button in the UI.
  */
 public struct HookTestResult {
     /**
@@ -2883,7 +2883,7 @@ public struct HookTestResult {
      */
     public var heartbeatAgeSecs: UInt64?
     /**
-     * True if state file I/O test passed
+     * True if daemon health check passed
      */
     public var stateFileOk: Bool
     /**
@@ -2904,7 +2904,7 @@ public struct HookTestResult {
             * Age of the heartbeat file in seconds (None if file doesn't exist)
             */ heartbeatAgeSecs: UInt64?,
         /**
-            * True if state file I/O test passed
+            * True if daemon health check passed
             */ stateFileOk: Bool,
         /**
             * Human-readable summary message for display
@@ -3925,8 +3925,7 @@ public struct ProjectSessionState {
      */
     public var thinking: Bool?
     /**
-     * Whether a lock file is held for this project (indicates Claude is running).
-     * This is checked via advisory file locks and is more reliable than state file alone.
+     * Whether the daemon considers this project actively running.
      */
     public var isLocked: Bool
 
@@ -3942,8 +3941,7 @@ public struct ProjectSessionState {
                     * This provides real-time status when using the fetch-intercepting launcher.
                     */ thinking: Bool?,
                 /**
-                    * Whether a lock file is held for this project (indicates Claude is running).
-                    * This is checked via advisory file locks and is more reliable than state file alone.
+                    * Whether the daemon considers this project actively running.
                     */ isLocked: Bool)
     {
         self.state = state
@@ -6736,7 +6734,7 @@ private var initializationResult: InitializationResult = {
     if uniffi_hud_core_checksum_method_hudengine_get_all_agent_sessions() != 27566 {
         return InitializationResult.apiChecksumMismatch
     }
-    if uniffi_hud_core_checksum_method_hudengine_get_all_session_states() != 34670 {
+    if uniffi_hud_core_checksum_method_hudengine_get_all_session_states() != 51196 {
         return InitializationResult.apiChecksumMismatch
     }
     if uniffi_hud_core_checksum_method_hudengine_get_config() != 46018 {
@@ -6757,7 +6755,7 @@ private var initializationResult: InitializationResult = {
     if uniffi_hud_core_checksum_method_hudengine_get_project_status() != 14524 {
         return InitializationResult.apiChecksumMismatch
     }
-    if uniffi_hud_core_checksum_method_hudengine_get_session_state() != 25344 {
+    if uniffi_hud_core_checksum_method_hudengine_get_session_state() != 61231 {
         return InitializationResult.apiChecksumMismatch
     }
     if uniffi_hud_core_checksum_method_hudengine_get_suggested_projects() != 38527 {
@@ -6799,7 +6797,7 @@ private var initializationResult: InitializationResult = {
     if uniffi_hud_core_checksum_method_hudengine_resolve_activation() != 6034 {
         return InitializationResult.apiChecksumMismatch
     }
-    if uniffi_hud_core_checksum_method_hudengine_run_hook_test() != 45458 {
+    if uniffi_hud_core_checksum_method_hudengine_run_hook_test() != 13412 {
         return InitializationResult.apiChecksumMismatch
     }
     if uniffi_hud_core_checksum_method_hudengine_run_startup_cleanup() != 39678 {

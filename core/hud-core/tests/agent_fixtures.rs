@@ -1,6 +1,6 @@
-//! Fixture-driven tests for Claude adapter parsing and resilience.
+//! Fixture-driven tests for Claude adapter resilience.
 
-use hud_core::agents::{AgentAdapter, AgentState, AgentType, ClaudeAdapter};
+use hud_core::agents::{AgentAdapter, ClaudeAdapter};
 use hud_core::storage::StorageConfig;
 use std::path::PathBuf;
 
@@ -11,56 +11,20 @@ fn fixture_path(name: &str) -> PathBuf {
 }
 
 /// Creates a ClaudeAdapter for fixture testing.
-/// Fixtures use the same directory for both capacitor and claude roots,
-/// with sessions.json as the state file and sessions/ as the lock dir.
+/// Fixtures use the same directory for both capacitor and claude roots.
 fn adapter_for_fixture(name: &str) -> ClaudeAdapter {
     let path = fixture_path(name);
-    // Use same dir for both roots (fixtures have both sessions.json and sessions/)
+    // Use same dir for both roots (fixtures only validate adapter behavior now).
     let storage = StorageConfig::with_roots(path.clone(), path);
     ClaudeAdapter::with_storage(storage)
 }
 
 #[test]
-fn test_parse_v2_state_file_working() {
+fn test_daemon_only_returns_empty_without_daemon() {
     let adapter = adapter_for_fixture("v2-working");
     let sessions = adapter.all_sessions();
 
-    assert_eq!(sessions.len(), 1);
-    let session = &sessions[0];
-    assert_eq!(session.agent_type, AgentType::Claude);
-    assert_eq!(session.state, AgentState::Working);
-    assert_eq!(session.session_id, Some("test-session-123".to_string()));
-    assert_eq!(session.cwd, "/Users/test/project");
-    assert_eq!(
-        session.working_on,
-        Some("Implementing multi-agent support".to_string())
-    );
-}
-
-#[test]
-fn test_parse_v2_multiple_sessions() {
-    let adapter = adapter_for_fixture("v2-multiple-sessions");
-    let sessions = adapter.all_sessions();
-
-    assert_eq!(sessions.len(), 3);
-
-    let working: Vec<_> = sessions
-        .iter()
-        .filter(|s| s.state == AgentState::Working)
-        .collect();
-    assert_eq!(working.len(), 1);
-
-    let ready: Vec<_> = sessions
-        .iter()
-        .filter(|s| s.state == AgentState::Ready)
-        .collect();
-    assert_eq!(ready.len(), 1);
-
-    let waiting: Vec<_> = sessions
-        .iter()
-        .filter(|s| s.state == AgentState::Waiting)
-        .collect();
-    assert_eq!(waiting.len(), 1);
+    assert!(sessions.is_empty());
 }
 
 #[test]

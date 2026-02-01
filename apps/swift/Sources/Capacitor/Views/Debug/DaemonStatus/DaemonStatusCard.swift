@@ -1,5 +1,6 @@
 import SwiftUI
 
+#if DEBUG
 struct DaemonStatusCard: View {
     let status: DaemonStatus
     let onRetry: () -> Void
@@ -78,3 +79,4 @@ struct DaemonStatusCard: View {
         }
     }
 }
+#endif
