@@ -88,6 +88,52 @@ impl DaemonActivitySnapshot {
     }
 }
 
+#[derive(Debug, Deserialize)]
+#[allow(dead_code)]
+pub struct DaemonSessionRecord {
+    pub session_id: String,
+    pub pid: u32,
+    pub state: String,
+    pub cwd: String,
+    pub project_path: String,
+    pub updated_at: String,
+    pub state_changed_at: String,
+    #[serde(default)]
+    pub last_event: Option<String>,
+    #[serde(default)]
+    pub is_alive: Option<bool>,
+}
+
+pub struct DaemonSessionsSnapshot {
+    sessions: Vec<DaemonSessionRecord>,
+}
+
+impl DaemonSessionsSnapshot {
+    pub fn latest_for_project(&self, project_path: &str) -> Option<&DaemonSessionRecord> {
+        let normalized_query = crate::state::normalize_path_for_comparison(project_path);
+        let mut best: Option<&DaemonSessionRecord> = None;
+
+        for session in &self.sessions {
+            if crate::state::normalize_path_for_comparison(&session.project_path)
+                != normalized_query
+            {
+                continue;
+            }
+
+            let is_newer = match best {
+                None => true,
+                Some(existing) => is_more_recent(session, existing),
+            };
+
+            if is_newer {
+                best = Some(session);
+            }
+        }
+
+        best
+    }
+}
+
 pub fn process_liveness(pid: u32) -> Option<ProcessLivenessSnapshot> {
     if !daemon_enabled() {
         return None;
@@ -137,6 +183,28 @@ pub fn activity_snapshot(limit: usize) -> Option<DaemonActivitySnapshot> {
     let data = response.data?;
     let entries: Vec<DaemonActivityEntry> = serde_json::from_value(data).ok()?;
     Some(DaemonActivitySnapshot { entries })
+}
+
+pub fn sessions_snapshot() -> Option<DaemonSessionsSnapshot> {
+    if !daemon_enabled() {
+        return None;
+    }
+
+    let request = Request {
+        protocol_version: PROTOCOL_VERSION,
+        method: Method::GetSessions,
+        id: Some("sessions-snapshot".to_string()),
+        params: None,
+    };
+
+    let response = send_request(request).ok()?;
+    if !response.ok {
+        return None;
+    }
+
+    let data = response.data?;
+    let sessions: Vec<DaemonSessionRecord> = serde_json::from_value(data).ok()?;
+    Some(DaemonSessionsSnapshot { sessions })
 }
 
 fn daemon_enabled() -> bool {
@@ -214,6 +282,19 @@ fn parse_rfc3339(value: &str) -> Option<DateTime<Utc>> {
         .map(|dt| dt.with_timezone(&Utc))
 }
 
+fn is_more_recent(left: &DaemonSessionRecord, right: &DaemonSessionRecord) -> bool {
+    let left_ts = parse_rfc3339(&left.updated_at).or_else(|| parse_rfc3339(&left.state_changed_at));
+    let right_ts =
+        parse_rfc3339(&right.updated_at).or_else(|| parse_rfc3339(&right.state_changed_at));
+
+    match (left_ts, right_ts) {
+        (Some(left), Some(right)) => left > right,
+        (Some(_), None) => true,
+        (None, Some(_)) => false,
+        (None, None) => false,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -250,5 +331,26 @@ mod tests {
             serde_json::from_value(value).expect("parse activity entries");
         assert_eq!(entries.len(), 1);
         assert_eq!(entries[0].project_path, "/repo");
+    }
+
+    #[test]
+    fn sessions_snapshot_parses_entries() {
+        let value = serde_json::json!([
+            {
+                "session_id": "session-1",
+                "pid": 123,
+                "state": "working",
+                "cwd": "/repo",
+                "project_path": "/repo",
+                "updated_at": "2026-01-31T00:00:00Z",
+                "state_changed_at": "2026-01-31T00:00:00Z",
+                "is_alive": true
+            }
+        ]);
+
+        let entries: Vec<DaemonSessionRecord> =
+            serde_json::from_value(value).expect("parse sessions");
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].session_id, "session-1");
     }
 }
