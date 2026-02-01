@@ -141,29 +141,6 @@ fn handle_hook_input_with_home(hook_input: HookInput, home: &Path) -> Result<(),
     // Get paths
     let tombstones_dir = home.join(TOMBSTONES_DIR);
 
-    // Check if this session has already ended (tombstone exists)
-    // This prevents race conditions where events arrive after SessionEnd
-    // SessionStart is exempt - it can start a new session with the same ID
-    if event != HookEvent::SessionEnd
-        && event != HookEvent::SessionStart
-        && has_tombstone(&tombstones_dir, &session_id)
-    {
-        tracing::debug!(
-            event = ?hook_input.hook_event_name,
-            session = %session_id,
-            "Skipping event for ended session"
-        );
-        return Ok(());
-    }
-
-    // Touch heartbeat for valid, actionable hook events
-    touch_heartbeat(home);
-
-    // If SessionStart arrives for a tombstoned session, clear the tombstone
-    if event == HookEvent::SessionStart && has_tombstone(&tombstones_dir, &session_id) {
-        remove_tombstone(&tombstones_dir, &session_id);
-    }
-
     // Get remaining paths
     let state_file = home.join(STATE_FILE);
     let lock_base = home.join(LOCK_DIR);
@@ -215,7 +192,48 @@ fn handle_hook_input_with_home(hook_input: HookInput, home: &Path) -> Result<(),
     let cwd = cwd.unwrap_or_default();
 
     if !cwd.is_empty() {
-        crate::daemon_client::send_handle_event(&event, &session_id, ppid, &cwd);
+        let daemon_sent = crate::daemon_client::send_handle_event(&event, &session_id, ppid, &cwd);
+        if daemon_sent {
+            // Keep tombstones in sync for fallback reads, but skip local state writes.
+            if event == HookEvent::SessionEnd {
+                create_tombstone(&tombstones_dir, &session_id);
+            } else if event == HookEvent::SessionStart
+                && has_tombstone(&tombstones_dir, &session_id)
+            {
+                remove_tombstone(&tombstones_dir, &session_id);
+            }
+
+            touch_heartbeat(home);
+            tracing::debug!(
+                event = ?hook_input.hook_event_name,
+                session = %session_id,
+                "Daemon accepted event; skipping local state updates"
+            );
+            return Ok(());
+        }
+    }
+
+    // Check if this session has already ended (tombstone exists)
+    // This prevents race conditions where events arrive after SessionEnd
+    // SessionStart is exempt - it can start a new session with the same ID
+    if event != HookEvent::SessionEnd
+        && event != HookEvent::SessionStart
+        && has_tombstone(&tombstones_dir, &session_id)
+    {
+        tracing::debug!(
+            event = ?hook_input.hook_event_name,
+            session = %session_id,
+            "Skipping event for ended session"
+        );
+        return Ok(());
+    }
+
+    // Touch heartbeat for valid, actionable hook events
+    touch_heartbeat(home);
+
+    // If SessionStart arrives for a tombstoned session, clear the tombstone
+    if event == HookEvent::SessionStart && has_tombstone(&tombstones_dir, &session_id) {
+        remove_tombstone(&tombstones_dir, &session_id);
     }
 
     // Log the action

@@ -4,6 +4,7 @@
 //! the daemon is unavailable, callers should fall back to local checks.
 
 use capacitor_daemon_protocol::{Method, Request, Response, MAX_REQUEST_BYTES, PROTOCOL_VERSION};
+use chrono::{DateTime, Duration as ChronoDuration, Utc};
 use serde::Deserialize;
 use std::env;
 use std::io::{Read, Write};
@@ -37,15 +38,60 @@ pub struct ProcessLivenessSnapshot {
     pub identity_matches: Option<bool>,
 }
 
+#[derive(Debug, Deserialize)]
+pub struct DaemonActivityEntry {
+    pub project_path: String,
+    pub file_path: String,
+    pub recorded_at: String,
+}
+
+pub struct DaemonActivitySnapshot {
+    entries: Vec<DaemonActivityEntry>,
+}
+
+impl DaemonActivitySnapshot {
+    pub fn has_recent_activity_in_path(&self, project_path: &str, threshold: Duration) -> bool {
+        let normalized_query = crate::state::normalize_path_for_comparison(project_path);
+        let prefix = if normalized_query == "/" {
+            "/".to_string()
+        } else {
+            format!("{}/", normalized_query)
+        };
+        let now = Utc::now();
+        let threshold =
+            ChronoDuration::from_std(threshold).unwrap_or_else(|_| ChronoDuration::zero());
+
+        for entry in &self.entries {
+            if crate::state::normalize_path_for_comparison(&entry.project_path) != normalized_query
+            {
+                continue;
+            }
+
+            let timestamp = match parse_rfc3339(&entry.recorded_at) {
+                Some(ts) => ts,
+                None => continue,
+            };
+            if now.signed_duration_since(timestamp) > threshold {
+                continue;
+            }
+
+            let activity_path = crate::state::normalize_path_for_comparison(&entry.file_path);
+            if !activity_path.starts_with('/') {
+                continue;
+            }
+            if activity_path == normalized_query || activity_path.starts_with(&prefix) {
+                return true;
+            }
+        }
+
+        false
+    }
+}
+
 pub fn process_liveness(pid: u32) -> Option<ProcessLivenessSnapshot> {
     if !daemon_enabled() {
         return None;
     }
-
-    let socket = socket_path().ok()?;
-    let mut stream = UnixStream::connect(&socket).ok()?;
-    let _ = stream.set_read_timeout(Some(Duration::from_millis(READ_TIMEOUT_MS)));
-    let _ = stream.set_write_timeout(Some(Duration::from_millis(WRITE_TIMEOUT_MS)));
 
     let request = Request {
         protocol_version: PROTOCOL_VERSION,
@@ -54,11 +100,7 @@ pub fn process_liveness(pid: u32) -> Option<ProcessLivenessSnapshot> {
         params: Some(serde_json::json!({ "pid": pid })),
     };
 
-    serde_json::to_writer(&mut stream, &request).ok()?;
-    stream.write_all(b"\n").ok()?;
-    stream.flush().ok()?;
-
-    let response = read_response(&mut stream).ok()?;
+    let response = send_request(request).ok()?;
     if !response.ok {
         return None;
     }
@@ -75,6 +117,28 @@ pub fn process_liveness(pid: u32) -> Option<ProcessLivenessSnapshot> {
     Some(snapshot)
 }
 
+pub fn activity_snapshot(limit: usize) -> Option<DaemonActivitySnapshot> {
+    if !daemon_enabled() {
+        return None;
+    }
+
+    let request = Request {
+        protocol_version: PROTOCOL_VERSION,
+        method: Method::GetActivity,
+        id: Some("activity-snapshot".to_string()),
+        params: Some(serde_json::json!({ "limit": limit })),
+    };
+
+    let response = send_request(request).ok()?;
+    if !response.ok {
+        return None;
+    }
+
+    let data = response.data?;
+    let entries: Vec<DaemonActivityEntry> = serde_json::from_value(data).ok()?;
+    Some(DaemonActivitySnapshot { entries })
+}
+
 fn daemon_enabled() -> bool {
     match env::var(ENABLE_ENV) {
         Ok(value) => matches!(value.as_str(), "1" | "true" | "TRUE" | "yes" | "YES"),
@@ -88,6 +152,23 @@ fn socket_path() -> Result<PathBuf, String> {
     }
     let home = dirs::home_dir().ok_or_else(|| "Home directory not found".to_string())?;
     Ok(home.join(".capacitor").join(SOCKET_NAME))
+}
+
+fn send_request(request: Request) -> Result<Response, String> {
+    let socket = socket_path()?;
+    let mut stream = UnixStream::connect(&socket)
+        .map_err(|err| format!("Failed to connect to daemon socket: {}", err))?;
+    let _ = stream.set_read_timeout(Some(Duration::from_millis(READ_TIMEOUT_MS)));
+    let _ = stream.set_write_timeout(Some(Duration::from_millis(WRITE_TIMEOUT_MS)));
+
+    serde_json::to_writer(&mut stream, &request)
+        .map_err(|err| format!("Failed to write request: {}", err))?;
+    stream
+        .write_all(b"\n")
+        .map_err(|err| format!("Failed to flush request: {}", err))?;
+    stream.flush().ok();
+
+    read_response(&mut stream)
 }
 
 fn read_response(stream: &mut UnixStream) -> Result<Response, String> {
@@ -127,6 +208,12 @@ fn read_response(stream: &mut UnixStream) -> Result<Response, String> {
         .map_err(|err| format!("Failed to parse response JSON: {}", err))
 }
 
+fn parse_rfc3339(value: &str) -> Option<DateTime<Utc>> {
+    DateTime::parse_from_rfc3339(value)
+        .ok()
+        .map(|dt| dt.with_timezone(&Utc))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -147,5 +234,21 @@ mod tests {
         assert_eq!(snapshot.pid, Some(123));
         assert_eq!(snapshot.proc_started, Some(10));
         assert_eq!(snapshot.identity_matches, Some(true));
+    }
+
+    #[test]
+    fn parses_activity_entries() {
+        let value = serde_json::json!([
+            {
+                "project_path": "/repo",
+                "file_path": "/repo/src/main.rs",
+                "recorded_at": "2026-01-31T00:00:00Z"
+            }
+        ]);
+
+        let entries: Vec<DaemonActivityEntry> =
+            serde_json::from_value(value).expect("parse activity entries");
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].project_path, "/repo");
     }
 }

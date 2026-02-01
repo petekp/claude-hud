@@ -131,7 +131,13 @@ fn upsert_session(
         .unwrap_or_default();
     let project_path = derive_project_path(&cwd)
         .or_else(|| current.map(|record| record.project_path.clone()))
-        .or_else(|| if cwd.trim().is_empty() { None } else { Some(cwd.clone()) })
+        .or_else(|| {
+            if cwd.trim().is_empty() {
+                None
+            } else {
+                Some(cwd.clone())
+            }
+        })
         .unwrap_or_default();
 
     let updated_at = event.recorded_at.clone();

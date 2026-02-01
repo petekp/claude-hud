@@ -22,14 +22,14 @@ const SOCKET_NAME: &str = "daemon.sock";
 const READ_TIMEOUT_MS: u64 = 150;
 const WRITE_TIMEOUT_MS: u64 = 150;
 
-pub fn send_handle_event(event: &HookEvent, session_id: &str, pid: u32, cwd: &str) {
+pub fn send_handle_event(event: &HookEvent, session_id: &str, pid: u32, cwd: &str) -> bool {
     if !daemon_enabled() {
-        return;
+        return false;
     }
 
     let event_type = match event_type_for_hook(event) {
         Some(event_type) => event_type,
-        None => return,
+        None => return false,
     };
 
     let (tool, file_path, notification_type, stop_hook_active) = match event {
@@ -63,8 +63,12 @@ pub fn send_handle_event(event: &HookEvent, session_id: &str, pid: u32, cwd: &st
         metadata: None,
     };
 
-    if let Err(err) = send_event(envelope) {
-        tracing::warn!(error = %err, "Failed to send event to daemon");
+    match send_event(envelope) {
+        Ok(_) => true,
+        Err(err) => {
+            tracing::warn!(error = %err, "Failed to send event to daemon");
+            false
+        }
     }
 }
 
@@ -75,9 +79,9 @@ pub fn send_shell_cwd_event(
     parent_app: ParentApp,
     tmux_session: Option<String>,
     tmux_client_tty: Option<String>,
-) {
+) -> bool {
     if !daemon_enabled() {
-        return;
+        return false;
     }
 
     let envelope = EventEnvelope {
@@ -98,8 +102,12 @@ pub fn send_shell_cwd_event(
         metadata: None,
     };
 
-    if let Err(err) = send_event(envelope) {
-        tracing::warn!(error = %err, "Failed to send shell-cwd event to daemon");
+    match send_event(envelope) {
+        Ok(_) => true,
+        Err(err) => {
+            tracing::warn!(error = %err, "Failed to send shell-cwd event to daemon");
+            false
+        }
     }
 }
 
