@@ -193,7 +193,7 @@ A **local daemon** is the **only writer** of state. Hooks and the Swift app beco
 - Done: Swift `DaemonClient` (Unix socket + newline framing + timeout) and daemon-only `ShellStateStore` (no JSON fallback).
 - Done: Daemon health UI (debug-only).
 - Done: LaunchAgent install + bundled daemon binary install (app startup writes LaunchAgent + kickstarts).
-- Done: Default hook commands include `CAPACITOR_DAEMON_ENABLED=1` and `CAPACITOR_DAEMON_LOCK_HEALTH=auto`.
+- Done: Default hook commands include `CAPACITOR_DAEMON_ENABLED=1` (daemon-only; no lock toggles).
 - Done: `process_liveness` pruning on daemon startup (24h max age).
 - Done: cleanup uses daemon liveness for lock-holder PID checks (remove PID-only fallback).
 - Done: daemon startup backoff to mitigate crash loops.

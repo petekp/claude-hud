@@ -150,11 +150,19 @@ fi
 
 # Assemble a debug app bundle so LaunchServices opens a real GUI app (no Warp/Terminal windows).
 TEMPLATE_APP="$PROJECT_ROOT/apps/swift/Capacitor.app"
+FALLBACK_TEMPLATE="/Applications/Capacitor.app"
 DEBUG_APP="$PROJECT_ROOT/apps/swift/CapacitorDebug.app"
 
 if [ ! -d "$TEMPLATE_APP" ]; then
-    echo "Error: Template app bundle not found at $TEMPLATE_APP" >&2
-    exit 1
+    if [ -d "$FALLBACK_TEMPLATE" ]; then
+        echo "Warning: Template app bundle not found at $TEMPLATE_APP; using $FALLBACK_TEMPLATE" >&2
+        TEMPLATE_APP="$FALLBACK_TEMPLATE"
+    else
+        echo "Error: Template app bundle not found at $TEMPLATE_APP or $FALLBACK_TEMPLATE" >&2
+        echo "Falling back to swift run (no bundle)." >&2
+        swift run 2>&1 &
+        exit 0
+    fi
 fi
 
 rm -rf "$DEBUG_APP"
