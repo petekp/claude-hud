@@ -220,7 +220,7 @@ pub fn resolve_activation(
         );
     }
 
-    // Priority 3: Launch new terminal
+    // Priority 3: Prefer activating an existing terminal app, then fall back to launch.
     let project_name = action_path
         .rsplit('/')
         .next()
@@ -228,12 +228,14 @@ pub fn resolve_activation(
         .to_string();
 
     ActivationDecision {
-        primary: ActivationAction::LaunchNewTerminal {
+        primary: ActivationAction::ActivatePriorityFallback,
+        fallback: Some(ActivationAction::LaunchNewTerminal {
             project_path: action_path,
             project_name,
-        },
-        fallback: None,
-        reason: "No existing shell or tmux session found".to_string(),
+        }),
+        reason:
+            "No existing shell or tmux session found; activating existing terminal if available"
+                .to_string(),
     }
 }
 
@@ -728,19 +730,22 @@ mod tests {
     // ─────────────────────────────────────────────────────────────────────────────
 
     #[test]
-    fn test_no_shell_no_tmux_launches_new_terminal() {
+    fn test_no_shell_no_tmux_prefers_activate_existing_terminal() {
         let decision = resolve_activation("/Users/pete/Code/myproject", None, &tmux_context_none());
 
         assert!(matches!(
             decision.primary,
-            ActivationAction::LaunchNewTerminal { .. }
+            ActivationAction::ActivatePriorityFallback
         ));
-        assert!(decision.fallback.is_none());
+        assert!(matches!(
+            decision.fallback,
+            Some(ActivationAction::LaunchNewTerminal { .. })
+        ));
 
-        if let ActivationAction::LaunchNewTerminal {
+        if let Some(ActivationAction::LaunchNewTerminal {
             project_path,
             project_name,
-        } = decision.primary
+        }) = decision.fallback
         {
             assert_eq!(project_path, "/Users/pete/Code/myproject");
             assert_eq!(project_name, "myproject");
@@ -748,7 +753,7 @@ mod tests {
     }
 
     #[test]
-    fn test_empty_shell_state_launches_new_terminal() {
+    fn test_empty_shell_state_prefers_activate_existing_terminal() {
         let state = make_shell_state(vec![]);
         let decision = resolve_activation(
             "/Users/pete/Code/myproject",
@@ -758,7 +763,11 @@ mod tests {
 
         assert!(matches!(
             decision.primary,
-            ActivationAction::LaunchNewTerminal { .. }
+            ActivationAction::ActivatePriorityFallback
+        ));
+        assert!(matches!(
+            decision.fallback,
+            Some(ActivationAction::LaunchNewTerminal { .. })
         ));
     }
 

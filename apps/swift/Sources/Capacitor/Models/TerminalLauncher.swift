@@ -397,9 +397,9 @@ final class TerminalLauncher {
 
         case .activatePriorityFallback:
             logger.warning("  ⚠️ activatePriorityFallback: FALLBACK PATH - activating first running terminal")
-            activateFirstRunningTerminal()
+            let activated = activateFirstRunningTerminal()
             logger.warning("  ⚠️ activatePriorityFallback: completed (may have focused wrong window)")
-            return true
+            return activated
 
         case .skip:
             logger.info("  ▸ skip: no action needed")
@@ -551,7 +551,7 @@ final class TerminalLauncher {
             frontmost.activate()
             return
         }
-        activateFirstRunningTerminal()
+        _ = activateFirstRunningTerminal()
     }
 
     // MARK: - Shell Helpers
@@ -822,17 +822,18 @@ final class TerminalLauncher {
         return runAppleScriptChecked("tell application \"\(appName)\" to activate")
     }
 
-    private func activateFirstRunningTerminal() {
+    private func activateFirstRunningTerminal() -> Bool {
         logger.debug("    activateFirstRunningTerminal: checking priority order...")
         for terminal in ParentApp.terminalPriorityOrder where terminal.isInstalled {
             logger.debug("    checking \(terminal.displayName)...")
             if let app = findRunningApp(terminal) {
                 logger.warning("    ⚠️ FALLBACK: activating \(terminal.displayName) (pid=\(app.processIdentifier)) - NO PROJECT CONTEXT")
                 app.activate()
-                return
+                return true
             }
         }
         logger.warning("    activateFirstRunningTerminal: no running terminal found")
+        return false
     }
 
     private func findRunningApp(_ terminal: ParentApp) -> NSRunningApplication? {
