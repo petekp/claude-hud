@@ -310,6 +310,37 @@ aggregation, and UI cadence explicit and deterministic.
 - Add a daemon “policy snapshot” endpoint (optional) so the UI/debug panel can show TTL/aggregation decisions.
 - Add tests for TTL expiry and aggregation order to prevent regressions.
 
+### Phase 7 — Robustness & Policy (2–5 days)
+
+Goal: eliminate the remaining **signal-quality** brittleness by making session lifecycle,
+aggregation, and UI cadence explicit and deterministic.
+
+**7.1 Session TTL / expiry (daemon-side)**
+- Add `last_event_at` (or reuse `updated_at`) to enforce a **session expiry policy**.
+- Policy proposal:
+  - If no event for **N minutes**, transition to `Idle` or drop the session.
+  - If `is_alive == false`, drop session immediately.
+  - If `is_alive == nil` (unknown), keep until TTL then drop.
+- Persist TTL decisions in `sessions` and/or keep in-memory with periodic prune.
+
+**7.2 Project-level aggregation (daemon-side)**
+- Add a daemon query that returns **project-level state**, not raw sessions.
+- Aggregation rule: **Working > Waiting > Compacting > Ready > Idle** (max severity).
+- Include `latest_activity_at` for tie-breaking and UI “most recent” ordering.
+- Swift app reads **aggregated project states** only (no local aggregation).
+
+**7.3 Explicit session heartbeat (optional, but strongly recommended)**
+- If hooks can emit periodic “heartbeat” events, TTL decisions become reliable.
+- If heartbeat is not feasible, TTL is still required to avoid stuck Ready/Working states.
+
+**7.4 UI refresh contract**
+- Standardize the UI polling interval (e.g., every 2–3s with backoff on failure).
+- Remove any client-side heuristics that reinterpret session state.
+
+**7.5 Diagnostics + debug tooling**
+- Add a daemon “policy snapshot” endpoint (optional) so the UI/debug panel can show TTL/aggregation decisions.
+- Add tests for TTL expiry and aggregation order to prevent regressions.
+
 ---
 
 ## 7. Implementation Checklist (Detailed)

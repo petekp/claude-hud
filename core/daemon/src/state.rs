@@ -23,9 +23,6 @@ const SESSION_TTL_ACTIVE_SECS: i64 = 20 * 60; // Working/Waiting/Compacting
 const SESSION_TTL_READY_SECS: i64 = 30 * 60; // Ready
 const SESSION_TTL_IDLE_SECS: i64 = 10 * 60; // Idle
 const ACTIVE_STATE_STALE_SECS: i64 = 10; // Working/Waiting -> Ready when no updates
-const READY_STATE_STALE_SECS: i64 = 60; // Ready -> Idle when stale
-
-const PROCESS_LIVENESS_MAX_AGE_HOURS: i64 = 24;
 
 pub struct SharedState {
     db: Db,
@@ -496,15 +493,6 @@ fn effective_session_state(
         }
     }
 
-    if state == crate::reducer::SessionState::Ready {
-        if let Some(changed_at) = parse_rfc3339(&record.state_changed_at) {
-            let age = now.signed_duration_since(changed_at).num_seconds();
-            if age > READY_STATE_STALE_SECS {
-                state = crate::reducer::SessionState::Idle;
-            }
-        }
-    }
-
     state
 }
 
@@ -569,24 +557,19 @@ mod tests {
     }
 
     #[test]
-    fn project_states_downgrade_stale_ready_to_idle() {
+    fn ready_state_does_not_auto_idle_after_short_inactivity() {
         let temp_dir = tempfile::tempdir().expect("temp dir");
         let db_path = temp_dir.path().join("state.db");
         let db = Db::new(db_path).expect("db init");
         let state = SharedState::new(db);
 
-        let stale_time = (Utc::now() - Duration::seconds(READY_STATE_STALE_SECS + 5)).to_rfc3339();
-        let record = make_record(
-            "session-stale-ready",
-            "/repo",
-            SessionState::Ready,
-            stale_time,
-        );
+        let stale_time = (Utc::now() - Duration::seconds(120)).to_rfc3339();
+        let record = make_record("session-ready", "/repo", SessionState::Ready, stale_time);
         state.db.upsert_session(&record).expect("insert session");
 
         let aggregates = state.project_states_snapshot().expect("project states");
         assert_eq!(aggregates.len(), 1);
-        assert_eq!(aggregates[0].state, SessionState::Idle);
+        assert_eq!(aggregates[0].state, SessionState::Ready);
     }
 
     #[test]

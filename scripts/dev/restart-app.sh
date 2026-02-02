@@ -121,13 +121,6 @@ elif [ -f "$HOME/.local/bin/capacitor-daemon" ]; then
     cp "$HOME/.local/bin/capacitor-daemon" "$SWIFT_DEBUG_DIR/" 2>/dev/null || true
 fi
 
-# Copy capacitor-daemon binary so Bundle.main can find it
-if [ -f "$HOME/.local/bin/capacitor-daemon" ]; then
-    cp "$HOME/.local/bin/capacitor-daemon" "$SWIFT_DEBUG_DIR/"
-elif [ -f "$PROJECT_ROOT/target/release/capacitor-daemon" ]; then
-    cp "$PROJECT_ROOT/target/release/capacitor-daemon" "$SWIFT_DEBUG_DIR/"
-fi
-
 swift build || { echo "Swift build failed"; exit 1; }
 
 # Debug runtime sanity checks to avoid dyld "Library not loaded" crashes.

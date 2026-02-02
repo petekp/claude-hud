@@ -58,7 +58,6 @@ struct ProjectsView: View {
                     )
                     .padding(.bottom, 4)
                 }
-
                 #if DEBUG
                 DebugActiveStateCard()
                     .padding(.bottom, 6)
