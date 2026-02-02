@@ -1,5 +1,6 @@
 # Subsystem 1: Hook Event Ingestion & Session State Updates
 
+> **Daemon-only note (2026-02):** This audit describes pre-daemon file/lock behavior. In daemon-only mode, these paths are legacy and should not be authoritative.
 **Files analyzed:**
 - `core/hud-hook/src/handle.rs`
 - `core/hud-core/src/state/store.rs`

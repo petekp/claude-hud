@@ -2,11 +2,12 @@
 
 Deep analysis of all side effects in the lock subsystem.
 
-**Daemon note:** When the daemon is healthy, lock creation is suppressed and these paths are fallback-only. This document describes the fallback lock behavior.
+**Daemon-only note (2026-02):** Lock creation is suppressed and lock-holder processes should not spawn.
+This document is **historical context** for legacy fallback behavior.
 
 **Files analyzed:**
 - `core/hud-core/src/state/lock.rs` — Lock creation, reading, verification, release
-- `core/hud-hook/src/lock_holder.rs` — Background daemon monitoring
+- `core/hud-hook/src/lock_holder.rs` — Legacy lock-holder monitoring (deprecated)
 - `core/hud-hook/src/handle.rs` — Hook handler (lock spawning)
 
 ---

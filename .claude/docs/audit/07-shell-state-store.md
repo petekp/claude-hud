@@ -1,5 +1,6 @@
 # Session 7: Shell State Store (Swift) Audit
 
+> **Daemon-only note (2026-02):** This audit describes pre-daemon file/lock behavior. In daemon-only mode, these paths are legacy and should not be authoritative.
 **Date:** 2026-01-26
 **Files Analyzed:** `apps/swift/Sources/Capacitor/Models/ShellStateStore.swift`
 **Focus:** Reading/parsing, timestamp handling, Swift concurrency patterns

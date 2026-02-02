@@ -19,11 +19,19 @@ echo '{"input_tokens":1234}' | rg 'input_tokens":(\d+)'
 
 The hook binary (`~/.local/bin/hud-hook`) handles Claude Code hook events and tracks session state.
 
-Quick commands:
+> **Daemon-only note (2026-02):** Shell/session debugging should use daemon IPC. Any `shell-cwd.json (legacy)` commands below are historical fallback references.
+
+Quick commands (daemon-first):
 ```bash
-tail -f ~/.capacitor/hud-hook-debug.log        # Watch events
-cat ~/.capacitor/sessions.json | jq .          # View states
-ls ~/.capacitor/sessions/                      # Check active locks
+tail -f ~/.capacitor/daemon/daemon.stderr.log  # Daemon logs
+printf '{"protocol_version":1,"method":"get_health","id":"health","params":null}\n' | nc -U ~/.capacitor/daemon.sock
+printf '{"protocol_version":1,"method":"get_sessions","id":"sessions","params":null}\n' | nc -U ~/.capacitor/daemon.sock
+```
+
+Legacy artifacts (should not be authoritative in daemon-only mode):
+```bash
+cat ~/.capacitor/sessions.json | jq .          # Legacy snapshot
+ls ~/.capacitor/sessions/                      # Legacy locks
 ```
 
 ## Common Issues
@@ -49,27 +57,25 @@ See `.claude/docs/development-workflows.md` for the full regeneration procedure.
 
 **Symptoms:** Project shows Working or Waiting but Claude session has ended.
 
-**Root cause:** Lock holder didn't clean up (crashed, force-killed, or PID mismatch).
+**Root cause:** Daemon heuristics or stale events; in legacy mode it could be lock-holder cleanup gaps.
 
-**Debug:**
+**Debug (daemon-first):**
 ```bash
-# Check if lock exists
-ls ~/.capacitor/sessions/
-
-# Check if lock holder PID is alive
-cat ~/.capacitor/sessions/*.lock/pid | xargs -I {} ps -p {}
-
-# If PID is dead, app cleanup should remove it on next launch
-# Force cleanup by restarting the app
+printf '{"protocol_version":1,"method":"get_sessions","id":"sessions","params":null}\n' | nc -U ~/.capacitor/daemon.sock
+printf '{"protocol_version":1,"method":"get_project_states","id":"projects","params":null}\n' | nc -U ~/.capacitor/daemon.sock
 ```
 
-**Fix:** App runs `runStartupCleanup()` on launch which removes locks with dead PIDs.
+**Legacy debug (historical):**
+```bash
+ls ~/.capacitor/sessions/
+cat ~/.capacitor/sessions/*.lock/pid | xargs -I {} ps -p {}
+```
 
 ### Stale or Legacy Locks (Wrong Project State)
 
 **Symptoms:** Project shows wrong state (e.g., Ready when should be Idle), multiple projects show same state, or clicking different projects opens the same session.
 
-**Root cause:** Legacy path-based locks (v3) or stale session-based locks polluting the lock directory.
+**Root cause (legacy):** Path-based locks (v3) or stale session-based locks polluting the lock directory.
 
 **Diagnosis:**
 ```bash
@@ -230,9 +236,9 @@ tmux display-message -p "#S"
 
 **The fix (already applied):** The hook now uses `display-message -p "#S\t#{client_tty}"` which returns the TTY of the client that invoked the command, not an arbitrary client from the list.
 
-**If still failing:** Check `~/.capacitor/shell-cwd.json` to see what `tmux_client_tty` value the hook recorded:
+**If still failing:** Check `~/.capacitor/shell-cwd.json (legacy)` to see what `tmux_client_tty` value the hook recorded:
 ```bash
-cat ~/.capacitor/shell-cwd.json | jq '.shells | to_entries[] | select(.value.tmux_session != null) | {pid: .key, session: .value.tmux_session, tty: .value.tmux_client_tty}'
+cat ~/.capacitor/shell-cwd.json (legacy) | jq '.shells | to_entries[] | select(.value.tmux_session != null) | {pid: .key, session: .value.tmux_session, tty: .value.tmux_client_tty}'
 ```
 
 ### Ghostty Activated When Tmux Client Is in iTerm
@@ -247,8 +253,8 @@ cat ~/.capacitor/shell-cwd.json | jq '.shells | to_entries[] | select(.value.tmu
 tmux display-message -p "#{client_tty}"
 # Then match this TTY to a terminal process
 
-# Check what's in shell-cwd.json
-cat ~/.capacitor/shell-cwd.json | jq '.shells' | head -50
+# Check what's in shell-cwd.json (legacy)
+cat ~/.capacitor/shell-cwd.json (legacy) | jq '.shells' | head -50
 ```
 
 **The fix (already applied):** The activation strategy now tries TTY discovery FIRST. Only if TTY discovery fails AND Ghostty is running does it fall back to Ghostty-specific window counting.
@@ -286,8 +292,8 @@ tmux new-session -d -s 'test$(whoami)'
 
 **Diagnosis:**
 ```bash
-# Check shell-cwd.json for shells at a path
-cat ~/.capacitor/shell-cwd.json | jq '.shells | to_entries[] | select(.value.cwd | contains("/your/project"))'
+# Check shell-cwd.json (legacy) for shells at a path
+cat ~/.capacitor/shell-cwd.json (legacy) | jq '.shells | to_entries[] | select(.value.cwd | contains("/your/project"))'
 
 # For each PID, check if it's alive
 kill -0 <pid> && echo "alive" || echo "dead"
@@ -304,7 +310,7 @@ kill -0 <pid> && echo "alive" || echo "dead"
 
 ## Terminal Activation Telemetry Strategy
 
-Terminal activation bugs are notoriously difficult to debug because they span two layers (Rust decision, Swift execution), interact with external state (`shell-cwd.json`, tmux), and depend on ephemeral conditions (which windows exist, which processes are live).
+Terminal activation bugs are notoriously difficult to debug because they span two layers (Rust decision, Swift execution), interact with external state (`shell-cwd.json (legacy)`, tmux), and depend on ephemeral conditions (which windows exist, which processes are live).
 
 ### The Two-Layer Architecture
 
@@ -316,7 +322,7 @@ Terminal activation bugs are notoriously difficult to debug because they span tw
                             ▼
 ┌─────────────────────────────────────────────────────────────┐
 │  RUST DECISION LAYER (activation.rs)                        │
-│  • Reads shell-cwd.json via Swift                          │
+│  • Reads shell-cwd.json (legacy) via Swift                          │
 │  • Queries tmux context via Swift                          │
 │  • find_shell_at_path() selects best shell                 │
 │  • Returns ActivationAction enum                            │
@@ -380,23 +386,23 @@ log stream --predicate 'subsystem == "dev.capacitor.Capacitor"' --level debug
 
 | Symptom | Likely Layer | What to Check |
 |---------|--------------|---------------|
-| Wrong action chosen | Rust | `shell-cwd.json`, tmux context |
+| Wrong action chosen | Rust | `shell-cwd.json (legacy)`, tmux context |
 | Right action, wrong result | Swift | AppleScript, bash commands |
 | Shell selection wrong | Rust | `find_shell_at_path()` priority logic |
 | Tmux doesn't switch | Swift | `tmux switch-client` exit code |
 | Wrong window activated | Swift | TTY discovery, Ghostty heuristics |
 
-**Step 3: Inspect shell-cwd.json state**
+**Step 3: Inspect shell-cwd.json (legacy) state**
 ```bash
 # See all shells at a path
-cat ~/.capacitor/shell-cwd.json | jq --arg path "/Users/you/Code/project" '
+cat ~/.capacitor/shell-cwd.json (legacy) | jq --arg path "/Users/you/Code/project" '
   .shells | to_entries[] |
   select(.value.cwd | contains($path)) |
   {pid: .key, cwd: .value.cwd, tty: .value.tty, tmux: .value.tmux_session, live: .value.is_live, updated: .value.updated_at}
 '
 
 # Check for multiple shells (the source of many bugs)
-cat ~/.capacitor/shell-cwd.json | jq '
+cat ~/.capacitor/shell-cwd.json (legacy) | jq '
   .shells | to_entries |
   group_by(.value.cwd) |
   map(select(length > 1)) |
@@ -500,7 +506,7 @@ logger.info("  \(commandName) exit=\(result.exitCode), output=\(result.output ??
 Before modifying code:
 - [ ] Captured logs from Console.app/log stream
 - [ ] Identified which layer (Rust/Swift) made the wrong decision
-- [ ] Inspected `shell-cwd.json` for the relevant path
+- [ ] Inspected `shell-cwd.json (legacy)` for the relevant path
 - [ ] Checked tmux context (sessions, clients, TTYs)
 - [ ] Verified terminal app capabilities in `terminal-switching-matrix.md`
 - [ ] Added hypothesis to explain the misbehavior

@@ -10,32 +10,30 @@ This document defines the migration path from filesystem lock directories
 - Avoid user-visible regressions during daemon rollout.
 - Provide a clear timeline for removing lock directories.
 
-## Phase A — Compatibility (Alpha/Beta)
+## Phase A — Compatibility (Historical)
 
-**Status:** completed (fallback path stable; daemon-aware checks in place)
+**Status:** completed
 
-- Hooks still create lock directories for compatibility.
-- Daemon liveness is preferred when `CAPACITOR_DAEMON_ENABLED=1`.
-- `hud-core` cleanup/lock checks use daemon liveness when available, with local fallback.
-- Lock-holder uses daemon-aware identity verification where possible.
+- Hooks previously created lock directories for compatibility.
+- Daemon liveness was preferred when `CAPACITOR_DAEMON_ENABLED=1`.
+- `hud-core` cleanup/lock checks routed through daemon with local fallback.
+- Lock-holder used daemon-aware identity verification where possible.
 
-**Invariant:** Locks are still treated as authoritative when daemon is unavailable.
+**Note:** The project direction is now **daemon-only**; locks are no longer authoritative.
 
-## Phase B — Read-only locks (Beta/Stable)
+## Phase B — Read-only locks (Current)
 
-**Status:** in progress (lock writes suppressed when daemon health is OK; fallback still active)
+**Status:** in progress (lock writes suppressed when daemon is healthy)
 
 - Hooks stop creating new lock directories when daemon is healthy.
-- Existing lock directories are read-only shims used only if:
-  - daemon is down, or
-  - daemon liveness query fails.
-- UI diagnostics should surface whether lock dir mode is active.
+- Existing lock directories are treated as **legacy artifacts**, not authoritative state.
+- UI diagnostics should surface whether lock dir mode is active (debug only).
 
 **Gate to enter Phase B:**
 - daemon liveness coverage verified across all hook event types.
 - `process_liveness` replay is stable on daemon restart.
 
-## Phase C — Removal (Stable+)
+## Phase C — Removal (Next)
 
 - Stop reading lock directories entirely.
 - Remove lock cleanup logic from `hud-core`.

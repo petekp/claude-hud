@@ -1,5 +1,6 @@
 # vNext Minimal Side Effects Baseline (OptionB: Per-Session Directories)
 
+> **Daemon-only note (2026-02):** This audit describes pre-daemon file/lock behavior. In daemon-only mode, these paths are legacy and should not be authoritative.
 This document defines what we keep vs retire when adopting the **recommended** storage design from:\n
 [`docs/architecture-decisions/004-simplify-state-storage.md`](../../../docs/architecture-decisions/004-simplify-state-storage.md).
 

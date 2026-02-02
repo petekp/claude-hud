@@ -11,12 +11,15 @@ enum DaemonService {
 
     static func ensureRunning() -> String? {
         setenv(Constants.enabledEnv, "1", 1)
+        DebugLog.write("DaemonService.ensureRunning start enabled=1")
 
         if let installError = DaemonInstaller.installBundledBinary() {
+            DebugLog.write("DaemonService.ensureRunning install error=\(installError)")
             return installError
         }
 
         let binaryPath = DaemonInstaller.targetPath
+        DebugLog.write("DaemonService.ensureRunning binaryPath=\(binaryPath)")
         return LaunchAgentManager.installAndKickstart(binaryPath: binaryPath)
     }
 
@@ -79,6 +82,7 @@ enum DaemonService {
                 }
 
                 try fileManager.createSymbolicLink(at: destURL, withDestinationURL: sourceURL)
+                DebugLog.write("DaemonService.symlinkBinary src=\(sourcePath) dest=\(destinationPath)")
                 return nil
             } catch {
                 return "Failed to install daemon binary: \(error.localizedDescription)"
@@ -93,17 +97,20 @@ enum DaemonService {
             do {
                 (plistURL, didUpdate) = try writeLaunchAgentPlist(binaryPath: binaryPath)
             } catch {
+                DebugLog.write("DaemonService.installAndKickstart plist error=\(error.localizedDescription)")
                 return "Failed to write LaunchAgent plist: \(error.localizedDescription)"
             }
 
             let domain = "gui/\(getuid())"
 
             let status = launchctlStatus(domain: domain, label: Constants.label)
+            DebugLog.write("DaemonService.installAndKickstart status running=\(status?.isRunning ?? false) updated=\(didUpdate)")
 
             if status == nil || didUpdate {
                 _ = runLaunchctl(["bootout", domain, plistURL.path])
                 let bootstrap = runLaunchctl(["bootstrap", domain, plistURL.path])
                 if bootstrap.exitCode != 0 {
+                    DebugLog.write("DaemonService.bootstrap failed output=\(bootstrap.output)")
                     return "Failed to bootstrap daemon: \(bootstrap.output.trimmingCharacters(in: .whitespacesAndNewlines))"
                 }
             }
@@ -114,8 +121,10 @@ enum DaemonService {
 
             let kickstart = runLaunchctl(["kickstart", "\(domain)/\(Constants.label)"])
             if kickstart.exitCode != 0 {
+                DebugLog.write("DaemonService.kickstart failed output=\(kickstart.output)")
                 return "Failed to start daemon: \(kickstart.output.trimmingCharacters(in: .whitespacesAndNewlines))"
             }
+            DebugLog.write("DaemonService.kickstart ok")
 
             return nil
         }
@@ -141,7 +150,18 @@ enum DaemonService {
             try FileManager.default.createDirectory(at: launchAgentsDir, withIntermediateDirectories: true, attributes: nil)
             try FileManager.default.createDirectory(at: logsDir, withIntermediateDirectories: true, attributes: nil)
 
-            let plist: [String: Any] = [
+            let environment: [String: String] = {
+#if DEBUG
+                return [
+                    "CAPACITOR_DEBUG_LOG": "1",
+                    "RUST_LOG": "debug"
+                ]
+#else
+                return [:]
+#endif
+            }()
+
+            var plist: [String: Any] = [
                 "Label": Constants.label,
                 "ProgramArguments": [binaryPath],
                 "RunAtLoad": true,
@@ -152,6 +172,10 @@ enum DaemonService {
                 "StandardOutPath": logsDir.appendingPathComponent("daemon.stdout.log").path,
                 "StandardErrorPath": logsDir.appendingPathComponent("daemon.stderr.log").path
             ]
+
+            if !environment.isEmpty {
+                plist["EnvironmentVariables"] = environment
+            }
 
             let data = try PropertyListSerialization.data(fromPropertyList: plist, format: .xml, options: 0)
             let plistURL = launchAgentsDir.appendingPathComponent("\(Constants.label).plist")

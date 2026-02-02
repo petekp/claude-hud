@@ -65,25 +65,24 @@ impl ShellEntry {
 pub fn run(path: &str, pid: u32, tty: &str) -> Result<(), CwdError> {
     let normalized_path = normalize_path(path);
     let parent_app = detect_parent_app(pid);
-    let entry = ShellEntry::new(normalized_path.clone(), tty.to_string(), parent_app);
+    let resolved_tty = resolve_tty(tty)?;
+    let entry = ShellEntry::new(normalized_path.clone(), resolved_tty.clone(), parent_app);
 
     if !crate::daemon_client::daemon_enabled() {
         return Err(CwdError::DaemonUnavailable("Daemon disabled".to_string()));
     }
 
-    if crate::daemon_client::send_shell_cwd_event(
+    match crate::daemon_client::send_shell_cwd_event(
         pid,
         &normalized_path,
-        tty,
+        &resolved_tty,
         parent_app,
         entry.tmux_session.clone(),
         entry.tmux_client_tty.clone(),
     ) {
-        return Ok(());
+        Ok(()) => Ok(()),
+        Err(err) => Err(CwdError::DaemonUnavailable(err)),
     }
-    Err(CwdError::DaemonUnavailable(
-        "Failed to send shell-cwd event to daemon".to_string(),
-    ))
 }
 
 fn normalize_path(path: &str) -> String {
@@ -91,6 +90,39 @@ fn normalize_path(path: &str) -> String {
         "/".to_string()
     } else {
         path.trim_end_matches('/').to_string()
+    }
+}
+
+fn resolve_tty(tty: &str) -> Result<String, CwdError> {
+    let provided = tty.trim();
+    if !provided.is_empty() {
+        return Ok(provided.to_string());
+    }
+
+    if let Ok(env_tty) = std::env::var("TTY") {
+        let env_tty = env_tty.trim();
+        if !env_tty.is_empty() {
+            return Ok(env_tty.to_string());
+        }
+    }
+
+    let fallback = std::process::Command::new("tty")
+        .output()
+        .ok()
+        .and_then(|out| {
+            if out.status.success() {
+                Some(String::from_utf8_lossy(&out.stdout).trim().to_string())
+            } else {
+                None
+            }
+        })
+        .filter(|value| !value.is_empty());
+
+    match fallback {
+        Some(value) => Ok(value),
+        None => Err(CwdError::DaemonUnavailable(
+            "Missing TTY for shell cwd event".to_string(),
+        )),
     }
 }
 

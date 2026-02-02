@@ -1,5 +1,6 @@
 # Session 8: Terminal Launcher Audit
 
+> **Daemon-only note (2026-02):** This audit describes pre-daemon file/lock behavior. In daemon-only mode, these paths are legacy and should not be authoritative.
 **Date:** 2026-01-27
 **Files Analyzed:** `apps/swift/Sources/Capacitor/Models/TerminalLauncher.swift`, `apps/swift/Sources/Capacitor/Models/ActivationConfig.swift`
 **Focus:** TTY matching, AppleScript reliability, terminal activation strategies

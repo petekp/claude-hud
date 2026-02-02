@@ -1,5 +1,6 @@
 # Session 5: Tombstone System Audit
 
+> **Daemon-only note (2026-02):** This audit describes pre-daemon file/lock behavior. In daemon-only mode, these paths are legacy and should not be authoritative.
 **Files Analyzed:** `core/hud-hook/src/handle.rs` (tombstone functions), `core/hud-core/src/state/cleanup.rs` (tombstone cleanup)
 
 **Purpose:** Prevent race conditions where late-arriving events (post-SessionEnd) could recreate deleted sessions.

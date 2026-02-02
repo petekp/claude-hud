@@ -1,17 +1,93 @@
 # Agent Changelog
 
 > This file helps coding agents understand project evolution, key decisions,
-> and deprecated patterns. Updated: 2026-01-30 (v0.1.27: hook audit remediation + activation matching parity)
+> and deprecated patterns. Updated: 2026-02-02 (daemon-first migration in progress)
 
 ## Current State Summary
 
-Capacitor is a native macOS SwiftUI app (Apple Silicon, macOS 14+) that acts as a sidecar dashboard for Claude Code. The architecture uses a Rust core (`hud-core`) with UniFFI bindings to Swift. State tracking relies on Claude Code hooks that write to `~/.capacitor/`, with session-based locks (`{session_id}-{pid}.lock`) as the authoritative signal for active sessions. Shell integration provides ambient project awareness via precmd hooks. Hooks run asynchronously to avoid blocking Claude Code execution. All file I/O uses `fs_err` for enriched error messages, and structured logging via `tracing` writes to `~/.capacitor/hud-hook-debug.{date}.log`. **Terminal activation now uses Rust-only path:** The legacy Swift decision logic was removed (~277 lines); Rust decides (`activation.rs`), Swift executes (macOS APIs). **Terminal activation fully hardened and validated:** v0.1.25 plus two post-release fixes—stale TTY query (`TerminalLauncher.swift`) and HOME exclusion from path matching (`activation.rs`). Test matrix validated 15+ scenarios. **Bulletproof Hooks complete:** Phase 4 Test Hooks button added for manual verification. **Audit complete:** A comprehensive 12-session side-effects analysis validated all major subsystems. **UI polish:** Progressive blur gradient masks on header/footer. **v0.1.26:** Removed custom resize handles (use default macOS behavior), added custom About panel with tinted logomark. **v0.1.27:** Hook audit remediations (safer hook tests, heartbeat gating, activity migration) and activation matching parity across Rust/Swift (case-insensitive on macOS). Version detection now auto-detects from multiple sources with CI fallback documented.
+Capacitor is a native macOS SwiftUI app (Apple Silicon, macOS 14+) that acts as a sidecar dashboard for Claude Code. The architecture uses a Rust core (`hud-core`) with UniFFI bindings to Swift plus a **Rust daemon (`capacitor-daemon`) that is now the canonical source of truth** for session, shell, activity, and process-liveness state. Hooks emit events to the daemon over a Unix socket (`~/.capacitor/daemon.sock`), and Swift reads daemon snapshots (shell state + session/project state). File-based JSON fallbacks (`sessions.json`, `shell-cwd.json`, `file-activity.json`) are **being removed or disabled** during the daemon-only migration; lock directories are in deprecation with daemon-backed liveness replacing PID-only checks. The app auto-starts the daemon via LaunchAgent and surfaces daemon status in debug builds only. Terminal activation uses a Rust-only decision path (Swift executes macOS APIs). **v0.1.27** completed hook audit remediations (heartbeat gating, safe hook tests, activity migration) and activation matching parity across Rust/Swift. Current migration work focuses on daemon-only correctness, lock deprecation, and stabilizing the debug app launch path (Sparkle/dylib bundling).
 
 ## Stale Information Detected
 
-None currently. Last audit: 2026-01-30 (v0.1.27 release).
+| Location | States | Reality | Since |
+|----------|--------|---------|-------|
+| docs/architecture-decisions/003-sidecar-architecture-pattern.md | “Hooks write `~/.capacitor/sessions.json` and HUD reads files.” | Daemon is the single writer; hooks/app are IPC clients; JSON is legacy/fallback only. | 2026-01 |
+| README.md | “Fallback writes to `sessions.json` when daemon is down.” | Daemon-only migration disables file fallbacks; hooks should error when daemon unavailable. | 2026-02 |
+| docs/plans/daemon-lock-deprecation-plan.md | “Locks authoritative when daemon unavailable.” | Migration direction is daemon-only; lock creation is suppressed when daemon healthy and removal is pending. | 2026-02 |
 
 ## Timeline
+
+### 2026-02 — Agent Knowledge Optimization + Daemon-Only Doc Sweep
+
+**What changed:**
+- Added a retrieval-optimized knowledge manifest: `.claude/KNOWLEDGE.md`
+- Compiled dense agent references under `.claude/compiled/` with task markers
+- Performed a daemon-only documentation sweep to reduce fallback ambiguity
+
+**Why:**
+- Agents need fast, high-signal entry points without reading long docs.
+- The daemon-only migration requires consistent documentation to avoid backsliding into file fallbacks.
+
+**Agent impact:**
+- Read `.claude/KNOWLEDGE.md` first to decide what to load for a task.
+- Prefer `.claude/compiled/*` for quick facts; use source docs only for deep dives.
+
+---
+
+### 2026-02 — Daemon-First State Tracking + Lock Deprecation (In Progress)
+
+**What changed:**
+
+1. **Daemon protocol + persistence foundations**
+   - New `core/daemon` + `core/daemon-protocol` crates
+   - SQLite persistence + event replay for shell state
+   - IPC endpoints for shell state + process liveness + sessions/project states
+
+2. **Daemon-first readers + cleanup**
+   - Swift reads daemon snapshots (shell + sessions) with JSON fallbacks removed
+   - `hud-core` cleanup and lock/liveness decisions routed through daemon
+   - Startup backoff and health probes to avoid crash loops
+
+3. **Hooks → daemon only**
+   - Hooks emit events over IPC and **return errors when daemon is unavailable** (no file writes)
+   - Shell CWD tracking moved to daemon-first route
+
+4. **Lock deprecation**
+   - Lock writes suppressed when daemon is healthy; lock-holder checks use daemon liveness
+   - Lock cleanup gated by daemon health/read-only modes
+
+5. **App auto-start + daemon health**
+   - LaunchAgent installation + kickstart from app startup
+   - Debug-only daemon health UI + debounce
+
+**Why:**
+- Eliminate multi-writer JSON races and PID-reuse edge cases by centralizing state in a single-writer daemon.
+- Provide reliable, transactionally persisted state with replay and liveness checks.
+
+**Agent impact:**
+- Treat the daemon IPC contract as authoritative for session/shell state.
+- Avoid reintroducing file-based fallbacks unless explicitly required (migration goal is daemon-only).
+- Use `get_process_liveness` and daemon-derived `state_changed_at` for staleness decisions.
+
+**Commits (selection):** `23ec83d`, `9241b46`, `a155796`, `77ed85e`, `803fd3c`, `34c2aaa`, `8d30f5a`
+
+---
+
+### 2026-01 — Daemon Migration Plan + ADR
+
+**What changed:**
+- Added daemon migration ADR and an exhaustive, phase-based plan
+- Documented IPC contract (`docs/daemon-ipc.md`) as source of truth
+
+**Why:**
+- Establish a single-writer architecture and a clear migration sequence for lock deprecation and daemon-only behavior.
+
+**Agent impact:**
+- Consult `docs/plans/2026-01-30-daemon-architecture-migration-plan.md` for invariants, protocol, and phase checklist.
+
+**Commits:** `6809018`
+
+---
 
 ### 2026-01-30 — v0.1.27: Hooks Audit Remediation + Activation Matching Parity
 
@@ -935,6 +1011,9 @@ Fixed terminal activation to check shell-cwd.json BEFORE tmux sessions.
 
 | Don't | Do Instead | Deprecated Since |
 |-------|------------|------------------|
+| Read or write `~/.capacitor/sessions.json` as primary state | Use daemon IPC (`get_sessions`, `get_project_states`) | 2026-02 |
+| Write lock directories as a liveness source | Use daemon `get_process_liveness` | 2026-02 |
+| Add new file-based fallbacks when daemon is down | Surface daemon-down errors and recover via LaunchAgent | 2026-02 |
 | Use custom WindowResizeHandles overlay | Use `isMovableByWindowBackground = true` (default macOS behavior) | 2026-01-29 |
 | Use `opacity(0)` + `allowsHitTesting(false)` to hide views | Use conditional `if` statement to remove from view hierarchy | 2026-01-29 |
 | Use `onTapGesture(count: 2)` on draggable areas | Use `NSViewRepresentable` with `mouseDown` and `event.clickCount` | 2026-01-29 |
@@ -957,8 +1036,8 @@ Fixed terminal activation to check shell-cwd.json BEFORE tmux sessions.
 | Create fake objects to extract few fields | Add overloads that accept the needed fields directly | 2026-01-27 |
 | Return 0 from query functions on read errors | Return fail-safe sentinel (`usize::MAX`) to preserve state | 2026-01-27 |
 | Use `std::mem::forget()` on guards with important `Drop` | Hold guard in scope, let it drop naturally | 2026-01-27 |
-| Use `is_session_active()` or path-based session checks | Use lock existence via `find_all_locks_for_path()` | 2026-01-27 |
-| Use `find_by_cwd()` for path→session lookup | Use `get_by_session_id()` with exact session ID | 2026-01-27 |
+| Use `is_session_active()` or path-based session checks | Use daemon snapshots (`get_sessions`, `get_project_states`) | 2026-02 |
+| Use `find_by_cwd()` for path→session lookup | Use daemon session snapshots keyed by `session_id` | 2026-02 |
 | Use `boundaries::normalize_path()` | Use `normalize_path_for_hashing()` or `normalize_path_for_comparison()` | 2026-01-27 |
 | Use `std::fs` directly | Use `fs_err as fs` import | 2026-01-26 |
 | Duplicate `is_pid_alive` function | Import from `hud_core::state` | 2026-01-26 |
@@ -968,76 +1047,27 @@ Fixed terminal activation to check shell-cwd.json BEFORE tmux sessions.
 | Use bash for hook handling | Use Rust `hud-hook` binary | 2026-01-20 |
 | Use wrapper scripts for hooks | Use binary-only architecture | 2026-01-21 |
 | Track "Thinking" state | Use: Working, Ready, Idle, Compacting, Waiting | 2026-01-15 |
-| Add daemon/background service | Use foreground app with file-based state | 2026-01-13 |
 | Use Tauri or web technologies | Use SwiftUI only | 2026-01-07 |
 | Run AI directly in app | Call Claude Code CLI instead | 2026-01-17 |
-| Check timestamp freshness for session liveness | Check lock file existence + PID validity | 2026-01-19 |
+| Check timestamp freshness for session liveness | Use daemon `get_process_liveness` results | 2026-02 |
 | Use `Bundle.module` directly | Use `ResourceBundle.url(forResource:)` | 2026-01-23 |
 | Implement prose summaries | Use status chips for project context | 2026-01-25 |
 | Use path-hash locks (`{md5}.lock`) | Use session-based locks (`{session_id}-{pid}.lock`) | 2026-01-26 |
 | Inherit child lock state to parent path | Use exact-match-only path comparison | 2026-01-26 |
 | Copy hook binary to `~/.local/bin/` | Symlink to `target/release/hud-hook` | 2026-01-26 |
-| Rely on stale Ready record fallback | Trust lock existence as authoritative | 2026-01-26 |
+| Rely on stale Ready record fallback | Use daemon `state_changed_at` + liveness for TTL decisions | 2026-02 |
 | Ignore `#[must_use]` function return values | Always handle return values from query functions | 2026-01-26 |
 | Use `.collect().len()` for counting | Use `.count()` directly on iterator | 2026-01-26 |
 | Write unsafe code without SAFETY comments | Document safety invariants with `// SAFETY:` | 2026-01-26 |
 
 ## Trajectory
 
-The project is moving toward:
+Primary near-term trajectory:
 
-1. **Parallel workstreams** — One-click git worktree creation for isolated parallel work
-   - Architecture decisions locked: worktrees at `{repo}/.capacitor/worktrees/{name}/`
-   - Identity model: workstreams are child entities under parent project (not top-level projects)
-   - Source of truth: `git worktree list --porcelain`
-   - Ready for implementation planning
-
-2. **Project context signals** — ✅ Implemented as status chips (2026-01-25)
-
-3. **Multi-agent CLI support** — Starship-style adapters for Claude, Codex, Aider, Amp (plan completed)
-
-4. **Idea capture with LLM sensemaking** — Fast capture flow with AI-powered expansion (plan completed)
-
-5. **Self-healing lock management** — ✅ Implemented (2026-01-26)
-   - Orphaned process cleanup, legacy lock cleanup, 24h safety timeout, version tracking
-
-6. **Improved debugging** — ✅ Implemented (2026-01-26)
-   - `fs_err` for file path context in errors
-   - `tracing` for structured logging with daily rotation
-   - Consolidated shared utilities (e.g., `is_pid_alive`)
-
-7. **Codebase cleanup** — ✅ Nearly Complete (2026-01-27)
-   - Removed ~650 lines of dead code from v3→v4 evolution (Rust)
-   - Fixed lock holder 24h timeout bug (no longer releases active sessions)
-   - Updated stale documentation across state modules
-   - Swift cleanup: simplified `TerminalLauncher`, fixed `activateKittyRemote` fallback, `#[cfg(test)]` for test-only Rust functions
-   - Fixed UniFFI `Task` type shadowing in Swift
-   - Remaining: vestigial type system inconsistencies (low priority)
-
-8. **Side effects analysis** — ✅ Complete (2026-01-27)
-   - 12-session comprehensive audit of all side-effect subsystems
-   - Session 12 (hud-hook) identified 3 findings; 2 fixed, 1 skipped (intentional design)
-   - Design decisions validated and documented in `.claude/docs/audit/`
-   - Confirmed: shell child-path matching differs from lock exact-match by design
-
-9. **hud-hook audit remediation** — ✅ Complete (2026-01-27)
-   - Fixed lock dir read errors (fail-safe sentinel pattern)
-   - Fixed logging guard leak (proper ownership, not `forget()`)
-   - Activity format duplication kept as intentional design
-
-10. **Bulletproof Hooks** — ✅ Complete (2026-01-27)
-    - Phase 1-3: Symlink-based installation, auto-repair, observability (2026-01-26)
-    - Phase 4: Test Hooks button for manual round-trip verification (2026-01-27)
-    - Plan doc: `.claude/plans/DONE-bulletproof-hooks.md`
-
-11. **Documentation optimization** — ✅ Complete (2026-01-27)
-    - CLAUDE.md optimized (107→95 lines)
-    - Detailed gotchas moved to `.claude/docs/gotchas.md`
-    - Progressive disclosure pattern for reference material
-
-12. **Activity tracking reliability** — ✅ Fixed (2026-01-27)
-    - Hook format detection bug fixed in ActivityStore::load()
-    - Projects now show correct status when Claude runs from subdirectories
+1. **Daemon-only cutover** — remove legacy JSON fallbacks and finalize lock deprecation.
+2. **Session state heuristics** — eliminate stuck Working/Ready states with daemon-side TTL + liveness.
+3. **UI responsiveness** — reduce polling/jank and avoid redundant UI refreshes during daemon reads.
+4. **Debug build stability** — harden Sparkle/dylib bundling and app launch workflow to prevent crashes.
     - Added regression test for format detection
 
 13. **Terminal activation priority** — ✅ Fixed (2026-01-27)

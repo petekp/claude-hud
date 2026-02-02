@@ -1,12 +1,15 @@
 # ADR-001: State Tracking Approach
 
-**Status:** Accepted
+**Status:** Superseded (see ADR-005: daemon-based state service)
 **Date:** 2026-01-11
 **Context:** How to track Claude's "thinking" state for the HUD display
 
 ## Decision
 
-**Use hooks for local TUI sessions, reserve daemon for future remote/mobile use.**
+**Historical:** Use hooks for local TUI sessions, reserve daemon for future remote/mobile use.
+
+> **Daemon-only note (2026-02):** This ADR is superseded. The daemon is now the primary state store;
+> hooks emit events to the daemon and the app reads daemon snapshots.
 
 ## Context
 

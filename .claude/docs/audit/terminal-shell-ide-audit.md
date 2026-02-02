@@ -1,5 +1,6 @@
 # Terminal/Shell/IDE Detection & Integration Audit
 
+> **Daemon-only note (2026-02):** This audit describes pre-daemon file/lock behavior. In daemon-only mode, these paths are legacy and should not be authoritative.
 ## Scope
 - Shell CWD tracking and parent-app detection (Rust hook).
 - Activation decision logic (Rust resolver).

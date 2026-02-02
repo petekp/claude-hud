@@ -14,18 +14,6 @@ final class SessionStateManager {
         static let flashDurationSeconds: TimeInterval = 1.4
     }
 
-    private static let fractionalFormatter: ISO8601DateFormatter = {
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        return formatter
-    }()
-
-    private static let plainFormatter: ISO8601DateFormatter = {
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime]
-        return formatter
-    }()
-
     private(set) var sessionStates: [String: ProjectSessionState] = [:]
     private(set) var flashingProjects: [String: SessionState] = [:]
     private var previousSessionStates: [String: SessionState] = [:]
@@ -33,34 +21,49 @@ final class SessionStateManager {
     private let daemonClient = DaemonClient.shared
     private var daemonRefreshTask: _Concurrency.Task<Void, Never>?
 
-    private weak var engine: HudEngine?
-
-    func configure(engine: HudEngine?) {
-        self.engine = engine
-    }
-
     // MARK: - Refresh
 
     func refreshSessionStates(for projects: [Project]) {
-        guard let engine else { return }
+        let daemonEnabled = daemonClient.isEnabled
+        DebugLog.write("SessionStateManager.refresh daemonEnabled=\(daemonEnabled) projects=\(projects.count)")
 
-        // Direct passthrough from Rust - no client-side transformation
-        sessionStates = engine.getAllSessionStates(projects: projects)
+        guard daemonEnabled else {
+            DebugLog.write("SessionStateManager.refresh daemonEnabled=false clearingStates")
+            sessionStates = [:]
+            pruneCachedStates()
+            return
+        }
+
+        // Daemon is the single source of truth. Keep prior state until refreshed
+        // to avoid flicker if the daemon request is delayed.
+        DebugLog.write("SessionStateManager.refresh daemonEnabled=true existingStates=\(sessionStates.count)")
         checkForStateChanges()
-
-        guard daemonClient.isEnabled else { return }
 
         daemonRefreshTask?.cancel()
         daemonRefreshTask = _Concurrency.Task.detached { [weak self] in
             guard let self else { return }
             do {
-                let daemonSessions = try await daemonClient.fetchSessions()
+                let daemonProjects = try await daemonClient.fetchProjectStates()
                 await MainActor.run {
-                    let merged = self.mergeDaemonSessions(daemonSessions, projects: projects)
+                    DebugLog.write("SessionStateManager.fetchProjectStates success count=\(daemonProjects.count)")
+                    let merged = self.mergeDaemonProjectStates(daemonProjects, projects: projects)
+                    if !merged.isEmpty {
+                        let summary = merged
+                            .map { "\($0.key) state=\($0.value.state) updated=\($0.value.updatedAt ?? "nil") session=\($0.value.sessionId ?? "nil")" }
+                            .sorted()
+                            .joined(separator: " | ")
+                        DebugLog.write("SessionStateManager.merge summary=\(summary)")
+                    } else {
+                        DebugLog.write("SessionStateManager.merge summary=empty")
+                    }
                     self.sessionStates = merged
+                    self.pruneCachedStates()
                     self.checkForStateChanges()
                 }
             } catch {
+                await MainActor.run {
+                    DebugLog.write("SessionStateManager.fetchProjectStates error=\(error)")
+                }
                 return
             }
         }
@@ -76,6 +79,12 @@ final class SessionStateManager {
             }
             previousSessionStates[path] = current
         }
+    }
+
+    private func pruneCachedStates() {
+        let active = Set(sessionStates.keys)
+        previousSessionStates = previousSessionStates.filter { active.contains($0.key) }
+        flashingProjects = flashingProjects.filter { active.contains($0.key) }
     }
 
     private func triggerFlashIfNeeded(for path: String, state: SessionState) {
@@ -100,46 +109,33 @@ final class SessionStateManager {
         sessionStates[project.path]
     }
 
-    private func mergeDaemonSessions(
-        _ sessions: [DaemonSession],
+    private func mergeDaemonProjectStates(
+        _ states: [DaemonProjectState],
         projects: [Project]
     ) -> [String: ProjectSessionState] {
-        var merged = sessionStates
+        var merged: [String: ProjectSessionState] = [:]
         let projectLookup = Dictionary(uniqueKeysWithValues: projects.map { ($0.path, $0) })
-
-        var latestByProject: [String: DaemonSession] = [:]
-        for session in sessions {
-            guard projectLookup[session.projectPath] != nil else { continue }
-            if let existing = latestByProject[session.projectPath] {
-                if compareSessionRecency(lhs: session, rhs: existing) {
-                    latestByProject[session.projectPath] = session
-                }
-            } else {
-                latestByProject[session.projectPath] = session
+        if !states.isEmpty {
+            let unmatched = states.filter { projectLookup[$0.projectPath] == nil }
+            if !unmatched.isEmpty {
+                let sample = unmatched.prefix(3).map { "\($0.projectPath) [\($0.state)]" }.joined(separator: ", ")
+                DebugLog.write("SessionStateManager.mergeDaemonProjectStates unmatched=\(unmatched.count) sample=\(sample)")
             }
         }
 
-        for (projectPath, session) in latestByProject {
-            let state = mapDaemonState(session.state)
-            // Use daemon's is_alive field for liveness detection.
-            // If is_alive is nil (unknown pid), fall back to state-based heuristic.
-            // If is_alive is false (process dead), session is not locked.
-            let isLocked: Bool
-            if let isAlive = session.isAlive {
-                isLocked = isAlive && state != .idle
-            } else {
-                // Fallback: unknown liveness, use state heuristic
-                isLocked = state != .idle
-            }
+        for state in states {
+            let projectPath = state.projectPath
+            guard projectLookup[projectPath] != nil else { continue }
+            let mappedState = mapDaemonState(state.state)
             let sessionState = ProjectSessionState(
-                state: state,
-                stateChangedAt: session.stateChangedAt,
-                updatedAt: session.updatedAt,
-                sessionId: session.sessionId,
+                state: mappedState,
+                stateChangedAt: state.stateChangedAt,
+                updatedAt: state.updatedAt,
+                sessionId: state.sessionId,
                 workingOn: nil,
                 context: nil,
                 thinking: nil,
-                isLocked: isLocked
+                isLocked: state.isLocked
             )
             merged[projectPath] = sessionState
         }
@@ -147,22 +143,6 @@ final class SessionStateManager {
         return merged
     }
 
-    private func compareSessionRecency(
-        lhs: DaemonSession,
-        rhs: DaemonSession
-    ) -> Bool {
-        let lhsDate = parseDaemonDate(lhs.updatedAt)
-            ?? parseDaemonDate(lhs.stateChangedAt)
-            ?? Date.distantPast
-        let rhsDate = parseDaemonDate(rhs.updatedAt)
-            ?? parseDaemonDate(rhs.stateChangedAt)
-            ?? Date.distantPast
-        return lhsDate > rhsDate
-    }
-
-    private func parseDaemonDate(_ value: String) -> Date? {
-        Self.fractionalFormatter.date(from: value) ?? Self.plainFormatter.date(from: value)
-    }
 
     private func mapDaemonState(_ state: String) -> SessionState {
         switch state.lowercased() {

@@ -118,6 +118,7 @@ class AppState: ObservableObject {
     // MARK: - Initialization
 
     init() {
+        DebugLog.write("AppState.init start daemonEnabled=\(DaemonClient.shared.isEnabled) home=\(FileManager.default.homeDirectoryForCurrentUser.path)")
         loadLayoutMode()
         loadDormantOverrides()
         loadProjectOrder()
@@ -138,7 +139,6 @@ class AppState: ObservableObject {
                 print("[Startup] Cleanup: \(cleanupStats.locksRemoved) locks, \(cleanupStats.legacyLocksRemoved) legacy locks, \(cleanupStats.orphanedProcessesKilled) orphaned processes, \(cleanupStats.sessionsRemoved) old sessions")
             }
 
-            sessionStateManager.configure(engine: engine)
             projectDetailsManager.configure(engine: engine)
             loadDashboard()
             checkHookDiagnostic()
@@ -159,29 +159,29 @@ class AppState: ObservableObject {
     private var daemonFailureCount = 0
 
     private func setupStalenessTimer() {
-        stalenessTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
+        stalenessTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak self] _ in
             guard let self else { return }
             DispatchQueue.main.async {
                 self.refreshSessionStates()
                 self.checkIdeasFileChanges()
 
-                // Check hook diagnostic every 10 seconds
+                // Check hook diagnostic every ~10 seconds
                 self.hookHealthCheckCounter += 1
-                if self.hookHealthCheckCounter >= 10 {
+                if self.hookHealthCheckCounter >= 5 {
                     self.hookHealthCheckCounter = 0
                     self.checkHookDiagnostic()
                 }
 
-                // Check daemon health every 15 seconds
+                // Check daemon health every ~16 seconds
                 self.daemonHealthCheckCounter += 1
-                if self.daemonHealthCheckCounter >= 15 {
+                if self.daemonHealthCheckCounter >= 8 {
                     self.daemonHealthCheckCounter = 0
                     self.checkDaemonHealth()
                 }
 
-                // Refresh stats (including latestSummary from JSONL) every 30 seconds
+                // Refresh stats (including latestSummary from JSONL) every ~30 seconds
                 self.statsRefreshCounter += 1
-                if self.statsRefreshCounter >= 30 {
+                if self.statsRefreshCounter >= 15 {
                     self.statsRefreshCounter = 0
                     self.loadDashboard()
                 }
@@ -231,6 +231,7 @@ class AppState: ObservableObject {
     func refreshSessionStates() {
         sessionStateManager.refreshSessionStates(for: projects)
         activeProjectResolver.resolve()
+        DebugLog.write("AppState.refreshSessionStates activeProject=\(activeProjectResolver.activeProject?.path ?? "nil") source=\(String(describing: activeProjectResolver.activeSource))")
 
         // Debounce objectWillChange to prevent recursive layout crashes
         // when multiple sessions change rapidly (e.g., killing many sessions at once).

@@ -1,5 +1,6 @@
 # Session 6: Shell CWD Tracking Audit
 
+> **Daemon-only note (2026-02):** This audit describes pre-daemon file/lock behavior. In daemon-only mode, these paths are legacy and should not be authoritative.
 **Date:** 2026-01-26
 **Files Analyzed:** `core/hud-hook/src/cwd.rs`, `apps/swift/Sources/Capacitor/Models/ShellStateStore.swift`, `apps/swift/Sources/Capacitor/Models/ActivationConfig.swift`
 **Focus:** PID tracking, dead shell cleanup, Rust↔Swift data flow

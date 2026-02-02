@@ -46,31 +46,17 @@ verify_binary() {
 echo "=== Claude HUD Hook Binary Sync ==="
 echo ""
 
-# Determine binary source: app bundle (preferred) or repo build (dev fallback)
+# Determine binary source: repo build (preferred) or app bundle (fallback)
 # Priority order:
-#   1. /Applications/Capacitor.app (system-wide install)
-#   2. ~/Applications/Capacitor.app (user install)
-#   3. $REPO_ROOT/target/release/hud-hook (dev build)
+#   1. $REPO_ROOT/target/release/hud-hook (dev build)
+#   2. /Applications/Capacitor.app (system-wide install)
+#   3. ~/Applications/Capacitor.app (user install)
 echo "Finding binary source..."
 SOURCE_BINARY=""
 SOURCE_TYPE=""
 
-APP_LOCATIONS=(
-    "/Applications/Capacitor.app/Contents/Resources/hud-hook"
-    "$HOME/Applications/Capacitor.app/Contents/Resources/hud-hook"
-)
-
-for app_binary in "${APP_LOCATIONS[@]}"; do
-    if [[ -f "$app_binary" ]]; then
-        SOURCE_BINARY="$app_binary"
-        SOURCE_TYPE="app bundle"
-        echo "  Found installed app: $(dirname "$(dirname "$(dirname "$app_binary")")")"
-        break
-    fi
-done
-
-# Fallback to repo build for development
-if [[ -z "$SOURCE_BINARY" ]]; then
+# Prefer repo build unless explicitly overridden.
+if [[ "${HUD_HOOK_SOURCE:-repo}" != "app" ]]; then
     REPO_BINARY="$REPO_ROOT/target/release/hud-hook"
 
     # Check/build binary
@@ -78,7 +64,7 @@ if [[ -z "$SOURCE_BINARY" ]]; then
 
     if [[ ! -f "$REPO_BINARY" ]]; then
         NEED_BUILD=true
-        echo "  Binary not built yet (no installed app found)"
+        echo "  Binary not built yet (no repo build found)"
     elif [[ "$1" == "--force" ]] || [[ "$1" == "-f" ]]; then
         NEED_BUILD=true
         echo "  Force rebuild requested"
@@ -90,9 +76,27 @@ if [[ -z "$SOURCE_BINARY" ]]; then
         echo "  ✓ Binary built"
     fi
 
-    SOURCE_BINARY="$REPO_BINARY"
-    SOURCE_TYPE="repo build"
-    echo "  Using dev build: $REPO_BINARY"
+    if [[ -f "$REPO_BINARY" ]]; then
+        SOURCE_BINARY="$REPO_BINARY"
+        SOURCE_TYPE="repo build"
+        echo "  Using dev build: $REPO_BINARY"
+    fi
+fi
+
+APP_LOCATIONS=(
+    "/Applications/Capacitor.app/Contents/Resources/hud-hook"
+    "$HOME/Applications/Capacitor.app/Contents/Resources/hud-hook"
+)
+
+if [[ -z "$SOURCE_BINARY" ]]; then
+    for app_binary in "${APP_LOCATIONS[@]}"; do
+        if [[ -f "$app_binary" ]]; then
+            SOURCE_BINARY="$app_binary"
+            SOURCE_TYPE="app bundle"
+            echo "  Found installed app: $(dirname "$(dirname "$(dirname "$app_binary")")")"
+            break
+        fi
+    done
 fi
 
 # Install binary (symlink to avoid macOS code signature issues)

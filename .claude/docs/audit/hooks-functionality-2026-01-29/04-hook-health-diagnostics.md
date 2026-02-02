@@ -1,5 +1,6 @@
 # Subsystem 4: Hook Health Diagnostics & Tests
 
+> **Daemon-only note (2026-02):** This audit describes pre-daemon file/lock behavior. In daemon-only mode, these paths are legacy and should not be authoritative.
 **Files analyzed:**
 - `core/hud-core/src/engine.rs`
 - `core/hud-core/src/setup.rs`

@@ -2,6 +2,8 @@
 
 This document maps out all scenarios for the "click project → activate terminal" feature.
 
+> **Daemon-only note (2026-02):** Any references to `shell-cwd.json (legacy)` are historical. In daemon-only mode, use daemon IPC shell state.
+
 ## Quick Reference: Tab Selection Support
 
 | Terminal | Tab Selection | Method | Notes |
@@ -270,7 +272,7 @@ Based on matrix analysis:
 To verify each scenario:
 
 1. Set up the terminal configuration described
-2. Ensure shell hook has reported CWD (`cat ~/.capacitor/shell-cwd.json`)
+2. Ensure shell hook has reported CWD (`cat ~/.capacitor/shell-cwd.json (legacy)`)
 3. Click the project in Capacitor
 4. Verify: correct app activates, correct tab selected
 5. Record actual behavior in "Current" column

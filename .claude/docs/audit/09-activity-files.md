@@ -1,5 +1,6 @@
 # Session 9: Activity Files Audit
 
+> **Daemon-only note (2026-02):** This audit describes pre-daemon file/lock behavior. In daemon-only mode, these paths are legacy and should not be authoritative.
 **Date:** 2026-01-27
 **Files:** `core/hud-hook/src/handle.rs` (functions: `extract_file_activity`, `record_file_activity`, `remove_session_activity`), `core/hud-core/src/activity.rs`
 **Focus:** File tracking accuracy, atomicity, race conditions, architectural duplication

@@ -68,8 +68,9 @@ Response data:
 
 ### `get_shell_state`
 
-Returns the latest shell CWD state tracked by daemon events. The payload matches
-`~/.capacitor/shell-cwd.json`.
+Returns the latest shell CWD state tracked by daemon events. The payload mirrors the
+legacy `~/.capacitor/shell-cwd.json` shape for compatibility, but the file itself is deprecated
+in daemon-only mode.
 
 Response data:
 
@@ -192,4 +193,4 @@ Sends a single event to the daemon. The daemon validates the payload and respond
 
 - One request per connection keeps clients simple and avoids partial framing bugs.
 - The daemon enforces strict validation to prevent malformed events from corrupting state.
-- If the daemon is unavailable, clients should fall back to legacy file writes (during migration).
+- **Daemon-only:** if the daemon is unavailable, clients should surface errors; no legacy file fallback.

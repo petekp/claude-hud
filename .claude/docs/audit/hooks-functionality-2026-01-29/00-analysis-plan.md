@@ -1,5 +1,6 @@
 # Hooks Functionality Audit Plan
 
+> **Daemon-only note (2026-02):** This audit describes pre-daemon file/lock behavior. In daemon-only mode, these paths are legacy and should not be authoritative.
 **Date:** 2026-01-29
 **Scope:** Claude Code hook ingestion, lock lifecycle, hook configuration/installation, hook health diagnostics/testing, activity pipeline, and shell CWD tracking.
 

@@ -72,6 +72,10 @@ pub fn reduce_session(current: Option<&SessionRecord>, event: &EventEnvelope) ->
         None => return SessionUpdate::Skip,
     };
 
+    if is_event_stale(current, event) {
+        return SessionUpdate::Skip;
+    }
+
     match event.event_type {
         EventType::SessionStart => {
             if current
@@ -112,6 +116,18 @@ pub fn reduce_session(current: Option<&SessionRecord>, event: &EventEnvelope) ->
         EventType::SessionEnd => SessionUpdate::Delete { session_id },
         EventType::ShellCwd => SessionUpdate::Skip,
     }
+}
+
+fn is_event_stale(current: Option<&SessionRecord>, event: &EventEnvelope) -> bool {
+    let Some(current) = current else { return false };
+    let Some(event_time) = parse_rfc3339(&event.recorded_at) else {
+        return false;
+    };
+    let Some(current_time) = parse_rfc3339(&current.updated_at) else {
+        return false;
+    };
+
+    event_time < current_time
 }
 
 fn upsert_session(
@@ -170,6 +186,12 @@ fn event_type_string(event_type: &EventType) -> String {
         .unwrap_or_else(|_| "unknown".to_string())
         .trim_matches('"')
         .to_string()
+}
+
+fn parse_rfc3339(value: &str) -> Option<chrono::DateTime<chrono::Utc>> {
+    chrono::DateTime::parse_from_rfc3339(value)
+        .ok()
+        .map(|dt| dt.with_timezone(&chrono::Utc))
 }
 
 #[cfg(test)]
@@ -362,5 +384,24 @@ mod tests {
                 session_id: "session-1".to_string()
             }
         );
+    }
+
+    #[test]
+    fn stale_event_is_skipped() {
+        let mut event = event_base(EventType::UserPromptSubmit);
+        event.recorded_at = "2026-01-31T00:00:00Z".to_string();
+        let current = SessionRecord {
+            session_id: "session-1".to_string(),
+            pid: 1234,
+            state: SessionState::Ready,
+            cwd: "/repo".to_string(),
+            project_path: "/repo".to_string(),
+            updated_at: "2026-01-31T00:00:10Z".to_string(),
+            state_changed_at: "2026-01-31T00:00:10Z".to_string(),
+            last_event: Some("session_start".to_string()),
+        };
+
+        let update = reduce_session(Some(&current), &event);
+        assert_eq!(update, SessionUpdate::Skip);
     }
 }

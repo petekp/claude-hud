@@ -40,6 +40,28 @@ struct DaemonSession: Decodable {
     }
 }
 
+struct DaemonProjectState: Decodable {
+    let projectPath: String
+    let state: String
+    let updatedAt: String
+    let stateChangedAt: String
+    let sessionId: String?
+    let sessionCount: Int
+    let activeCount: Int
+    let isLocked: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case projectPath = "project_path"
+        case state
+        case updatedAt = "updated_at"
+        case stateChangedAt = "state_changed_at"
+        case sessionId = "session_id"
+        case sessionCount = "session_count"
+        case activeCount = "active_count"
+        case isLocked = "is_locked"
+    }
+}
+
 struct DaemonErrorInfo: Decodable {
     let code: String
     let message: String
@@ -101,12 +123,10 @@ final class DaemonClient {
 
     func fetchShellState() async throws -> ShellCwdState {
         let decoder = JSONDecoder()
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         decoder.dateDecodingStrategy = .custom { decoder in
             let container = try decoder.singleValueContainer()
             let dateStr = try container.decode(String.self)
-            if let date = formatter.date(from: dateStr) {
+            if let date = Self.parseDaemonDate(dateStr) {
                 return date
             }
             throw DecodingError.dataCorruptedError(in: container, debugDescription: "Invalid date: \(dateStr)")
@@ -120,7 +140,13 @@ final class DaemonClient {
     }
 
     func fetchSessions() async throws -> [DaemonSession] {
-        try await performRequest(method: "get_sessions", params: Optional<String>.none)
+        DebugLog.write("DaemonClient.fetchSessions start enabled=\(isEnabled)")
+        return try await performRequest(method: "get_sessions", params: Optional<String>.none)
+    }
+
+    func fetchProjectStates() async throws -> [DaemonProjectState] {
+        DebugLog.write("DaemonClient.fetchProjectStates start enabled=\(isEnabled)")
+        return try await performRequest(method: "get_project_states", params: Optional<String>.none)
     }
 
     private func performRequest<Params: Encodable, Payload: Decodable>(
@@ -129,6 +155,7 @@ final class DaemonClient {
         decoder: JSONDecoder = JSONDecoder()
     ) async throws -> Payload {
         guard isEnabled else {
+            DebugLog.write("DaemonClient.performRequest disabled method=\(method)")
             throw DaemonClientError.disabled
         }
 
@@ -141,15 +168,18 @@ final class DaemonClient {
 
         let encoder = JSONEncoder()
         let requestData = try encoder.encode(request) + Data([0x0A])
+        DebugLog.write("DaemonClient.performRequest send method=\(method) bytes=\(requestData.count)")
         let responseData = try await sendAndReceive(requestData)
 
         let response = try decoder.decode(DaemonResponse<Payload>.self, from: responseData)
+        DebugLog.write("DaemonClient.performRequest recv method=\(method) ok=\(response.ok) hasData=\(response.data != nil)")
 
         if response.ok, let data = response.data {
             return data
         }
 
         let message = response.error?.message ?? "Unknown daemon error"
+        DebugLog.write("DaemonClient.performRequest error method=\(method) message=\(message)")
         throw DaemonClientError.daemonUnavailable(message)
     }
 
@@ -161,10 +191,67 @@ final class DaemonClient {
         return (home as NSString).appendingPathComponent(".capacitor/\(Constants.socketName)")
     }
 
+    private static let isoWithFractional: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return formatter
+    }()
+
+    private static let isoNoFractional: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime]
+        return formatter
+    }()
+
+    private static let microFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone(secondsFromGMT: 0)
+        formatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ss.SSSSSSXXXXX"
+        return formatter
+    }()
+
+    private static func parseDaemonDate(_ dateStr: String) -> Date? {
+        if let date = isoWithFractional.date(from: dateStr) {
+            return date
+        }
+        if let date = isoNoFractional.date(from: dateStr) {
+            return date
+        }
+        if let normalized = normalizeFractional(dateStr),
+           let date = microFormatter.date(from: normalized) {
+            return date
+        }
+        return nil
+    }
+
+    private static func normalizeFractional(_ dateStr: String) -> String? {
+        guard let dotIndex = dateStr.firstIndex(of: ".") else { return nil }
+        var idx = dateStr.index(after: dotIndex)
+        var fraction = ""
+        while idx < dateStr.endIndex {
+            let ch = dateStr[idx]
+            if ch >= "0" && ch <= "9" {
+                fraction.append(ch)
+                idx = dateStr.index(after: idx)
+            } else {
+                break
+            }
+        }
+        guard !fraction.isEmpty else { return nil }
+        let tz = String(dateStr[idx...])
+        let prefix = String(dateStr[..<dotIndex])
+        let padded = fraction.count >= 6
+            ? String(fraction.prefix(6))
+            : fraction.padding(toLength: 6, withPad: "0", startingAt: 0)
+        return "\(prefix).\(padded)\(tz)"
+    }
+
     private func sendAndReceive(_ requestData: Data) async throws -> Data {
         let path = try socketPath()
         let endpoint = NWEndpoint.unix(path: path)
         let connection = NWConnection(to: endpoint, using: .tcp)
+        DebugLog.write("DaemonClient.sendAndReceive connect path=\(path) bytes=\(requestData.count)")
 
         return try await withCheckedThrowingContinuation { continuation in
             var buffer = Data()
@@ -174,6 +261,7 @@ final class DaemonClient {
                 if finished { return }
                 finished = true
                 connection.cancel()
+                DebugLog.write("DaemonClient.sendAndReceive timeout path=\(path)")
                 continuation.resume(throwing: DaemonClientError.timeout)
             }
 
@@ -182,6 +270,12 @@ final class DaemonClient {
                 finished = true
                 timeout.cancel()
                 connection.cancel()
+                switch result {
+                case .success(let data):
+                    DebugLog.write("DaemonClient.sendAndReceive finish ok bytes=\(data.count)")
+                case .failure(let error):
+                    DebugLog.write("DaemonClient.sendAndReceive finish error=\(error)")
+                }
                 continuation.resume(with: result)
             }
 
@@ -218,17 +312,21 @@ final class DaemonClient {
             connection.stateUpdateHandler = { state in
                 switch state {
                 case .ready:
+                    DebugLog.write("DaemonClient.sendAndReceive state=ready")
                     connection.send(content: requestData, completion: .contentProcessed { error in
                         if let error = error {
+                            DebugLog.write("DaemonClient.sendAndReceive send error=\(error)")
                             finish(.failure(error))
                         } else {
                             receiveNext()
                         }
                     })
                 case .failed(let error):
+                    DebugLog.write("DaemonClient.sendAndReceive state=failed error=\(error)")
                     finish(.failure(error))
                 case .cancelled:
                     if !finished {
+                        DebugLog.write("DaemonClient.sendAndReceive state=cancelled")
                         finish(.failure(DaemonClientError.invalidResponse))
                     }
                 default:

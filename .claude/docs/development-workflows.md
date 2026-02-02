@@ -47,7 +47,7 @@ tail -50 ~/.capacitor/daemon/daemon.stderr.log
 ```
 
 Notes:
-- When the daemon is healthy, hooks send events over the socket and file-based state is fallback-only.
+- **Daemon-only:** hooks send events over the socket; there is no file-based fallback.
 - If LaunchAgent is loaded but no socket exists, check stderr log for crash-loop hints.
 
 ### Building for Distribution
@@ -104,7 +104,7 @@ Hook handling is implemented entirely in Rust (`core/hud-hook/`).
 **Architecture:**
 - `core/hud-hook/src/main.rs` — Entry point for hook binary
 - `core/hud-hook/src/handle.rs` — Main hook handler (state transitions)
-- `core/hud-hook/src/lock_holder.rs` — Lock management daemon
+- `core/hud-hook/src/lock_holder.rs` — Lock management daemon (legacy; should not run in daemon-only mode)
 - `core/hud-core/src/state/` — Shared state types and resolution logic
 
 **To modify hook behavior:**

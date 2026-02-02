@@ -1,5 +1,6 @@
 # Subsystem 6: Shell CWD Hook
 
+> **Daemon-only note (2026-02):** This audit describes pre-daemon file/lock behavior. In daemon-only mode, these paths are legacy and should not be authoritative.
 **Files analyzed:**
 - `core/hud-hook/src/cwd.rs`
 
