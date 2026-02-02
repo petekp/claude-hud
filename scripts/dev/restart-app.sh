@@ -74,6 +74,12 @@ else
     cargo build -p hud-core -p capacitor-daemon -p hud-hook --release || { echo "Rust build failed"; exit 1; }
 fi
 
+# Keep ~/.local/bin/capacitor-daemon synced to the repo build to avoid stale daemons.
+if [ -f "$PROJECT_ROOT/target/release/capacitor-daemon" ]; then
+    mkdir -p "$HOME/.local/bin"
+    ln -sf "$PROJECT_ROOT/target/release/capacitor-daemon" "$HOME/.local/bin/capacitor-daemon"
+fi
+
 # Rust post-build steps (skip if --swift-only)
 if [ "$SWIFT_ONLY" != true ]; then
     # Fix the dylib's install name so Swift can find it at runtime.
@@ -176,6 +182,7 @@ cp "$DEBUG_BIN" "$DEBUG_APP/Contents/MacOS/Capacitor"
 # Ensure bundled helpers are present.
 if [ -f "$SWIFT_DEBUG_DIR/capacitor-daemon" ]; then
     cp "$SWIFT_DEBUG_DIR/capacitor-daemon" "$DEBUG_APP/Contents/MacOS/"
+    cp "$SWIFT_DEBUG_DIR/capacitor-daemon" "$DEBUG_APP/Contents/Resources/" 2>/dev/null || true
 fi
 if [ -f "$SWIFT_DEBUG_DIR/hud-hook" ]; then
     cp "$SWIFT_DEBUG_DIR/hud-hook" "$DEBUG_APP/Contents/Resources/"
