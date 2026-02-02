@@ -204,9 +204,16 @@ pub fn resolve_activation(
     let action_path = normalize_path_for_actions(project_path);
 
     // Priority 1: Find existing shell in shell-cwd.json
-    // Pass tmux context so shell selection can prioritize tmux shells when appropriate
+    // If a tmux client is attached, only consider tmux shells (or IDE shells).
+    // This ensures clicks create/switch tmux sessions instead of focusing non-tmux terminals.
     if let Some(state) = shell_state {
-        if let Some((pid, shell)) = find_shell_at_path(&state.shells, project_path, tmux_context) {
+        let require_tmux_or_ide = tmux_context.has_attached_client;
+        if let Some((pid, shell)) = find_shell_at_path(
+            &state.shells,
+            project_path,
+            tmux_context,
+            require_tmux_or_ide,
+        ) {
             return resolve_for_existing_shell(pid, shell, tmux_context, &action_path);
         }
     }
@@ -220,7 +227,25 @@ pub fn resolve_activation(
         );
     }
 
-    // Priority 3: Prefer activating an existing terminal app, then fall back to launch.
+    // Priority 3: If tmux client is attached, create/switch to a new session for this project.
+    if tmux_context.has_attached_client {
+        let project_name = action_path
+            .rsplit('/')
+            .next()
+            .unwrap_or(&action_path)
+            .to_string();
+
+        return ActivationDecision {
+            primary: ActivationAction::SwitchTmuxSession {
+                session_name: project_name,
+            },
+            fallback: Some(ActivationAction::ActivatePriorityFallback),
+            reason: "No existing shell or tmux session found; tmux client attached, creating session"
+                .to_string(),
+        };
+    }
+
+    // Priority 4: Prefer activating an existing terminal app, then fall back to launch.
     let project_name = action_path
         .rsplit('/')
         .next()
@@ -257,6 +282,7 @@ fn find_shell_at_path<'a>(
     shells: &'a HashMap<String, ShellEntryFfi>,
     project_path: &str,
     tmux_context: &TmuxContextFfi,
+    require_tmux_or_ide: bool,
 ) -> Option<(u32, &'a ShellEntryFfi)> {
     let project_path_normalized = normalize_path_for_matching(project_path);
     let home_dir_normalized = normalize_path_for_matching(&tmux_context.home_dir);
@@ -271,6 +297,9 @@ fn find_shell_at_path<'a>(
     let prefer_tmux = tmux_context.has_attached_client;
 
     for (pid_str, shell) in shells {
+        if require_tmux_or_ide && shell.tmux_session.is_none() && !shell.parent_app.is_ide() {
+            continue;
+        }
         let shell_path = normalize_path_for_matching(&shell.cwd);
         let Some(match_type) =
             match_type_excluding_home(&shell_path, &project_path_normalized, &home_dir_normalized)
@@ -717,6 +746,14 @@ mod tests {
         }
     }
 
+    fn tmux_context_attached_no_session() -> TmuxContextFfi {
+        TmuxContextFfi {
+            session_at_path: None,
+            has_attached_client: true,
+            home_dir: TEST_HOME_DIR.to_string(),
+        }
+    }
+
     fn tmux_context_detached(session: &str) -> TmuxContextFfi {
         TmuxContextFfi {
             session_at_path: Some(session.to_string()),
@@ -769,6 +806,24 @@ mod tests {
             decision.fallback,
             Some(ActivationAction::LaunchNewTerminal { .. })
         ));
+    }
+
+    #[test]
+    fn test_no_shell_with_attached_tmux_creates_session() {
+        let decision = resolve_activation(
+            "/Users/pete/Code/myproject",
+            None,
+            &tmux_context_attached_no_session(),
+        );
+
+        assert!(matches!(
+            decision.primary,
+            ActivationAction::SwitchTmuxSession { .. }
+        ));
+
+        if let ActivationAction::SwitchTmuxSession { session_name } = decision.primary {
+            assert_eq!(session_name, "myproject");
+        }
     }
 
     // ─────────────────────────────────────────────────────────────────────────────
@@ -1412,11 +1467,11 @@ mod tests {
     }
 
     // ─────────────────────────────────────────────────────────────────────────────
-    // Scenario: Shell state priority over tmux context
+    // Scenario: Tmux takes priority over non-tmux shells when attached
     // ─────────────────────────────────────────────────────────────────────────────
 
     #[test]
-    fn test_shell_state_takes_priority_over_tmux_context() {
+    fn test_tmux_session_takes_priority_over_non_tmux_shell_when_attached() {
         let state = make_shell_state(vec![(
             "12345",
             make_shell_entry(
@@ -1427,18 +1482,44 @@ mod tests {
             ),
         )]);
 
-        // Even if tmux context says there's a session, shell state wins
         let decision = resolve_activation(
             "/Users/pete/Code/myproject",
             Some(&state),
             &tmux_context_attached("myproject"),
         );
 
-        // Should use the shell state, not the tmux context
         assert!(matches!(
             decision.primary,
-            ActivationAction::ActivateApp { app_name } if app_name == "Ghostty"
+            ActivationAction::SwitchTmuxSession { .. }
         ));
+    }
+
+    #[test]
+    fn test_non_tmux_shell_with_attached_tmux_creates_session() {
+        let state = make_shell_state(vec![(
+            "12345",
+            make_shell_entry(
+                "/Users/pete/Code/myproject",
+                "/dev/ttys003",
+                ParentApp::Terminal,
+                None,
+            ),
+        )]);
+
+        let decision = resolve_activation(
+            "/Users/pete/Code/myproject",
+            Some(&state),
+            &tmux_context_attached_no_session(),
+        );
+
+        assert!(matches!(
+            decision.primary,
+            ActivationAction::SwitchTmuxSession { .. }
+        ));
+
+        if let ActivationAction::SwitchTmuxSession { session_name } = decision.primary {
+            assert_eq!(session_name, "myproject");
+        }
     }
 
     // ─────────────────────────────────────────────────────────────────────────────

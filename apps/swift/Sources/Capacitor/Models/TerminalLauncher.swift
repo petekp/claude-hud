@@ -7,6 +7,11 @@ private let logger = Logger(subsystem: "com.capacitor.app", category: "TerminalL
 private func telemetry(_ message: String) {
     let output = "[TELEMETRY] \(message)\n"
     FileHandle.standardError.write(Data(output.utf8))
+    DebugLog.write("[TerminalLauncher] \(message)")
+}
+
+private func debugLog(_ message: String) {
+    DebugLog.write("[TerminalLauncher] \(message)")
 }
 
 // MARK: - ParentApp Terminal Extensions
@@ -114,6 +119,11 @@ private func bashDoubleQuoteEscape(_ s: String) -> String {
 
 @MainActor
 final class TerminalLauncher {
+    enum GhosttyWindowDecision: Equatable {
+        case activateAndSwitch
+        case launchNew
+    }
+
     private enum Constants {
         static let activationDelaySeconds: Double = 0.3
         static let homebrewPaths = "/opt/homebrew/bin:/usr/local/bin"
@@ -136,6 +146,51 @@ final class TerminalLauncher {
 
     private func launchTerminalAsync(for project: Project, shellState: ShellCwdState? = nil) async {
         await launchTerminalWithRustResolver(for: project, shellState: shellState)
+    }
+
+    static func performSwitchTmuxSession(
+        sessionName: String,
+        projectPath: String,
+        runScript: (String) async -> (exitCode: Int32, output: String?),
+        activateTerminal: () -> Void
+    ) async -> Bool {
+        let escapedSession = shellEscape(sessionName)
+        let switchResult = await runScript("tmux switch-client -t \(escapedSession) 2>&1")
+        if switchResult.exitCode == 0 {
+            activateTerminal()
+            return true
+        }
+
+        let escapedPath = shellEscape(projectPath)
+        let createResult = await runScript(
+            "tmux new-session -d -s \(escapedSession) -c \(escapedPath) 2>&1"
+        )
+        if createResult.exitCode != 0 {
+            return false
+        }
+
+        let retryResult = await runScript("tmux switch-client -t \(escapedSession) 2>&1")
+        if retryResult.exitCode == 0 {
+            activateTerminal()
+            return true
+        }
+
+        return false
+    }
+
+    static func ghosttyWindowDecision(windowCount: Int, anyClientAttached: Bool) -> GhosttyWindowDecision {
+        if !anyClientAttached {
+            return .launchNew
+        }
+
+        // Ghostty window enumeration can return 0 when Accessibility APIs fail.
+        // If a tmux client is already attached, prefer activating existing Ghostty
+        // instead of spawning a new window.
+        if windowCount == 0 {
+            return .activateAndSwitch
+        }
+
+        return .activateAndSwitch
     }
 
     // MARK: - Rust Resolver Path
@@ -240,6 +295,7 @@ final class TerminalLauncher {
     // MARK: - Action Execution
 
     private func executeActivationAction(_ action: ActivationAction, projectPath: String, projectName: String) async -> Bool {
+        debugLog("executeActivationAction action=\(String(describing: action))")
         logger.debug("Executing activation action: \(String(describing: action))")
         switch action {
         case let .activateByTty(tty, terminalType):
@@ -256,6 +312,7 @@ final class TerminalLauncher {
 
         case let .activateKittyWindow(shellPid):
             logger.info("  ▸ activateKittyWindow: pid=\(shellPid)")
+            debugLog("activateKittyWindow pid=\(shellPid)")
             let activated = activateAppByName("kitty")
             if activated {
                 runBashScript("kitty @ focus-window --match pid:\(shellPid) 2>/dev/null")
@@ -265,17 +322,23 @@ final class TerminalLauncher {
 
         case let .activateIdeWindow(ideType, path):
             logger.info("  ▸ activateIdeWindow: ide=\(String(describing: ideType)), path=\(path)")
+            debugLog("activateIdeWindow ide=\(String(describing: ideType)) path=\(path)")
             let result = activateIdeWindowAction(ideType: ideType, projectPath: path)
             logger.info("  ▸ activateIdeWindow result: \(result ? "SUCCESS" : "FAILED")")
             return result
 
         case let .switchTmuxSession(sessionName):
             logger.info("  ▸ switchTmuxSession: \(sessionName)")
-            let result = await runBashScriptWithResultAsync(
-                "tmux switch-client -t \(shellEscape(sessionName)) 2>&1"
+            debugLog("switchTmuxSession session=\(sessionName)")
+            let succeeded = await Self.performSwitchTmuxSession(
+                sessionName: sessionName,
+                projectPath: projectPath,
+                runScript: { await runBashScriptWithResultAsync($0) },
+                activateTerminal: { self.activateTerminalApp() }
             )
-            if result.exitCode != 0 {
-                logger.warning("  ▸ tmux switch-client failed (exit \(result.exitCode)): \(result.output ?? "")")
+            if !succeeded {
+                logger.warning("  ▸ tmux switch/create failed for session '\(sessionName)'")
+                debugLog("switchTmuxSession failed session=\(sessionName)")
                 return false
             }
             logger.info("  ▸ switchTmuxSession result: SUCCESS")
@@ -283,14 +346,17 @@ final class TerminalLauncher {
 
         case let .activateHostThenSwitchTmux(hostTty, sessionName):
             logger.info("  ▸ activateHostThenSwitchTmux: hostTty=\(hostTty), session=\(sessionName)")
+            debugLog("activateHostThenSwitchTmux hostTty=\(hostTty) session=\(sessionName)")
 
             // Re-verify ANY client is still attached (may have all detached since query)
             // NOTE: We check for ANY client, not just clients on THIS session.
             // If a client is viewing a different session, we can still switch it.
             let anyClientAttached = await hasTmuxClientAttached()
             logger.info("  ▸ Re-verify: any tmux client attached? \(anyClientAttached)")
+            debugLog("activateHostThenSwitchTmux anyClientAttached=\(anyClientAttached)")
             if !anyClientAttached {
                 logger.info("  ▸ No clients anywhere → launching new terminal to attach")
+                debugLog("activateHostThenSwitchTmux no clients attached → launch new terminal session=\(sessionName)")
                 launchTerminalWithTmuxSession(sessionName)
                 return true
             }
@@ -300,12 +366,14 @@ final class TerminalLauncher {
             let freshTty = await getCurrentTmuxClientTty() ?? hostTty
             logger.info("  ▸ Fresh TTY query: \(freshTty) (shell record had: \(hostTty))")
             telemetry(" Fresh TTY query: \(freshTty) (shell record had: \(hostTty))")
+            debugLog("activateHostThenSwitchTmux freshTty=\(freshTty) hostTty=\(hostTty)")
 
             // Step 1: Try TTY discovery first (works for iTerm, Terminal.app)
             // This correctly identifies the host terminal even when Ghostty is also running.
             let ttyActivated = await activateTerminalByTTYDiscovery(tty: freshTty)
             logger.info("  ▸ TTY discovery for '\(freshTty)': \(ttyActivated ? "SUCCESS" : "FAILED")")
             telemetry(" TTY discovery for '\(freshTty)': \(ttyActivated ? "SUCCESS" : "FAILED")")
+            debugLog("activateHostThenSwitchTmux ttyDiscovery tty=\(freshTty) result=\(ttyActivated)")
             if ttyActivated {
                 logger.info("  ▸ Switching tmux to session '\(sessionName)'")
                 let result = await runBashScriptWithResultAsync(
@@ -321,6 +389,7 @@ final class TerminalLauncher {
             // Step 2: TTY discovery failed - if Ghostty is running, use Ghostty-specific strategy.
             // Ghostty has no API to focus by TTY, so we use window-count heuristics.
             logger.info("  ▸ Checking Ghostty: running=\(self.isGhosttyRunning())")
+            debugLog("activateHostThenSwitchTmux ttyDiscovery failed; ghosttyRunning=\(self.isGhosttyRunning())")
             if isGhosttyRunning() {
                 cleanupExpiredGhosttyCache()
 
@@ -329,6 +398,7 @@ final class TerminalLauncher {
                    Date().timeIntervalSince(launchTime) < Constants.ghosttySessionCacheDuration
                 {
                     logger.info("  ▸ Ghostty cache HIT for '\(sessionName)' - activating and switching")
+                    debugLog("ghostty cache HIT session=\(sessionName) launchTime=\(launchTime)")
                     runAppleScript("tell application \"Ghostty\" to activate")
                     let result = await runBashScriptWithResultAsync(
                         "tmux switch-client -t \(shellEscape(sessionName)) 2>&1"
@@ -341,13 +411,19 @@ final class TerminalLauncher {
                 }
 
                 logger.info("  ▸ Ghostty cache MISS, using window-count heuristic")
+                debugLog("ghostty cache MISS session=\(sessionName)")
 
                 let windowCount = countGhosttyWindows()
                 logger.info("  ▸ Ghostty window count: \(windowCount)")
+                debugLog("ghostty windowCount=\(windowCount) session=\(sessionName)")
 
-                if windowCount == 1 {
-                    // Single window - safe to activate and switch.
-                    logger.info("  ▸ Single Ghostty window → activating and switching tmux")
+                let decision = Self.ghosttyWindowDecision(windowCount: windowCount, anyClientAttached: anyClientAttached)
+                debugLog("ghostty decision=\(decision) windowCount=\(windowCount) anyClientAttached=\(anyClientAttached)")
+
+                switch decision {
+                case .activateAndSwitch:
+                    logger.info("  ▸ Ghostty activate + switch tmux (windowCount=\(windowCount))")
+                    debugLog("ghostty activate + switch tmux session=\(sessionName)")
                     runAppleScript("tell application \"Ghostty\" to activate")
                     let result = await runBashScriptWithResultAsync(
                         "tmux switch-client -t \(shellEscape(sessionName)) 2>&1"
@@ -357,23 +433,11 @@ final class TerminalLauncher {
                         return false
                     }
                     return true
-                } else if windowCount == 0 {
-                    // No windows - launch new terminal to attach.
+                case .launchNew:
                     Self.recentlyLaunchedGhosttySessions[sessionName] = Date()
-                    logger.info("  ▸ No Ghostty windows → launching new terminal to attach")
+                    logger.info("  ▸ Ghostty launch new terminal to attach (windowCount=\(windowCount))")
+                    debugLog("ghostty launch new terminal session=\(sessionName)")
                     launchTerminalWithTmuxSession(sessionName)
-                    return true
-                } else {
-                    // Multiple windows - activate Ghostty and switch tmux (user may need to switch Ghostty windows)
-                    logger.info("  ▸ Multiple Ghostty windows (\(windowCount)) → activating and switching tmux")
-                    runAppleScript("tell application \"Ghostty\" to activate")
-                    let result = await runBashScriptWithResultAsync(
-                        "tmux switch-client -t \(shellEscape(sessionName)) 2>&1"
-                    )
-                    if result.exitCode != 0 {
-                        logger.warning("  ▸ tmux switch-client failed (exit \(result.exitCode)): \(result.output ?? "")")
-                        return false
-                    }
                     return true
                 }
             }
@@ -381,22 +445,26 @@ final class TerminalLauncher {
             // Step 3: TTY discovery failed and Ghostty not running - trigger fallback
             logger.info("  ▸ TTY discovery failed and Ghostty not running → returning false to trigger fallback")
             logger.info("TTY discovery failed for '\(hostTty)' and no Ghostty running")
+            debugLog("activateHostThenSwitchTmux ttyDiscovery failed + ghostty not running → fallback")
             return false
 
         case let .launchTerminalWithTmux(sessionName, projectPath):
             logger.info("  ▸ launchTerminalWithTmux: session=\(sessionName), path=\(projectPath)")
+            debugLog("launchTerminalWithTmux session=\(sessionName) path=\(projectPath)")
             launchTerminalWithTmuxSession(sessionName, projectPath: projectPath)
             logger.info("  ▸ launchTerminalWithTmux: launched")
             return true
 
         case let .launchNewTerminal(path, name):
             logger.info("  ▸ launchNewTerminal: path=\(path), name=\(name)")
+            debugLog("launchNewTerminal path=\(path) name=\(name)")
             launchNewTerminal(forPath: path, name: name)
             logger.info("  ▸ launchNewTerminal: launched")
             return true
 
         case .activatePriorityFallback:
             logger.warning("  ⚠️ activatePriorityFallback: FALLBACK PATH - activating first running terminal")
+            debugLog("activatePriorityFallback (activating first running terminal)")
             let activated = activateFirstRunningTerminal()
             logger.warning("  ⚠️ activatePriorityFallback: completed (may have focused wrong window)")
             return activated
@@ -409,6 +477,7 @@ final class TerminalLauncher {
 
     private func activateByTtyAction(tty: String, terminalType: TerminalType) async -> Bool {
         logger.info("    activateByTtyAction: tty=\(tty), terminalType=\(String(describing: terminalType))")
+        debugLog("activateByTtyAction tty=\(tty) terminalType=\(String(describing: terminalType))")
 
         switch terminalType {
         case .iTerm:
@@ -418,6 +487,7 @@ final class TerminalLauncher {
             activateTerminalAppSession(tty: tty)
             return true
         case .ghostty:
+            debugLog("activateByTtyAction ghostty heuristic tty=\(tty)")
             return await activateGhosttyWithHeuristic(forTty: tty)
         case .alacritty, .warp:
             return activateAppByName(terminalType.appName)
@@ -425,8 +495,10 @@ final class TerminalLauncher {
             return activateAppByName("kitty")
         case .unknown:
             logger.info("    activateByTtyAction: unknown type, attempting TTY discovery")
+            debugLog("activateByTtyAction unknown terminalType; starting TTY discovery tty=\(tty)")
             if let owningTerminal = await discoverTerminalOwningTTY(tty: tty) {
                 logger.info("    TTY discovery found: \(owningTerminal.displayName) for tty=\(tty)")
+                debugLog("activateByTtyAction tty discovery found terminal=\(owningTerminal.displayName) tty=\(tty)")
                 switch owningTerminal {
                 case .iTerm:
                     activateITermSession(tty: tty)
@@ -442,12 +514,14 @@ final class TerminalLauncher {
             }
 
             logger.info("    TTY discovery failed, checking if Ghostty is running")
+            debugLog("activateByTtyAction tty discovery failed tty=\(tty); ghosttyRunning=\(isGhosttyRunning())")
             if isGhosttyRunning() {
                 logger.info("    Ghostty is running, trying Ghostty heuristic as fallback")
                 return await activateGhosttyWithHeuristic(forTty: tty)
             }
 
             logger.info("    No known terminal found for TTY")
+            debugLog("activateByTtyAction no known terminal for tty=\(tty)")
             return false
         }
     }
@@ -455,21 +529,26 @@ final class TerminalLauncher {
     private func activateGhosttyWithHeuristic(forTty tty: String) async -> Bool {
         guard isGhosttyRunning() else {
             logger.info("    activateGhosttyWithHeuristic: Ghostty not running")
+            debugLog("activateGhosttyWithHeuristic ghostty not running tty=\(tty)")
             return false
         }
 
         let windowCount = countGhosttyWindows()
         logger.info("    activateGhosttyWithHeuristic: tty=\(tty), windowCount=\(windowCount)")
+        debugLog("activateGhosttyWithHeuristic tty=\(tty) windowCount=\(windowCount)")
 
         if windowCount == 1 {
             logger.info("    activateGhosttyWithHeuristic: single window → activating")
+            debugLog("activateGhosttyWithHeuristic single window → activate")
             runAppleScript("tell application \"Ghostty\" to activate")
             return true
         } else if windowCount == 0 {
             logger.info("    activateGhosttyWithHeuristic: no windows → returning false")
+            debugLog("activateGhosttyWithHeuristic windowCount=0 → return false")
             return false
         } else {
             logger.info("    activateGhosttyWithHeuristic: multiple windows (\(windowCount)) → activating Ghostty (user may need to switch windows)")
+            debugLog("activateGhosttyWithHeuristic windowCount=\(windowCount) → activate (no selection)")
             runAppleScript("tell application \"Ghostty\" to activate")
             return true
         }
@@ -512,6 +591,7 @@ final class TerminalLauncher {
 
     private func launchTerminalWithTmuxSession(_ session: String, projectPath: String? = nil) {
         logger.debug("Launching terminal with tmux session '\(session)' at path '\(projectPath ?? "default")'")
+        debugLog("launchTerminalWithTmuxSession session=\(session) path=\(projectPath ?? "default")")
         let escapedSession = shellEscape(session)
         // Use -A flag: attach if session exists, create if it doesn't
         // Use -c to set working directory when creating new session
@@ -704,6 +784,7 @@ final class TerminalLauncher {
     private func activateTerminalByTTYDiscovery(tty: String) async -> Bool {
         if let owningTerminal = await discoverTerminalOwningTTY(tty: tty) {
             logger.debug("    TTY discovery found: \(owningTerminal.displayName) for tty=\(tty)")
+            debugLog("activateTerminalByTTYDiscovery found terminal=\(owningTerminal.displayName) tty=\(tty)")
             switch owningTerminal {
             case .iTerm:
                 activateITermSession(tty: tty)
@@ -715,15 +796,18 @@ final class TerminalLauncher {
             return true
         } else {
             logger.debug("    TTY discovery: no terminal found for tty=\(tty)")
+            debugLog("activateTerminalByTTYDiscovery no terminal found tty=\(tty)")
             return false
         }
     }
 
     private func discoverTerminalOwningTTY(tty: String) async -> ParentApp? {
         if findRunningApp(.iTerm) != nil, await queryITermForTTY(tty) {
+            debugLog("discoverTerminalOwningTTY iTerm owns tty=\(tty)")
             return .iTerm
         }
         if findRunningApp(.terminal) != nil, await queryTerminalAppForTTY(tty) {
+            debugLog("discoverTerminalOwningTTY Terminal owns tty=\(tty)")
             return .terminal
         }
         return nil
@@ -814,12 +898,15 @@ final class TerminalLauncher {
               }),
               let appName = app.localizedName
         else {
+            debugLog("activateAppByName failed name=\(name ?? "nil") (no running app match)")
             return false
         }
         // Use AppleScript for reliable activation - NSRunningApplication.activate()
         // can silently fail when SwiftUI windows steal focus back.
         logger.debug("Activating '\(appName)' via AppleScript")
-        return runAppleScriptChecked("tell application \"\(appName)\" to activate")
+        let result = runAppleScriptChecked("tell application \"\(appName)\" to activate")
+        debugLog("activateAppByName app=\(appName) result=\(result)")
+        return result
     }
 
     private func activateFirstRunningTerminal() -> Bool {
@@ -828,11 +915,13 @@ final class TerminalLauncher {
             logger.debug("    checking \(terminal.displayName)...")
             if let app = findRunningApp(terminal) {
                 logger.warning("    ⚠️ FALLBACK: activating \(terminal.displayName) (pid=\(app.processIdentifier)) - NO PROJECT CONTEXT")
+                debugLog("activateFirstRunningTerminal activating \(terminal.displayName) pid=\(app.processIdentifier)")
                 app.activate()
                 return true
             }
         }
         logger.warning("    activateFirstRunningTerminal: no running terminal found")
+        debugLog("activateFirstRunningTerminal no running terminal found")
         return false
     }
 
@@ -851,12 +940,14 @@ final class TerminalLauncher {
     // MARK: - New Terminal Launch
 
     private func launchNewTerminal(for project: Project) {
+        debugLog("launchNewTerminal project=\(project.name) path=\(project.path)")
         launchNewTerminal(forPath: project.path, name: project.name)
     }
 
     private func launchNewTerminal(forPath path: String, name: String) {
         _Concurrency.Task {
             let claudePath = await getClaudePath()
+            debugLog("launchNewTerminal script path=\(path) name=\(name) claudePath=\(claudePath)")
             runBashScript(TerminalScripts.launch(projectPath: path, projectName: name, claudePath: claudePath))
             scheduleTerminalActivation()
         }
@@ -901,11 +992,13 @@ final class TerminalLauncher {
                 let errorData = errorPipe.fileHandleForReading.readDataToEndOfFile()
                 let errorMsg = String(data: errorData, encoding: .utf8) ?? "unknown"
                 logger.warning("AppleScript failed (exit \(process.terminationStatus)): \(errorMsg)")
+                debugLog("runAppleScriptChecked failed exit=\(process.terminationStatus) error=\(errorMsg)")
                 return false
             }
             return true
         } catch {
             logger.error("AppleScript launch failed: \(error.localizedDescription)")
+            debugLog("runAppleScriptChecked failed error=\(error.localizedDescription)")
             return false
         }
     }
