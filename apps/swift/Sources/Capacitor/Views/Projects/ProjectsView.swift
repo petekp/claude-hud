@@ -75,7 +75,7 @@ struct ProjectsView: View {
                             .padding(.top, 4)
                             .transition(.opacity)
 
-                        ForEach(activeProjects, id: \.path) { project in
+                        ForEach(Array(activeProjects.enumerated()), id: \.element.path) { index, project in
                             ProjectCardView(
                                 project: project,
                                 sessionState: appState.getSessionState(for: project),
@@ -90,7 +90,7 @@ struct ProjectsView: View {
                                     appState.showProjectDetail(project)
                                 },
                                 onMoveToDormant: {
-                                    withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                                    withAnimation(.spring(response: 0.25, dampingFraction: 0.75)) {
                                         appState.moveToDormant(project)
                                     }
                                 },
@@ -98,7 +98,7 @@ struct ProjectsView: View {
                                     appState.showIdeaCaptureModal(for: project, from: frame)
                                 },
                                 onRemove: {
-                                    withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                                    withAnimation(.spring(response: 0.25, dampingFraction: 0.75)) {
                                         appState.removeProject(project.path)
                                     }
                                 },
@@ -121,8 +121,13 @@ struct ProjectsView: View {
                                 )
                             )
                             .transition(.asymmetric(
-                                insertion: .opacity.combined(with: .scale(scale: 0.95)).combined(with: .move(edge: .top)),
-                                removal: .opacity.combined(with: .scale(scale: 0.9))
+                                insertion: .opacity
+                                    .combined(with: .scale(scale: 0.96))
+                                    .combined(with: .offset(y: -8))
+                                    .animation(.spring(response: glassConfig.cardInsertSpringResponse, dampingFraction: glassConfig.cardInsertSpringDamping).delay(Double(index) * glassConfig.cardInsertStagger)),
+                                removal: .opacity
+                                    .combined(with: .scale(scale: 0.94))
+                                    .animation(.easeOut(duration: glassConfig.cardRemovalDuration))
                             ))
                         }
                     }
@@ -147,12 +152,12 @@ struct ProjectsView: View {
                                             appState.showProjectDetail(project)
                                         },
                                         onMoveToRecent: {
-                                            withAnimation(.spring(response: 0.4, dampingFraction: 0.75)) {
+                                            withAnimation(.spring(response: 0.25, dampingFraction: 0.75)) {
                                                 appState.moveToRecent(project)
                                             }
                                         },
                                         onRemove: {
-                                            withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                                            withAnimation(.spring(response: 0.2, dampingFraction: 0.8)) {
                                                 appState.removeProject(project.path)
                                             }
                                         },
@@ -160,8 +165,12 @@ struct ProjectsView: View {
                                     )
                                     .id("paused-\(project.path)")
                                     .transition(.asymmetric(
-                                        insertion: .opacity.combined(with: .scale(scale: 0.95)),
-                                        removal: .opacity.combined(with: .scale(scale: 0.9))
+                                        insertion: .opacity
+                                            .combined(with: .scale(scale: 0.97))
+                                            .animation(.spring(response: glassConfig.cardInsertSpringResponse * 0.8, dampingFraction: glassConfig.cardInsertSpringDamping).delay(Double(index) * glassConfig.pausedCardStagger)),
+                                        removal: .opacity
+                                            .combined(with: .scale(scale: 0.95))
+                                            .animation(.easeOut(duration: glassConfig.cardRemovalDuration * 0.8))
                                     ))
                                 }
                             }
@@ -176,7 +185,7 @@ struct ProjectsView: View {
         .background(floatingMode ? Color.clear : Color.hudBackground)
         .onChange(of: pausedProjects.count) { oldCount, newCount in
             if newCount > oldCount && pausedCollapsed {
-                withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                withAnimation(.spring(response: glassConfig.sectionToggleSpringResponse, dampingFraction: 0.85)) {
                     pausedCollapsed = false
                 }
             }
@@ -214,10 +223,11 @@ struct PausedSectionHeader: View {
     @Binding var isCollapsed: Bool
     @State private var isHovered = false
     @Environment(\.prefersReducedMotion) private var reduceMotion
+    @ObservedObject private var glassConfig = GlassConfig.shared
 
     var body: some View {
         Button(action: {
-            withAnimation(reduceMotion ? AppMotion.reducedMotionFallback : .spring(response: 0.3, dampingFraction: 0.8)) {
+            withAnimation(reduceMotion ? AppMotion.reducedMotionFallback : .spring(response: glassConfig.sectionToggleSpringResponse, dampingFraction: 0.85)) {
                 isCollapsed.toggle()
             }
         }) {

@@ -2,11 +2,12 @@ import SwiftUI
 
 struct ReadyAmbientGlow: View {
     var layoutMode: LayoutMode = .vertical
+    var animate: Bool = true
     @Environment(\.prefersReducedMotion) private var reduceMotion
     @ObservedObject private var config = GlassConfig.shared
 
     var body: some View {
-        if reduceMotion {
+        if reduceMotion || !animate {
             staticGlow
         } else {
             animatedGlow
@@ -107,6 +108,7 @@ struct GlowParameters {
 struct ReadyBorderGlow: View {
     let seed: String
     var layoutMode: LayoutMode = .vertical
+    var animate: Bool = true
     @Environment(\.prefersReducedMotion) private var reduceMotion
     @ObservedObject private var config = GlassConfig.shared
 
@@ -122,7 +124,7 @@ struct ReadyBorderGlow: View {
     }
 
     var body: some View {
-        if reduceMotion {
+        if reduceMotion || !animate {
             staticBorderGlow
         } else {
             animatedBorderGlow
@@ -287,11 +289,12 @@ struct BorderGlowParameters {
 /// Double-flash pulse effect for the Waiting state - extends beyond card bounds
 struct WaitingAmbientPulse: View {
     var layoutMode: LayoutMode = .vertical
+    var animate: Bool = true
     @Environment(\.prefersReducedMotion) private var reduceMotion
     @ObservedObject private var config = GlassConfig.shared
 
     var body: some View {
-        if reduceMotion {
+        if reduceMotion || !animate {
             staticGlow
         } else {
             animatedPulse
@@ -427,6 +430,7 @@ struct WaitingAmbientPulse: View {
 struct WaitingBorderPulse: View {
     let seed: String
     var layoutMode: LayoutMode = .vertical
+    var animate: Bool = true
     @Environment(\.prefersReducedMotion) private var reduceMotion
     @ObservedObject private var config = GlassConfig.shared
 
@@ -435,7 +439,7 @@ struct WaitingBorderPulse: View {
     }
 
     var body: some View {
-        if reduceMotion {
+        if reduceMotion || !animate {
             staticBorder
         } else {
             animatedBorder
@@ -586,11 +590,12 @@ struct WorkingStripeParameters {
 
 struct WorkingStripeOverlay: View {
     var layoutMode: LayoutMode = .vertical
+    var animate: Bool = true
     @Environment(\.prefersReducedMotion) private var reduceMotion
     @ObservedObject private var config = GlassConfig.shared
 
     var body: some View {
-        if reduceMotion {
+        if reduceMotion || !animate {
             staticStripes
         } else {
             animatedStripes
@@ -782,6 +787,7 @@ struct WorkingStripeOverlay: View {
 struct WorkingBorderGlow: View {
     let seed: String
     var layoutMode: LayoutMode = .vertical
+    var animate: Bool = true
     @Environment(\.prefersReducedMotion) private var reduceMotion
     @ObservedObject private var config = GlassConfig.shared
 
@@ -797,7 +803,7 @@ struct WorkingBorderGlow: View {
     }
 
     var body: some View {
-        if reduceMotion {
+        if reduceMotion || !animate {
             staticBorder
         } else {
             animatedBorder

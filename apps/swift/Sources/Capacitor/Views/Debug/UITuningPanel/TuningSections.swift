@@ -193,6 +193,61 @@ struct CardInteractionsSection: View {
     }
 }
 
+// MARK: - State Transitions
+
+struct StateTransitionsSection: View {
+    @ObservedObject var config: GlassConfig
+
+    var body: some View {
+        Group(content: {
+            StickySection(title: "Timing", onReset: resetTiming) {
+                TuningRow(label: "State Change", value: $config.stateTransitionDuration, range: 0.05...0.5)
+                TuningRow(label: "Glow Fade", value: $config.glowFadeDuration, range: 0.05...0.4)
+                TuningRow(label: "Border Delay", value: $config.glowBorderDelay, range: 0...0.1)
+                TuningRow(label: "Hover Speed", value: $config.hoverTransitionDuration, range: 0.05...0.3)
+            }
+
+            StickySection(title: "Card List Stagger", onReset: resetStagger) {
+                TuningRow(label: "Insert Stagger", value: $config.cardInsertStagger, range: 0...0.1)
+                TuningRow(label: "Removal Duration", value: $config.cardRemovalDuration, range: 0.05...0.3)
+                TuningRow(label: "Paused Stagger", value: $config.pausedCardStagger, range: 0...0.08)
+
+                SectionDivider()
+
+                Text("Insert Spring")
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundColor(.white.opacity(0.5))
+
+                TuningRow(label: "Response", value: $config.cardInsertSpringResponse, range: 0.1...0.5)
+                TuningRow(label: "Damping", value: $config.cardInsertSpringDamping, range: 0.5...1.0)
+            }
+
+            StickySection(title: "Section Toggle", onReset: resetSectionToggle) {
+                TuningRow(label: "Spring Response", value: $config.sectionToggleSpringResponse, range: 0.1...0.4)
+            }
+        })
+    }
+
+    private func resetTiming() {
+        config.stateTransitionDuration = 0.18
+        config.glowFadeDuration = 0.15
+        config.glowBorderDelay = 0.03
+        config.hoverTransitionDuration = 0.12
+    }
+
+    private func resetStagger() {
+        config.cardInsertStagger = 0.04
+        config.cardRemovalDuration = 0.15
+        config.cardInsertSpringResponse = 0.25
+        config.cardInsertSpringDamping = 0.8
+        config.pausedCardStagger = 0.025
+    }
+
+    private func resetSectionToggle() {
+        config.sectionToggleSpringResponse = 0.18
+    }
+}
+
 // MARK: - Card Layout
 
 struct CardLayoutSection: View {
