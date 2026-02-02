@@ -22,7 +22,8 @@ const PROCESS_LIVENESS_MAX_AGE_HOURS: i64 = 24;
 const SESSION_TTL_ACTIVE_SECS: i64 = 20 * 60; // Working/Waiting/Compacting
 const SESSION_TTL_READY_SECS: i64 = 30 * 60; // Ready
 const SESSION_TTL_IDLE_SECS: i64 = 10 * 60; // Idle
-const ACTIVE_STATE_STALE_SECS: i64 = 10; // Working/Waiting -> Ready when no updates
+const ACTIVE_STATE_STALE_SECS: i64 = 8; // Working/Waiting -> Ready when no updates
+                                        // Ready does not auto-idle; it remains until TTL or session end.
 
 pub struct SharedState {
     db: Db,
@@ -565,33 +566,6 @@ mod tests {
 
         let stale_time = (Utc::now() - Duration::seconds(120)).to_rfc3339();
         let record = make_record("session-ready", "/repo", SessionState::Ready, stale_time);
-        state.db.upsert_session(&record).expect("insert session");
-
-        let aggregates = state.project_states_snapshot().expect("project states");
-        assert_eq!(aggregates.len(), 1);
-        assert_eq!(aggregates[0].state, SessionState::Ready);
-    }
-
-    #[test]
-    fn ready_state_uses_updated_at_for_staleness() {
-        let temp_dir = tempfile::tempdir().expect("temp dir");
-        let db_path = temp_dir.path().join("state.db");
-        let db = Db::new(db_path).expect("db init");
-        let state = SharedState::new(db);
-
-        let updated_at = Utc::now().to_rfc3339();
-        let stale_change =
-            (Utc::now() - Duration::seconds(READY_STATE_STALE_SECS + 30)).to_rfc3339();
-        let record = SessionRecord {
-            session_id: "session-recent-ready".to_string(),
-            pid: 0,
-            state: SessionState::Ready,
-            cwd: "/repo".to_string(),
-            project_path: "/repo".to_string(),
-            updated_at,
-            state_changed_at: stale_change,
-            last_event: None,
-        };
         state.db.upsert_session(&record).expect("insert session");
 
         let aggregates = state.project_states_snapshot().expect("project states");
