@@ -130,7 +130,6 @@ fn detect_parent_app(_pid: u32) -> ParentApp {
     if std::env::var("TMUX").is_ok() {
         return ParentApp::Tmux;
     }
-
     if let Ok(term_program) = std::env::var("TERM_PROGRAM") {
         let normalized = term_program.to_lowercase();
         match normalized.as_str() {

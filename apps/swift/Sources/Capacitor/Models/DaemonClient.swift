@@ -1,6 +1,5 @@
 import Darwin
 import Foundation
-import Network
 
 struct DaemonHealth: Decodable {
     let status: String
@@ -94,6 +93,8 @@ enum DaemonClientError: Error {
 }
 
 final class DaemonClient {
+    typealias Transport = (Data) async throws -> Data
+
     static let shared = DaemonClient()
 
     private enum Constants {
@@ -106,8 +107,15 @@ final class DaemonClient {
     }
 
     private let queue = DispatchQueue(label: "com.capacitor.daemon.client")
+    private let transportOverride: Transport?
 
-    private init() {}
+    init(transport: @escaping Transport) {
+        self.transportOverride = transport
+    }
+
+    private init() {
+        self.transportOverride = nil
+    }
 
     var isEnabled: Bool {
         guard let raw = getenv(Constants.enabledEnv) else {
@@ -248,94 +256,124 @@ final class DaemonClient {
     }
 
     private func sendAndReceive(_ requestData: Data) async throws -> Data {
+        let transport = transportOverride ?? sendAndReceivePosix
+        return try await transport(requestData)
+    }
+
+    private func sendAndReceivePosix(_ requestData: Data) async throws -> Data {
         let path = try socketPath()
-        let endpoint = NWEndpoint.unix(path: path)
-        let connection = NWConnection(to: endpoint, using: .tcp)
-        DebugLog.write("DaemonClient.sendAndReceive connect path=\(path) bytes=\(requestData.count)")
+        DebugLog.write("DaemonClient.sendAndReceive posix connect path=\(path) bytes=\(requestData.count)")
 
         return try await withCheckedThrowingContinuation { continuation in
-            var buffer = Data()
-            var finished = false
+            queue.async {
+                do {
+                    let fd = try Self.openUnixSocket(path: path, timeoutSeconds: Constants.timeoutSeconds)
+                    defer { close(fd) }
 
-            let timeout = DispatchWorkItem {
-                if finished { return }
-                finished = true
-                connection.cancel()
-                DebugLog.write("DaemonClient.sendAndReceive timeout path=\(path)")
-                continuation.resume(throwing: DaemonClientError.timeout)
-            }
+                    try Self.writeAll(fd: fd, data: requestData)
+                    let response = try Self.readUntilNewline(fd: fd, maxBytes: Constants.maxResponseBytes)
 
-            func finish(_ result: Result<Data, Error>) {
-                if finished { return }
-                finished = true
-                timeout.cancel()
-                connection.cancel()
-                switch result {
-                case .success(let data):
-                    DebugLog.write("DaemonClient.sendAndReceive finish ok bytes=\(data.count)")
-                case .failure(let error):
-                    DebugLog.write("DaemonClient.sendAndReceive finish error=\(error)")
-                }
-                continuation.resume(with: result)
-            }
-
-            func receiveNext() {
-                connection.receive(minimumIncompleteLength: 1, maximumLength: 8192) { data, _, isComplete, error in
-                    if let error = error {
-                        finish(.failure(error))
-                        return
-                    }
-
-                    if let data = data {
-                        buffer.append(data)
-                        if buffer.count > Constants.maxResponseBytes {
-                            finish(.failure(DaemonClientError.invalidResponse))
-                            return
-                        }
-
-                        if let newlineIndex = buffer.firstIndex(of: 0x0A) {
-                            let slice = buffer.prefix(upTo: newlineIndex)
-                            finish(.success(Data(slice)))
-                            return
-                        }
-                    }
-
-                    if isComplete {
-                        finish(.success(buffer))
-                        return
-                    }
-
-                    receiveNext()
+                    DebugLog.write("DaemonClient.sendAndReceive posix finish ok bytes=\(response.count)")
+                    continuation.resume(returning: response)
+                } catch {
+                    DebugLog.write("DaemonClient.sendAndReceive posix finish error=\(error)")
+                    continuation.resume(throwing: error)
                 }
             }
+        }
+    }
 
-            connection.stateUpdateHandler = { state in
-                switch state {
-                case .ready:
-                    DebugLog.write("DaemonClient.sendAndReceive state=ready")
-                    connection.send(content: requestData, completion: .contentProcessed { error in
-                        if let error = error {
-                            DebugLog.write("DaemonClient.sendAndReceive send error=\(error)")
-                            finish(.failure(error))
-                        } else {
-                            receiveNext()
-                        }
-                    })
-                case .failed(let error):
-                    DebugLog.write("DaemonClient.sendAndReceive state=failed error=\(error)")
-                    finish(.failure(error))
-                case .cancelled:
-                    if !finished {
-                        DebugLog.write("DaemonClient.sendAndReceive state=cancelled")
-                        finish(.failure(DaemonClientError.invalidResponse))
-                    }
-                default:
+    private static func openUnixSocket(path: String, timeoutSeconds: TimeInterval) throws -> Int32 {
+        let fd = socket(AF_UNIX, SOCK_STREAM, 0)
+        if fd < 0 {
+            throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
+        }
+
+        let microseconds = Int32((timeoutSeconds - floor(timeoutSeconds)) * 1_000_000)
+        var timeout = timeval(
+            tv_sec: Int(timeoutSeconds),
+            tv_usec: microseconds
+        )
+        let timeSize = socklen_t(MemoryLayout<timeval>.size)
+        _ = setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &timeout, timeSize)
+        _ = setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &timeout, timeSize)
+        var noSigpipe: Int32 = 1
+        _ = setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE, &noSigpipe, socklen_t(MemoryLayout<Int32>.size))
+
+        var addr = sockaddr_un()
+        addr.sun_family = sa_family_t(AF_UNIX)
+        let maxLen = MemoryLayout.size(ofValue: addr.sun_path)
+        guard path.utf8.count < maxLen else {
+            close(fd)
+            throw DaemonClientError.invalidResponse
+        }
+
+        path.withCString { cstr in
+            withUnsafeMutablePointer(to: &addr.sun_path) { ptr in
+                ptr.withMemoryRebound(to: Int8.self, capacity: maxLen) { rebounded in
+                    _ = strncpy(rebounded, cstr, maxLen - 1)
+                }
+            }
+        }
+
+        let result = withUnsafePointer(to: &addr) { ptr in
+            ptr.withMemoryRebound(to: sockaddr.self, capacity: 1) { connect(fd, $0, socklen_t(MemoryLayout<sockaddr_un>.size)) }
+        }
+        if result != 0 {
+            let err = POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
+            close(fd)
+            throw err
+        }
+
+        return fd
+    }
+
+    private static func writeAll(fd: Int32, data: Data) throws {
+        try data.withUnsafeBytes { buffer in
+            guard let base = buffer.baseAddress else { return }
+            var sent = 0
+            while sent < data.count {
+                let n = write(fd, base.advanced(by: sent), data.count - sent)
+                if n > 0 {
+                    sent += n
+                } else if n == 0 {
                     break
+                } else if errno == EINTR {
+                    continue
+                } else if errno == EAGAIN || errno == EWOULDBLOCK {
+                    throw DaemonClientError.timeout
+                } else {
+                    throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
                 }
             }
+        }
+    }
 
-            queue.asyncAfter(deadline: .now() + Constants.timeoutSeconds, execute: timeout)
-            connection.start(queue: queue)
+    private static func readUntilNewline(fd: Int32, maxBytes: Int) throws -> Data {
+        var buffer = Data()
+        var chunk = [UInt8](repeating: 0, count: 8192)
+        while true {
+            let n = read(fd, &chunk, chunk.count)
+            if n > 0 {
+                buffer.append(contentsOf: chunk.prefix(n))
+                if buffer.count > maxBytes {
+                    throw DaemonClientError.invalidResponse
+                }
+                if let newlineIndex = buffer.firstIndex(of: 0x0A) {
+                    return Data(buffer.prefix(upTo: newlineIndex))
+                }
+                continue
+            }
+            if n == 0 {
+                return buffer
+            }
+            if errno == EINTR {
+                continue
+            }
+            if errno == EAGAIN || errno == EWOULDBLOCK {
+                throw DaemonClientError.timeout
+            }
+            throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
         }
     }
 }

@@ -51,6 +51,7 @@ let package = Package(
         .testTarget(
             name: "CapacitorTests",
             dependencies: [
+                "Capacitor",
                 .product(name: "Sparkle", package: "Sparkle")
             ],
             path: "Tests/CapacitorTests"
