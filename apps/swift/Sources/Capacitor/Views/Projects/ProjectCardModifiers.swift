@@ -20,6 +20,9 @@ extension View {
         // Single source of truth for corner radius
         let cornerRadius = GlassConfig.shared.cardCornerRadius(for: layoutMode)
 
+        // Only animate effects for active or hovered cards to reduce GPU load during scroll
+        let shouldAnimate = isActive || isHovered
+
         return self
             .background {
                 ZStack {
@@ -31,8 +34,8 @@ extension View {
                     }
 
                     if isWorking {
-                        WorkingStripeOverlay(layoutMode: layoutMode)
-                            .transition(.opacity.animation(.easeInOut(duration: 0.4)))
+                        WorkingStripeOverlay(layoutMode: layoutMode, animate: shouldAnimate)
+                            .transition(.opacity.animation(.easeInOut(duration: GlassConfig.shared.glowFadeDuration)))
                     }
                 }
             }
@@ -77,35 +80,40 @@ extension View {
                 }
             }
             .overlay {
+                let cfg = GlassConfig.shared
                 if isReady {
-                    ReadyAmbientGlow(layoutMode: layoutMode)
+                    ReadyAmbientGlow(layoutMode: layoutMode, animate: shouldAnimate)
                         .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
-                        .transition(.opacity.animation(.easeInOut(duration: 0.4)))
+                        .transition(.opacity.animation(.easeOut(duration: cfg.glowFadeDuration)))
                 }
             }
             .overlay {
+                let cfg = GlassConfig.shared
                 if isReady {
-                    ReadyBorderGlow(seed: animationSeed, layoutMode: layoutMode)
-                        .transition(.opacity.animation(.easeInOut(duration: 0.4)))
+                    ReadyBorderGlow(seed: animationSeed, layoutMode: layoutMode, animate: shouldAnimate)
+                        .transition(.opacity.animation(.easeOut(duration: cfg.glowFadeDuration + cfg.glowBorderDelay).delay(cfg.glowBorderDelay)))
                 }
             }
             .overlay {
+                let cfg = GlassConfig.shared
                 if isWaiting {
-                    WaitingAmbientPulse(layoutMode: layoutMode)
+                    WaitingAmbientPulse(layoutMode: layoutMode, animate: shouldAnimate)
                         .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
-                        .transition(.opacity.animation(.easeInOut(duration: 0.4)))
+                        .transition(.opacity.animation(.easeOut(duration: cfg.glowFadeDuration)))
                 }
             }
             .overlay {
+                let cfg = GlassConfig.shared
                 if isWaiting {
-                    WaitingBorderPulse(seed: animationSeed, layoutMode: layoutMode)
-                        .transition(.opacity.animation(.easeInOut(duration: 0.4)))
+                    WaitingBorderPulse(seed: animationSeed, layoutMode: layoutMode, animate: shouldAnimate)
+                        .transition(.opacity.animation(.easeOut(duration: cfg.glowFadeDuration + cfg.glowBorderDelay).delay(cfg.glowBorderDelay)))
                 }
             }
             .overlay {
+                let cfg = GlassConfig.shared
                 if isWorking {
-                    WorkingBorderGlow(seed: animationSeed, layoutMode: layoutMode)
-                        .transition(.opacity.animation(.easeInOut(duration: 0.4)))
+                    WorkingBorderGlow(seed: animationSeed, layoutMode: layoutMode, animate: shouldAnimate)
+                        .transition(.opacity.animation(.easeOut(duration: cfg.glowFadeDuration + cfg.glowBorderDelay).delay(cfg.glowBorderDelay)))
                 }
             }
             .shadow(
@@ -134,7 +142,7 @@ extension View {
                 return .handled
             }
             .onHover { hovering in
-                withAnimation(.easeOut(duration: 0.2)) {
+                withAnimation(.easeOut(duration: GlassConfig.shared.hoverTransitionDuration)) {
                     isHovered.wrappedValue = hovering
                 }
             }
@@ -157,7 +165,7 @@ extension View {
         glassConfig: GlassConfig?
     ) -> some View {
         self
-            .animation(.easeInOut(duration: 0.4), value: sessionState?.state)
+            .animation(.easeOut(duration: GlassConfig.shared.stateTransitionDuration), value: sessionState?.state)
             .onChange(of: flashState) { _, newValue in
                 guard newValue != nil else { return }
                 withAnimation(.easeOut(duration: 0.1)) {

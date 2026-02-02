@@ -23,7 +23,7 @@ enum TuningCategory: String, CaseIterable, Identifiable {
     var subcategories: [TuningSubcategory] {
         switch self {
         case .projectCard:
-            return [.appearance, .cardMaterial, .layout, .interactions, .stateEffects]
+            return [.appearance, .cardMaterial, .layout, .interactions, .stateTransitions, .stateEffects]
         case .panel:
             return [.panelBackground, .panelMaterial]
         case .logo:
@@ -39,6 +39,7 @@ enum TuningSubcategory: String, CaseIterable, Identifiable {
     case cardMaterial = "Card Material"
     case layout = "Layout"
     case interactions = "Interactions"
+    case stateTransitions = "Transitions"
     case stateEffects = "State Effects"
     case panelBackground = "Background"
     case panelMaterial = "Panel Material"
@@ -60,6 +61,7 @@ enum TuningSubcategory: String, CaseIterable, Identifiable {
         case .cardMaterial: return "cube.transparent"
         case .layout: return "rectangle.3.group"
         case .interactions: return "hand.tap"
+        case .stateTransitions: return "timer"
         case .stateEffects: return "sparkles"
         case .panelBackground: return "square.fill"
         case .panelMaterial: return "cube.transparent"
@@ -70,7 +72,7 @@ enum TuningSubcategory: String, CaseIterable, Identifiable {
 
     var parent: TuningCategory {
         switch self {
-        case .appearance, .cardMaterial, .layout, .interactions, .stateEffects: return .projectCard
+        case .appearance, .cardMaterial, .layout, .interactions, .stateTransitions, .stateEffects: return .projectCard
         case .panelBackground, .panelMaterial: return .panel
         case .logoAppearance: return .logo
         case .allStates: return .statusColors
@@ -225,6 +227,8 @@ struct UITuningPanel: View {
             CardLayoutSection(config: config)
         case .interactions:
             CardInteractionsSection(config: config)
+        case .stateTransitions:
+            StateTransitionsSection(config: config)
         case .stateEffects:
             CardStateEffectsSection(config: config)
         case .panelBackground:

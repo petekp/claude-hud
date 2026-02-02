@@ -257,6 +257,18 @@ class GlassConfig: ObservableObject {
     @Published var compactingExpandDamping: Double = 0.8
     @Published var compactingExpandOmega: Double = 4.0
 
+    // MARK: - State Transition Animations
+    @Published var stateTransitionDuration: Double = 0.18     // Duration for state change animations
+    @Published var glowFadeDuration: Double = 0.15            // Duration for glow effect fade in/out
+    @Published var glowBorderDelay: Double = 0.03             // Stagger delay for border glow after ambient
+    @Published var hoverTransitionDuration: Double = 0.12     // Duration for hover state changes
+    @Published var cardInsertStagger: Double = 0.04           // Per-card stagger delay on insert
+    @Published var cardRemovalDuration: Double = 0.15         // Duration for card removal animation
+    @Published var cardInsertSpringResponse: Double = 0.25    // Spring response for card insertion
+    @Published var cardInsertSpringDamping: Double = 0.8      // Spring damping for card insertion
+    @Published var pausedCardStagger: Double = 0.025          // Per-card stagger for paused section
+    @Published var sectionToggleSpringResponse: Double = 0.18 // Spring response for section collapse/expand
+
     // MARK: - Layout Settings (Card List)
     @Published var cardListSpacing: Double = 8.0              // Gap between cards in vertical list
     @Published var cardPaddingHorizontal: Double = 12.0       // Horizontal internal padding for vertical cards
@@ -498,6 +510,18 @@ class GlassConfig: ObservableObject {
         compactingExpandDamping = 0.8
         compactingExpandOmega = 4.0
 
+        // State Transition Animations
+        stateTransitionDuration = 0.18
+        glowFadeDuration = 0.15
+        glowBorderDelay = 0.03
+        hoverTransitionDuration = 0.12
+        cardInsertStagger = 0.04
+        cardRemovalDuration = 0.15
+        cardInsertSpringResponse = 0.25
+        cardInsertSpringDamping = 0.8
+        pausedCardStagger = 0.025
+        sectionToggleSpringResponse = 0.18
+
         // Layout
         cardListSpacing = 8.0
         cardPaddingHorizontal = 12.0
@@ -654,6 +678,17 @@ class GlassConfig: ObservableObject {
             ("Card Pressed", "cardPressedShadowOpacity", 0.12, cardPressedShadowOpacity),
             ("Card Pressed", "cardPressedShadowRadius", 2.0, cardPressedShadowRadius),
             ("Card Pressed", "cardPressedShadowY", 1.0, cardPressedShadowY),
+            // State Transitions
+            ("State Transitions", "stateTransitionDuration", 0.18, stateTransitionDuration),
+            ("State Transitions", "glowFadeDuration", 0.15, glowFadeDuration),
+            ("State Transitions", "glowBorderDelay", 0.03, glowBorderDelay),
+            ("State Transitions", "hoverTransitionDuration", 0.12, hoverTransitionDuration),
+            ("State Transitions", "cardInsertStagger", 0.04, cardInsertStagger),
+            ("State Transitions", "cardRemovalDuration", 0.15, cardRemovalDuration),
+            ("State Transitions", "cardInsertSpringResponse", 0.25, cardInsertSpringResponse),
+            ("State Transitions", "cardInsertSpringDamping", 0.8, cardInsertSpringDamping),
+            ("State Transitions", "pausedCardStagger", 0.025, pausedCardStagger),
+            ("State Transitions", "sectionToggleSpringResponse", 0.18, sectionToggleSpringResponse),
             // Layout - List
             ("Layout List", "cardListSpacing", 8.0, cardListSpacing),
             ("Layout List", "cardPaddingHorizontal", 12.0, cardPaddingHorizontal),
