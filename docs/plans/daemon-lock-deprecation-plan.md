@@ -48,15 +48,8 @@ This document defines the migration path from filesystem lock directories
 
 - Add a daemon health check to decide whether to write locks. (Done)
 - Define a daemon health probe (use `get_health` IPC with timeout). (Done)
-- Consider exporting `CAPACITOR_DAEMON_LOCK_HEALTH=0/1/auto` from setup/launcher scripts (or Swift app).
-  - `auto` disables lock writes only when the daemon health probe returns ok.
-  - Hook installation currently normalizes commands to include `CAPACITOR_DAEMON_LOCK_HEALTH=auto`.
-  - Hook installation currently normalizes commands to include `CAPACITOR_DAEMON_ENABLED=1`.
-- Add a configuration gate to disable lock creation in Phase B. (Done: `CAPACITOR_DAEMON_LOCK_MODE`)
-- Update cleanup to skip lock removal when running in read-only/off modes. (Done)
-- Add a diagnostic label indicating lock mode (full / read-only / disabled). (Not yet)
-- Implement `CAPACITOR_DAEMON_LOCK_MODE` in hooks (full/read-only/off). (Done)
-- Implement `CAPACITOR_DAEMON_LOCK_MODE` in `hud-core` cleanup (read-only/off skip deletions). (Done)
+- Lock-mode/lock-health toggles removed (daemon-only; no compatibility).
+- Hook installation normalizes commands to include `CAPACITOR_DAEMON_ENABLED=1` only.
 
 ## Open Questions
 
