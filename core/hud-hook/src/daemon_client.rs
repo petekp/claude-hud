@@ -79,12 +79,12 @@ pub fn send_shell_cwd_event(
     parent_app: ParentApp,
     tmux_session: Option<String>,
     tmux_client_tty: Option<String>,
-) -> bool {
+) -> Result<(), String> {
     if !daemon_enabled() {
-        return false;
+        return Err("Daemon disabled".to_string());
     }
 
-    let envelope = EventEnvelope {
+    let build_envelope = || EventEnvelope {
         event_id: make_event_id(pid),
         recorded_at: Utc::now().to_rfc3339(),
         event_type: EventType::ShellCwd,
@@ -95,18 +95,26 @@ pub fn send_shell_cwd_event(
         file_path: None,
         parent_app: Some(parent_app_string(parent_app)),
         tty: Some(tty.to_string()),
-        tmux_session,
-        tmux_client_tty,
+        tmux_session: tmux_session.clone(),
+        tmux_client_tty: tmux_client_tty.clone(),
         notification_type: None,
         stop_hook_active: None,
         metadata: None,
     };
 
-    match send_event(envelope) {
-        Ok(_) => true,
+    match send_event(build_envelope()) {
+        Ok(_) => Ok(()),
         Err(err) => {
             tracing::warn!(error = %err, "Failed to send shell-cwd event to daemon");
-            false
+            // Retry once to avoid transient socket failures.
+            std::thread::sleep(Duration::from_millis(50));
+            send_event(build_envelope()).map_err(|retry_err| {
+                tracing::warn!(
+                    error = %retry_err,
+                    "Retry failed sending shell-cwd event to daemon"
+                );
+                retry_err
+            })
         }
     }
 }
@@ -141,7 +149,7 @@ pub fn daemon_health() -> Option<bool> {
 pub fn daemon_enabled() -> bool {
     match env::var(ENABLE_ENV) {
         Ok(value) => matches!(value.as_str(), "1" | "true" | "TRUE" | "yes" | "YES"),
-        Err(_) => false,
+        Err(_) => true,
     }
 }
 

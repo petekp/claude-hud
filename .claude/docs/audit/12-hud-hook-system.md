@@ -1,5 +1,6 @@
 # Session 12: hud-hook System Audit
 
+> **Daemon-only note (2026-02):** This audit describes pre-daemon file/lock behavior. In daemon-only mode, these paths are legacy and should not be authoritative.
 **Date:** 2026-01-27
 **Scope:** `hud-hook` CLI hook handler (handle, cwd, lock-holder, logging, entrypoint) + direct hud-core dependencies used by the hook.
 **Files analyzed:**

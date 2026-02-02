@@ -37,7 +37,7 @@ This decision affects:
 2. **Observe, Don't Replace**
    - HUD shows what Claude is doing, doesn't try to be Claude
    - Interactive work happens in terminals (CLI), not embedded in HUD (SDK)
-   - State tracking via hooks (HUD reads files Claude writes)
+   - State tracking via hooks → daemon (HUD reads daemon snapshots; files are not authoritative)
    - No attempt to "hijack" or join active CLI sessions
 
 3. **Unified User Experience**
@@ -52,7 +52,7 @@ This decision affects:
 - Read session files from `~/.claude/projects/`
 - Parse `~/.claude/settings.json` for config
 - Launch terminals with `claude` command
-- Use hooks to write state files HUD reads
+- Use hooks to send events to the local daemon; HUD reads daemon snapshots
 - Invoke CLI for AI features (triage, summaries, etc.)
 - Store Capacitor state in `~/.capacitor/` (separate namespace from Claude)
 
@@ -169,7 +169,7 @@ When designing a new feature, ask:
 Review current features against sidecar principles:
 
 - ✅ **Project stats** — Read from `~/.claude/projects/` (aligned)
-- ✅ **Session state** — Hooks write to `~/.capacitor/sessions.json` (aligned)
+- ✅ **Session state** — Hooks emit events to daemon; daemon persists to `~/.capacitor/daemon/state.db` (aligned)
 - ✅ **Project creation** — Launches terminal with `claude` (aligned)
 - ⚠️ **Summaries** — Currently uses subprocess to call CLI, could be more elegant (improve)
 - ❌ **Idea capture (proposed)** — Original spec called Anthropic API directly (needs revision)

@@ -1,5 +1,6 @@
 # Session 11: Project Resolution Audit
 
+> **Daemon-only note (2026-02):** This audit describes pre-daemon file/lock behavior. In daemon-only mode, these paths are legacy and should not be authoritative.
 **File:** `apps/swift/Sources/Capacitor/Models/ActiveProjectResolver.swift`
 **Date:** 2026-01-27
 **Focus:** Focus override logic, priority resolution

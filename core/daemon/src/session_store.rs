@@ -1,6 +1,7 @@
 use chrono::{DateTime, Duration, Utc};
 
 use capacitor_daemon_protocol::{EventEnvelope, EventType};
+use tracing::debug;
 
 use crate::db::Db;
 use crate::reducer::{reduce_session, SessionRecord, SessionUpdate};
@@ -28,16 +29,27 @@ pub fn handle_session_event(
         && event.event_type != EventType::SessionEnd
         && tombstone_active
     {
+        debug!(
+            session_id = %session_id,
+            event_type = ?event.event_type,
+            "Skipping event due to active tombstone"
+        );
         return Ok(SessionUpdate::Skip);
     }
 
     if event.event_type == EventType::SessionStart && tombstone.is_some() {
+        debug!(session_id = %session_id, "Clearing tombstone on SessionStart");
         db.delete_tombstone(session_id)?;
     }
 
     if event.event_type == EventType::SessionEnd {
         if let Some(recorded_at) = parse_rfc3339(&event.recorded_at) {
             let expires_at = recorded_at + Duration::seconds(TOMBSTONE_TTL_SECS);
+            debug!(
+                session_id = %session_id,
+                expires_at = %expires_at.to_rfc3339(),
+                "Creating tombstone on SessionEnd"
+            );
             db.upsert_tombstone(
                 session_id,
                 &recorded_at.to_rfc3339(),

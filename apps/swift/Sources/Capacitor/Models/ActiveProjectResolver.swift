@@ -1,4 +1,6 @@
+import AppKit
 import Foundation
+import os.log
 
 // MARK: - Active Source
 
@@ -13,6 +15,7 @@ enum ActiveSource: Equatable {
 @MainActor
 @Observable
 final class ActiveProjectResolver {
+    private let logger = Logger(subsystem: "com.capacitor.app", category: "ActiveProjectResolver")
     private let sessionStateManager: SessionStateManager
     private let shellStateStore: ShellStateStore
 
@@ -39,18 +42,34 @@ final class ActiveProjectResolver {
     /// - User navigates to a project directory that has an active Claude session
     func setManualOverride(_ project: Project) {
         manualOverride = project
+        logger.info("Manual override set: \(project.path, privacy: .public)")
     }
 
     func resolve() {
-        // Check if shell CWD points to a different project WITH an active Claude session.
-        // Only clear the override if the user navigated to a project that's actually running Claude.
-        // This prevents timestamp racing between sessions while still following intentional switches.
+        let shellSummary = shellStateStore.state?.shells.map { pid, entry in
+            "\(pid) cwd=\(entry.cwd) updated=\(entry.updatedAt)"
+        }
+        .sorted()
+        .joined(separator: " | ")
+        ?? "none"
+
+        let overridePath = self.manualOverride?.path ?? "none"
+        logger.info("Resolve start: manualOverride=\(overridePath, privacy: .public) shells=\(shellSummary, privacy: .public)")
+        DebugLog.write("ActiveProjectResolver.resolve start manualOverride=\(overridePath) shells=\(shellSummary)")
+
+        // Clear manual override if the user navigates to a different shell project
+        // and there are no active Claude sessions to anchor the override.
         if let override = manualOverride,
            let (shellProject, _, _) = findActiveShellProject(),
            shellProject.path != override.path {
-            // Only clear override if the shell's project has an active Claude session
-            if let shellSessionState = sessionStateManager.getSessionState(for: shellProject),
-               shellSessionState.isLocked {
+            if findActiveClaudeSession() == nil {
+                logger.info("Clearing manual override (shell moved, no active Claude session): override=\(override.path, privacy: .public) shell=\(shellProject.path, privacy: .public)")
+                DebugLog.write("ActiveProjectResolver.clearOverride reason=shellMoved override=\(override.path) shell=\(shellProject.path)")
+                manualOverride = nil
+            } else if let shellSessionState = sessionStateManager.getSessionState(for: shellProject),
+                      shellSessionState.isLocked {
+                logger.info("Clearing manual override (shell project has locked session): override=\(override.path, privacy: .public) shell=\(shellProject.path, privacy: .public)")
+                DebugLog.write("ActiveProjectResolver.clearOverride reason=shellLocked override=\(override.path) shell=\(shellProject.path)")
                 manualOverride = nil
             }
         }
@@ -61,6 +80,8 @@ final class ActiveProjectResolver {
         if let override = manualOverride {
             activeProject = override
             activeSource = .none
+            logger.info("Resolve result: activeProject=\(override.path, privacy: .public) source=manualOverride")
+            DebugLog.write("ActiveProjectResolver.result activeProject=\(override.path) source=manualOverride")
             return
         }
 
@@ -70,6 +91,8 @@ final class ActiveProjectResolver {
         if let (project, sessionId) = findActiveClaudeSession() {
             activeProject = project
             activeSource = .claude(sessionId: sessionId)
+            logger.info("Resolve result: activeProject=\(project.path, privacy: .public) source=claude session=\(sessionId, privacy: .public)")
+            DebugLog.write("ActiveProjectResolver.result activeProject=\(project.path) source=claude session=\(sessionId)")
             return
         }
 
@@ -79,11 +102,15 @@ final class ActiveProjectResolver {
         if let (project, pid, app) = findActiveShellProject() {
             activeProject = project
             activeSource = .shell(pid: pid, app: app)
+            logger.info("Resolve result: activeProject=\(project.path, privacy: .public) source=shell pid=\(pid, privacy: .public) app=\(app ?? "unknown", privacy: .public)")
+            DebugLog.write("ActiveProjectResolver.result activeProject=\(project.path) source=shell pid=\(pid) app=\(app ?? "unknown")")
             return
         }
 
         activeProject = nil
         activeSource = .none
+        logger.info("Resolve result: activeProject=nil source=none")
+        DebugLog.write("ActiveProjectResolver.result activeProject=nil source=none")
     }
 
     // MARK: - Private Resolution
@@ -94,6 +121,7 @@ final class ActiveProjectResolver {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
 
+        var sessionSummary: [String] = []
         for project in projects {
             guard let sessionState = sessionStateManager.getSessionState(for: project),
                   sessionState.isLocked,
@@ -126,23 +154,92 @@ final class ActiveProjectResolver {
             } else {
                 readySessions.append((project, sessionId, updatedAt))
             }
+
+            sessionSummary.append(
+                "\(project.path) state=\(String(describing: sessionState.state)) updated=\(updatedAt)"
+            )
         }
 
         // Prefer active sessions over ready sessions, then sort by recency
         let candidates = activeSessions.isEmpty ? readySessions : activeSessions
+        if sessionSummary.isEmpty {
+            logger.info("Claude session scan: none")
+            DebugLog.write("ActiveProjectResolver.claudeSessions none")
+        } else {
+            let joined = sessionSummary.joined(separator: " | ")
+            logger.info("Claude session scan: \(joined, privacy: .public)")
+            DebugLog.write("ActiveProjectResolver.claudeSessions \(joined)")
+        }
         return candidates.max(by: { $0.2 < $1.2 }).map { ($0.0, $0.1) }
     }
 
     private func findActiveShellProject() -> (Project, String, String?)? {
-        guard let (pid, shell) = shellStateStore.mostRecentShell else {
+        let preferredApp = preferredParentApp()
+        if let preferredApp {
+            DebugLog.write("ActiveProjectResolver.shellSelection preferredApp=\(preferredApp)")
+        }
+
+        guard let (pid, shell) = shellStateStore.mostRecentShell(matchingParentApp: preferredApp) else {
+            logger.info("Shell selection: no recent shell")
+            DebugLog.write("ActiveProjectResolver.shellSelection none")
             return nil
         }
 
         guard let project = projectContaining(path: shell.cwd) else {
+            logger.info("Shell selection: no matching project for cwd=\(shell.cwd, privacy: .public)")
+            DebugLog.write("ActiveProjectResolver.shellSelection noProject cwd=\(shell.cwd)")
             return nil
         }
 
+        logger.info("Shell selection: project=\(project.path, privacy: .public) pid=\(pid, privacy: .public) cwd=\(shell.cwd, privacy: .public)")
+        DebugLog.write("ActiveProjectResolver.shellSelection project=\(project.path) pid=\(pid) cwd=\(shell.cwd)")
         return (project, pid, shell.parentApp)
+    }
+
+    private func preferredParentApp() -> String? {
+        guard let frontmost = NSWorkspace.shared.frontmostApplication else { return nil }
+
+        let bundleId = frontmost.bundleIdentifier?.lowercased() ?? ""
+        let name = frontmost.localizedName?.lowercased() ?? ""
+
+        if bundleId == "com.capacitor.app" || name.contains("capacitor") {
+            return nil
+        }
+
+        if bundleId == "com.apple.terminal" || name == "terminal" {
+            return "terminal"
+        }
+        if bundleId == "com.googlecode.iterm2" || name.contains("iterm") {
+            return "iterm2"
+        }
+        if bundleId == "dev.warp.warp" || name == "warp" {
+            return "warp"
+        }
+        if bundleId == "com.mitchellh.ghostty" || name == "ghostty" {
+            return "ghostty"
+        }
+        if bundleId == "org.alacritty" || name == "alacritty" {
+            return "alacritty"
+        }
+        if bundleId == "net.kovidgoyal.kitty" || name == "kitty" {
+            return "kitty"
+        }
+        if bundleId == "com.microsoft.vscode-insiders"
+            || name.contains("visual studio code - insiders")
+            || name.contains("vscode insiders") {
+            return "vscode-insiders"
+        }
+        if bundleId == "com.microsoft.vscode" || name.contains("visual studio code") {
+            return "vscode"
+        }
+        if name.contains("cursor") {
+            return "cursor"
+        }
+        if bundleId == "dev.zed.zed" || name == "zed" {
+            return "zed"
+        }
+
+        return nil
     }
 
     private func projectContaining(path: String) -> Project? {

@@ -246,8 +246,8 @@ cd apps/swift && swift run
 
 1. **Hooks** — Claude Code fires events (SessionStart, Stop, etc.) that run the `hud-hook` binary
 2. **Daemon** — The hook forwards events to the local daemon (`~/.capacitor/daemon.sock`)
-3. **Fallback** — If the daemon is down, the hook writes JSON to `~/.capacitor/sessions.json`
-4. **Capacitor reads** — The app prefers daemon snapshots; file-based reads are fallback only
+3. **Required** — If the daemon is down, hooks return an error (no file-based fallback)
+4. **Capacitor reads** — The app reads daemon snapshots only
 
 The state resolver handles edge cases like:
 - Multiple sessions in the same project
@@ -263,8 +263,8 @@ Capacitor uses two namespaces:
 ~/.capacitor/
 ├── config.json                 # App preferences
 ├── projects.json               # Tracked projects list
-├── sessions.json               # Current session states
-├── sessions/                   # Lock directories ({session_id}-{pid}.lock/)
+├── sessions.json               # (legacy) file snapshot, not authoritative in daemon-only mode
+├── sessions/                   # (legacy) lock directories (deprecated)
 ├── daemon.sock                 # Daemon IPC socket
 ├── daemon/                     # Daemon storage + logs
 │   ├── state.db                # SQLite state (WAL)
@@ -272,8 +272,8 @@ Capacitor uses two namespaces:
 │   └── daemon.stderr.log       # LaunchAgent stderr
 ├── stats-cache.json            # Token usage cache
 ├── summaries.json              # Session summaries
-├── shell-cwd.json              # Active shell CWD tracking
-├── shell-history.jsonl         # CWD change history (30-day retention)
+├── shell-cwd.json              # (legacy) shell CWD snapshot (daemon-only mode uses IPC)
+├── shell-history.jsonl         # (legacy) CWD change history (daemon-only mode uses IPC)
 └── projects/{encoded-path}/    # Per-project data (ideas, order)
 ```
 

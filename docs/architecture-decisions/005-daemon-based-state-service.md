@@ -25,7 +25,7 @@ We will prioritize an architecture that:
 - **Provides transactional persistence** and crash recovery.
 - **Centralizes liveness checks** in one place.
 - **Preserves current CLI workflows** (`claude`, `codex`, hooks) without user-visible changes.
-- **Supports staged migration** with safe fallback.
+- **Supports staged migration**; fallback was permitted during transition only.
 - **Maintains sidecar boundaries** (read from `~/.claude/`, write to `~/.capacitor/`).
 
 ## Considered options
@@ -76,7 +76,7 @@ This is the only option that **structurally removes** multi-writer races while p
 
 ### Risks & mitigations
 
-- **Daemon unavailable**: hooks/app fall back to file-based mode during migration.
+- **Daemon unavailable**: **daemon-only mode** surfaces errors; no file-based fallback.
 - **Crash loops**: launchd backoff + health UI.
 - **Schema evolution**: versioned IPC + database migrations.
 
@@ -85,7 +85,8 @@ This is the only option that **structurally removes** multi-writer races while p
 - **Transport:** Unix domain socket (e.g., `~/.capacitor/daemon.sock`).
 - **Storage:** SQLite WAL + append-only `events` table for replay.
 - **Identity:** session records keyed by `session_id + pid`.
-- **Fallback:** hooks write JSON only when daemon is unreachable (until deprecation phase).
+- **Fallback:** **none** in daemon-only mode; hooks/app error when daemon is unreachable.
+  - (Historical: file-based fallback existed only during early migration.)
 - **Launch:** install LaunchAgent to auto-start at login.
 - **Visibility:** Setup/Diagnostics should show daemon status and version.
 
@@ -97,4 +98,3 @@ See `docs/plans/2026-01-30-daemon-architecture-migration-plan.md` for the staged
 
 - ADR-003: Sidecar Architecture Pattern
 - ADR-004: Simplify State Storage (Superseded by this ADR)
-

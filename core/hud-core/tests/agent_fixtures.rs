@@ -2,7 +2,9 @@
 
 use hud_core::agents::{AgentAdapter, ClaudeAdapter};
 use hud_core::storage::StorageConfig;
+use std::env;
 use std::path::PathBuf;
+use std::sync::{Mutex, OnceLock};
 
 fn fixture_path(name: &str) -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -19,36 +21,67 @@ fn adapter_for_fixture(name: &str) -> ClaudeAdapter {
     ClaudeAdapter::with_storage(storage)
 }
 
+fn with_daemon_disabled<T>(f: impl FnOnce() -> T) -> T {
+    static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+    let _guard = LOCK.get_or_init(|| Mutex::new(())).lock().unwrap();
+
+    let prev_enabled = env::var("CAPACITOR_DAEMON_ENABLED").ok();
+    let prev_socket = env::var("CAPACITOR_DAEMON_SOCKET").ok();
+    env::set_var("CAPACITOR_DAEMON_ENABLED", "0");
+    env::remove_var("CAPACITOR_DAEMON_SOCKET");
+
+    let result = f();
+
+    match prev_enabled {
+        Some(value) => env::set_var("CAPACITOR_DAEMON_ENABLED", value),
+        None => env::remove_var("CAPACITOR_DAEMON_ENABLED"),
+    }
+    match prev_socket {
+        Some(value) => env::set_var("CAPACITOR_DAEMON_SOCKET", value),
+        None => env::remove_var("CAPACITOR_DAEMON_SOCKET"),
+    }
+
+    result
+}
+
 #[test]
 fn test_daemon_only_returns_empty_without_daemon() {
-    let adapter = adapter_for_fixture("v2-working");
-    let sessions = adapter.all_sessions();
+    with_daemon_disabled(|| {
+        let adapter = adapter_for_fixture("v2-working");
+        let sessions = adapter.all_sessions();
 
-    assert!(sessions.is_empty());
+        assert!(sessions.is_empty());
+    });
 }
 
 #[test]
 fn test_corrupted_state_file_returns_empty() {
-    let adapter = adapter_for_fixture("corrupted");
-    let sessions = adapter.all_sessions();
+    with_daemon_disabled(|| {
+        let adapter = adapter_for_fixture("corrupted");
+        let sessions = adapter.all_sessions();
 
-    assert!(sessions.is_empty());
+        assert!(sessions.is_empty());
+    });
 }
 
 #[test]
 fn test_empty_state_file_returns_empty() {
-    let adapter = adapter_for_fixture("empty");
-    let sessions = adapter.all_sessions();
+    with_daemon_disabled(|| {
+        let adapter = adapter_for_fixture("empty");
+        let sessions = adapter.all_sessions();
 
-    assert!(sessions.is_empty());
+        assert!(sessions.is_empty());
+    });
 }
 
 #[test]
 fn test_nonexistent_fixture_returns_empty() {
-    let adapter = adapter_for_fixture("does-not-exist");
-    let sessions = adapter.all_sessions();
+    with_daemon_disabled(|| {
+        let adapter = adapter_for_fixture("does-not-exist");
+        let sessions = adapter.all_sessions();
 
-    assert!(sessions.is_empty());
+        assert!(sessions.is_empty());
+    });
 }
 
 #[test]

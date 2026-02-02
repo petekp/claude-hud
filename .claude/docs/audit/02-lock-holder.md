@@ -1,5 +1,6 @@
 # Session 2: Lock Holder Audit
 
+> **Daemon-only note (2026-02):** This audit describes pre-daemon file/lock behavior. In daemon-only mode, these paths are legacy and should not be authoritative.
 **Files analyzed:**
 - `core/hud-hook/src/lock_holder.rs` (109 lines)
 - `core/hud-hook/src/handle.rs` — `spawn_lock_holder()` (331-373)

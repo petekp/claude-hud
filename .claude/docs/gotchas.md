@@ -197,7 +197,8 @@ In `activateHostThenSwitchTmux`, always try TTY discovery before Ghostty-specifi
 4. Otherwise → trigger fallback
 
 ### Shell Selection: Tmux Priority When Client Attached
-When multiple shells exist at the same path in `shell-cwd.json` (e.g., one tmux shell, two direct shells), the Rust `find_shell_at_path()` function uses this priority order:
+> **Daemon-only note (2026-02):** `shell-cwd.json (legacy)` is a historical file. In daemon-only mode, shell selection uses daemon IPC state; keep the priority logic but do not reintroduce file reads.
+When multiple shells exist at the same path in `shell-cwd.json (legacy)` (e.g., one tmux shell, two direct shells), the Rust `find_shell_at_path()` function uses this priority order:
 
 1. **Live shells** beat dead shells
 2. **Tmux shells** beat non-tmux shells (only when tmux client is attached)
@@ -239,7 +240,7 @@ hasTmuxClientAttached()  // ✅ Returns true if ANY client exists
 
 ### Terminal Activation: Query Fresh Client TTY
 
-Shell records in `shell-cwd.json` store `tmux_client_tty` at shell creation time. This TTY becomes **stale** when users reconnect to tmux—they get assigned new TTY devices (e.g., `/dev/ttys012` instead of `/dev/ttys000`).
+Shell records in `shell-cwd.json (legacy)` store `tmux_client_tty` at shell creation time. This TTY becomes **stale** when users reconnect to tmux—they get assigned new TTY devices (e.g., `/dev/ttys012` instead of `/dev/ttys000`).
 
 **Symptom:** TTY discovery fails, falls through to Ghostty window-count check, sees 0 windows (user is in Terminal.app/iTerm), spawns new terminal.
 

@@ -52,6 +52,9 @@ struct ProjectsView: View {
                     )
                     .padding(.bottom, 4)
                 }
+
+                DebugActiveStateCard()
+                    .padding(.bottom, 6)
                 #endif
 
                 // Setup status card - show regardless of project state

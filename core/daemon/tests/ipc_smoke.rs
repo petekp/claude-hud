@@ -1,6 +1,7 @@
 use capacitor_daemon_protocol::{
     EventEnvelope, EventType, Method, Request, Response, PROTOCOL_VERSION,
 };
+use chrono::{Duration as ChronoDuration, Utc};
 use std::io::{Read, Write};
 use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
@@ -112,9 +113,10 @@ fn daemon_ipc_health_and_liveness_smoke() {
 
     let pid = std::process::id();
     let session_id = "session-test-1".to_string();
+    let now = Utc::now();
     let event = EventEnvelope {
         event_id: "evt-test-1".to_string(),
-        recorded_at: "2026-01-31T00:00:00Z".to_string(),
+        recorded_at: now.to_rfc3339(),
         event_type: EventType::SessionStart,
         session_id: Some(session_id.clone()),
         pid: Some(pid),
@@ -143,7 +145,7 @@ fn daemon_ipc_health_and_liveness_smoke() {
 
     let post_event = EventEnvelope {
         event_id: "evt-test-2".to_string(),
-        recorded_at: "2026-01-31T00:00:10Z".to_string(),
+        recorded_at: (now + ChronoDuration::seconds(10)).to_rfc3339(),
         event_type: EventType::PostToolUse,
         session_id: Some(session_id.clone()),
         pid: Some(pid),
@@ -195,6 +197,31 @@ fn daemon_ipc_health_and_liveness_smoke() {
         Some("working")
     );
 
+    let project_states = send_request(
+        &socket,
+        Request {
+            protocol_version: PROTOCOL_VERSION,
+            method: Method::GetProjectStates,
+            id: Some("project-states-check".to_string()),
+            params: None,
+        },
+    );
+    assert!(project_states.ok, "project states response was not ok");
+    let project_value = project_states.data.expect("project states payload");
+    let project_array = project_value
+        .as_array()
+        .expect("project states payload is array");
+    assert_eq!(project_array.len(), 1);
+    let project = &project_array[0];
+    assert_eq!(
+        project.get("project_path").and_then(|value| value.as_str()),
+        Some(repo_root.to_string_lossy().as_ref())
+    );
+    assert_eq!(
+        project.get("state").and_then(|value| value.as_str()),
+        Some("working")
+    );
+
     let activity = send_request(
         &socket,
         Request {
@@ -239,7 +266,7 @@ fn daemon_ipc_health_and_liveness_smoke() {
 
     let end_event = EventEnvelope {
         event_id: "evt-test-3".to_string(),
-        recorded_at: "2026-01-31T00:00:20Z".to_string(),
+        recorded_at: (now + ChronoDuration::seconds(20)).to_rfc3339(),
         event_type: EventType::SessionEnd,
         session_id: Some(session_id.clone()),
         pid: Some(pid),
@@ -280,6 +307,21 @@ fn daemon_ipc_health_and_liveness_smoke() {
         .as_array()
         .expect("sessions payload is array");
     assert!(sessions_after_array.is_empty());
+
+    let projects_after = send_request(
+        &socket,
+        Request {
+            protocol_version: PROTOCOL_VERSION,
+            method: Method::GetProjectStates,
+            id: Some("project-states-after".to_string()),
+            params: None,
+        },
+    );
+    let projects_after_value = projects_after.data.expect("project states payload");
+    let projects_after_array = projects_after_value
+        .as_array()
+        .expect("project states payload is array");
+    assert!(projects_after_array.is_empty());
 
     let activity_after = send_request(
         &socket,

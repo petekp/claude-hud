@@ -8,7 +8,7 @@ This document is an **exhaustive, agent-ready plan** to migrate Capacitor's stat
 
 - Multiple processes (hud-hook, hud-core cleanup, Swift UI) **read-modify-write the same JSON files**.
 - PID liveness is verified inconsistently across subsystems (cleanup uses PID-only; lock logic uses proc_started).
-- State corruption or parse errors can result in **silent resets** (e.g., `sessions.json` becomes empty).
+- State corruption or parse errors could previously result in **silent resets** (e.g., `sessions.json` becomes empty).
 - Lock metadata writes are not atomic; crash can leave half-written directories.
 - Activity tracking is atomic but **last-writer-wins** under concurrency.
 
@@ -21,23 +21,34 @@ This document is an **exhaustive, agent-ready plan** to migrate Capacitor's stat
 
 ---
 
-## 1. Current System Map (for reference)
+## 1. Current System Map (legacy reference)
+
+> **Daemon-only note (2026-02):** The table below describes pre-daemon artifacts.
+> In daemon-only mode, these file paths are **legacy** and should not be written/read as authoritative state.
 
 ### Primary Artifacts (current)
 
 | Artifact                                         | Writer(s)                                 | Reader(s)                         | Notes                                         |
 | ------------------------------------------------ | ----------------------------------------- | --------------------------------- | --------------------------------------------- |
-| `~/.capacitor/sessions.json`                     | `hud-hook handle`, `hud-core cleanup`     | Swift UI, `hud-core` resolver     | Multi-writer, RMW; parse error => empty store |
-| `~/.capacitor/sessions/{session_id}-{pid}.lock/` | `hud-hook handle`, `hud-hook lock-holder` | `hud-core` lock/resolver, cleanup | Liveness proof, PID checks vary               |
-| `~/.capacitor/ended-sessions/{session_id}`       | `hud-hook handle`, `hud-core cleanup`     | `hud-hook handle`                 | Tombstones to block late events               |
-| `~/.capacitor/file-activity.json`                | `hud-hook handle`                         | `hud-core ActivityStore`          | Atomic writes but last-writer-wins            |
-| `~/.capacitor/shell-cwd.json`                    | `hud-hook cwd`                            | Swift activation                  | Atomic, RMW                                   |
-| `~/.capacitor/shell-history.jsonl`               | `hud-hook cwd`                            | Swift (debug)                     | Append-only                                   |
+| `~/.capacitor/sessions.json`                     | Legacy | Legacy | Historical snapshot (daemon-only disables writes/reads) |
+| `~/.capacitor/sessions/{session_id}-{pid}.lock/` | Legacy | Legacy | Historical locks (daemon-only disables writes/reads) |
+| `~/.capacitor/ended-sessions/{session_id}`       | Legacy | Legacy | Historical tombstones (daemon-only disables writes/reads) |
+| `~/.capacitor/file-activity.json`                | Legacy | Legacy | Historical activity fallback (daemon-only disables writes/reads) |
+| `~/.capacitor/shell-cwd.json`                    | Legacy | Legacy | Historical shell snapshot (daemon-only uses IPC) |
+| `~/.capacitor/shell-history.jsonl`               | Legacy | Legacy | Historical shell history (daemon-only uses IPC) |
 | `~/.capacitor/hud-hook-heartbeat`                | `hud-hook handle`                         | Setup UI                          | Heartbeat for hook health                     |
 | `~/.claude/settings.json`                        | `hud-core setup`                          | Claude                            | Must preserve other settings                  |
 | `~/.local/bin/hud-hook`                          | `hud-core setup` / Swift installer        | hooks                             | Symlink required (Gatekeeper)                 |
 
 ---
+
+
+## 2.1 Daemon-only status (current)
+
+- **Daemon is authoritative** for sessions, shell state, activity, and process liveness.
+- **File-based artifacts are legacy** and must not be used as source of truth.
+- **Hooks/app should error** when daemon is down (no fallback writes/reads).
+- **Lock directories are deprecated** and should not be created in daemon-only mode.
 
 ## 2. Target Architecture (Daemon-Based)
 
@@ -203,6 +214,8 @@ A **local daemon** is the **only writer** of state. Hooks and the Swift app beco
 - Staleness gating for Ready sessions now depends on daemon-provided `state_changed_at` + optional `is_alive`. Ensure the daemon always emits RFC3339 timestamps for these fields.
 - Remaining cleanup work: purge any lingering lock-holder cleanup references once all legacy processes are gone.
 - Swift UniFFI bindings were regenerated after daemon-only doc cleanup to keep Bridge comments in sync.
+- Dev tooling now prefers the repo-built `hud-hook` binary (avoids silently pointing to the installed app during daemon migration).
+- App session state no longer falls back to `hud-core` (daemon disabled clears session state instead of reading JSON).
 
 ### Phase 0 — Design & Spec (1–2 days)
 
@@ -266,6 +279,37 @@ A **local daemon** is the **only writer** of state. Hooks and the Swift app beco
 - Remove JSON-based cleanup logic. (Done; startup cleanup only scans for legacy lock-holders)
 - Remove remaining file-based state helpers (ActivityStore/StateStore/resolver + tests + state_check bin). (Done)
 - Do not keep JSON snapshots.
+
+### Phase 7 — Robustness & Policy (2–5 days)
+
+Goal: eliminate the remaining **signal-quality** brittleness by making session lifecycle,
+aggregation, and UI cadence explicit and deterministic.
+
+**7.1 Session TTL / expiry (daemon-side)**
+- Add `last_event_at` (or reuse `updated_at`) to enforce a **session expiry policy**.
+- Policy proposal:
+  - If no event for **N minutes**, transition to `Idle` or drop the session.
+  - If `is_alive == false`, drop session immediately.
+  - If `is_alive == nil` (unknown), keep until TTL then drop.
+- Persist TTL decisions in `sessions` and/or keep in-memory with periodic prune.
+
+**7.2 Project-level aggregation (daemon-side)**
+- Add a daemon query that returns **project-level state**, not raw sessions.
+- Aggregation rule: **Working > Waiting > Compacting > Ready > Idle** (max severity).
+- Include `latest_activity_at` for tie-breaking and UI “most recent” ordering.
+- Swift app reads **aggregated project states** only (no local aggregation).
+
+**7.3 Explicit session heartbeat (optional, but strongly recommended)**
+- If hooks can emit periodic “heartbeat” events, TTL decisions become reliable.
+- If heartbeat is not feasible, TTL is still required to avoid stuck Ready/Working states.
+
+**7.4 UI refresh contract**
+- Standardize the UI polling interval (e.g., every 2–3s with backoff on failure).
+- Remove any client-side heuristics that reinterpret session state.
+
+**7.5 Diagnostics + debug tooling**
+- Add a daemon “policy snapshot” endpoint (optional) so the UI/debug panel can show TTL/aggregation decisions.
+- Add tests for TTL expiry and aggregation order to prevent regressions.
 
 ---
 
@@ -382,6 +426,9 @@ A **local daemon** is the **only writer** of state. Hooks and the Swift app beco
 - SQLite WAL persistence with replay is stable
 - All prior audit issues (JSON race, PID reuse, silent wipe) are eliminated
 - Launchd auto-start is reliable and documented
+- **Session TTL policy enforced** (no stuck Working/Ready)
+- **Project-level aggregation** used by the app (no UI-side aggregation)
+- **UI refresh contract** standardized and documented
 
 ---
 

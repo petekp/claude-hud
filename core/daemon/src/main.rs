@@ -5,6 +5,7 @@
 //! a SQLite-backed event log with a materialized shell state view.
 
 use fs_err as fs;
+use std::env;
 use std::io::{Read, Write};
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::{Path, PathBuf};
@@ -106,7 +107,14 @@ fn main() {
 }
 
 fn init_logging() {
-    let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
+    let debug_enabled = env::var("CAPACITOR_DEBUG_LOG")
+        .map(|value| matches!(value.as_str(), "1" | "true" | "TRUE" | "yes" | "YES"))
+        .unwrap_or(false);
+    let filter = if debug_enabled {
+        EnvFilter::new("debug")
+    } else {
+        EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"))
+    };
     tracing_subscriber::fmt().with_env_filter(filter).init();
 }
 
@@ -147,12 +155,14 @@ fn handle_connection(mut stream: UnixStream, state: Arc<SharedState>) {
     let request = match read_request(&mut stream) {
         Ok(request) => request,
         Err(err) => {
+            warn!(code = %err.code, message = %err.message, "Failed to read request");
             let response = Response::error_with_info(None, err);
             let _ = write_response(&mut stream, response);
             return;
         }
     };
 
+    tracing::debug!(method = ?request.method, id = ?request.id, "Daemon request received");
     let response = handle_request(request, state);
     let _ = write_response(&mut stream, response);
 }
@@ -248,6 +258,7 @@ fn handle_request(request: Request, state: Arc<SharedState>) -> Response {
         }
         Method::GetShellState => {
             let snapshot = state.shell_state_snapshot();
+            tracing::debug!(shells = snapshot.shells.len(), "Shell state snapshot");
             match serde_json::to_value(snapshot) {
                 Ok(value) => Response::ok(request.id, value),
                 Err(err) => Response::error(
@@ -288,18 +299,45 @@ fn handle_request(request: Request, state: Arc<SharedState>) -> Response {
             }
         }
         Method::GetSessions => match state.sessions_snapshot() {
-            Ok(sessions) => match serde_json::to_value(sessions) {
-                Ok(value) => Response::ok(request.id, value),
-                Err(err) => Response::error(
-                    request.id,
-                    "serialization_error",
-                    format!("Failed to serialize sessions: {}", err),
-                ),
-            },
+            Ok(sessions) => {
+                let count = sessions.len();
+                match serde_json::to_value(&sessions) {
+                    Ok(value) => {
+                        tracing::debug!(sessions = count, "Sessions snapshot");
+                        Response::ok(request.id, value)
+                    }
+                    Err(err) => Response::error(
+                        request.id,
+                        "serialization_error",
+                        format!("Failed to serialize sessions: {}", err),
+                    ),
+                }
+            }
             Err(err) => Response::error(
                 request.id,
                 "sessions_error",
                 format!("Failed to fetch sessions: {}", err),
+            ),
+        },
+        Method::GetProjectStates => match state.project_states_snapshot() {
+            Ok(projects) => {
+                let count = projects.len();
+                match serde_json::to_value(&projects) {
+                    Ok(value) => {
+                        tracing::debug!(projects = count, "Project states snapshot");
+                        Response::ok(request.id, value)
+                    }
+                    Err(err) => Response::error(
+                        request.id,
+                        "serialization_error",
+                        format!("Failed to serialize project states: {}", err),
+                    ),
+                }
+            }
+            Err(err) => Response::error(
+                request.id,
+                "project_states_error",
+                format!("Failed to fetch project states: {}", err),
             ),
         },
         Method::GetActivity => {
@@ -307,6 +345,11 @@ fn handle_request(request: Request, state: Arc<SharedState>) -> Response {
                 Ok(values) => values,
                 Err(err) => return Response::error_with_info(request.id, err),
             };
+            tracing::debug!(
+                session_id = ?session_id,
+                limit,
+                "Activity snapshot request"
+            );
             match state.activity_snapshot(session_id.as_deref(), limit) {
                 Ok(entries) => match serde_json::to_value(entries) {
                     Ok(value) => Response::ok(request.id, value),
@@ -324,14 +367,20 @@ fn handle_request(request: Request, state: Arc<SharedState>) -> Response {
             }
         }
         Method::GetTombstones => match state.tombstones_snapshot() {
-            Ok(entries) => match serde_json::to_value(entries) {
-                Ok(value) => Response::ok(request.id, value),
-                Err(err) => Response::error(
-                    request.id,
-                    "serialization_error",
-                    format!("Failed to serialize tombstones: {}", err),
-                ),
-            },
+            Ok(entries) => {
+                let count = entries.len();
+                match serde_json::to_value(&entries) {
+                    Ok(value) => {
+                        tracing::debug!(tombstones = count, "Tombstone snapshot");
+                        Response::ok(request.id, value)
+                    }
+                    Err(err) => Response::error(
+                        request.id,
+                        "serialization_error",
+                        format!("Failed to serialize tombstones: {}", err),
+                    ),
+                }
+            }
             Err(err) => Response::error(
                 request.id,
                 "tombstone_error",
@@ -357,6 +406,11 @@ fn handle_event(request: Request, state: Arc<SharedState>) -> Response {
         event_type = ?event.event_type,
         session_id = ?event.session_id,
         pid = ?event.pid,
+        cwd = ?event.cwd,
+        parent_app = ?event.parent_app,
+        tty = ?event.tty,
+        tmux_session = ?event.tmux_session,
+        tmux_client_tty = ?event.tmux_client_tty,
         "Received event"
     );
 

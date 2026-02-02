@@ -1,5 +1,6 @@
 # Recovery & Safety Net Design
 
+> **Daemon-only note (2026-02):** This audit describes pre-daemon file/lock behavior. In daemon-only mode, these paths are legacy and should not be authoritative.
 This document specifies the user-facing recovery surface that guarantees users can always recover from bad/stale state, and defines strict safety rules for anything that touches `~/.claude/` or `~/.local/bin/`.
 
 It is intentionally conservative: **Capacitor must never strand users** in a broken configuration or confusing state.

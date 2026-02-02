@@ -237,7 +237,7 @@ See [Adding a New CLI Agent Guide](adding-new-cli-agent-guide.md) for implementa
 
 ## State Tracking Architecture
 
-**Current approach:** Hooks track local Claude Code sessions, write state to Capacitor namespace.
+**Current approach:** Hooks track local Claude Code sessions and send events to the local daemon; Swift reads daemon snapshots.
 
 See [ADR-001: State Tracking Approach](../../docs/architecture-decisions/001-state-tracking-approach.md) for the full decision rationale.
 
@@ -246,7 +246,7 @@ See [ADR-001: State Tracking Approach](../../docs/architecture-decisions/001-sta
 For interactive CLI sessions, we use Claude Code hooks:
 
 ```
-User runs claude → Hooks fire → State file updated → Swift HUD reads
+User runs claude → Hooks fire → Daemon updates state.db → Swift HUD reads daemon snapshot
 ```
 
 **Hooks configured:**
@@ -259,9 +259,9 @@ User runs claude → Hooks fire → State file updated → Swift HUD reads
 - `PreCompact` → state: compacting
 - `SessionEnd` → removes session from state file
 
-**State file:** `~/.capacitor/sessions.json` (written by hook binary, version 3)
+**State store:** `~/.capacitor/daemon/state.db` (daemon-owned SQLite WAL)
 
-**Lock directory:** `~/.capacitor/sessions/{hash}.lock/` (created by hook binary via `spawn_lock_holder`)
+**Legacy artifacts (deprecated):** `~/.capacitor/sessions.json`, `~/.capacitor/sessions/*.lock/` (should not be written in daemon-only mode)
 
 **Hook binary:** `~/.local/bin/hud-hook`
 
@@ -275,7 +275,12 @@ The app uses two namespaces:
 ```
 ~/.capacitor/
 ├── config.json                    # Pinned projects, settings
-├── sessions.json                  # Session states (written by hooks)
+├── daemon.sock                    # Daemon IPC socket
+├── daemon/                        # Daemon storage + logs
+│   ├── state.db                   # Authoritative state store (WAL)
+│   ├── daemon.stdout.log          # LaunchAgent stdout
+│   └── daemon.stderr.log          # LaunchAgent stderr
+├── sessions.json                  # (legacy) session snapshot, not authoritative
 ├── stats-cache.json               # Cached token usage
 ├── summaries.json                 # Session summaries cache
 ├── project-summaries.json         # Project overview bullets

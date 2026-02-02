@@ -1,5 +1,6 @@
 # Regression Harness Design (Model-Based + Concurrency + Chaos)
 
+> **Daemon-only note (2026-02):** This audit describes pre-daemon file/lock behavior. In daemon-only mode, these paths are legacy and should not be authoritative.
 This document defines how we prevent “fix X breaks Y” regressions by turning the system’s invariants into **executable checks**.
 
 It is designed to support:

@@ -1,5 +1,6 @@
 #!/bin/bash
 set -e
+set -o pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
@@ -18,6 +19,9 @@ fi
 "$PROJECT_ROOT/scripts/sync-hooks.sh" 2>/dev/null || true
 
 # Kill any existing Capacitor instances (graceful first, then force)
+# Prefer killing the release app first to avoid confusing launches.
+pkill -f '/Applications/Capacitor.app/Contents/MacOS/Capacitor' 2>/dev/null || true
+sleep 0.2
 # Match the binary name at end of path to avoid killing unrelated processes
 pkill -f '/Capacitor$' 2>/dev/null || true
 sleep 0.3
@@ -26,7 +30,7 @@ pkill -9 -f '/Capacitor$' 2>/dev/null || true
 sleep 0.2
 
 cd "$PROJECT_ROOT"
-cargo build -p hud-core -p capacitor-daemon --release || { echo "Rust build failed"; exit 1; }
+cargo build -p hud-core -p capacitor-daemon -p hud-hook --release || { echo "Rust build failed"; exit 1; }
 
 # Fix the dylib's install name so Swift can find it at runtime.
 # Without this, the library embeds an absolute path that breaks when moved.
@@ -48,22 +52,124 @@ SWIFT_DEBUG_DIR=$(swift build --show-bin-path)
 mkdir -p "$SWIFT_DEBUG_DIR"
 cp "$PROJECT_ROOT/target/release/libhud_core.dylib" "$SWIFT_DEBUG_DIR/"
 
-# Copy hud-hook binary so Bundle.main can find it (matches release bundle structure)
-if [ -f "$HOME/.local/bin/hud-hook" ]; then
-    cp "$HOME/.local/bin/hud-hook" "$SWIFT_DEBUG_DIR/"
-elif [ -f "$PROJECT_ROOT/target/release/hud-hook" ]; then
+# Copy hud-hook binary so Bundle.main can find it (matches release bundle structure).
+# Prefer the repo build to avoid stale ~/.local/bin binaries.
+if [ -f "$PROJECT_ROOT/target/release/hud-hook" ]; then
     cp "$PROJECT_ROOT/target/release/hud-hook" "$SWIFT_DEBUG_DIR/"
+elif [ -f "$HOME/.local/bin/hud-hook" ]; then
+    cp "$HOME/.local/bin/hud-hook" "$SWIFT_DEBUG_DIR/"
 fi
 
 # Copy capacitor-daemon binary so Bundle.main can find it
 # Use || true to handle "identical file" errors when source/dest are same (symlinks)
-if [ -f "$HOME/.local/bin/capacitor-daemon" ]; then
-    cp "$HOME/.local/bin/capacitor-daemon" "$SWIFT_DEBUG_DIR/" 2>/dev/null || true
-elif [ -f "$PROJECT_ROOT/target/release/capacitor-daemon" ]; then
+# Prefer repo build to avoid stale ~/.local/bin binaries.
+if [ -f "$PROJECT_ROOT/target/release/capacitor-daemon" ]; then
     cp "$PROJECT_ROOT/target/release/capacitor-daemon" "$SWIFT_DEBUG_DIR/" 2>/dev/null || true
+elif [ -f "$HOME/.local/bin/capacitor-daemon" ]; then
+    cp "$HOME/.local/bin/capacitor-daemon" "$SWIFT_DEBUG_DIR/" 2>/dev/null || true
 fi
 
 swift build || { echo "Swift build failed"; exit 1; }
 
-swift run 2>&1 &
-echo "Capacitor started (PID: $!)"
+# Debug runtime sanity checks to avoid dyld "Library not loaded" crashes.
+DEBUG_BIN="$SWIFT_DEBUG_DIR/Capacitor"
+SPARKLE_FRAMEWORK="$SWIFT_DEBUG_DIR/Sparkle.framework"
+
+if [ ! -x "$DEBUG_BIN" ]; then
+    echo "Error: Debug binary not found at $DEBUG_BIN" >&2
+    exit 1
+fi
+
+if [ ! -d "$SPARKLE_FRAMEWORK" ]; then
+    echo "Error: Sparkle.framework missing at $SPARKLE_FRAMEWORK" >&2
+    echo "Try: rm -rf apps/swift/.build && rerun $SCRIPT_DIR/restart-app.sh" >&2
+    exit 1
+fi
+
+# Ensure the Rust dylib uses @rpath so it resolves via @loader_path at runtime.
+if [ -f "$SWIFT_DEBUG_DIR/libhud_core.dylib" ]; then
+    install_name_tool -id "@rpath/libhud_core.dylib" "$SWIFT_DEBUG_DIR/libhud_core.dylib"
+fi
+
+# Ensure the debug binary has @loader_path rpath (needed for Sparkle.framework in build dir).
+if ! otool -l "$DEBUG_BIN" | grep -q "@loader_path"; then
+    install_name_tool -add_rpath "@loader_path" "$DEBUG_BIN"
+fi
+
+# Assemble a debug app bundle so LaunchServices opens a real GUI app (no Warp/Terminal windows).
+TEMPLATE_APP="$PROJECT_ROOT/apps/swift/Capacitor.app"
+DEBUG_APP="$PROJECT_ROOT/apps/swift/CapacitorDebug.app"
+
+if [ ! -d "$TEMPLATE_APP" ]; then
+    echo "Error: Template app bundle not found at $TEMPLATE_APP" >&2
+    exit 1
+fi
+
+rm -rf "$DEBUG_APP"
+rsync -a "$TEMPLATE_APP/" "$DEBUG_APP/"
+
+# Ensure the debug bundle is distinct from the release app.
+/usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier com.capacitor.app.debug" "$DEBUG_APP/Contents/Info.plist"
+/usr/libexec/PlistBuddy -c "Set :CFBundleName Capacitor Debug" "$DEBUG_APP/Contents/Info.plist"
+/usr/libexec/PlistBuddy -c "Add :CFBundleDisplayName string Capacitor Debug" "$DEBUG_APP/Contents/Info.plist" 2>/dev/null || true
+
+# Replace the app executable with the debug binary.
+cp "$DEBUG_BIN" "$DEBUG_APP/Contents/MacOS/Capacitor"
+
+# Ensure bundled helpers are present.
+if [ -f "$SWIFT_DEBUG_DIR/capacitor-daemon" ]; then
+    cp "$SWIFT_DEBUG_DIR/capacitor-daemon" "$DEBUG_APP/Contents/MacOS/"
+fi
+if [ -f "$SWIFT_DEBUG_DIR/hud-hook" ]; then
+    cp "$SWIFT_DEBUG_DIR/hud-hook" "$DEBUG_APP/Contents/Resources/"
+fi
+
+# Replace frameworks with the debug build outputs.
+rm -rf "$DEBUG_APP/Contents/Frameworks/Sparkle.framework"
+cp -R "$SPARKLE_FRAMEWORK" "$DEBUG_APP/Contents/Frameworks/"
+if [ -f "$SWIFT_DEBUG_DIR/libhud_core.dylib" ]; then
+    cp "$SWIFT_DEBUG_DIR/libhud_core.dylib" "$DEBUG_APP/Contents/Frameworks/"
+    install_name_tool -id "@rpath/libhud_core.dylib" "$DEBUG_APP/Contents/Frameworks/libhud_core.dylib"
+fi
+
+# Ensure the debug app binary can resolve bundled frameworks.
+DEBUG_APP_BIN="$DEBUG_APP/Contents/MacOS/Capacitor"
+if ! otool -l "$DEBUG_APP_BIN" | grep -q "@executable_path/../Frameworks"; then
+    install_name_tool -add_rpath "@executable_path/../Frameworks" "$DEBUG_APP_BIN"
+fi
+if ! otool -l "$DEBUG_APP_BIN" | grep -q "@loader_path/../Frameworks"; then
+    install_name_tool -add_rpath "@loader_path/../Frameworks" "$DEBUG_APP_BIN"
+fi
+
+# Ad-hoc sign the debug bundle so LaunchServices will open it reliably.
+if ! codesign --force --deep --sign - "$DEBUG_APP" >/dev/null 2>&1; then
+    echo "Error: Failed to codesign debug app bundle at $DEBUG_APP" >&2
+    exit 1
+fi
+
+# Launch the debug app bundle via LaunchServices.
+open -n "$DEBUG_APP"
+
+# Bring the debug build to the foreground (best-effort).
+# Avoid activating the installed release app by targeting the debug binary PID.
+APP_PID=""
+for _ in {1..30}; do
+    APP_PID=$(pgrep -f "$DEBUG_APP/Contents/MacOS/Capacitor$" | head -n 1 || true)
+    if [ -n "$APP_PID" ]; then
+        break
+    fi
+    sleep 0.2
+done
+
+if [ -n "$APP_PID" ]; then
+    for _ in {1..20}; do
+        WIN_COUNT=$(osascript -e "tell application \"System Events\" to tell process whose unix id is $APP_PID to count windows" 2>/dev/null || echo 0)
+        if [ "$WIN_COUNT" != "0" ]; then
+            break
+        fi
+        sleep 0.2
+    done
+    osascript -e "tell application \"System Events\" to set frontmost of (first process whose unix id is $APP_PID) to true" >/dev/null 2>&1 || true
+else
+    echo "Warning: debug app did not stay running. Check Console.app logs for Capacitor."
+fi

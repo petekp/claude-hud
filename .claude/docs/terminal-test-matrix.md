@@ -1,5 +1,7 @@
 # Terminal Activation Test Matrix
 
+> **Daemon-only note (2026-02):** Any scenarios referencing `shell-cwd.json (legacy)` are historical. In daemon-only mode, use daemon IPC shell state instead of file reads.
+
 **Purpose:** Pre-release manual verification of terminal activation scenarios
 **Last Updated:** 2026-01-26
 
@@ -41,7 +43,7 @@ Run this matrix before releases to verify terminal activation works across all s
 |------|-------|----------|-------|
 | **Tmux + client attached** | 1. Start tmux session<br>2. `cd /project`<br>3. Click project in Capacitor | Terminal with tmux activates, session switches | |
 | **Tmux + NO client** | 1. Start tmux session<br>2. `cd /project`<br>3. Detach (`tmux detach`)<br>4. Click project in Capacitor | Launches new terminal with `tmux attach` | |
-| **Tmux session gone** | 1. Create shell-cwd.json entry for tmux session<br>2. Kill the tmux session<br>3. Click project in Capacitor | Falls through to new terminal launch | |
+| **Tmux session gone** | 1. Create shell-cwd.json (legacy) entry for tmux session<br>2. Kill the tmux session<br>3. Click project in Capacitor | Falls through to new terminal launch | |
 
 ### 2.2 Tmux Multi-Client
 
@@ -95,9 +97,9 @@ Run this matrix before releases to verify terminal activation works across all s
 
 | Test | Steps | Expected | ✅/❌ |
 |------|-------|----------|-------|
-| **Dead PID in shell-cwd.json** | 1. Add fake entry for PID 999999<br>2. Click project in Capacitor | Falls through, launches new terminal | |
-| **Corrupt shell-cwd.json** | 1. Write invalid JSON to shell-cwd.json<br>2. `cd /project`<br>3. Check Capacitor | Recovers, tracking works | |
-| **Missing lock directory** | 1. Delete ~/.capacitor/sessions/<br>2. Start Claude session<br>3. Check Capacitor | Lock created, session tracked | |
+| **Dead PID in shell-cwd.json (legacy)** | 1. Add fake entry for PID 999999<br>2. Click project in Capacitor | Falls through, launches new terminal | |
+| **Corrupt shell-cwd.json (legacy)** | 1. Write invalid JSON to shell-cwd.json (legacy)<br>2. `cd /project`<br>3. Check Capacitor | Recovers, tracking works | |
+| **Missing lock directory** | 1. Delete ~/.capacitor/sessions/<br>2. Start Claude session<br>3. Check Capacitor | **Daemon-only:** no lock created; session tracked via daemon | |
 
 ---
 
