@@ -4,12 +4,12 @@ import Foundation
 struct TmuxClientAdapter: TmuxClient {
     let hasAnyClientAttachedHandler: () async -> Bool
     let getCurrentClientTtyHandler: () async -> String?
-    let switchClientHandler: (String) async -> Bool
+    let switchClientHandler: (String, String?) async -> Bool
 
     init(
         hasAnyClientAttached: @escaping () async -> Bool,
         getCurrentClientTty: @escaping () async -> String?,
-        switchClient: @escaping (String) async -> Bool
+        switchClient: @escaping (String, String?) async -> Bool
     ) {
         hasAnyClientAttachedHandler = hasAnyClientAttached
         getCurrentClientTtyHandler = getCurrentClientTty
@@ -24,8 +24,8 @@ struct TmuxClientAdapter: TmuxClient {
         await getCurrentClientTtyHandler()
     }
 
-    func switchClient(to sessionName: String) async -> Bool {
-        await switchClientHandler(sessionName)
+    func switchClient(to sessionName: String, clientTty: String?) async -> Bool {
+        await switchClientHandler(sessionName, clientTty)
     }
 }
 

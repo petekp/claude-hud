@@ -248,15 +248,20 @@ fn resolve_activation_internal(
             include_trace,
         );
 
+        let best_live = selection
+            .best
+            .as_ref()
+            .filter(|candidate| candidate.is_live);
+
         if include_trace {
             trace = Some(DecisionTraceFfi::from_shell_candidates(
                 &policy,
                 &selection.candidates,
-                selection.best.as_ref().map(|candidate| candidate.pid),
+                best_live.map(|candidate| candidate.pid),
             ));
         }
 
-        if let Some(best) = selection.best {
+        if let Some(best) = best_live {
             let mut decision =
                 resolve_for_existing_shell(best.pid, best.shell, tmux_context, &action_path);
             decision.trace = trace;
@@ -451,12 +456,17 @@ fn resolve_for_existing_shell(
             .clone()
             .unwrap_or_else(|| shell.tty.clone());
 
+        let session_name_for_action = session_name.clone();
+
         return ActivationDecision {
             primary: ActivationAction::ActivateHostThenSwitchTmux {
                 host_tty,
-                session_name,
+                session_name: session_name_for_action,
             },
-            fallback: Some(ActivationAction::ActivatePriorityFallback),
+            fallback: Some(ActivationAction::LaunchTerminalWithTmux {
+                session_name: session_name.clone(),
+                project_path: project_path.to_string(),
+            }),
             reason: format!(
                 "Found shell (pid={}) in tmux session '{}'",
                 pid,
@@ -503,11 +513,42 @@ fn resolve_for_existing_shell(
             _ => "Terminal",
         };
 
+        let fallback = if tmux_context.has_attached_client {
+            let session_name = tmux_context.session_at_path.clone().unwrap_or_else(|| {
+                project_path
+                    .rsplit('/')
+                    .next()
+                    .unwrap_or(project_path)
+                    .to_string()
+            });
+
+            Some(ActivationAction::EnsureTmuxSession {
+                session_name,
+                project_path: project_path.to_string(),
+            })
+        } else if let Some(session_name) = &tmux_context.session_at_path {
+            Some(ActivationAction::LaunchTerminalWithTmux {
+                session_name: session_name.clone(),
+                project_path: project_path.to_string(),
+            })
+        } else {
+            let project_name = project_path
+                .rsplit('/')
+                .next()
+                .unwrap_or(project_path)
+                .to_string();
+
+            Some(ActivationAction::LaunchNewTerminal {
+                project_path: project_path.to_string(),
+                project_name,
+            })
+        };
+
         return ActivationDecision {
             primary: ActivationAction::ActivateApp {
                 app_name: app_name.to_string(),
             },
-            fallback: None,
+            fallback,
             reason: format!(
                 "Found shell (pid={}) in {}, activating app (no tab selection)",
                 pid, app_name
@@ -516,13 +557,42 @@ fn resolve_for_existing_shell(
         };
     }
 
-    // Unknown parent: Try TTY discovery with fallback
+    // Unknown parent: Try TTY discovery with a launch fallback.
+    let fallback = if tmux_context.has_attached_client {
+        let session_name = tmux_context.session_at_path.clone().unwrap_or_else(|| {
+            project_path
+                .rsplit('/')
+                .next()
+                .unwrap_or(project_path)
+                .to_string()
+        });
+        Some(ActivationAction::EnsureTmuxSession {
+            session_name,
+            project_path: project_path.to_string(),
+        })
+    } else if let Some(session_name) = &tmux_context.session_at_path {
+        Some(ActivationAction::LaunchTerminalWithTmux {
+            session_name: session_name.clone(),
+            project_path: project_path.to_string(),
+        })
+    } else {
+        let project_name = project_path
+            .rsplit('/')
+            .next()
+            .unwrap_or(project_path)
+            .to_string();
+        Some(ActivationAction::LaunchNewTerminal {
+            project_path: project_path.to_string(),
+            project_name,
+        })
+    };
+
     ActivationDecision {
         primary: ActivationAction::ActivateByTty {
             tty: shell.tty.clone(),
             terminal_type: TerminalType::Unknown,
         },
-        fallback: Some(ActivationAction::ActivatePriorityFallback),
+        fallback,
         reason: format!(
             "Found shell (pid={}) with unknown parent, trying TTY discovery",
             pid
@@ -800,6 +870,38 @@ mod tests {
         }
     }
 
+    #[test]
+    fn test_dead_shell_does_not_block_tmux_session_launch() {
+        let dead_shell = make_shell_entry_full(
+            "/Users/pete/Code/personality",
+            "/dev/ttys003",
+            ParentApp::Ghostty,
+            None,
+            "2026-01-27T10:00:00Z",
+            false,
+        );
+
+        let state = make_shell_state(vec![("12345", dead_shell)]);
+
+        let decision = resolve_activation(
+            "/Users/pete/Code/personality",
+            Some(&state),
+            &tmux_context_detached("personality"),
+        );
+
+        assert!(
+            matches!(
+                decision.primary,
+                ActivationAction::LaunchTerminalWithTmux {
+                    ref session_name,
+                    ref project_path
+                } if session_name == "personality" && project_path == "/Users/pete/Code/personality"
+            ),
+            "Expected LaunchTerminalWithTmux when only dead shell exists, got {:?}",
+            decision.primary
+        );
+    }
+
     // ─────────────────────────────────────────────────────────────────────────────
     // Scenario: Shell exists in daemon shell snapshot (Native Terminal)
     // ─────────────────────────────────────────────────────────────────────────────
@@ -884,6 +986,49 @@ mod tests {
         if let ActivationAction::ActivateApp { app_name } = decision.primary {
             assert_eq!(app_name, "Ghostty");
         }
+
+        assert!(
+            matches!(
+                decision.fallback,
+                Some(ActivationAction::LaunchNewTerminal {
+                    ref project_path,
+                    ref project_name,
+                }) if project_path == "/Users/pete/Code/myproject" && project_name == "myproject"
+            ),
+            "Expected LaunchNewTerminal fallback for Ghostty app activation, got {:?}",
+            decision.fallback
+        );
+    }
+
+    #[test]
+    fn test_ghostty_shell_prefers_tmux_launch_when_session_exists() {
+        let state = make_shell_state(vec![(
+            "12345",
+            make_shell_entry(
+                "/Users/pete/Code/myproject",
+                "/dev/ttys003",
+                ParentApp::Ghostty,
+                None,
+            ),
+        )]);
+
+        let decision = resolve_activation(
+            "/Users/pete/Code/myproject",
+            Some(&state),
+            &tmux_context_detached("myproject"),
+        );
+
+        assert!(
+            matches!(
+                decision.fallback,
+                Some(ActivationAction::LaunchTerminalWithTmux {
+                    ref session_name,
+                    ref project_path
+                }) if session_name == "myproject" && project_path == "/Users/pete/Code/myproject"
+            ),
+            "Expected LaunchTerminalWithTmux fallback when tmux session exists, got {:?}",
+            decision.fallback
+        );
     }
 
     #[test]
@@ -1027,6 +1172,18 @@ mod tests {
             assert_eq!(host_tty, "/dev/ttys000"); // tmux_client_tty
             assert_eq!(session_name, "myproject");
         }
+
+        assert!(
+            matches!(
+                decision.fallback,
+                Some(ActivationAction::LaunchTerminalWithTmux {
+                    ref session_name,
+                    ref project_path,
+                }) if session_name == "myproject" && project_path == "/Users/pete/Code/myproject"
+            ),
+            "Expected LaunchTerminalWithTmux fallback when tmux client attached, got {:?}",
+            decision.fallback
+        );
     }
 
     #[test]
@@ -1202,8 +1359,73 @@ mod tests {
 
         assert!(matches!(
             decision.fallback,
-            Some(ActivationAction::ActivatePriorityFallback)
+            Some(ActivationAction::LaunchNewTerminal {
+                project_path,
+                project_name,
+            }) if project_path == "/Users/pete/Code/myproject" && project_name == "myproject"
         ));
+    }
+
+    #[test]
+    fn test_unknown_parent_with_tmux_session_launches_terminal_with_tmux() {
+        let state = make_shell_state(vec![(
+            "12345",
+            make_shell_entry(
+                "/Users/pete/Code/myproject",
+                "/dev/ttys003",
+                ParentApp::Unknown,
+                None,
+            ),
+        )]);
+
+        let decision = resolve_activation(
+            "/Users/pete/Code/myproject",
+            Some(&state),
+            &tmux_context_detached("myproject"),
+        );
+
+        assert!(
+            matches!(
+                decision.fallback,
+                Some(ActivationAction::LaunchTerminalWithTmux {
+                    ref session_name,
+                    ref project_path,
+                }) if session_name == "myproject" && project_path == "/Users/pete/Code/myproject"
+            ),
+            "Expected LaunchTerminalWithTmux fallback when tmux session exists, got {:?}",
+            decision.fallback
+        );
+    }
+
+    #[test]
+    fn test_unknown_parent_with_attached_tmux_client_ensures_session() {
+        let state = make_shell_state(vec![(
+            "12345",
+            make_shell_entry(
+                "/Users/pete/Code/myproject",
+                "/dev/ttys003",
+                ParentApp::Unknown,
+                None,
+            ),
+        )]);
+
+        let decision = resolve_activation(
+            "/Users/pete/Code/myproject",
+            Some(&state),
+            &tmux_context_attached_no_session(),
+        );
+
+        assert!(
+            matches!(
+                decision.fallback,
+                Some(ActivationAction::EnsureTmuxSession {
+                    ref session_name,
+                    ref project_path,
+                }) if session_name == "myproject" && project_path == "/Users/pete/Code/myproject"
+            ),
+            "Expected EnsureTmuxSession fallback when tmux client attached, got {:?}",
+            decision.fallback
+        );
     }
 
     // ─────────────────────────────────────────────────────────────────────────────

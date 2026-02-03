@@ -17,7 +17,7 @@ protocol ActivationActionDependencies: AnyObject {
 protocol TmuxClient {
     func hasAnyClientAttached() async -> Bool
     func getCurrentClientTty() async -> String?
-    func switchClient(to sessionName: String) async -> Bool
+    func switchClient(to sessionName: String, clientTty: String?) async -> Bool
 }
 
 @MainActor
@@ -107,7 +107,7 @@ final class ActivationActionExecutor {
         let freshTty = await tmuxClient.getCurrentClientTty() ?? hostTty
         let ttyActivated = await terminalDiscovery.activateTerminalByTTY(tty: freshTty)
         if ttyActivated {
-            return await tmuxClient.switchClient(to: sessionName)
+            return await tmuxClient.switchClient(to: sessionName, clientTty: freshTty)
         }
 
         if terminalDiscovery.isGhosttyRunning() {
@@ -120,7 +120,7 @@ final class ActivationActionExecutor {
             switch decision {
             case .activateAndSwitch:
                 _ = terminalDiscovery.activateAppByName("Ghostty")
-                return await tmuxClient.switchClient(to: sessionName)
+                return await tmuxClient.switchClient(to: sessionName, clientTty: freshTty)
             case .launchNew:
                 terminalLauncher.launchTerminalWithTmux(sessionName: sessionName)
                 return true

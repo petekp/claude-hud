@@ -199,8 +199,8 @@ final class TerminalLauncher: ActivationActionDependencies {
             getCurrentClientTty: { [weak self] in
                 await self?.getCurrentClientTtyInternal()
             },
-            switchClient: { [weak self] sessionName in
-                await self?.switchClientInternal(to: sessionName) ?? false
+            switchClient: { [weak self] sessionName, clientTty in
+                await self?.switchClientInternal(to: sessionName, clientTty: clientTty) ?? false
             }
         )
 
@@ -528,6 +528,20 @@ final class TerminalLauncher: ActivationActionDependencies {
     private func activatePriorityFallbackAction() -> Bool {
         logger.warning("  ⚠️ activatePriorityFallback: FALLBACK PATH - activating first running terminal")
         debugLog("activatePriorityFallback (activating first running terminal)")
+        if ParentApp.ghostty.isInstalled {
+            let ghosttyRunning = isGhosttyRunningInternal()
+            let windowCount = ghosttyRunning ? countGhosttyWindowsInternal() : 0
+            if !ghosttyRunning {
+                logger.warning("  ⚠️ activatePriorityFallback: Ghostty installed but not running; allowing fallback launch")
+                debugLog("activatePriorityFallback ghostty not running -> return false")
+                return false
+            }
+            if windowCount == 0 {
+                logger.warning("  ⚠️ activatePriorityFallback: Ghostty running with zero windows; allowing fallback launch")
+                debugLog("activatePriorityFallback ghostty windowCount=0 -> return false")
+                return false
+            }
+        }
         let activated = activateFirstRunningTerminal()
         logger.warning("  ⚠️ activatePriorityFallback: completed (may have focused wrong window)")
         return activated
@@ -687,10 +701,17 @@ final class TerminalLauncher: ActivationActionDependencies {
         return tty.isEmpty ? nil : tty
     }
 
-    private func switchClientInternal(to sessionName: String) async -> Bool {
-        let result = await runBashScriptWithResultAsync(
-            "tmux switch-client -t \(shellEscape(sessionName)) 2>&1"
-        )
+    private func switchClientInternal(to sessionName: String, clientTty: String?) async -> Bool {
+        let escapedSession = shellEscape(sessionName)
+        let script: String
+        if let clientTty, !clientTty.isEmpty {
+            let escapedClient = shellEscape(clientTty)
+            script = "tmux switch-client -c \(escapedClient) -t \(escapedSession) 2>&1"
+        } else {
+            script = "tmux switch-client -t \(escapedSession) 2>&1"
+        }
+
+        let result = await runBashScriptWithResultAsync(script)
         if result.exitCode != 0 {
             logger.warning("tmux switch-client failed (exit \(result.exitCode)): \(result.output ?? "")")
             return false

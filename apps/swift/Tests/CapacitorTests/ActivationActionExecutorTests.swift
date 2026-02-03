@@ -94,10 +94,14 @@ final class ActivationActionExecutorTests: XCTestCase {
         var hasClientAttached = true
         var currentClientTty: String? = "/dev/ttys001"
         var switchResult = true
+        var lastSwitchedClientTty: String?
 
         func hasAnyClientAttached() async -> Bool { hasClientAttached }
         func getCurrentClientTty() async -> String? { currentClientTty }
-        func switchClient(to _: String) async -> Bool { switchResult }
+        func switchClient(to _: String, clientTty: String?) async -> Bool {
+            lastSwitchedClientTty = clientTty
+            return switchResult
+        }
     }
 
     @MainActor
@@ -241,6 +245,7 @@ final class ActivationActionExecutorTests: XCTestCase {
         let deps = StubDependencies()
         let tmux = StubTmuxClient()
         tmux.switchResult = true
+        tmux.currentClientTty = "/dev/ttys009"
         let terminalDiscovery = StubTerminalDiscovery()
         terminalDiscovery.activateByTtyResult = true
         let launcher = StubTerminalLauncherClient()
@@ -259,6 +264,7 @@ final class ActivationActionExecutorTests: XCTestCase {
         )
 
         XCTAssertTrue(result)
+        XCTAssertEqual(tmux.lastSwitchedClientTty, "/dev/ttys009")
         XCTAssertNil(launcher.launchedSession)
     }
 
