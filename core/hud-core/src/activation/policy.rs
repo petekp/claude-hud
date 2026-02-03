@@ -67,7 +67,7 @@ impl SelectionPolicy {
     }
 
     pub(crate) fn compare(&self, candidate: &Candidate<'_>, best: &Candidate<'_>) -> Ordering {
-        let ordering = candidate
+        candidate
             .is_live
             .cmp(&best.is_live)
             .then_with(|| candidate.match_type.rank().cmp(&best.match_type.rank()))
@@ -79,9 +79,7 @@ impl SelectionPolicy {
                 }
             })
             .then_with(|| compare_timestamp(candidate.timestamp, best.timestamp))
-            .then_with(|| candidate.pid.cmp(&best.pid));
-
-        ordering
+            .then_with(|| candidate.pid.cmp(&best.pid))
     }
 }
 

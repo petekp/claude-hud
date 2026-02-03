@@ -80,7 +80,7 @@ impl AgentAdapter for ClaudeAdapter {
         snapshot
             .sessions()
             .iter()
-            .filter_map(|record| daemon_session_to_agent(record))
+            .filter_map(daemon_session_to_agent)
             .collect()
     }
 

@@ -84,10 +84,7 @@ fn has_active_daemon_session(
         if state == "idle" {
             return false;
         }
-        match record.is_alive {
-            Some(false) => false,
-            _ => true,
-        }
+        !matches!(record.is_alive, Some(false))
     })
 }
 
