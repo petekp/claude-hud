@@ -34,6 +34,16 @@ struct StatusChip: View {
         return 1.0
     }
 
+    private var accessibilityLabelText: String {
+        switch effectiveState {
+        case .working: return "Working"
+        case .ready: return "Ready"
+        case .idle: return "Idle"
+        case .compacting: return "Compacting"
+        case .waiting: return "Waiting"
+        }
+    }
+
     var body: some View {
         Group {
             if let state = state {
@@ -48,7 +58,7 @@ struct StatusChip: View {
         }
         .opacity(chipOpacity)
         .animation(reduceMotion ? AppMotion.reducedMotionFallback : .smooth(duration: 0.3), value: effectiveState)
-        .accessibilityLabel("\(effectiveState)")
+        .accessibilityLabel(Text(accessibilityLabelText))
     }
 }
 
