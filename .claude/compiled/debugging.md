@@ -7,6 +7,8 @@ launchctl print gui/$(id -u)/com.capacitor.daemon
 printf '{"protocol_version":1,"method":"get_health","id":"health","params":null}\n' | nc -U ~/.capacitor/daemon.sock
 ls -la ~/.capacitor/daemon/daemon.stderr.log
 tail -50 ~/.capacitor/daemon/daemon.stderr.log
+ls -la ~/.capacitor/daemon/app-debug.log
+tail -50 ~/.capacitor/daemon/app-debug.log
 ```
 
 ## State Snapshots
@@ -23,4 +25,3 @@ printf '{"protocol_version":1,"method":"get_shell_state","id":"shell","params":n
 
 ## Daemon-Only Note
 Legacy files (`sessions.json`, `shell-cwd.json`, lock dirs) are non-authoritative in daemon-only mode.
-

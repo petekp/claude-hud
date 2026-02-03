@@ -1,6 +1,6 @@
 # Development Workflows
 
-Detailed procedures for common development tasks in Claude HUD.
+Detailed procedures for common development tasks in Capacitor.
 
 ## Quick Start
 
@@ -63,7 +63,7 @@ swift build -c release
 
 **IMPORTANT:** The project has two locations for `hud_core.swift`:
 1. `apps/swift/bindings/` - where UniFFI generates bindings
-2. `apps/swift/Sources/ClaudeHUD/Bridge/` - where Swift actually compiles from
+2. `apps/swift/Sources/Capacitor/Bridge/` - where Swift actually compiles from
 
 You must update **both** locations and clean build artifacts after Rust API changes.
 
@@ -76,11 +76,11 @@ cd core/hud-core
 cargo run --bin uniffi-bindgen generate --library ../../target/release/libhud_core.dylib --language swift --out-dir ../../apps/swift/bindings/
 
 # 3. Copy bindings to where Swift compiles from
-cp ../../apps/swift/bindings/hud_core.swift ../../apps/swift/Sources/ClaudeHUD/Bridge/
+cp ../../apps/swift/bindings/hud_core.swift ../../apps/swift/Sources/Capacitor/Bridge/
 
 # 4. Clean Swift build artifacts (required to avoid checksum mismatch)
 cd ../../apps/swift
-rm -rf .build ClaudeHUD.app
+rm -rf .build CapacitorDebug.app Capacitor.app
 
 # 5. Rebuild
 swift build
@@ -90,8 +90,8 @@ swift build
 
 If you see `UniFFI API checksum mismatch: try cleaning and rebuilding your project`:
 
-1. **Check for stale Bridge file:** The `Sources/ClaudeHUD/Bridge/hud_core.swift` may be outdated
-2. **Check for stale app bundle:** Remove `apps/swift/ClaudeHUD.app` if it exists
+1. **Check for stale Bridge file:** The `Sources/Capacitor/Bridge/hud_core.swift` may be outdated
+2. **Check for stale app bundles:** Remove `apps/swift/CapacitorDebug.app` and `apps/swift/Capacitor.app` if they exist
 3. **Check for stale .build cache:** Remove `apps/swift/.build` directory
 4. **Verify dylib is fresh:** `ls -la target/release/libhud_core.dylib` should show recent timestamp
 
@@ -99,18 +99,18 @@ The checksums are embedded in both the dylib and Swift bindings. They must match
 
 ## Modifying Hook State Tracking
 
-Hook handling is implemented entirely in Rust (`core/hud-hook/`).
+Hook handling is implemented in Rust (`core/hud-hook/`) and forwarded to the daemon (single-writer state).
 
 **Architecture:**
 - `core/hud-hook/src/main.rs` — Entry point for hook binary
 - `core/hud-hook/src/handle.rs` — Main hook handler (state transitions)
 - `core/hud-hook/src/lock_holder.rs` — Lock management daemon (legacy; should not run in daemon-only mode)
-- `core/hud-core/src/state/` — Shared state types and resolution logic
+- `core/daemon/src/reducer.rs` — Canonical hook→state mapping (daemon-only)
 
 **To modify hook behavior:**
 
 1. **Read the docs first:**
-   - `core/hud-core/src/state/types.rs` — Canonical hook→state mapping
+   - `core/daemon/src/reducer.rs` — Canonical hook→state mapping
    - `docs/claude-code/hooks.md` — Claude Code event payloads
 
 2. **Make your changes** in the Rust crate (`core/hud-hook/src/`)
@@ -125,8 +125,8 @@ Hook handling is implemented entirely in Rust (`core/hud-hook/`).
 
 4. **Test manually** with a real Claude session:
    - Trigger the specific event you modified
-   - Check debug log: `tail -20 ~/.capacitor/hud-hook-debug.log`
-   - Verify state in HUD app
+   - Check debug log: `tail -20 ~/.capacitor/hud-hook-debug.*.log` (if enabled)
+   - Verify state in Capacitor app
 
 5. **Sync hooks** to ensure installed version matches repo:
    ```bash
@@ -146,6 +146,6 @@ Hook handling is implemented entirely in Rust (`core/hud-hook/`).
 
 ## Adding a New SwiftUI View
 
-1. **Create view:** Add SwiftUI view in `apps/swift/Sources/ClaudeHUD/Views/`
+1. **Create view:** Add SwiftUI view in `apps/swift/Sources/Capacitor/Views/`
 2. **Update state:** Add published properties to `AppState.swift` if needed
 3. **Wire up:** Add navigation in `ContentView.swift`

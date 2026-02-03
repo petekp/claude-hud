@@ -1,6 +1,6 @@
 # Architecture Overview
 
-Detailed architecture documentation for Claude HUD.
+Detailed architecture documentation for Capacitor.
 
 ## System Architecture
 
@@ -26,11 +26,11 @@ The Swift app is a **native SwiftUI application** in `apps/swift/`. It communica
 
 | File | Purpose |
 |------|---------|
-| `Sources/ClaudeHUD/App.swift` | SwiftUI app entry point |
-| `Sources/ClaudeHUD/ContentView.swift` | Main view with navigation |
-| `Sources/ClaudeHUD/Models/AppState.swift` | State management with HudEngine bridge |
-| `Sources/ClaudeHUD/Views/` | SwiftUI views (Projects, Artifacts, etc.) |
-| `Sources/ClaudeHUD/Theme/` | Design system and styling |
+| `Sources/Capacitor/App.swift` | SwiftUI app entry point |
+| `Sources/Capacitor/ContentView.swift` | Main view with navigation |
+| `Sources/Capacitor/Models/AppState.swift` | State management with HudEngine bridge |
+| `Sources/Capacitor/Views/` | SwiftUI views (Projects, Artifacts, etc.) |
+| `Sources/Capacitor/Theme/` | Design system and styling |
 | `bindings/hud_core.swift` | Generated UniFFI Swift bindings |
 
 ### Patterns
@@ -144,7 +144,7 @@ For complete documentation, see the inline doc comments in each module file, or 
 
 ### The `agents/` Subsystem
 
-Multi-agent support enables HUD to track sessions from different coding assistant CLIs (Claude Code, Codex, Aider, etc.).
+Multi-agent support enables the app to track sessions from different coding assistant CLIs (Claude Code, Codex, Aider, etc.).
 
 ```
 agents/
@@ -246,18 +246,18 @@ See [ADR-001: State Tracking Approach](../../docs/architecture-decisions/001-sta
 For interactive CLI sessions, we use Claude Code hooks:
 
 ```
-User runs claude → Hooks fire → Daemon updates state.db → Swift HUD reads daemon snapshot
+User runs claude → Hooks fire → Daemon updates state.db → Swift app reads daemon snapshot
 ```
 
-**Hooks configured:**
-- `SessionStart` → state: ready (creates lock via `spawn_lock_holder`)
-- `UserPromptSubmit` → state: working (creates lock if missing for resumed sessions)
+**Hooks configured (daemon-only):**
+- `SessionStart` → state: ready
+- `UserPromptSubmit` → state: working
 - `PermissionRequest` → state: waiting
 - `PostToolUse` → state transitions + heartbeat updates
 - `Notification` (idle_prompt) → state: ready
 - `Stop` → state: ready
 - `PreCompact` → state: compacting
-- `SessionEnd` → removes session from state file
+- `SessionEnd` → removes session from daemon state
 
 **State store:** `~/.capacitor/daemon/state.db` (daemon-owned SQLite WAL)
 
@@ -265,7 +265,7 @@ User runs claude → Hooks fire → Daemon updates state.db → Swift HUD reads 
 
 **Hook binary:** `~/.local/bin/hud-hook`
 
-**Architecture:** See `core/hud-hook/src/main.rs` for the hook implementation and `core/hud-core/src/state/types.rs` for canonical state mapping.
+**Architecture:** See `core/hud-hook/src/main.rs` for the hook implementation and `core/daemon/src/reducer.rs` for canonical state mapping.
 
 ## Runtime Configuration
 

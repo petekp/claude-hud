@@ -1,15 +1,23 @@
 # Debugging Guide
 
-Procedures for debugging Claude HUD components.
+Procedures for debugging Capacitor components (daemon, hooks, app).
 
 ## General Debugging
 
 ```bash
+# Daemon health + logs (authoritative)
+launchctl print gui/$(id -u)/com.capacitor.daemon
+tail -f ~/.capacitor/daemon/daemon.stderr.log
+tail -f ~/.capacitor/daemon/app-debug.log
+
+# Daemon IPC snapshots
+printf '{"protocol_version":1,"method":"get_health","id":"health","params":null}\n' | nc -U ~/.capacitor/daemon.sock
+printf '{"protocol_version":1,"method":"get_sessions","id":"sessions","params":null}\n' | nc -U ~/.capacitor/daemon.sock
+printf '{"protocol_version":1,"method":"get_project_states","id":"projects","params":null}\n' | nc -U ~/.capacitor/daemon.sock
+printf '{"protocol_version":1,"method":"get_shell_state","id":"shell","params":null}\n' | nc -U ~/.capacitor/daemon.sock
+
 # Inspect cache files
 cat ~/.capacitor/stats-cache.json | jq .
-
-# Enable Rust debug logging
-RUST_LOG=debug swift run
 
 # Test regex patterns
 echo '{"input_tokens":1234}' | rg 'input_tokens":(\d+)'
@@ -17,21 +25,23 @@ echo '{"input_tokens":1234}' | rg 'input_tokens":(\d+)'
 
 ## Hook State Tracking
 
-The hook binary (`~/.local/bin/hud-hook`) handles Claude Code hook events and tracks session state.
+The hook binary (`~/.local/bin/hud-hook`) handles Claude Code hook events and forwards them to the daemon (single-writer state).
 
-> **Daemon-only note (2026-02):** Shell/session debugging should use daemon IPC. Any `shell-cwd.json (legacy)` commands below are historical fallback references.
+> **Daemon-only note (2026-02):** Shell/session debugging should use daemon IPC. Legacy files are non-authoritative and may be stale.
 
 Quick commands (daemon-first):
 ```bash
 tail -f ~/.capacitor/daemon/daemon.stderr.log  # Daemon logs
 printf '{"protocol_version":1,"method":"get_health","id":"health","params":null}\n' | nc -U ~/.capacitor/daemon.sock
 printf '{"protocol_version":1,"method":"get_sessions","id":"sessions","params":null}\n' | nc -U ~/.capacitor/daemon.sock
+printf '{"protocol_version":1,"method":"get_shell_state","id":"shell","params":null}\n' | nc -U ~/.capacitor/daemon.sock
 ```
 
-Legacy artifacts (should not be authoritative in daemon-only mode):
+Legacy artifacts (non-authoritative in daemon-only mode):
 ```bash
-cat ~/.capacitor/sessions.json | jq .          # Legacy snapshot
+cat ~/.capacitor/sessions.json | jq .          # Legacy snapshot (if present)
 ls ~/.capacitor/sessions/                      # Legacy locks
+cat ~/.capacitor/shell-cwd.json | jq .         # Legacy shell snapshot (if present)
 ```
 
 ## Common Issues
@@ -40,12 +50,10 @@ ls ~/.capacitor/sessions/                      # Legacy locks
 
 If you see `UniFFI API checksum mismatch: try cleaning and rebuilding your project`:
 
-1. Check for stale Bridge file: `apps/swift/Sources/ClaudeHUD/Bridge/hud_core.swift`
-2. Remove stale app bundle: `rm -rf apps/swift/ClaudeHUD.app`
+1. Check for stale Bridge file: `apps/swift/Sources/Capacitor/Bridge/hud_core.swift`
+2. Remove stale app bundles: `rm -rf apps/swift/CapacitorDebug.app apps/swift/Capacitor.app`
 3. Remove stale .build cache: `rm -rf apps/swift/.build`
 4. Verify dylib is fresh: `ls -la target/release/libhud_core.dylib`
-
-See `.claude/docs/development-workflows.md` for the full regeneration procedure.
 
 ### Stats Not Updating
 
@@ -71,11 +79,11 @@ ls ~/.capacitor/sessions/
 cat ~/.capacitor/sessions/*.lock/pid | xargs -I {} ps -p {}
 ```
 
-### Stale or Legacy Locks (Wrong Project State)
+### Legacy Locks (Daemon Disabled or Old Install)
 
 **Symptoms:** Project shows wrong state (e.g., Ready when should be Idle), multiple projects show same state, or clicking different projects opens the same session.
 
-**Root cause (legacy):** Path-based locks (v3) or stale session-based locks polluting the lock directory.
+**Root cause (legacy):** Path-based locks (v3) or stale session-based locks polluting the lock directory. In daemon-only mode, these are ignored but can confuse debugging if you look at legacy files.
 
 **Diagnosis:**
 ```bash
@@ -139,11 +147,21 @@ cargo build -p hud-hook --release
 
 **Symptoms:** Project shows Ready but Claude is still generating a response. Typically happens ~30 seconds into a long generation without tool use.
 
-**Root cause (historical bug, now fixed):** The resolver applied `is_active_state_stale()` checks even when a lock existed. During tool-free text generation, no hook events fire to refresh `updated_at`, so after 30 seconds the state would fall back to Ready despite the lock proving Claude was still running.
+**Root cause (historical bug, now fixed):** Pre-daemon logic could treat stale timestamps as inactivity even when Claude was still running.
 
-**Current behavior:** When a lock exists, the resolver trusts the recorded state unconditionally. The lock holder monitors Claude's PID and will release when Claude actually exits, so lock existence is authoritative.
+**Current behavior (daemon-only):** UI state should reflect daemon session snapshots (single-writer). If a project flips to Ready while a session is still running, inspect daemon records and hook health rather than legacy locks.
 
-**Key insight:** Lock presence = Claude running. Trust the lock over timestamp freshness.
+**Debug (daemon-first):**
+```bash
+# Check daemon session + project state
+printf '{"protocol_version":1,"method":"get_sessions","id":"sessions","params":null}\n' | nc -U ~/.capacitor/daemon.sock
+printf '{"protocol_version":1,"method":"get_project_states","id":"projects","params":null}\n' | nc -U ~/.capacitor/daemon.sock
+
+# Check hook heartbeat (should be fresh if events are flowing)
+ls -la ~/.capacitor/hud-hook-heartbeat
+```
+
+**Key insight:** In daemon-only mode, trust daemon session snapshots + hook health. Legacy locks are not authoritative.
 
 ### SwiftUI Layout Broken (Gaps, Components Not Filling Space)
 
@@ -206,6 +224,28 @@ Click → AppState.launchTerminal
 
 If `activateAppByName` is called for a terminal without tab selection API, you've hit a fundamental limitation.
 
+### Terminal Activation No-Op (Ghostty Closed / Unknown Parent)
+
+**Problem:** Clicking an idle project does nothing when Ghostty is closed (some projects still open).
+
+**Cause:** The daemon shell snapshot can include entries with `parent_app=Unknown` (missing `TERM_PROGRAM`).
+The resolver picks `ActivateByTty` → TTY discovery fails → fallback was `ActivatePriorityFallback`.
+When Ghostty isn’t running (or has zero windows), that fallback returns `false`, so no launch happens.
+
+**Solution/Prevention:**
+- For `Unknown` parent shells, fall back to a launch path:
+  - `LaunchTerminalWithTmux` when a tmux session exists
+  - `EnsureTmuxSession` when a tmux client is attached
+  - `LaunchNewTerminal` otherwise
+- In Swift, `activatePriorityFallback` should return `false` when Ghostty is installed but not running
+  (or running with 0 windows) so launch fallbacks can fire.
+
+**Debugging:**
+```bash
+rg -n "TerminalLauncher" ~/.capacitor/daemon/app-debug.log | tail -n 200
+```
+Look for `Found shell (pid=...) with unknown parent` and confirm the fallback action.
+
 **NSRunningApplication.activate() vs AppleScript:**
 
 `NSRunningApplication.activate()` can return `true` while silently failing to actually bring the app to front. This happens when:
@@ -236,9 +276,9 @@ tmux display-message -p "#S"
 
 **The fix (already applied):** The hook now uses `display-message -p "#S\t#{client_tty}"` which returns the TTY of the client that invoked the command, not an arbitrary client from the list.
 
-**If still failing:** Check `~/.capacitor/shell-cwd.json (legacy)` to see what `tmux_client_tty` value the hook recorded:
+**If still failing:** Check the daemon shell snapshot for the recorded `tmux_client_tty`:
 ```bash
-cat ~/.capacitor/shell-cwd.json (legacy) | jq '.shells | to_entries[] | select(.value.tmux_session != null) | {pid: .key, session: .value.tmux_session, tty: .value.tmux_client_tty}'
+printf '{"protocol_version":1,"method":"get_shell_state","id":"shell","params":null}\n' | nc -U ~/.capacitor/daemon.sock | jq '.data.shells | to_entries[] | select(.value.tmux_session != null) | {pid: .key, session: .value.tmux_session, tty: .value.tmux_client_tty}'
 ```
 
 ### Ghostty Activated When Tmux Client Is in iTerm
@@ -253,8 +293,8 @@ cat ~/.capacitor/shell-cwd.json (legacy) | jq '.shells | to_entries[] | select(.
 tmux display-message -p "#{client_tty}"
 # Then match this TTY to a terminal process
 
-# Check what's in shell-cwd.json (legacy)
-cat ~/.capacitor/shell-cwd.json (legacy) | jq '.shells' | head -50
+# Inspect daemon shell snapshot
+printf '{"protocol_version":1,"method":"get_shell_state","id":"shell","params":null}\n' | nc -U ~/.capacitor/daemon.sock | jq '.data.shells | to_entries | .[0:5]'
 ```
 
 **The fix (already applied):** The activation strategy now tries TTY discovery FIRST. Only if TTY discovery fails AND Ghostty is running does it fall back to Ghostty-specific window counting.
@@ -292,8 +332,8 @@ tmux new-session -d -s 'test$(whoami)'
 
 **Diagnosis:**
 ```bash
-# Check shell-cwd.json (legacy) for shells at a path
-cat ~/.capacitor/shell-cwd.json (legacy) | jq '.shells | to_entries[] | select(.value.cwd | contains("/your/project"))'
+# Check daemon shell snapshot for shells at a path
+printf '{"protocol_version":1,"method":"get_shell_state","id":"shell","params":null}\n' | nc -U ~/.capacitor/daemon.sock | jq --arg path "/Users/you/Code/project" '.data.shells | to_entries[] | select(.value.cwd | contains($path)) | {pid: .key, cwd: .value.cwd, tty: .value.tty, tmux: .value.tmux_session, updated: .value.updated_at}'
 
 # For each PID, check if it's alive
 kill -0 <pid> && echo "alive" || echo "dead"
@@ -305,12 +345,12 @@ kill -0 <pid> && echo "alive" || echo "dead"
 
 **If still failing:** Check that:
 1. UniFFI bindings are regenerated (Swift sends `isLive` to Rust)
-2. Shell entries in JSON have recent `updated_at` timestamps
+2. Shell entries in the daemon shell snapshot have recent `updated_at` timestamps
 3. The expected shell PID is actually alive
 
 ## Terminal Activation Telemetry Strategy
 
-Terminal activation bugs are notoriously difficult to debug because they span two layers (Rust decision, Swift execution), interact with external state (`shell-cwd.json (legacy)`, tmux), and depend on ephemeral conditions (which windows exist, which processes are live).
+Terminal activation bugs are notoriously difficult to debug because they span two layers (Rust decision, Swift execution), interact with external state (daemon shell snapshot via `get_shell_state`, tmux), and depend on ephemeral conditions (which windows exist, which processes are live).
 
 ### The Two-Layer Architecture
 
@@ -322,7 +362,7 @@ Terminal activation bugs are notoriously difficult to debug because they span tw
                             ▼
 ┌─────────────────────────────────────────────────────────────┐
 │  RUST DECISION LAYER (activation.rs)                        │
-│  • Reads shell-cwd.json (legacy) via Swift                          │
+│  • Reads daemon shell snapshot (`get_shell_state`) via Swift        │
 │  • Queries tmux context via Swift                          │
 │  • find_shell_at_path() selects best shell                 │
 │  • Returns ActivationAction enum                            │
@@ -377,33 +417,38 @@ The telemetry uses structured markers for easy filtering:
 
 **Step 1: Reproduce and capture logs**
 ```bash
-# Open Console.app and filter by "TerminalLauncher" or "Capacitor"
-# Or use log stream:
-log stream --predicate 'subsystem == "dev.capacitor.Capacitor"' --level debug
+# App debug log (Swift DebugLog)
+tail -f ~/.capacitor/daemon/app-debug.log
+
+# Daemon stderr
+tail -f ~/.capacitor/daemon/daemon.stderr.log
+
+# OSLog (signed builds only)
+log stream --predicate 'subsystem == "com.capacitor.app"' --level debug
 ```
 
 **Step 2: Identify which layer failed**
 
 | Symptom | Likely Layer | What to Check |
 |---------|--------------|---------------|
-| Wrong action chosen | Rust | `shell-cwd.json (legacy)`, tmux context |
+| Wrong action chosen | Rust | daemon shell snapshot (`get_shell_state`), tmux context |
 | Right action, wrong result | Swift | AppleScript, bash commands |
 | Shell selection wrong | Rust | `find_shell_at_path()` priority logic |
 | Tmux doesn't switch | Swift | `tmux switch-client` exit code |
 | Wrong window activated | Swift | TTY discovery, Ghostty heuristics |
 
-**Step 3: Inspect shell-cwd.json (legacy) state**
+**Step 3: Inspect daemon shell snapshot (get_shell_state)**
 ```bash
 # See all shells at a path
-cat ~/.capacitor/shell-cwd.json (legacy) | jq --arg path "/Users/you/Code/project" '
-  .shells | to_entries[] |
+printf '{"protocol_version":1,"method":"get_shell_state","id":"shell","params":null}\n' | nc -U ~/.capacitor/daemon.sock | jq --arg path "/Users/you/Code/project" '
+  .data.shells | to_entries[] |
   select(.value.cwd | contains($path)) |
-  {pid: .key, cwd: .value.cwd, tty: .value.tty, tmux: .value.tmux_session, live: .value.is_live, updated: .value.updated_at}
+  {pid: .key, cwd: .value.cwd, tty: .value.tty, tmux: .value.tmux_session, client_tty: .value.tmux_client_tty, parent: .value.parent_app, updated: .value.updated_at}
 '
 
 # Check for multiple shells (the source of many bugs)
-cat ~/.capacitor/shell-cwd.json (legacy) | jq '
-  .shells | to_entries |
+printf '{"protocol_version":1,"method":"get_shell_state","id":"shell","params":null}\n' | nc -U ~/.capacitor/daemon.sock | jq '
+  .data.shells | to_entries |
   group_by(.value.cwd) |
   map(select(length > 1)) |
   .[] | {path: .[0].value.cwd, count: length, shells: [.[] | {pid: .key, tmux: .value.tmux_session}]}
@@ -425,27 +470,20 @@ tmux list-clients -t <session-name>
 tmux display-message -p "#{client_tty}"
 ```
 
-### OSLog Limitation for Debug Builds
+### Debug Logs for Debug Builds
 
-**Important:** Swift's `Logger` (OSLog) doesn't output to `log show`/`log stream` for unsigned debug builds run via `swift run`. The unified logging system requires signed apps or specific entitlements.
-
-**For debug telemetry, use stderr instead:**
-```swift
-private func telemetry(_ message: String) {
-    FileHandle.standardError.write(Data("[TELEMETRY] \(message)\n".utf8))
-}
-```
+**Important:** Swift's `Logger` (OSLog) doesn't output to `log show`/`log stream` for unsigned debug builds. Use the file-based `DebugLog` instead.
 
 **Capture during testing:**
 ```bash
-# Run with stderr going to log file
-./.build/arm64-apple-macosx/debug/Capacitor 2> /tmp/capacitor-telemetry.log &
+# Primary location
+tail -f ~/.capacitor/daemon/app-debug.log
 
-# Monitor in real-time
-tail -f /tmp/capacitor-telemetry.log
+# Fallback if the daemon directory isn't writable
+tail -f /tmp/capacitor-app-debug.log
 ```
 
-This bypasses OSLog entirely and ensures telemetry is always visible during development. **Remove telemetry helpers before committing.**
+If you need extra ad-hoc telemetry, prefer `DebugLog.write(...)` so it lands in these files.
 
 ### Common Telemetry Patterns
 
@@ -504,9 +542,9 @@ logger.info("  \(commandName) exit=\(result.exitCode), output=\(result.output ??
 ### Telemetry Checklist for New Terminal Bugs
 
 Before modifying code:
-- [ ] Captured logs from Console.app/log stream
+- [ ] Captured logs from app-debug.log and daemon.stderr.log (OSLog only if signed)
 - [ ] Identified which layer (Rust/Swift) made the wrong decision
-- [ ] Inspected `shell-cwd.json (legacy)` for the relevant path
+- [ ] Inspected daemon shell snapshot (`get_shell_state`) for the relevant path
 - [ ] Checked tmux context (sessions, clients, TTYs)
 - [ ] Verified terminal app capabilities in `terminal-switching-matrix.md`
 - [ ] Added hypothesis to explain the misbehavior
