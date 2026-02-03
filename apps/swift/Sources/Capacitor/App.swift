@@ -10,6 +10,9 @@ struct CapacitorApp: App {
     @AppStorage("alwaysOnTop") private var alwaysOnTop = false
     @AppStorage("layoutMode") private var layoutMode = "vertical"
     @AppStorage("setupComplete") private var setupComplete = false
+    #if DEBUG
+        @AppStorage("debugShowProjectListDiagnostics") private var debugShowProjectListDiagnostics = true
+    #endif
 
     var body: some Scene {
         WindowGroup {
@@ -107,6 +110,7 @@ struct CapacitorApp: App {
 
                 #if DEBUG
                     Divider()
+                    ProjectDebugPanelMenuButton()
                     UITuningPanelMenuButton()
                     ShellMatrixPanelMenuButton()
 
@@ -133,6 +137,12 @@ struct CapacitorApp: App {
 
             #if DEBUG
                 CommandMenu("Debug") {
+                    Section("Project List Diagnostics") {
+                        Toggle("Show Diagnostics in Project List", isOn: $debugShowProjectListDiagnostics)
+                    }
+
+                    Divider()
+
                     Section("Toast Testing") {
                         Button("Toast: 1 failed") {
                             appState.toast = .error("project-a failed")
@@ -200,6 +210,16 @@ struct CapacitorApp: App {
             .windowResizability(.contentSize)
             .defaultPosition(.topLeading)
             .defaultSize(width: 680, height: 760)
+
+            Window("Project Debug Panel", id: "project-debug-panel") {
+                DebugProjectListPanel()
+                    .environmentObject(appState)
+                    .preferredColorScheme(.dark)
+            }
+            .windowStyle(.hiddenTitleBar)
+            .windowResizability(.contentSize)
+            .defaultPosition(.topTrailing)
+            .defaultSize(width: 360, height: 520)
         #endif
     }
 
@@ -331,6 +351,17 @@ struct CapacitorApp: App {
                 openWindow(id: "shell-matrix-panel")
             }
             .keyboardShortcut("M", modifiers: [.command, .shift])
+        }
+    }
+
+    struct ProjectDebugPanelMenuButton: View {
+        @Environment(\.openWindow) private var openWindow
+
+        var body: some View {
+            Button("Project Debug Panel") {
+                openWindow(id: "project-debug-panel")
+            }
+            .keyboardShortcut("D", modifiers: [.command, .shift])
         }
     }
 

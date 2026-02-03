@@ -6,6 +6,9 @@ struct ProjectsView: View {
     @ObservedObject private var glassConfig = GlassConfig.shared
     @State private var pausedCollapsed = true
     @State private var draggedProject: Project?
+    #if DEBUG
+        @AppStorage("debugShowProjectListDiagnostics") private var debugShowProjectListDiagnostics = true
+    #endif
 
     private var orderedProjects: [Project] {
         appState.orderedProjects(appState.projects)
@@ -43,7 +46,10 @@ struct ProjectsView: View {
         ScrollView {
             LazyVStack(spacing: cardListSpacing) {
                 #if DEBUG
-                    if let status = appState.daemonStatus, status.isEnabled {
+                    if debugShowProjectListDiagnostics,
+                       let status = appState.daemonStatus,
+                       status.isEnabled
+                    {
                         DaemonStatusBadge(status: status)
                             .padding(.bottom, 4)
                     }
@@ -60,13 +66,15 @@ struct ProjectsView: View {
                     .padding(.bottom, 4)
                 }
                 #if DEBUG
-                    DebugActiveStateCard()
-                        .padding(.bottom, 6)
-                    DebugActivationTraceCard()
-                        .padding(.bottom, 6)
+                    if debugShowProjectListDiagnostics {
+                        DebugActiveStateCard()
+                            .padding(.bottom, 6)
+                        DebugActivationTraceCard()
+                            .padding(.bottom, 6)
+                    }
                 #endif
                 // Setup status card - show regardless of project state
-                if let diagnostic = appState.hookDiagnostic, !diagnostic.isHealthy {
+                if let diagnostic = appState.hookDiagnostic, diagnostic.shouldShowSetupCard {
                     SetupStatusCard(
                         diagnostic: diagnostic,
                         onFix: { appState.fixHooks() },

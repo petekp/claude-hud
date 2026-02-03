@@ -74,6 +74,7 @@ Hooks → **daemon** → Capacitor reads daemon snapshots only
 - **UniFFI Task shadows Swift Task** — Use `_Concurrency.Task` explicitly in async code
 - **UniFFI bindings after FFI changes** — `cargo run --bin uniffi-bindgen generate --library target/release/libhud_core.dylib --language swift --out-dir apps/swift/bindings && cp apps/swift/bindings/hud_core.swift apps/swift/Sources/Capacitor/Bridge/`
 - **OSLog invisible for debug builds** — Use `FileHandle.standardError.write()` for telemetry; capture with `./Capacitor 2> /tmp/log.log &`
+- **Terminal activation prefers known parent apps** — If the newest shell entry has `parent_app=unknown` (missing `TERM_PROGRAM`), Ghostty activation can fail. The resolver should prefer shells with known `parent_app` before timestamp tie‑breakers.
 
 **Full gotchas reference:** `.claude/docs/gotchas.md`
 

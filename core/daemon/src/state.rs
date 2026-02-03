@@ -22,8 +22,7 @@ const PROCESS_LIVENESS_MAX_AGE_HOURS: i64 = 24;
 const SESSION_TTL_ACTIVE_SECS: i64 = 20 * 60; // Working/Waiting/Compacting
 const SESSION_TTL_READY_SECS: i64 = 30 * 60; // Ready
 const SESSION_TTL_IDLE_SECS: i64 = 10 * 60; // Idle
-const ACTIVE_STATE_STALE_SECS: i64 = 8; // Working/Waiting -> Ready when no updates
-                                        // Ready does not auto-idle; it remains until TTL or session end.
+                                            // Ready does not auto-idle; it remains until TTL or session end.
 
 pub struct SharedState {
     db: Db,
@@ -478,23 +477,9 @@ fn session_state_is_active(state: &crate::reducer::SessionState) -> bool {
 
 fn effective_session_state(
     record: &SessionRecord,
-    now: DateTime<Utc>,
+    _now: DateTime<Utc>,
 ) -> crate::reducer::SessionState {
-    let mut state = record.state.clone();
-
-    if matches!(
-        state,
-        crate::reducer::SessionState::Working | crate::reducer::SessionState::Waiting
-    ) {
-        if let Some(last_seen) = parse_rfc3339(&record.updated_at) {
-            let age = now.signed_duration_since(last_seen).num_seconds();
-            if age > ACTIVE_STATE_STALE_SECS {
-                state = crate::reducer::SessionState::Ready;
-            }
-        }
-    }
-
-    state
+    record.state.clone()
 }
 
 fn session_ttl_seconds(state: &crate::reducer::SessionState) -> i64 {
@@ -542,19 +527,19 @@ mod tests {
     }
 
     #[test]
-    fn project_states_downgrade_stale_working_to_ready() {
+    fn project_states_preserve_working_state_when_stale() {
         let temp_dir = tempfile::tempdir().expect("temp dir");
         let db_path = temp_dir.path().join("state.db");
         let db = Db::new(db_path).expect("db init");
         let state = SharedState::new(db);
 
-        let stale_time = (Utc::now() - Duration::seconds(ACTIVE_STATE_STALE_SECS + 5)).to_rfc3339();
+        let stale_time = (Utc::now() - Duration::seconds(60)).to_rfc3339();
         let record = make_record("session-stale", "/repo", SessionState::Working, stale_time);
         state.db.upsert_session(&record).expect("insert session");
 
         let aggregates = state.project_states_snapshot().expect("project states");
         assert_eq!(aggregates.len(), 1);
-        assert_eq!(aggregates[0].state, SessionState::Ready);
+        assert_eq!(aggregates[0].state, SessionState::Working);
     }
 
     #[test]

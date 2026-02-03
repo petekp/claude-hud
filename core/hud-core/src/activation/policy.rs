@@ -3,6 +3,7 @@ use std::cmp::Ordering;
 use std::collections::HashMap;
 
 use crate::state::normalize_path_for_matching;
+use crate::types::ParentApp;
 
 use super::ShellEntryFfi;
 
@@ -31,10 +32,11 @@ impl PathMatch {
     }
 }
 
-pub(crate) const POLICY_TABLE: [&str; 5] = [
+pub(crate) const POLICY_TABLE: [&str; 6] = [
     "live shells beat dead shells",
     "path specificity: exact > child > parent",
     "tmux preference (only when attached and path specificity ties)",
+    "known parent app beats unknown parent app",
     "most recent timestamp wins (invalid timestamps lose)",
     "higher PID breaks ties deterministically",
 ];
@@ -45,6 +47,7 @@ pub(crate) struct Candidate<'a> {
     pub(crate) shell: &'a ShellEntryFfi,
     pub(crate) is_live: bool,
     pub(crate) has_tmux: bool,
+    pub(crate) has_known_parent: bool,
     pub(crate) match_type: PathMatch,
     pub(crate) timestamp: Option<DateTime<Utc>>,
 }
@@ -78,6 +81,7 @@ impl SelectionPolicy {
                     Ordering::Equal
                 }
             })
+            .then_with(|| candidate.has_known_parent.cmp(&best.has_known_parent))
             .then_with(|| compare_timestamp(candidate.timestamp, best.timestamp))
             .then_with(|| candidate.pid.cmp(&best.pid))
     }
@@ -118,6 +122,7 @@ pub(crate) fn select_best_shell<'a>(
             shell,
             is_live: shell.is_live,
             has_tmux: shell.tmux_session.is_some(),
+            has_known_parent: shell.parent_app != ParentApp::Unknown,
             match_type,
             timestamp: parse_timestamp(&shell.updated_at),
         };

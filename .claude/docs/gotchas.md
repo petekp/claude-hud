@@ -304,6 +304,13 @@ When multiple shells exist at the same path in `shell-cwd.json (legacy)` (e.g., 
 
 **Key insight:** "Tmux client attached" is a strong signal the user is actively using tmux and wants session switching. See `activation.rs:find_shell_at_path()` and test `test_prefers_tmux_shell_when_client_attached_even_if_older`.
 
+### Shell Selection: Known Parent Beats Unknown
+
+**Problem:** Clicking a project doesn’t open Ghostty; activation falls back or does nothing.  
+**Cause:** The most recent shell entry can have `parent_app=unknown` (missing `TERM_PROGRAM`), which forces TTY discovery (iTerm/Terminal only). Ghostty can’t be identified, so activation fails even if an older shell entry is tagged `ghostty`.  
+**Solution:** In the activation resolver, rank shells with known `parent_app` ahead of unknown before timestamp tie-breakers.  
+**Where:** `core/hud-core/src/activation/policy.rs`, test `test_known_terminal_beats_newer_unknown_shell`.
+
 ### Shell Selection: HOME Excluded from Parent Matching
 
 Path matching supports parent-child relationships for monorepo support (shell at `/Code/monorepo` matches project `/Code/monorepo/packages/app`). However, HOME (`/Users/pete`) is explicitly **excluded** from parent matching.

@@ -71,8 +71,27 @@ impl HudEngine {
     }
 }
 
+fn heartbeat_status(
+    age_secs: u64,
+    threshold_secs: u64,
+    grace_secs: u64,
+    has_active_session: bool,
+) -> crate::types::HookHealthStatus {
+    if age_secs <= threshold_secs {
+        return crate::types::HookHealthStatus::Healthy;
+    }
+
+    if has_active_session && age_secs <= grace_secs {
+        return crate::types::HookHealthStatus::Healthy;
+    }
+
+    crate::types::HookHealthStatus::Stale {
+        last_seen_secs: age_secs,
+    }
+}
+
 fn has_active_daemon_session(
-    snapshot: &Option<crate::state::daemon::DaemonSessionsSnapshot>,
+    snapshot: Option<&crate::state::daemon::DaemonSessionsSnapshot>,
 ) -> bool {
     let snapshot = match snapshot {
         Some(snapshot) => snapshot,
@@ -80,11 +99,9 @@ fn has_active_daemon_session(
     };
 
     snapshot.sessions().iter().any(|record| {
-        let state = record.state.to_ascii_lowercase();
-        if state == "idle" {
-            return false;
-        }
-        !matches!(record.is_alive, Some(false))
+        let is_alive = record.is_alive.unwrap_or(true);
+        let is_active = !matches!(record.state.to_ascii_lowercase().as_str(), "idle");
+        is_alive && is_active
     })
 }
 
@@ -764,8 +781,10 @@ impl HudEngine {
     /// Checks the health of the hook binary by examining its heartbeat file.
     ///
     /// The hook binary touches `~/.capacitor/hud-hook-heartbeat` on every valid hook event.
-    /// If the file's mtime is older than 60 seconds while sessions are active,
-    /// the hooks have likely stopped firing (binary crash, SIGKILL, etc.).
+    /// If the file's mtime is older than 60 seconds, the hooks have likely
+    /// stopped firing (binary crash, SIGKILL, etc.). When there is an active
+    /// daemon session, we allow a short grace window before reporting stale
+    /// to avoid false alarms during quiet periods.
     ///
     /// Returns a health report with:
     /// - `Healthy`: Heartbeat is fresh (within threshold)
@@ -773,10 +792,10 @@ impl HudEngine {
     /// - `Stale`: Heartbeat is old (hooks stopped firing)
     /// - `Unreadable`: Can't read heartbeat file
     pub fn check_hook_health(&self) -> crate::types::HookHealthReport {
-        use crate::state::daemon::sessions_snapshot;
         use crate::types::{HookHealthReport, HookHealthStatus};
 
         const HOOK_HEALTH_THRESHOLD_SECS: u64 = 60;
+        const HOOK_HEALTH_GRACE_SECS: u64 = 300;
 
         let heartbeat_path = self.storage.root().join("hud-hook-heartbeat");
         let threshold_secs = HOOK_HEALTH_THRESHOLD_SECS;
@@ -785,18 +804,20 @@ impl HudEngine {
             Ok(meta) => match meta.modified() {
                 Ok(mtime) => {
                     let age_secs = mtime.elapsed().map(|d| d.as_secs()).unwrap_or(0);
-
-                    let status = if age_secs <= threshold_secs {
-                        HookHealthStatus::Healthy
-                    } else if has_active_daemon_session(&sessions_snapshot()) {
-                        // Heartbeat is stale but an active session exists—Claude may be
-                        // generating a long response without tool calls. Treat as healthy.
-                        HookHealthStatus::Healthy
+                    let has_active_session = if age_secs > threshold_secs {
+                        has_active_daemon_session(
+                            crate::state::daemon::sessions_snapshot().as_ref(),
+                        )
                     } else {
-                        HookHealthStatus::Stale {
-                            last_seen_secs: age_secs,
-                        }
+                        false
                     };
+
+                    let status = heartbeat_status(
+                        age_secs,
+                        threshold_secs,
+                        HOOK_HEALTH_GRACE_SECS,
+                        has_active_session,
+                    );
                     (status, Some(age_secs))
                 }
                 Err(e) => (
@@ -1027,5 +1048,29 @@ mod tests {
     fn test_state_file_io_uses_daemon_health() {
         let engine = HudEngine::new().unwrap();
         let _ = engine.test_state_file_io();
+    }
+
+    #[test]
+    fn heartbeat_status_marks_stale_when_old_and_inactive() {
+        let status = heartbeat_status(120, 60, 300, false);
+        assert!(matches!(
+            status,
+            crate::types::HookHealthStatus::Stale { .. }
+        ));
+    }
+
+    #[test]
+    fn heartbeat_status_allows_grace_when_active() {
+        let status = heartbeat_status(120, 60, 300, true);
+        assert!(matches!(status, crate::types::HookHealthStatus::Healthy));
+    }
+
+    #[test]
+    fn heartbeat_status_marks_stale_after_grace() {
+        let status = heartbeat_status(400, 60, 300, true);
+        assert!(matches!(
+            status,
+            crate::types::HookHealthStatus::Stale { .. }
+        ));
     }
 }

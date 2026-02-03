@@ -96,7 +96,7 @@ impl Response {
     }
 }
 
-#[derive(Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Debug, Deserialize, Serialize, PartialEq, Eq, Clone, Copy)]
 #[serde(rename_all = "snake_case", deny_unknown_fields)]
 pub enum EventType {
     SessionStart,
@@ -179,13 +179,16 @@ impl EventEnvelope {
                 require_session_fields(self)?;
                 require_bool(&self.stop_hook_active, "stop_hook_active")?;
             }
+            EventType::SessionEnd => {
+                require_string(&self.session_id, "session_id")?;
+                require_pid(&self.pid)?;
+            }
             EventType::SessionStart
             | EventType::UserPromptSubmit
             | EventType::PreToolUse
             | EventType::PostToolUse
             | EventType::PermissionRequest
-            | EventType::PreCompact
-            | EventType::SessionEnd => {
+            | EventType::PreCompact => {
                 require_session_fields(self)?;
             }
         }
@@ -297,6 +300,13 @@ mod tests {
         let mut event = base_event(EventType::SessionStart);
         event.session_id = None;
         assert!(event.validate().is_err());
+    }
+
+    #[test]
+    fn session_end_allows_missing_cwd() {
+        let mut event = base_event(EventType::SessionEnd);
+        event.cwd = None;
+        assert!(event.validate().is_ok());
     }
 
     #[test]

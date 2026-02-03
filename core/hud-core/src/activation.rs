@@ -817,6 +817,43 @@ mod tests {
         }
     }
 
+    #[test]
+    fn test_known_terminal_beats_newer_unknown_shell() {
+        let state = make_shell_state(vec![
+            (
+                "100",
+                make_shell_entry_with_time(
+                    "/Users/pete/Code/myproject",
+                    "/dev/ttys001",
+                    ParentApp::Unknown,
+                    None,
+                    "2026-01-27T10:10:00Z",
+                ),
+            ),
+            (
+                "200",
+                make_shell_entry_with_time(
+                    "/Users/pete/Code/myproject",
+                    "/dev/ttys002",
+                    ParentApp::Ghostty,
+                    None,
+                    "2026-01-27T10:09:00Z",
+                ),
+            ),
+        ]);
+
+        let decision = resolve_activation(
+            "/Users/pete/Code/myproject",
+            Some(&state),
+            &tmux_context_none(),
+        );
+
+        assert!(matches!(
+            decision.primary,
+            ActivationAction::ActivateApp { ref app_name } if app_name == "Ghostty"
+        ));
+    }
+
     // ─────────────────────────────────────────────────────────────────────────────
     // Scenario: Tmux session exists (no shell in state)
     // ─────────────────────────────────────────────────────────────────────────────

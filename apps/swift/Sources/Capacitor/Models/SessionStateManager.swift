@@ -114,9 +114,15 @@ final class SessionStateManager {
         projects: [Project]
     ) -> [String: ProjectSessionState] {
         var merged: [String: ProjectSessionState] = [:]
-        let projectLookup = Dictionary(uniqueKeysWithValues: projects.map { ($0.path, $0) })
+        var projectLookup: [String: Project] = [:]
+        for project in projects {
+            let key = PathNormalizer.normalize(project.path)
+            if projectLookup[key] == nil {
+                projectLookup[key] = project
+            }
+        }
         if !states.isEmpty {
-            let unmatched = states.filter { projectLookup[$0.projectPath] == nil }
+            let unmatched = states.filter { projectLookup[PathNormalizer.normalize($0.projectPath)] == nil }
             if !unmatched.isEmpty {
                 let sample = unmatched.prefix(3).map { "\($0.projectPath) [\($0.state)]" }.joined(separator: ", ")
                 DebugLog.write("SessionStateManager.mergeDaemonProjectStates unmatched=\(unmatched.count) sample=\(sample)")
@@ -124,8 +130,9 @@ final class SessionStateManager {
         }
 
         for state in states {
-            let projectPath = state.projectPath
-            guard projectLookup[projectPath] != nil else { continue }
+            let normalizedProjectPath = PathNormalizer.normalize(state.projectPath)
+            guard let project = projectLookup[normalizedProjectPath] else { continue }
+            let projectPath = project.path
             let mappedState = mapDaemonState(state.state)
             let sessionState = ProjectSessionState(
                 state: mappedState,
@@ -159,4 +166,13 @@ final class SessionStateManager {
             .idle
         }
     }
+
+    #if DEBUG
+        // Test-only helper for deterministic session resolution.
+        func setSessionStatesForTesting(_ states: [String: ProjectSessionState]) {
+            sessionStates = states
+            pruneCachedStates()
+            checkForStateChanges()
+        }
+    #endif
 }

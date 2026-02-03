@@ -19,8 +19,9 @@ use std::time::Duration;
 const ENABLE_ENV: &str = "CAPACITOR_DAEMON_ENABLED";
 const SOCKET_ENV: &str = "CAPACITOR_DAEMON_SOCKET";
 const SOCKET_NAME: &str = "daemon.sock";
-const READ_TIMEOUT_MS: u64 = 150;
-const WRITE_TIMEOUT_MS: u64 = 150;
+const READ_TIMEOUT_MS: u64 = 600;
+const WRITE_TIMEOUT_MS: u64 = 600;
+const RETRY_DELAY_MS: u64 = 50;
 
 pub fn send_handle_event(event: &HookEvent, session_id: &str, pid: u32, cwd: &str) -> bool {
     if !daemon_enabled() {
@@ -45,31 +46,27 @@ pub fn send_handle_event(event: &HookEvent, session_id: &str, pid: u32, cwd: &st
         _ => (None, None, None, None),
     };
 
-    let envelope = EventEnvelope {
-        event_id: make_event_id(pid),
-        recorded_at: Utc::now().to_rfc3339(),
+    let event_id = make_event_id(pid);
+    let recorded_at = Utc::now().to_rfc3339();
+    let build_envelope = || EventEnvelope {
+        event_id: event_id.clone(),
+        recorded_at: recorded_at.clone(),
         event_type,
         session_id: Some(session_id.to_string()),
         pid: Some(pid),
         cwd: Some(cwd.to_string()),
-        tool,
-        file_path,
+        tool: tool.clone(),
+        file_path: file_path.clone(),
         parent_app: None,
         tty: None,
         tmux_session: None,
         tmux_client_tty: None,
-        notification_type,
+        notification_type: notification_type.clone(),
         stop_hook_active,
         metadata: None,
     };
 
-    match send_event(envelope) {
-        Ok(_) => true,
-        Err(err) => {
-            tracing::warn!(error = %err, "Failed to send event to daemon");
-            false
-        }
-    }
+    send_event_with_retry(build_envelope, "session event").is_ok()
 }
 
 pub fn send_shell_cwd_event(
@@ -102,21 +99,7 @@ pub fn send_shell_cwd_event(
         metadata: None,
     };
 
-    match send_event(build_envelope()) {
-        Ok(_) => Ok(()),
-        Err(err) => {
-            tracing::warn!(error = %err, "Failed to send shell-cwd event to daemon");
-            // Retry once to avoid transient socket failures.
-            std::thread::sleep(Duration::from_millis(50));
-            send_event(build_envelope()).map_err(|retry_err| {
-                tracing::warn!(
-                    error = %retry_err,
-                    "Retry failed sending shell-cwd event to daemon"
-                );
-                retry_err
-            })
-        }
-    }
+    send_event_with_retry(build_envelope, "shell-cwd event")
 }
 
 #[allow(dead_code)]
@@ -181,6 +164,27 @@ fn send_event(event: EventEnvelope) -> Result<(), String> {
             .map(|err| format!("{}: {}", err.code, err.message))
             .unwrap_or_else(|| "Unknown daemon error".to_string());
         Err(message)
+    }
+}
+
+fn send_event_with_retry<F>(mut build: F, label: &str) -> Result<(), String>
+where
+    F: FnMut() -> EventEnvelope,
+{
+    match send_event(build()) {
+        Ok(_) => Ok(()),
+        Err(err) => {
+            tracing::warn!(error = %err, "Failed to send {} to daemon", label);
+            std::thread::sleep(Duration::from_millis(RETRY_DELAY_MS));
+            send_event(build()).map_err(|retry_err| {
+                tracing::warn!(
+                    error = %retry_err,
+                    "Retry failed sending {} to daemon",
+                    label
+                );
+                retry_err
+            })
+        }
     }
 }
 
@@ -264,4 +268,127 @@ fn parent_app_string(app: ParentApp) -> String {
         .unwrap_or_else(|_| "unknown".to_string())
         .trim_matches('"')
         .to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use capacitor_daemon_protocol::Response;
+    use std::sync::{
+        atomic::{AtomicUsize, Ordering},
+        Mutex, OnceLock,
+    };
+    use std::time::{Duration, Instant};
+
+    static ENV_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+
+    struct EnvGuard {
+        key: &'static str,
+        prior: Option<String>,
+    }
+
+    impl EnvGuard {
+        fn set(key: &'static str, value: &str) -> Self {
+            let prior = std::env::var(key).ok();
+            std::env::set_var(key, value);
+            Self { key, prior }
+        }
+    }
+
+    impl Drop for EnvGuard {
+        fn drop(&mut self) {
+            if let Some(value) = &self.prior {
+                std::env::set_var(self.key, value);
+            } else {
+                std::env::remove_var(self.key);
+            }
+        }
+    }
+
+    fn env_lock() -> std::sync::MutexGuard<'static, ()> {
+        ENV_LOCK.get_or_init(|| Mutex::new(())).lock().unwrap()
+    }
+
+    fn read_request(stream: &mut UnixStream) {
+        let mut buffer = Vec::new();
+        let mut chunk = [0u8; 1024];
+        loop {
+            match stream.read(&mut chunk) {
+                Ok(0) => break,
+                Ok(n) => {
+                    buffer.extend_from_slice(&chunk[..n]);
+                    if buffer.contains(&b'\n') {
+                        break;
+                    }
+                }
+                Err(_) => break,
+            }
+        }
+    }
+
+    #[test]
+    fn send_event_retries_after_daemon_error() {
+        let _guard = env_lock();
+
+        let socket_dir = std::env::temp_dir().join(format!(
+            "hud-hook-test-{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or(Duration::from_millis(0))
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&socket_dir).unwrap();
+        let socket_path = socket_dir.join("daemon.sock");
+        let _ = std::fs::remove_file(&socket_path);
+
+        let listener = std::os::unix::net::UnixListener::bind(&socket_path).unwrap();
+        listener.set_nonblocking(true).unwrap();
+
+        let attempt_count = std::sync::Arc::new(AtomicUsize::new(0));
+        let attempt_count_clone = attempt_count.clone();
+
+        let server = std::thread::spawn(move || {
+            let start = Instant::now();
+            let mut handled = 0;
+            while handled < 2 && start.elapsed() < Duration::from_secs(5) {
+                match listener.accept() {
+                    Ok((mut stream, _)) => {
+                        handled += 1;
+                        attempt_count_clone.fetch_add(1, Ordering::SeqCst);
+                        read_request(&mut stream);
+                        let response = if handled == 1 {
+                            Response::error(None, "test_error", "simulated")
+                        } else {
+                            Response::ok(None, serde_json::json!({"status": "ok"}))
+                        };
+                        let mut payload = serde_json::to_vec(&response).unwrap();
+                        payload.push(b'\n');
+                        let _ = stream.write_all(&payload);
+                    }
+                    Err(err) if err.kind() == std::io::ErrorKind::WouldBlock => {
+                        std::thread::sleep(Duration::from_millis(10));
+                    }
+                    Err(_) => break,
+                }
+            }
+        });
+
+        let _socket_guard = EnvGuard::set(SOCKET_ENV, socket_path.to_str().unwrap());
+        let _enabled_guard = EnvGuard::set(ENABLE_ENV, "1");
+
+        let result = send_shell_cwd_event(
+            4242,
+            "/repo",
+            "/dev/ttys001",
+            ParentApp::Terminal,
+            None,
+            None,
+        );
+
+        assert!(result.is_ok());
+
+        server.join().unwrap();
+
+        assert_eq!(attempt_count.load(Ordering::SeqCst), 2);
+    }
 }

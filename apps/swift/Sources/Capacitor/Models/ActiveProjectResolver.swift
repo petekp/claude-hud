@@ -120,9 +120,6 @@ final class ActiveProjectResolver {
     private func findActiveClaudeSession() -> (Project, String)? {
         var activeSessions: [(Project, String, Date)] = []
         var readySessions: [(Project, String, Date)] = []
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-
         var sessionSummary: [String] = []
         for project in projects {
             guard let sessionState = sessionStateManager.getSessionState(for: project),
@@ -135,11 +132,11 @@ final class ActiveProjectResolver {
             // Use updated_at (updates on every hook event) for accurate activity tracking.
             // Falls back to stateChangedAt, then Date.distantPast.
             let updatedAt: Date = if let dateStr = sessionState.updatedAt,
-                                     let parsed = formatter.date(from: dateStr)
+                                     let parsed = DaemonDateParser.parse(dateStr)
             {
                 parsed
             } else if let dateStr = sessionState.stateChangedAt,
-                      let parsed = formatter.date(from: dateStr)
+                      let parsed = DaemonDateParser.parse(dateStr)
             {
                 parsed
             } else {
@@ -248,8 +245,10 @@ final class ActiveProjectResolver {
     }
 
     private func projectContaining(path: String) -> Project? {
+        let normalizedPath = PathNormalizer.normalize(path)
         for project in projects {
-            if path == project.path || path.hasPrefix(project.path + "/") {
+            let normalizedProjectPath = PathNormalizer.normalize(project.path)
+            if normalizedPath == normalizedProjectPath || normalizedPath.hasPrefix(normalizedProjectPath + "/") {
                 return project
             }
         }
