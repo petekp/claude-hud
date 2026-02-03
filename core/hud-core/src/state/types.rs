@@ -205,5 +205,4 @@ pub struct SessionRecord {
     pub active_subagent_count: u32,
 }
 
-impl SessionRecord {
-}
+impl SessionRecord {}

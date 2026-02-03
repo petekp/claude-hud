@@ -1,10 +1,10 @@
 //! Claude Code adapter backed by daemon session snapshots.
 
+use super::types::{AgentSession, AgentState, AgentType};
+use super::AgentAdapter;
 use crate::state::daemon::{sessions_snapshot, DaemonSessionRecord};
 use crate::storage::StorageConfig;
 use crate::types::SessionState;
-use super::types::{AgentSession, AgentState, AgentType};
-use super::AgentAdapter;
 
 /// Adapter for Claude Code CLI sessions.
 ///

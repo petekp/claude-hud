@@ -64,11 +64,7 @@ pub fn get_all_session_states_with_storage(
     for path in project_paths {
         states.insert(
             path.clone(),
-            detect_session_state_with_snapshots(
-                storage,
-                path,
-                daemon_sessions.as_ref(),
-            ),
+            detect_session_state_with_snapshots(storage, path, daemon_sessions.as_ref()),
         );
     }
 
