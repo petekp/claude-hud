@@ -1,18 +1,18 @@
 # Agent Changelog
 
 > This file helps coding agents understand project evolution, key decisions,
-> and deprecated patterns. Updated: 2026-02-03 (daemon-first migration in progress)
+> and deprecated patterns. Updated: 2026-02-03 (daemon-first migration completed)
 
 ## Current State Summary
 
-Capacitor is a native macOS SwiftUI app (Apple Silicon, macOS 14+) that acts as a sidecar dashboard for Claude Code. The architecture uses a Rust core (`hud-core`) with UniFFI bindings to Swift plus a **Rust daemon (`capacitor-daemon`) that is now the canonical source of truth** for session, shell, activity, and process-liveness state. Hooks emit events to the daemon over a Unix socket (`~/.capacitor/daemon.sock`), and Swift reads daemon snapshots (shell state + session/project state). File-based JSON fallbacks (`sessions.json`, `shell-cwd.json`, `file-activity.json`) and lock compatibility have been removed in daemon-only mode. The app auto-starts the daemon via LaunchAgent and surfaces daemon status in debug builds only. Terminal activation uses a Rust-only decision path (Swift executes macOS APIs). **v0.1.27** completed hook audit remediations (heartbeat gating, safe hook tests, activity migration) and activation matching parity across Rust/Swift. Current migration work focuses on daemon-only correctness and stabilizing the debug app launch path (Sparkle/dylib bundling).
+Capacitor is a native macOS SwiftUI app (Apple Silicon, macOS 14+) that acts as a sidecar dashboard for Claude Code. The architecture uses a Rust core (`hud-core`) with UniFFI bindings to Swift plus a **Rust daemon (`capacitor-daemon`) that is the canonical source of truth** for session, shell, activity, and process-liveness state. Hooks emit events to the daemon over a Unix socket (`~/.capacitor/daemon.sock`), and Swift reads daemon snapshots (shell state + project aggregation). File-based JSON fallbacks (`sessions.json`, `shell-cwd.json`, `file-activity.json`) and lock compatibility have been removed in daemon-only mode. The app auto-starts the daemon via LaunchAgent and surfaces daemon status in debug builds only. Terminal activation uses a Rust-only decision path (Swift executes macOS APIs). **v0.1.27** completed hook audit remediations (heartbeat gating, safe hook tests, activity migration) and activation matching parity across Rust/Swift.
 
 ## Stale Information Detected
 
 | Location | States | Reality | Since |
 |----------|--------|---------|-------|
 | docs/architecture-decisions/003-sidecar-architecture-pattern.md | “Hooks write `~/.capacitor/sessions.json` and HUD reads files.” | Daemon is the single writer; hooks/app are IPC clients; JSON is legacy/fallback only. | 2026-01 |
-| docs/architecture-decisions/002-state-resolver-matching-logic.md | “Lock-file resolver is current.” | Superseded by daemon-based state; lock files are historical only. | 2026-02 |
+| docs/architecture-decisions/002-state-resolver-matching-logic.md | “Lock-file resolver is current.” | Superseded by daemon-based state; lock files are historical only. | 2026-02 (now marked superseded) |
 
 ## Timeline
 
@@ -59,6 +59,25 @@ Capacitor is a native macOS SwiftUI app (Apple Silicon, macOS 14+) that acts as 
 - Treat daemon project aggregation as canonical (no client-side staleness logic).
 - Use `has_session` for “non-idle session exists” instead of any lock semantics.
 - Consult `.claude/docs/ui-refresh-contract.md` before changing polling cadence.
+
+---
+
+### 2026-02 — Daemon-Only Cleanup + Schema Naming (Completed)
+
+**What changed:**
+- Removed remaining client-side heuristics and activity fallbacks in `hud-core`.
+- Renamed `is_locked` → `has_session` across daemon, Rust core, and Swift client models.
+- Added an audit trail for legacy/dead code removals under `.claude/docs/audit/`.
+
+**Why:**
+- Eliminate legacy lock semantics from the daemon-first architecture.
+- Keep client state purely declarative and daemon-derived.
+
+**Agent impact:**
+- Use `has_session` for “non-idle session exists” checks.
+- Do not reintroduce local staleness or file-activity heuristics.
+
+**Commits:** `e6cd8ef`, `1d135dc`
 
 ---
 
