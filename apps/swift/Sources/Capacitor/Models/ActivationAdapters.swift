@@ -11,9 +11,9 @@ struct TmuxClientAdapter: TmuxClient {
         getCurrentClientTty: @escaping () async -> String?,
         switchClient: @escaping (String) async -> Bool
     ) {
-        self.hasAnyClientAttachedHandler = hasAnyClientAttached
-        self.getCurrentClientTtyHandler = getCurrentClientTty
-        self.switchClientHandler = switchClient
+        hasAnyClientAttachedHandler = hasAnyClientAttached
+        getCurrentClientTtyHandler = getCurrentClientTty
+        switchClientHandler = switchClient
     }
 
     func hasAnyClientAttached() async -> Bool {
@@ -42,10 +42,10 @@ struct TerminalDiscoveryAdapter: TerminalDiscovery {
         isGhosttyRunning: @escaping () -> Bool,
         countGhosttyWindows: @escaping () -> Int
     ) {
-        self.activateTerminalByTTYHandler = activateTerminalByTTY
-        self.activateAppByNameHandler = activateAppByName
-        self.isGhosttyRunningHandler = isGhosttyRunning
-        self.countGhosttyWindowsHandler = countGhosttyWindows
+        activateTerminalByTTYHandler = activateTerminalByTTY
+        activateAppByNameHandler = activateAppByName
+        isGhosttyRunningHandler = isGhosttyRunning
+        countGhosttyWindowsHandler = countGhosttyWindows
     }
 
     func activateTerminalByTTY(tty: String) async -> Bool {
@@ -70,7 +70,7 @@ struct TerminalLauncherAdapter: TerminalLauncherClient {
     let launchTerminalWithTmuxHandler: (String) -> Void
 
     init(launchTerminalWithTmux: @escaping (String) -> Void) {
-        self.launchTerminalWithTmuxHandler = launchTerminalWithTmux
+        launchTerminalWithTmuxHandler = launchTerminalWithTmux
     }
 
     func launchTerminalWithTmux(sessionName: String) {

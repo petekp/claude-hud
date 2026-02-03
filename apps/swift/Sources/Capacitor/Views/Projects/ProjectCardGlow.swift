@@ -39,7 +39,7 @@ struct ReadyAmbientGlow: View {
                 let maxRadius = max(geometry.size.width, geometry.size.height) * 1.8
 
                 Canvas { context, _ in
-                    for i in 0..<params.count {
+                    for i in 0 ..< params.count {
                         let stagger = Double(i) / Double(params.count)
                         let ringPhase = (phase + stagger).truncatingRemainder(dividingBy: 1.0)
                         let radius = maxRadius * ringPhase
@@ -51,7 +51,7 @@ struct ReadyAmbientGlow: View {
                         let lineWidthFadeIn = params.fadeInZone > 0 ? min(ringPhase / params.fadeInZone, 1.0) : 1.0
                         let effectiveLineWidth = params.lineWidth * smoothstep(lineWidthFadeIn)
 
-                        if radius > 0 && opacity > 0.005 && effectiveLineWidth > 0.1 {
+                        if radius > 0, opacity > 0.005, effectiveLineWidth > 0.1 {
                             let rect = CGRect(
                                 x: originX - radius,
                                 y: originY - radius,
@@ -182,7 +182,7 @@ struct ReadyBorderGlowContent: View {
     }
 
     private var borderGlowParameters: BorderGlowParameters {
-        if let config = config {
+        if let config {
             return BorderGlowParameters(
                 speed: config.rippleSpeed(for: layoutMode),
                 count: config.rippleCount(for: layoutMode),
@@ -214,7 +214,7 @@ struct ReadyBorderGlowContent: View {
 
     private func computeIntensity(phase: Double, count: Int, fadeInZone: Double, fadeOutPower: Double) -> Double {
         var maxIntensity: Double = 0
-        for i in 0..<count {
+        for i in 0 ..< count {
             let stagger = Double(i) / Double(count)
             let ringPhase = (phase + stagger).truncatingRemainder(dividingBy: 1.0)
             let fadeIn: Double = fadeInZone > 0 ? min(ringPhase / fadeInZone, 1.0) : 1.0
@@ -238,7 +238,7 @@ struct ReadyBorderGlowContent: View {
                             .init(color: Color.statusReady.opacity(baseOpacity * 0.2), location: 0.6),
                             .init(color: Color.statusReady.opacity(baseOpacity * 0.5), location: 0.75),
                             .init(color: Color.statusReady.opacity(baseOpacity), location: 0.85),
-                            .init(color: Color.statusReady.opacity(baseOpacity * 0.3), location: 1.0)
+                            .init(color: Color.statusReady.opacity(baseOpacity * 0.3), location: 1.0),
                         ]),
                         center: .center,
                         angle: rotationAngle
@@ -257,7 +257,7 @@ struct ReadyBorderGlowContent: View {
                             .init(color: Color.statusReady.opacity(baseOpacity * 0.1), location: 0.5),
                             .init(color: Color.statusReady.opacity(baseOpacity * 0.3), location: 0.75),
                             .init(color: Color.statusReady.opacity(baseOpacity * 0.8), location: 0.85),
-                            .init(color: Color.statusReady.opacity(baseOpacity * 0.2), location: 1.0)
+                            .init(color: Color.statusReady.opacity(baseOpacity * 0.2), location: 1.0),
                         ]),
                         center: .center,
                         angle: rotationAngle + Angle(degrees: 180)
@@ -336,7 +336,7 @@ struct WaitingAmbientPulse: View {
                                 Color.statusWaiting.opacity(params.maxOpacity * intensity),
                                 Color.statusWaiting.opacity(params.maxOpacity * intensity * 0.4),
                                 Color.statusWaiting.opacity(params.maxOpacity * intensity * 0.1),
-                                Color.statusWaiting.opacity(0)
+                                Color.statusWaiting.opacity(0),
                             ],
                             center: .center,
                             startRadius: 0,
@@ -394,12 +394,12 @@ struct WaitingAmbientPulse: View {
             let t = (phase - firstEnd) / params.firstPulseFadeOut
             let intensity = dampedSpring(t: 1.0 - t, damping: params.springDamping * 0.75, omega: params.springOmega) * firstIntensity
             return (intensity, intensity)
-        } else if phase >= secondStart && phase < secondEnd {
+        } else if phase >= secondStart, phase < secondEnd {
             // Second pulse attack - smaller, heavily damped
             let t = (phase - secondStart) / params.secondPulseDuration
             let intensity = dampedSpring(t: t, damping: params.springDamping * 1.1, omega: params.springOmega) * secondIntensity
             return (intensity, intensity * 0.8)
-        } else if phase >= secondEnd && phase < secondFadeEnd {
+        } else if phase >= secondEnd, phase < secondFadeEnd {
             // Second pulse fade out
             let t = (phase - secondEnd) / params.secondPulseFadeOut
             let intensity = dampedSpring(t: 1.0 - t, damping: params.springDamping * 0.85, omega: params.springOmega) * secondIntensity
@@ -516,10 +516,10 @@ struct WaitingBorderPulse: View {
         } else if phase < firstFadeEnd {
             let t = (phase - firstEnd) / params.firstPulseFadeOut
             return dampedSpring(t: 1.0 - t, damping: params.springDamping * 0.75, omega: params.springOmega) * firstIntensity
-        } else if phase >= secondStart && phase < secondEnd {
+        } else if phase >= secondStart, phase < secondEnd {
             let t = (phase - secondStart) / params.secondPulseDuration
             return dampedSpring(t: t, damping: params.springDamping * 1.1, omega: params.springOmega) * secondIntensity
-        } else if phase >= secondEnd && phase < secondFadeEnd {
+        } else if phase >= secondEnd, phase < secondFadeEnd {
             let t = (phase - secondEnd) / params.secondPulseFadeOut
             return dampedSpring(t: 1.0 - t, damping: params.springDamping * 0.85, omega: params.springOmega) * secondIntensity
         }
@@ -715,7 +715,7 @@ struct WorkingStripeOverlay: View {
         let stripeCount = Int(ceil(diagonal * 2 / patternWidth)) + 2
         let glowColor = Color.statusWorking
 
-        for i in 0..<stripeCount {
+        for i in 0 ..< stripeCount {
             let x = Double(i) * patternWidth
             let stripeRect = CGRect(x: x, y: 0, width: stripeWidth, height: diagonal * 2)
             let stripePath = Path(stripeRect)
@@ -738,7 +738,7 @@ struct WorkingStripeOverlay: View {
 
         let stripeCount = Int(ceil(diagonal * 2 / patternWidth)) + 2
 
-        for i in 0..<stripeCount {
+        for i in 0 ..< stripeCount {
             let x = Double(i) * patternWidth
 
             // Gradient stripe: bright core fading to edges (neon tube effect)
@@ -748,7 +748,7 @@ struct WorkingStripeOverlay: View {
                 .init(color: Color.statusWorking.opacity(params.stripeOpacity * 0.3), location: 0.0),
                 .init(color: Color.white.opacity(params.coreBrightness), location: 0.5 - params.gradientFalloff),
                 .init(color: Color.white.opacity(params.coreBrightness), location: 0.5 + params.gradientFalloff),
-                .init(color: Color.statusWorking.opacity(params.stripeOpacity * 0.3), location: 1.0)
+                .init(color: Color.statusWorking.opacity(params.stripeOpacity * 0.3), location: 1.0),
             ])
 
             let stripePath = Path(gradientRect)

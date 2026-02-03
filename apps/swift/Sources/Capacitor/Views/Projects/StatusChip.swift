@@ -20,7 +20,8 @@ struct StatusChip: View {
 
     private var isStale: Bool {
         guard let timestamp = stateChangedAt,
-              let date = parseISO8601Date(timestamp) else {
+              let date = parseISO8601Date(timestamp)
+        else {
             return true
         }
         let hoursSince = Date().timeIntervalSince(date) / 3600
@@ -36,17 +37,17 @@ struct StatusChip: View {
 
     private var accessibilityLabelText: String {
         switch effectiveState {
-        case .working: return "Working"
-        case .ready: return "Ready"
-        case .idle: return "Idle"
-        case .compacting: return "Compacting"
-        case .waiting: return "Waiting"
+        case .working: "Working"
+        case .ready: "Ready"
+        case .idle: "Idle"
+        case .compacting: "Compacting"
+        case .waiting: "Waiting"
         }
     }
 
     var body: some View {
         Group {
-            if let state = state {
+            if let state {
                 StatusIndicator(state: state)
                     .scaleEffect(style == .compact ? 0.85 : 1.0, anchor: .leading)
             } else {

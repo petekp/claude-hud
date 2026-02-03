@@ -199,6 +199,9 @@ capacitor/
 # Format and lint Rust
 cargo fmt && cargo clippy -- -D warnings
 
+# Format Swift (install with: brew install swiftformat)
+swiftformat apps/swift
+
 # Run Rust tests
 cargo test
 

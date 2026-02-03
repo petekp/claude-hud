@@ -1,5 +1,5 @@
-import SwiftUI
 import AppKit
+import SwiftUI
 
 @MainActor
 struct WelcomeView: View {
@@ -135,7 +135,7 @@ struct WelcomeView: View {
             await CapacitorConfig.shared.markSetupComplete()
 
             #if DEBUG
-            CapacitorApp.restoreOnboardingBackup()
+                CapacitorApp.restoreOnboardingBackup()
             #endif
 
             onComplete()

@@ -5,18 +5,18 @@ import Foundation
 extension ParentApp: Identifiable, CaseIterable {
     public var id: String {
         switch self {
-        case .ghostty: return "ghostty"
-        case .iTerm: return "iterm2"
-        case .terminal: return "terminal"
-        case .alacritty: return "alacritty"
-        case .kitty: return "kitty"
-        case .warp: return "warp"
-        case .cursor: return "cursor"
-        case .vsCode: return "vscode"
-        case .vsCodeInsiders: return "vscode-insiders"
-        case .zed: return "zed"
-        case .tmux: return "tmux"
-        case .unknown: return "unknown"
+        case .ghostty: "ghostty"
+        case .iTerm: "iterm2"
+        case .terminal: "terminal"
+        case .alacritty: "alacritty"
+        case .kitty: "kitty"
+        case .warp: "warp"
+        case .cursor: "cursor"
+        case .vsCode: "vscode"
+        case .vsCodeInsiders: "vscode-insiders"
+        case .zed: "zed"
+        case .tmux: "tmux"
+        case .unknown: "unknown"
         }
     }
 
@@ -27,32 +27,32 @@ extension ParentApp: Identifiable, CaseIterable {
 
     var displayName: String {
         switch self {
-        case .ghostty: return "Ghostty"
-        case .iTerm: return "iTerm2"
-        case .terminal: return "Terminal.app"
-        case .alacritty: return "Alacritty"
-        case .kitty: return "kitty"
-        case .warp: return "Warp"
-        case .cursor: return "Cursor"
-        case .vsCode: return "VS Code"
-        case .vsCodeInsiders: return "VS Code Insiders"
-        case .zed: return "Zed"
-        case .tmux: return "tmux"
-        case .unknown: return "Unknown"
+        case .ghostty: "Ghostty"
+        case .iTerm: "iTerm2"
+        case .terminal: "Terminal.app"
+        case .alacritty: "Alacritty"
+        case .kitty: "kitty"
+        case .warp: "Warp"
+        case .cursor: "Cursor"
+        case .vsCode: "VS Code"
+        case .vsCodeInsiders: "VS Code Insiders"
+        case .zed: "Zed"
+        case .tmux: "tmux"
+        case .unknown: "Unknown"
         }
     }
 
     var category: ParentAppCategory {
         switch self {
-        case .cursor, .vsCode, .vsCodeInsiders, .zed: return .ide
-        case .ghostty, .iTerm, .terminal, .alacritty, .kitty, .warp: return .terminal
-        case .tmux: return .multiplexer
-        case .unknown: return .unknown
+        case .cursor, .vsCode, .vsCodeInsiders, .zed: .ide
+        case .ghostty, .iTerm, .terminal, .alacritty, .kitty, .warp: .terminal
+        case .tmux: .multiplexer
+        case .unknown: .unknown
         }
     }
 
     init(fromString app: String?) {
-        guard let app = app else {
+        guard let app else {
             self = .unknown
             return
         }
@@ -126,29 +126,29 @@ enum ActivationStrategy: String, CaseIterable, Codable, Identifiable {
 
     var displayName: String {
         switch self {
-        case .activateByTTY: return "TTY Lookup"
-        case .activateByApp: return "Activate App"
-        case .activateKittyRemote: return "kitty Remote"
-        case .activateIDEWindow: return "IDE Window"
-        case .switchTmuxSession: return "Switch tmux"
-        case .activateHostFirst: return "Host → tmux"
-        case .launchNewTerminal: return "Launch New"
-        case .priorityFallback: return "Priority Order"
-        case .skip: return "Skip"
+        case .activateByTTY: "TTY Lookup"
+        case .activateByApp: "Activate App"
+        case .activateKittyRemote: "kitty Remote"
+        case .activateIDEWindow: "IDE Window"
+        case .switchTmuxSession: "Switch tmux"
+        case .activateHostFirst: "Host → tmux"
+        case .launchNewTerminal: "Launch New"
+        case .priorityFallback: "Priority Order"
+        case .skip: "Skip"
         }
     }
 
     var description: String {
         switch self {
-        case .activateByTTY: return "Query iTerm/Terminal via AppleScript to find TTY owner"
-        case .activateByApp: return "Simply activate the app by name"
-        case .activateKittyRemote: return "Use kitty @ focus-window --match pid:"
-        case .activateIDEWindow: return "Run cursor/code CLI to focus correct window"
-        case .switchTmuxSession: return "Run tmux switch-client -t <session>"
-        case .activateHostFirst: return "Find host terminal TTY, then switch tmux session"
-        case .launchNewTerminal: return "Spawn new terminal with project"
-        case .priorityFallback: return "Use TerminalApp priority order"
-        case .skip: return "Do nothing"
+        case .activateByTTY: "Query iTerm/Terminal via AppleScript to find TTY owner"
+        case .activateByApp: "Simply activate the app by name"
+        case .activateKittyRemote: "Use kitty @ focus-window --match pid:"
+        case .activateIDEWindow: "Run cursor/code CLI to focus correct window"
+        case .switchTmuxSession: "Run tmux switch-client -t <session>"
+        case .activateHostFirst: "Find host terminal TTY, then switch tmux session"
+        case .launchNewTerminal: "Spawn new terminal with project"
+        case .priorityFallback: "Use TerminalApp priority order"
+        case .skip: "Do nothing"
         }
     }
 }
@@ -174,90 +174,90 @@ struct ScenarioBehavior: Codable, Equatable {
     static func defaultBehavior(for scenario: ShellScenario) -> ScenarioBehavior {
         switch scenario.parentApp.category {
         case .ide:
-            return ideDefault(scenario)
+            ideDefault(scenario)
         case .terminal:
-            return terminalDefault(scenario)
+            terminalDefault(scenario)
         case .multiplexer:
-            return multiplexerDefault(scenario)
+            multiplexerDefault(scenario)
         case .unknown:
-            return unknownDefault(scenario)
+            unknownDefault(scenario)
         }
     }
 
     private static func ideDefault(_ scenario: ShellScenario) -> ScenarioBehavior {
         switch (scenario.context, scenario.multiplicity) {
         case (.direct, .single), (.direct, .multipleTabs):
-            return ScenarioBehavior(primaryStrategy: .activateIDEWindow, fallbackStrategy: nil)
+            ScenarioBehavior(primaryStrategy: .activateIDEWindow, fallbackStrategy: nil)
         case (.direct, .multipleWindows):
-            return ScenarioBehavior(primaryStrategy: .activateIDEWindow, fallbackStrategy: .priorityFallback)
+            ScenarioBehavior(primaryStrategy: .activateIDEWindow, fallbackStrategy: .priorityFallback)
         case (.tmux, .single), (.tmux, .multipleTabs):
-            return ScenarioBehavior(primaryStrategy: .activateIDEWindow, fallbackStrategy: .switchTmuxSession)
+            ScenarioBehavior(primaryStrategy: .activateIDEWindow, fallbackStrategy: .switchTmuxSession)
         case (.tmux, .multipleWindows):
-            return ScenarioBehavior(primaryStrategy: .activateIDEWindow, fallbackStrategy: .activateHostFirst)
+            ScenarioBehavior(primaryStrategy: .activateIDEWindow, fallbackStrategy: .activateHostFirst)
         }
     }
 
     private static func terminalDefault(_ scenario: ShellScenario) -> ScenarioBehavior {
         switch scenario.parentApp {
         case .iTerm, .terminal:
-            return ttyCapableTerminalDefault(scenario)
+            ttyCapableTerminalDefault(scenario)
         case .kitty:
-            return kittyDefault(scenario)
+            kittyDefault(scenario)
         case .ghostty, .alacritty, .warp:
-            return basicTerminalDefault(scenario)
+            basicTerminalDefault(scenario)
         default:
-            return ScenarioBehavior(primaryStrategy: .priorityFallback, fallbackStrategy: nil)
+            ScenarioBehavior(primaryStrategy: .priorityFallback, fallbackStrategy: nil)
         }
     }
 
     private static func ttyCapableTerminalDefault(_ scenario: ShellScenario) -> ScenarioBehavior {
         switch (scenario.context, scenario.multiplicity) {
         case (.direct, _):
-            return ScenarioBehavior(primaryStrategy: .activateByTTY, fallbackStrategy: nil)
+            ScenarioBehavior(primaryStrategy: .activateByTTY, fallbackStrategy: nil)
         case (.tmux, .single), (.tmux, .multipleTabs):
-            return ScenarioBehavior(primaryStrategy: .activateHostFirst, fallbackStrategy: nil)
+            ScenarioBehavior(primaryStrategy: .activateHostFirst, fallbackStrategy: nil)
         case (.tmux, .multipleWindows):
-            return ScenarioBehavior(primaryStrategy: .activateHostFirst, fallbackStrategy: .priorityFallback)
+            ScenarioBehavior(primaryStrategy: .activateHostFirst, fallbackStrategy: .priorityFallback)
         }
     }
 
     private static func kittyDefault(_ scenario: ShellScenario) -> ScenarioBehavior {
         switch (scenario.context, scenario.multiplicity) {
         case (.direct, _):
-            return ScenarioBehavior(primaryStrategy: .activateKittyRemote, fallbackStrategy: .activateByApp)
+            ScenarioBehavior(primaryStrategy: .activateKittyRemote, fallbackStrategy: .activateByApp)
         case (.tmux, .single), (.tmux, .multipleTabs):
-            return ScenarioBehavior(primaryStrategy: .activateKittyRemote, fallbackStrategy: .switchTmuxSession)
+            ScenarioBehavior(primaryStrategy: .activateKittyRemote, fallbackStrategy: .switchTmuxSession)
         case (.tmux, .multipleWindows):
-            return ScenarioBehavior(primaryStrategy: .activateKittyRemote, fallbackStrategy: .activateHostFirst)
+            ScenarioBehavior(primaryStrategy: .activateKittyRemote, fallbackStrategy: .activateHostFirst)
         }
     }
 
     private static func basicTerminalDefault(_ scenario: ShellScenario) -> ScenarioBehavior {
         switch (scenario.context, scenario.multiplicity) {
         case (.direct, .single):
-            return ScenarioBehavior(primaryStrategy: .activateByApp, fallbackStrategy: nil)
+            ScenarioBehavior(primaryStrategy: .activateByApp, fallbackStrategy: nil)
         case (.direct, .multipleTabs), (.direct, .multipleWindows):
-            return ScenarioBehavior(primaryStrategy: .activateByApp, fallbackStrategy: .priorityFallback)
+            ScenarioBehavior(primaryStrategy: .activateByApp, fallbackStrategy: .priorityFallback)
         case (.tmux, _):
-            return ScenarioBehavior(primaryStrategy: .activateHostFirst, fallbackStrategy: nil)
+            ScenarioBehavior(primaryStrategy: .activateHostFirst, fallbackStrategy: nil)
         }
     }
 
     private static func multiplexerDefault(_ scenario: ShellScenario) -> ScenarioBehavior {
         switch scenario.multiplicity {
         case .single, .multipleTabs:
-            return ScenarioBehavior(primaryStrategy: .activateHostFirst, fallbackStrategy: nil)
+            ScenarioBehavior(primaryStrategy: .activateHostFirst, fallbackStrategy: nil)
         case .multipleWindows:
-            return ScenarioBehavior(primaryStrategy: .activateHostFirst, fallbackStrategy: .priorityFallback)
+            ScenarioBehavior(primaryStrategy: .activateHostFirst, fallbackStrategy: .priorityFallback)
         }
     }
 
     private static func unknownDefault(_ scenario: ShellScenario) -> ScenarioBehavior {
         switch scenario.context {
         case .direct:
-            return ScenarioBehavior(primaryStrategy: .activateByTTY, fallbackStrategy: .priorityFallback)
+            ScenarioBehavior(primaryStrategy: .activateByTTY, fallbackStrategy: .priorityFallback)
         case .tmux:
-            return ScenarioBehavior(primaryStrategy: .activateHostFirst, fallbackStrategy: .priorityFallback)
+            ScenarioBehavior(primaryStrategy: .activateHostFirst, fallbackStrategy: .priorityFallback)
         }
     }
 }

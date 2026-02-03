@@ -11,8 +11,8 @@
 //
 // forceDarkAppearance ensures consistent look regardless of system theme.
 
-import SwiftUI
 import AppKit
+import SwiftUI
 
 struct VibrancyView: NSViewRepresentable {
     let material: NSVisualEffectView.Material
@@ -32,7 +32,7 @@ struct VibrancyView: NSViewRepresentable {
         self.forceDarkAppearance = forceDarkAppearance
     }
 
-    func makeNSView(context: Context) -> NSVisualEffectView {
+    func makeNSView(context _: Context) -> NSVisualEffectView {
         let view = NSVisualEffectView()
         view.material = material
         view.blendingMode = blendingMode
@@ -44,7 +44,7 @@ struct VibrancyView: NSViewRepresentable {
         return view
     }
 
-    func updateNSView(_ nsView: NSVisualEffectView, context: Context) {
+    func updateNSView(_ nsView: NSVisualEffectView, context _: Context) {
         nsView.material = material
         nsView.blendingMode = blendingMode
         nsView.isEmphasized = isEmphasized
@@ -65,7 +65,7 @@ extension View {
         isEmphasized: Bool = false,
         forceDarkAppearance: Bool = false
     ) -> some View {
-        self.background(
+        background(
             VibrancyView(
                 material: material,
                 blendingMode: blendingMode,
@@ -81,12 +81,12 @@ struct DarkFrostedGlass: View {
 
     private var selectedMaterial: NSVisualEffectView.Material {
         switch config.materialType {
-        case 0: return .hudWindow
-        case 1: return .popover
-        case 2: return .menu
-        case 3: return .sidebar
-        case 4: return .fullScreenUI
-        default: return .hudWindow
+        case 0: .hudWindow
+        case 1: .popover
+        case 2: .menu
+        case 3: .sidebar
+        case 4: .fullScreenUI
+        default: .hudWindow
         }
     }
 
@@ -117,7 +117,7 @@ struct DarkFrostedGlass: View {
                 colors: [
                     .white.opacity(highlightOpacity),
                     .white.opacity(highlightOpacity * 0.25),
-                    .clear
+                    .clear,
                 ],
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing
@@ -141,7 +141,7 @@ struct DarkFrostedGlass: View {
                         colors: [
                             .white.opacity(borderOpacity),
                             .white.opacity(borderOpacity * 0.4),
-                            .white.opacity(borderOpacity * 0.2)
+                            .white.opacity(borderOpacity * 0.2),
                         ],
                         startPoint: .topLeading,
                         endPoint: .bottomTrailing
@@ -176,36 +176,36 @@ struct DarkFrostedCard: View {
     private var effectiveConfig: GlassConfig { config ?? GlassConfig.shared }
 
     #if DEBUG
-    private var selectedMaterial: NSVisualEffectView.Material {
-        switch effectiveConfig.cardMaterialType {
-        case 0: return .hudWindow
-        case 1: return .popover
-        case 2: return .menu
-        case 3: return .sidebar
-        case 4: return .fullScreenUI
-        default: return .hudWindow
+        private var selectedMaterial: NSVisualEffectView.Material {
+            switch effectiveConfig.cardMaterialType {
+            case 0: .hudWindow
+            case 1: .popover
+            case 2: .menu
+            case 3: .sidebar
+            case 4: .fullScreenUI
+            default: .hudWindow
+            }
         }
-    }
 
-    private var selectedBlendingMode: NSVisualEffectView.BlendingMode {
-        switch effectiveConfig.cardBlendingMode {
-        case 0: return .behindWindow
-        case 1: return .withinWindow
-        default: return .behindWindow
+        private var selectedBlendingMode: NSVisualEffectView.BlendingMode {
+            switch effectiveConfig.cardBlendingMode {
+            case 0: .behindWindow
+            case 1: .withinWindow
+            default: .behindWindow
+            }
         }
-    }
 
-    private var selectedSwiftUIBlendMode: BlendMode {
-        switch effectiveConfig.cardSwiftUIBlendMode {
-        case 0: return .normal
-        case 1: return .plusLighter
-        case 2: return .softLight
-        case 3: return .overlay
-        case 4: return .screen
-        case 5: return .multiply
-        default: return .normal
+        private var selectedSwiftUIBlendMode: BlendMode {
+            switch effectiveConfig.cardSwiftUIBlendMode {
+            case 0: .normal
+            case 1: .plusLighter
+            case 2: .softLight
+            case 3: .overlay
+            case 4: .screen
+            case 5: .multiply
+            default: .normal
+            }
         }
-    }
     #endif
 
     var body: some View {
@@ -216,19 +216,19 @@ struct DarkFrostedCard: View {
 
         ZStack {
             #if DEBUG
-            VibrancyView(
-                material: selectedMaterial,
-                blendingMode: selectedBlendingMode,
-                isEmphasized: effectiveConfig.cardEmphasized,
-                forceDarkAppearance: effectiveConfig.cardForceDarkAppearance
-            )
+                VibrancyView(
+                    material: selectedMaterial,
+                    blendingMode: selectedBlendingMode,
+                    isEmphasized: effectiveConfig.cardEmphasized,
+                    forceDarkAppearance: effectiveConfig.cardForceDarkAppearance
+                )
             #else
-            VibrancyView(
-                material: .hudWindow,
-                blendingMode: .behindWindow,
-                isEmphasized: false,
-                forceDarkAppearance: true
-            )
+                VibrancyView(
+                    material: .hudWindow,
+                    blendingMode: .behindWindow,
+                    isEmphasized: false,
+                    forceDarkAppearance: true
+                )
             #endif
 
             Color.black.opacity(effectiveTintOpacity)
@@ -236,7 +236,7 @@ struct DarkFrostedCard: View {
             LinearGradient(
                 colors: [
                     .white.opacity(highlightOpacity),
-                    .white.opacity(highlightOpacity * 0.33)
+                    .white.opacity(highlightOpacity * 0.33),
                 ],
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing
@@ -247,7 +247,7 @@ struct DarkFrostedCard: View {
         }
         .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
         #if DEBUG
-        .id(effectiveConfig.cardConfigHash)
+            .id(effectiveConfig.cardConfigHash)
         #endif
     }
 }

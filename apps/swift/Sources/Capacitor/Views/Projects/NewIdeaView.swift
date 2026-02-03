@@ -32,7 +32,7 @@ struct NewIdeaView: View {
                 VStack(alignment: .leading, spacing: 20) {
                     headerSection
                     formSection
-                    if let error = error {
+                    if let error {
                         errorSection(error)
                     }
                     createButton
@@ -229,7 +229,7 @@ struct NewIdeaView: View {
 
     private var isFormValid: Bool {
         !projectName.trimmingCharacters(in: .whitespaces).isEmpty &&
-        !projectDescription.trimmingCharacters(in: .whitespaces).isEmpty
+            !projectDescription.trimmingCharacters(in: .whitespaces).isEmpty
     }
 
     private func createProject() {
@@ -258,4 +258,3 @@ struct NewIdeaView: View {
         }
     }
 }
-

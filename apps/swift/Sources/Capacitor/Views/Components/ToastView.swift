@@ -84,7 +84,7 @@ struct ToastContainer: View {
         VStack {
             Spacer()
 
-            if let toast = toast {
+            if let toast {
                 ToastView(toast: toast) {
                     self.toast = nil
                 }

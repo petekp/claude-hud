@@ -33,12 +33,12 @@ struct ProjectCardView: View {
 
     private var currentState: SessionState? {
         switch glassConfig.previewState {
-        case .none: return sessionState?.state
-        case .ready: return .ready
-        case .working: return .working
-        case .waiting: return .waiting
-        case .compacting: return .compacting
-        case .idle: return .idle
+        case .none: sessionState?.state
+        case .ready: .ready
+        case .working: .working
+        case .waiting: .waiting
+        case .compacting: .compacting
+        case .idle: .idle
         }
     }
 
@@ -199,7 +199,7 @@ struct ProjectCardView: View {
             Button(action: onInfoTap) {
                 Label("View Details", systemImage: "info.circle")
             }
-            if let onCaptureIdea = onCaptureIdea {
+            if let onCaptureIdea {
                 Button(action: { onCaptureIdea(.zero) }) {
                     Label("Capture Idea...", systemImage: "lightbulb")
                 }
@@ -277,7 +277,7 @@ private struct ProjectCardContent: View {
         VStack(alignment: .leading, spacing: 6) {
             StatusChipsRow(sessionState: sessionState)
 
-            if let blocker = blocker, !blocker.isEmpty {
+            if let blocker, !blocker.isEmpty {
                 HStack(spacing: 4) {
                     Image(systemName: "exclamationmark.triangle.fill")
                         .font(AppTypography.captionSmall)
@@ -303,7 +303,7 @@ struct CardActionButtons: View {
 
     var body: some View {
         HStack(spacing: 0) {
-            if let onCaptureIdea = onCaptureIdea {
+            if let onCaptureIdea {
                 VibrancyActionButton(
                     icon: "lightbulb",
                     action: { frame in onCaptureIdea(frame) },
@@ -365,14 +365,14 @@ private struct ShimmerEffect: View {
     @State private var phase: CGFloat = 0
 
     var body: some View {
-        GeometryReader { geometry in
+        GeometryReader { _ in
             LinearGradient(
                 gradient: Gradient(stops: [
                     .init(color: .white.opacity(0), location: 0),
                     .init(color: .white.opacity(0), location: phase - 0.2),
                     .init(color: .white.opacity(0.4), location: phase),
                     .init(color: .white.opacity(0), location: phase + 0.2),
-                    .init(color: .white.opacity(0), location: 1)
+                    .init(color: .white.opacity(0), location: 1),
                 ]),
                 startPoint: .leading,
                 endPoint: .trailing

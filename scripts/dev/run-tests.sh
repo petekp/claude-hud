@@ -31,12 +31,12 @@ echo ""
 
 FAILED=0
 
-echo -e "${YELLOW}[1/5] Version Bump Tests (bats)${NC}"
+echo -e "${YELLOW}[1/6] Release Script Tests (bats)${NC}"
 if command -v bats &> /dev/null; then
-    if bats tests/release-scripts/bump-version.bats; then
-        echo -e "${GREEN}✓ Version bump tests passed${NC}"
+    if bats tests/release-scripts; then
+        echo -e "${GREEN}✓ Release script tests passed${NC}"
     else
-        echo -e "${RED}✗ Version bump tests failed${NC}"
+        echo -e "${RED}✗ Release script tests failed${NC}"
         FAILED=1
     fi
 else
@@ -44,7 +44,7 @@ else
 fi
 echo ""
 
-echo -e "${YELLOW}[2/5] Rust Formatting${NC}"
+echo -e "${YELLOW}[2/6] Rust Formatting${NC}"
 if cargo fmt 2>&1; then
     echo -e "${GREEN}✓ Rust formatted${NC}"
 else
@@ -53,7 +53,7 @@ else
 fi
 echo ""
 
-echo -e "${YELLOW}[3/5] Rust Tests${NC}"
+echo -e "${YELLOW}[3/6] Rust Tests${NC}"
 if cargo test 2>&1; then
     echo -e "${GREEN}✓ Rust tests passed${NC}"
 else
@@ -62,7 +62,7 @@ else
 fi
 echo ""
 
-echo -e "${YELLOW}[4/5] Rust Linting${NC}"
+echo -e "${YELLOW}[4/6] Rust Linting${NC}"
 if cargo clippy -- -D warnings 2>&1; then
     echo -e "${GREEN}✓ Clippy passed${NC}"
 else
@@ -71,8 +71,21 @@ else
 fi
 echo ""
 
+echo -e "${YELLOW}[5/6] Swift Formatting${NC}"
+if command -v swiftformat &> /dev/null; then
+    if swiftformat apps/swift 2>&1; then
+        echo -e "${GREEN}✓ Swift formatted${NC}"
+    else
+        echo -e "${RED}✗ Swift formatting failed${NC}"
+        FAILED=1
+    fi
+else
+    echo -e "${YELLOW}⚠ swiftformat not installed, skipping (brew install swiftformat)${NC}"
+fi
+echo ""
+
 if [ "$QUICK" = false ]; then
-    echo -e "${YELLOW}[5/5] Swift Tests${NC}"
+    echo -e "${YELLOW}[6/6] Swift Tests${NC}"
 
     echo "Building Rust library for Swift tests..."
     cargo build -p hud-core --release
@@ -87,7 +100,7 @@ if [ "$QUICK" = false ]; then
     fi
     cd "$PROJECT_ROOT"
 else
-    echo -e "${YELLOW}[5/5] Swift Tests${NC}"
+    echo -e "${YELLOW}[6/6] Swift Tests${NC}"
     echo -e "${YELLOW}⚠ Skipped (--quick mode)${NC}"
 fi
 echo ""

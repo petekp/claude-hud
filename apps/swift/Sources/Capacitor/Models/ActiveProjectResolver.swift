@@ -53,7 +53,7 @@ final class ActiveProjectResolver {
         .joined(separator: " | ")
         ?? "none"
 
-        let overridePath = self.manualOverride?.path ?? "none"
+        let overridePath = manualOverride?.path ?? "none"
         logger.info("Resolve start: manualOverride=\(overridePath, privacy: .public) shells=\(shellSummary, privacy: .public)")
         DebugLog.write("ActiveProjectResolver.resolve start manualOverride=\(overridePath) shells=\(shellSummary)")
 
@@ -61,13 +61,15 @@ final class ActiveProjectResolver {
         // and there are no active Claude sessions to anchor the override.
         if let override = manualOverride,
            let (shellProject, _, _) = findActiveShellProject(),
-           shellProject.path != override.path {
+           shellProject.path != override.path
+        {
             if findActiveClaudeSession() == nil {
                 logger.info("Clearing manual override (shell moved, no active Claude session): override=\(override.path, privacy: .public) shell=\(shellProject.path, privacy: .public)")
                 DebugLog.write("ActiveProjectResolver.clearOverride reason=shellMoved override=\(override.path) shell=\(shellProject.path)")
                 manualOverride = nil
             } else if let shellSessionState = sessionStateManager.getSessionState(for: shellProject),
-                  shellSessionState.hasSession {
+                      shellSessionState.hasSession
+            {
                 logger.info("Clearing manual override (shell project has locked session): override=\(override.path, privacy: .public) shell=\(shellProject.path, privacy: .public)")
                 DebugLog.write("ActiveProjectResolver.clearOverride reason=shellLocked override=\(override.path) shell=\(shellProject.path)")
                 manualOverride = nil
@@ -125,29 +127,31 @@ final class ActiveProjectResolver {
         for project in projects {
             guard let sessionState = sessionStateManager.getSessionState(for: project),
                   sessionState.hasSession,
-                  let sessionId = sessionState.sessionId else {
+                  let sessionId = sessionState.sessionId
+            else {
                 continue
             }
 
             // Use updated_at (updates on every hook event) for accurate activity tracking.
             // Falls back to stateChangedAt, then Date.distantPast.
-            let updatedAt: Date
-            if let dateStr = sessionState.updatedAt,
-               let parsed = formatter.date(from: dateStr) {
-                updatedAt = parsed
+            let updatedAt: Date = if let dateStr = sessionState.updatedAt,
+                                     let parsed = formatter.date(from: dateStr)
+            {
+                parsed
             } else if let dateStr = sessionState.stateChangedAt,
-                      let parsed = formatter.date(from: dateStr) {
-                updatedAt = parsed
+                      let parsed = formatter.date(from: dateStr)
+            {
+                parsed
             } else {
-                updatedAt = Date.distantPast
+                Date.distantPast
             }
 
             // Separate active (Working/Waiting/Compacting) from passive (Ready) sessions.
             // Active sessions always take priority - a session you're using shouldn't
             // lose focus to one that just finished.
             let isActive = sessionState.state == .working ||
-                           sessionState.state == .waiting ||
-                           sessionState.state == .compacting
+                sessionState.state == .waiting ||
+                sessionState.state == .compacting
 
             if isActive {
                 activeSessions.append((project, sessionId, updatedAt))
@@ -226,7 +230,8 @@ final class ActiveProjectResolver {
         }
         if bundleId == "com.microsoft.vscode-insiders"
             || name.contains("visual studio code - insiders")
-            || name.contains("vscode insiders") {
+            || name.contains("vscode insiders")
+        {
             return "vscode-insiders"
         }
         if bundleId == "com.microsoft.vscode" || name.contains("visual studio code") {

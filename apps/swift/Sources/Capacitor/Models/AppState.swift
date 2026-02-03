@@ -15,11 +15,11 @@ enum ProjectView: Equatable {
     static func == (lhs: ProjectView, rhs: ProjectView) -> Bool {
         switch (lhs, rhs) {
         case (.list, .list), (.addLink, .addLink), (.newIdea, .newIdea):
-            return true
+            true
         case let (.detail(p1), .detail(p2)):
-            return p1.path == p2.path
+            p1.path == p2.path
         default:
-            return false
+            false
         }
     }
 }
@@ -156,7 +156,7 @@ class AppState: ObservableObject {
             startShellTracking()
         } catch {
             self.error = error.localizedDescription
-            self.isLoading = false
+            isLoading = false
         }
     }
 
@@ -205,7 +205,7 @@ class AppState: ObservableObject {
     // MARK: - Data Loading
 
     func loadDashboard() {
-        guard let engine = engine else { return }
+        guard let engine else { return }
         isLoading = true
 
         do {
@@ -251,12 +251,12 @@ class AppState: ObservableObject {
     // MARK: - Hook Diagnostic
 
     func checkHookDiagnostic() {
-        guard let engine = engine else { return }
+        guard let engine else { return }
         hookDiagnostic = engine.getHookDiagnostic()
     }
 
     func fixHooks() {
-        guard let engine = engine else { return }
+        guard let engine else { return }
 
         // First, install the bundled hook binary using the shared helper
         if let installError = HookInstaller.installBundledBinary(using: engine) {
@@ -277,7 +277,7 @@ class AppState: ObservableObject {
     }
 
     func testHooks() -> HookTestResult {
-        guard let engine = engine else {
+        guard let engine else {
             return HookTestResult(
                 success: false,
                 heartbeatOk: false,
@@ -350,7 +350,7 @@ class AppState: ObservableObject {
     // MARK: - Project Management
 
     func addProject(_ path: String) {
-        guard let engine = engine else { return }
+        guard let engine else { return }
         do {
             try engine.addProject(path: path)
             prependToProjectOrder(path)
@@ -428,7 +428,7 @@ class AppState: ObservableObject {
             showProjectList()
         }
 
-        let paths = urls.map { $0.path }
+        let paths = urls.map(\.path)
 
         _Concurrency.Task { [weak self] in
             let outcome = await worker.addProjects(paths: paths)
@@ -512,7 +512,7 @@ class AppState: ObservableObject {
     }
 
     func removeProject(_ path: String) {
-        guard let engine = engine else { return }
+        guard let engine else { return }
         do {
             try engine.removeProject(path: path)
             loadDashboard()
@@ -524,13 +524,13 @@ class AppState: ObservableObject {
     /// Validates a project path before adding.
     /// Returns the validation result for UI handling.
     func validateProject(_ path: String) -> ValidationResultFfi? {
-        guard let engine = engine else { return nil }
+        guard let engine else { return nil }
         return engine.validateProject(path: path)
     }
 
     /// Creates a CLAUDE.md file for a project.
     func createClaudeMd(for path: String) -> Bool {
-        guard let engine = engine else { return false }
+        guard let engine else { return false }
         do {
             try engine.createProjectClaudeMd(projectPath: path)
             return true
@@ -570,7 +570,7 @@ class AppState: ObservableObject {
     }
 
     func showAddProject(withPath path: String? = nil) {
-        if let path = path {
+        if let path {
             pendingProjectPath = path
         }
         projectView = .addLink
@@ -592,7 +592,8 @@ class AppState: ObservableObject {
 
     private func loadLayoutMode() {
         if let rawValue = UserDefaults.standard.string(forKey: layoutModeKey),
-           let mode = LayoutMode(rawValue: rawValue) {
+           let mode = LayoutMode(rawValue: rawValue)
+        {
             layoutMode = mode
         }
     }
@@ -639,7 +640,7 @@ class AppState: ObservableObject {
     }
 
     func moveProject(from source: IndexSet, to destination: Int, in projectList: [Project]) {
-        var paths = projectList.map { $0.path }
+        var paths = projectList.map(\.path)
         paths.move(fromOffsets: source, toOffset: destination)
         customProjectOrder = paths
     }
@@ -778,10 +779,10 @@ class AppState: ObservableObject {
     func updateCreationStatus(_ id: String, status: CreationStatus, sessionId: String? = nil, error: String? = nil) {
         guard let index = activeCreations.firstIndex(where: { $0.id == id }) else { return }
         activeCreations[index].status = status
-        if let sessionId = sessionId {
+        if let sessionId {
             activeCreations[index].sessionId = sessionId
         }
-        if let error = error {
+        if let error {
             activeCreations[index].error = error
         }
         if status == .completed || status == .failed || status == .cancelled {
@@ -807,7 +808,8 @@ class AppState: ObservableObject {
     func resumeCreation(_ id: String) {
         guard let creation = activeCreations.first(where: { $0.id == id }),
               let sessionId = creation.sessionId,
-              (creation.status == .failed || creation.status == .cancelled) else {
+              creation.status == .failed || creation.status == .cancelled
+        else {
             return
         }
 
@@ -830,7 +832,7 @@ class AppState: ObservableObject {
             return false
         }
         return creation.sessionId != nil &&
-               (creation.status == .failed || creation.status == .cancelled)
+            (creation.status == .failed || creation.status == .cancelled)
     }
 
     func createProjectFromIdea(_ request: NewProjectRequest, completion: @escaping (CreateProjectResult) -> Void) {
@@ -1040,7 +1042,7 @@ class AppState: ObservableObject {
             let maxAttempts = 60
             let pollInterval: UInt64 = 2_000_000_000
 
-            for _ in 0..<maxAttempts {
+            for _ in 0 ..< maxAttempts {
                 try? await _Concurrency.Task.sleep(nanoseconds: pollInterval)
 
                 let currentSessions = getExistingSessionIds(for: projectPath)
@@ -1075,16 +1077,18 @@ class AppState: ObservableObject {
             var stableCount = 0
             let maxStableChecks = 30
 
-            for _ in 0..<300 {
+            for _ in 0 ..< 300 {
                 try? await _Concurrency.Task.sleep(nanoseconds: 2_000_000_000)
 
                 guard let creation = activeCreations.first(where: { $0.id == creationId }),
-                      creation.status == .inProgress else {
+                      creation.status == .inProgress
+                else {
                     return
                 }
 
                 guard let attrs = try? FileManager.default.attributesOfItem(atPath: sessionFile.path),
-                      let currentSize = attrs[.size] as? UInt64 else {
+                      let currentSize = attrs[.size] as? UInt64
+                else {
                     continue
                 }
 

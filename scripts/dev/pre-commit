@@ -7,6 +7,7 @@ set -e
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
 NC='\033[0m'
 
 echo "Running pre-commit checks..."
@@ -18,7 +19,18 @@ if ! cargo fmt --check --quiet 2>/dev/null; then
     exit 1
 fi
 
-# 2. Rust tests (the main value - catches broken tests)
+# 2. Swift formatting (lint only)
+if command -v swiftformat &> /dev/null; then
+    if ! swiftformat --lint apps/swift 2>/dev/null; then
+        echo -e "${RED}✗ Swift formatting issues found${NC}"
+        echo "  Run: swiftformat apps/swift"
+        exit 1
+    fi
+else
+    echo -e "${YELLOW}⚠ swiftformat not installed, skipping (brew install swiftformat)${NC}"
+fi
+
+# 3. Rust tests (the main value - catches broken tests)
 if ! cargo test --quiet 2>/dev/null; then
     echo -e "${RED}✗ Rust tests failed${NC}"
     exit 1

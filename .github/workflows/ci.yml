@@ -19,8 +19,8 @@ jobs:
       - name: Install bats
         run: brew install bats-core
 
-      - name: Run version bump tests
-        run: bats tests/release-scripts/bump-version.bats
+      - name: Run release script tests
+        run: bats tests/release-scripts
 
   test-rust:
     name: Test Rust
@@ -83,13 +83,8 @@ jobs:
       - name: Install bats
         run: brew install bats-core
 
-      - name: Run tombstone tests
-        run: |
-          if [ -f tests/hud-hook/tombstone.bats ]; then
-            bats tests/hud-hook/tombstone.bats
-          else
-            echo "tombstone.bats not present; skipping"
-          fi
+      - name: Run hud-hook smoke tests
+        run: bats tests/hud-hook/hud-hook-smoke.bats
 
   test-swift:
     name: Test Swift
@@ -119,6 +114,12 @@ jobs:
           key: ${{ runner.os }}-spm-${{ hashFiles('apps/swift/Package.resolved') }}
           restore-keys: |
             ${{ runner.os }}-spm-
+
+      - name: Install swiftformat
+        run: brew install swiftformat
+
+      - name: SwiftFormat lint (new files only)
+        run: ./scripts/ci/swiftformat-lint.sh
 
       - name: Build Rust library
         run: cargo build -p hud-core --release
@@ -193,16 +194,11 @@ jobs:
           # Verify Cargo.toml was updated and restore
           git checkout Cargo.toml
 
-      - name: Test generate-appcast.sh (without signing)
-        run: |
-          # Create a mock ZIP for testing
-          mkdir -p dist
-          VERSION=$(cat VERSION)
-          ARCH=$(uname -m)
-          touch "dist/Capacitor-v$VERSION-$ARCH.zip"
 
-          # Run without --sign since we don't have keys in CI
-          ./scripts/release/generate-appcast.sh
+          # Smoke-check output
+          test -f dist/appcast.xml
+          grep -q "Version $VERSION" dist/appcast.xml
+          grep -q "Capacitor-v$VERSION-$ARCH.zip" dist/appcast.xml
 
           # Verify appcast was created
           if [ ! -f dist/appcast.xml ]; then

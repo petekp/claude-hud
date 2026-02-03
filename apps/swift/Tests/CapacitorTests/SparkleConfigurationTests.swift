@@ -1,13 +1,13 @@
-import XCTest
 import Foundation
+import XCTest
 
 struct SparkleConfiguration {
     let feedURL: String?
     let publicKey: String?
 
     init(bundle: Bundle = .main) {
-        self.feedURL = bundle.infoDictionary?["SUFeedURL"] as? String
-        self.publicKey = bundle.infoDictionary?["SUPublicEDKey"] as? String
+        feedURL = bundle.infoDictionary?["SUFeedURL"] as? String
+        publicKey = bundle.infoDictionary?["SUPublicEDKey"] as? String
     }
 
     init(feedURL: String?, publicKey: String?) {
@@ -24,7 +24,6 @@ struct SparkleConfiguration {
 }
 
 final class SparkleConfigurationTests: XCTestCase {
-
     func testValidConfiguration() {
         let config = SparkleConfiguration(
             feedURL: "https://example.com/appcast.xml",

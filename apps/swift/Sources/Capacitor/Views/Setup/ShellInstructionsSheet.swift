@@ -1,5 +1,5 @@
-import SwiftUI
 import AppKit
+import SwiftUI
 
 struct ShellInstructionsSheet: View {
     @Binding var isPresented: Bool
@@ -93,7 +93,7 @@ struct ShellInstructionsSheet: View {
             }
             .font(.caption)
 
-        case .error(let message):
+        case let .error(message):
             VStack(alignment: .leading, spacing: 8) {
                 Label(message, systemImage: "exclamationmark.triangle.fill")
                     .foregroundStyle(.yellow)
@@ -173,7 +173,7 @@ struct ShellInstructionsSheet: View {
             switch result {
             case .success:
                 installState = .success
-            case .failure(let error):
+            case let .failure(error):
                 installState = .error(error.localizedDescription)
             }
         }

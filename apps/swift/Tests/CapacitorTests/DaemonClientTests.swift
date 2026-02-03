@@ -104,7 +104,7 @@ final class UnixSocketServer {
                 _ = write(client, base, response.count)
             }
         }
-        self.workItem = work
+        workItem = work
         DispatchQueue.global().async(execute: work)
     }
 

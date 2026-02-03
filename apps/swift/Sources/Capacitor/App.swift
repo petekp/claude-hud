@@ -1,5 +1,5 @@
-import SwiftUI
 import AppKit
+import SwiftUI
 
 @main
 struct CapacitorApp: App {
@@ -65,7 +65,7 @@ struct CapacitorApp: App {
         .defaultSize(width: 360, height: 700)
         .windowResizability(.contentSize)
         .commands {
-            CommandGroup(replacing: .newItem) { }
+            CommandGroup(replacing: .newItem) {}
 
             CommandGroup(replacing: .appInfo) {
                 Button("About Capacitor") {
@@ -106,21 +106,21 @@ struct CapacitorApp: App {
                     .keyboardShortcut("P", modifiers: [.command, .shift])
 
                 #if DEBUG
-                Divider()
-                UITuningPanelMenuButton()
-                ShellMatrixPanelMenuButton()
+                    Divider()
+                    UITuningPanelMenuButton()
+                    ShellMatrixPanelMenuButton()
 
-                Button("Show Welcome Screen") {
-                    withAnimation(.easeInOut(duration: 0.4)) {
-                        setupComplete = false
+                    Button("Show Welcome Screen") {
+                        withAnimation(.easeInOut(duration: 0.4)) {
+                            setupComplete = false
+                        }
                     }
-                }
-                .keyboardShortcut("W", modifiers: [.command, .shift, .option])
+                    .keyboardShortcut("W", modifiers: [.command, .shift, .option])
 
-                Button("Reset Onboarding (Full)") {
-                    resetOnboardingFully()
-                }
-                .keyboardShortcut("R", modifiers: [.command, .shift, .option])
+                    Button("Reset Onboarding (Full)") {
+                        resetOnboardingFully()
+                    }
+                    .keyboardShortcut("R", modifiers: [.command, .shift, .option])
                 #endif
 
                 Divider()
@@ -132,49 +132,49 @@ struct CapacitorApp: App {
             }
 
             #if DEBUG
-            CommandMenu("Debug") {
-                Section("Toast Testing") {
-                    Button("Toast: 1 failed") {
-                        appState.toast = .error("project-a failed")
-                    }
-                    Button("Toast: 2 failed, 1 added") {
-                        appState.toast = .error("project-a, project-b failed (1 added)")
-                    }
-                    Button("Toast: 5 failed, 3 added") {
-                        appState.toast = .error("project-a, project-b and 3 more failed (3 added)")
-                    }
-                    Button("Toast: Already linked") {
-                        appState.toast = ToastMessage("Already linked!")
-                    }
-                    Button("Toast: Moved to In Progress") {
-                        appState.toast = ToastMessage("Moved to In Progress")
-                    }
-                }
-
-                Divider()
-
-                Section("Tooltip Testing") {
-                    Button("Show Drag-Drop Tip Now") {
-                        appState.pendingDragDropTip = true
-                    }
-                    Button("Reset Tip Flag (hasSeenDragDropTip)") {
-                        UserDefaults.standard.removeObject(forKey: "hasSeenDragDropTip")
-                    }
-                }
-
-                Divider()
-
-                Section("State Testing") {
-                    Button("Clear All Projects (Empty State)") {
-                        for project in appState.projects {
-                            appState.removeProject(project.path)
+                CommandMenu("Debug") {
+                    Section("Toast Testing") {
+                        Button("Toast: 1 failed") {
+                            appState.toast = .error("project-a failed")
+                        }
+                        Button("Toast: 2 failed, 1 added") {
+                            appState.toast = .error("project-a, project-b failed (1 added)")
+                        }
+                        Button("Toast: 5 failed, 3 added") {
+                            appState.toast = .error("project-a, project-b and 3 more failed (3 added)")
+                        }
+                        Button("Toast: Already linked") {
+                            appState.toast = ToastMessage("Already linked!")
+                        }
+                        Button("Toast: Moved to In Progress") {
+                            appState.toast = ToastMessage("Moved to In Progress")
                         }
                     }
-                    Button("Navigate to Add Project View") {
-                        appState.showAddProject()
+
+                    Divider()
+
+                    Section("Tooltip Testing") {
+                        Button("Show Drag-Drop Tip Now") {
+                            appState.pendingDragDropTip = true
+                        }
+                        Button("Reset Tip Flag (hasSeenDragDropTip)") {
+                            UserDefaults.standard.removeObject(forKey: "hasSeenDragDropTip")
+                        }
+                    }
+
+                    Divider()
+
+                    Section("State Testing") {
+                        Button("Clear All Projects (Empty State)") {
+                            for project in appState.projects {
+                                appState.removeProject(project.path)
+                            }
+                        }
+                        Button("Navigate to Add Project View") {
+                            appState.showAddProject()
+                        }
                     }
                 }
-            }
             #endif
         }
 
@@ -183,161 +183,161 @@ struct CapacitorApp: App {
         }
 
         #if DEBUG
-        Window("UI Tuning", id: "ui-tuning-panel") {
-            UITuningPanel()
-                .preferredColorScheme(.dark)
-        }
-        .windowStyle(.hiddenTitleBar)
-        .windowResizability(.contentSize)
-        .defaultPosition(.topTrailing)
-        .defaultSize(width: 580, height: 720)
+            Window("UI Tuning", id: "ui-tuning-panel") {
+                UITuningPanel()
+                    .preferredColorScheme(.dark)
+            }
+            .windowStyle(.hiddenTitleBar)
+            .windowResizability(.contentSize)
+            .defaultPosition(.topTrailing)
+            .defaultSize(width: 580, height: 720)
 
-        Window("Shell Matrix", id: "shell-matrix-panel") {
-            ShellMatrixPanel()
-                .preferredColorScheme(.dark)
-        }
-        .windowStyle(.hiddenTitleBar)
-        .windowResizability(.contentSize)
-        .defaultPosition(.topLeading)
-        .defaultSize(width: 680, height: 760)
+            Window("Shell Matrix", id: "shell-matrix-panel") {
+                ShellMatrixPanel()
+                    .preferredColorScheme(.dark)
+            }
+            .windowStyle(.hiddenTitleBar)
+            .windowResizability(.contentSize)
+            .defaultPosition(.topLeading)
+            .defaultSize(width: 680, height: 760)
         #endif
     }
 
     #if DEBUG
-    private static let onboardingBackupPath = FileManager.default.homeDirectoryForCurrentUser
-        .appendingPathComponent(".capacitor-onboarding-backup")
+        private static let onboardingBackupPath = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".capacitor-onboarding-backup")
 
-    private func resetOnboardingFully() {
-        _Concurrency.Task {
-            let fm = FileManager.default
-            let home = fm.homeDirectoryForCurrentUser
-            let capacitorPath = home.appendingPathComponent(".capacitor")
-            let backupPath = Self.onboardingBackupPath
+        private func resetOnboardingFully() {
+            _Concurrency.Task {
+                let fm = FileManager.default
+                let home = fm.homeDirectoryForCurrentUser
+                let capacitorPath = home.appendingPathComponent(".capacitor")
+                let backupPath = Self.onboardingBackupPath
 
-            // 1. Preserve user data to temporary backup location
-            let userDataFiles = ["projects.json", "creations.json"]
-            try? fm.removeItem(at: backupPath)
-            try? fm.createDirectory(at: backupPath, withIntermediateDirectories: true)
+                // 1. Preserve user data to temporary backup location
+                let userDataFiles = ["projects.json", "creations.json"]
+                try? fm.removeItem(at: backupPath)
+                try? fm.createDirectory(at: backupPath, withIntermediateDirectories: true)
 
-            for filename in userDataFiles {
-                let sourcePath = capacitorPath.appendingPathComponent(filename)
-                let destPath = backupPath.appendingPathComponent(filename)
-                if fm.fileExists(atPath: sourcePath.path) {
-                    try? fm.copyItem(at: sourcePath, to: destPath)
-                    print("[Debug] Backed up \(filename)")
-                }
-            }
-
-            // 2. Remove entire ~/.capacitor directory (truly empty now)
-            try? fm.removeItem(at: capacitorPath)
-            print("[Debug] Removed ~/.capacitor/")
-
-            // 3. Remove hooks from settings.json (best effort)
-            // Note: We don't remove the binary (~/.local/bin/hud-hook) - user may want it
-            await removeHooksFromSettings()
-
-            // 4. Reset the setup complete flag and show welcome screen
-            await MainActor.run {
-                withAnimation(.easeInOut(duration: 0.4)) {
-                    setupComplete = false
-                }
-            }
-
-            print("[Debug] Onboarding reset complete (user data backed up to ~/.capacitor-onboarding-backup/)")
-        }
-    }
-
-    static func restoreOnboardingBackup() {
-        let fm = FileManager.default
-        let capacitorPath = fm.homeDirectoryForCurrentUser.appendingPathComponent(".capacitor")
-        let backupPath = onboardingBackupPath
-
-        guard fm.fileExists(atPath: backupPath.path) else { return }
-
-        let userDataFiles = ["projects.json", "creations.json"]
-        for filename in userDataFiles {
-            let sourcePath = backupPath.appendingPathComponent(filename)
-            let destPath = capacitorPath.appendingPathComponent(filename)
-            if fm.fileExists(atPath: sourcePath.path) {
-                try? fm.copyItem(at: sourcePath, to: destPath)
-                print("[Debug] Restored \(filename) from backup")
-            }
-        }
-
-        // Clean up backup directory
-        try? fm.removeItem(at: backupPath)
-        print("[Debug] Cleaned up onboarding backup")
-    }
-
-    private func removeHooksFromSettings() async {
-        let settingsPath = FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent(".claude/settings.json")
-
-        guard FileManager.default.fileExists(atPath: settingsPath.path) else { return }
-
-        do {
-            let data = try Data(contentsOf: settingsPath)
-            guard var json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
-                  var hooks = json["hooks"] as? [String: Any] else { return }
-
-            // Remove any hook configs that contain our hud-hook (binary) or hud-state-tracker (legacy)
-            for (eventType, eventHooks) in hooks {
-                guard var hookArray = eventHooks as? [[String: Any]] else { continue }
-
-                hookArray.removeAll { hookConfig in
-                    guard let innerHooks = hookConfig["hooks"] as? [[String: Any]] else { return false }
-                    return innerHooks.contains { hook in
-                        guard let command = hook["command"] as? String else { return false }
-                        return command.contains("hud-hook") || command.contains("hud-state-tracker")
+                for filename in userDataFiles {
+                    let sourcePath = capacitorPath.appendingPathComponent(filename)
+                    let destPath = backupPath.appendingPathComponent(filename)
+                    if fm.fileExists(atPath: sourcePath.path) {
+                        try? fm.copyItem(at: sourcePath, to: destPath)
+                        print("[Debug] Backed up \(filename)")
                     }
                 }
 
-                if hookArray.isEmpty {
-                    hooks.removeValue(forKey: eventType)
-                } else {
-                    hooks[eventType] = hookArray
+                // 2. Remove entire ~/.capacitor directory (truly empty now)
+                try? fm.removeItem(at: capacitorPath)
+                print("[Debug] Removed ~/.capacitor/")
+
+                // 3. Remove hooks from settings.json (best effort)
+                // Note: We don't remove the binary (~/.local/bin/hud-hook) - user may want it
+                await removeHooksFromSettings()
+
+                // 4. Reset the setup complete flag and show welcome screen
+                await MainActor.run {
+                    withAnimation(.easeInOut(duration: 0.4)) {
+                        setupComplete = false
+                    }
+                }
+
+                print("[Debug] Onboarding reset complete (user data backed up to ~/.capacitor-onboarding-backup/)")
+            }
+        }
+
+        static func restoreOnboardingBackup() {
+            let fm = FileManager.default
+            let capacitorPath = fm.homeDirectoryForCurrentUser.appendingPathComponent(".capacitor")
+            let backupPath = onboardingBackupPath
+
+            guard fm.fileExists(atPath: backupPath.path) else { return }
+
+            let userDataFiles = ["projects.json", "creations.json"]
+            for filename in userDataFiles {
+                let sourcePath = backupPath.appendingPathComponent(filename)
+                let destPath = capacitorPath.appendingPathComponent(filename)
+                if fm.fileExists(atPath: sourcePath.path) {
+                    try? fm.copyItem(at: sourcePath, to: destPath)
+                    print("[Debug] Restored \(filename) from backup")
                 }
             }
 
-            json["hooks"] = hooks.isEmpty ? nil : hooks
-
-            let updatedData = try JSONSerialization.data(withJSONObject: json, options: [.prettyPrinted, .sortedKeys])
-            try updatedData.write(to: settingsPath)
-            print("[Debug] Removed HUD hooks from settings.json")
-        } catch {
-            print("[Debug] Failed to remove hooks: \(error)")
+            // Clean up backup directory
+            try? fm.removeItem(at: backupPath)
+            print("[Debug] Cleaned up onboarding backup")
         }
-    }
+
+        private func removeHooksFromSettings() async {
+            let settingsPath = FileManager.default.homeDirectoryForCurrentUser
+                .appendingPathComponent(".claude/settings.json")
+
+            guard FileManager.default.fileExists(atPath: settingsPath.path) else { return }
+
+            do {
+                let data = try Data(contentsOf: settingsPath)
+                guard var json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+                      var hooks = json["hooks"] as? [String: Any] else { return }
+
+                // Remove any hook configs that contain our hud-hook (binary) or hud-state-tracker (legacy)
+                for (eventType, eventHooks) in hooks {
+                    guard var hookArray = eventHooks as? [[String: Any]] else { continue }
+
+                    hookArray.removeAll { hookConfig in
+                        guard let innerHooks = hookConfig["hooks"] as? [[String: Any]] else { return false }
+                        return innerHooks.contains { hook in
+                            guard let command = hook["command"] as? String else { return false }
+                            return command.contains("hud-hook") || command.contains("hud-state-tracker")
+                        }
+                    }
+
+                    if hookArray.isEmpty {
+                        hooks.removeValue(forKey: eventType)
+                    } else {
+                        hooks[eventType] = hookArray
+                    }
+                }
+
+                json["hooks"] = hooks.isEmpty ? nil : hooks
+
+                let updatedData = try JSONSerialization.data(withJSONObject: json, options: [.prettyPrinted, .sortedKeys])
+                try updatedData.write(to: settingsPath)
+                print("[Debug] Removed HUD hooks from settings.json")
+            } catch {
+                print("[Debug] Failed to remove hooks: \(error)")
+            }
+        }
     #endif
 }
 
 #if DEBUG
-struct UITuningPanelMenuButton: View {
-    @Environment(\.openWindow) private var openWindow
+    struct UITuningPanelMenuButton: View {
+        @Environment(\.openWindow) private var openWindow
 
-    var body: some View {
-        Button("UI Tuning Panel") {
-            openWindow(id: "ui-tuning-panel")
+        var body: some View {
+            Button("UI Tuning Panel") {
+                openWindow(id: "ui-tuning-panel")
+            }
+            .keyboardShortcut("U", modifiers: [.command, .shift])
         }
-        .keyboardShortcut("U", modifiers: [.command, .shift])
     }
-}
 
-struct ShellMatrixPanelMenuButton: View {
-    @Environment(\.openWindow) private var openWindow
+    struct ShellMatrixPanelMenuButton: View {
+        @Environment(\.openWindow) private var openWindow
 
-    var body: some View {
-        Button("Shell Matrix Panel") {
-            openWindow(id: "shell-matrix-panel")
+        var body: some View {
+            Button("Shell Matrix Panel") {
+                openWindow(id: "shell-matrix-panel")
+            }
+            .keyboardShortcut("M", modifiers: [.command, .shift])
         }
-        .keyboardShortcut("M", modifiers: [.command, .shift])
     }
-}
 
 #endif
 
 class AppDelegate: NSObject, NSApplicationDelegate {
-    func applicationDidFinishLaunching(_ notification: Notification) {
+    func applicationDidFinishLaunching(_: Notification) {
         // Ensure the app can be activated and receive focus
         NSApp.setActivationPolicy(.regular)
 
@@ -348,12 +348,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     /// Shows a custom About panel with the Capacitor logomark and version info
     @objc func showAboutPanel() {
-        let capacitorGreen = NSColor(red: 0x67/255.0, green: 0xFC/255.0, blue: 0x94/255.0, alpha: 1.0)
+        let capacitorGreen = NSColor(red: 0x67 / 255.0, green: 0xFC / 255.0, blue: 0x94 / 255.0, alpha: 1.0)
 
         // Load logomark from resource bundle (same approach as WelcomeView)
         var aboutIcon: NSImage?
         if let logomarkURL = ResourceBundle.url(forResource: "logomark", withExtension: "pdf"),
-           let logomark = NSImage(contentsOf: logomarkURL) {
+           let logomark = NSImage(contentsOf: logomarkURL)
+        {
             aboutIcon = logomark.tinted(with: capacitorGreen, size: NSSize(width: 48, height: 48))
         }
 
@@ -379,14 +380,16 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private static func getAppVersion() -> String {
         // Try Info.plist first (correct in release builds, set by build-distribution.sh)
         if let bundleVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String,
-           bundleVersion != "1.0" {
+           bundleVersion != "1.0"
+        {
             return bundleVersion
         }
 
         // Dev build fallback: read VERSION file from project root
         // This works because dev builds typically run from the project directory
         if let versionData = FileManager.default.contents(atPath: "VERSION"),
-           let version = String(data: versionData, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) {
+           let version = String(data: versionData, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines)
+        {
             return version
         }
 
@@ -447,7 +450,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         return true
     }
 
-    func applicationDidBecomeActive(_ notification: Notification) {
+    func applicationDidBecomeActive(_: Notification) {
         // Ensure window becomes key when app activates
         if let window = NSApp.windows.first {
             window.makeKeyAndOrderFront(nil)
@@ -466,7 +469,7 @@ extension NSImage {
         let rect = NSRect(origin: .zero, size: size)
 
         // Draw the original image first
-        self.draw(in: rect, from: .zero, operation: .copy, fraction: 1.0)
+        draw(in: rect, from: .zero, operation: .copy, fraction: 1.0)
 
         // Apply tint color using sourceAtop (colors only where image has content)
         color.set()
@@ -485,14 +488,14 @@ struct FloatingWindowConfigurator: NSViewRepresentable {
     func makeNSView(context: Context) -> NSView {
         let view = NSView()
         DispatchQueue.main.async {
-            self.configureWindow(view.window, context: context)
+            configureWindow(view.window, context: context)
         }
         return view
     }
 
     func updateNSView(_ nsView: NSView, context: Context) {
         DispatchQueue.main.async {
-            self.configureWindow(nsView.window, context: context)
+            configureWindow(nsView.window, context: context)
         }
     }
 
@@ -505,7 +508,7 @@ struct FloatingWindowConfigurator: NSViewRepresentable {
     }
 
     private func configureWindow(_ window: NSWindow?, context: Context) {
-        guard let window = window else { return }
+        guard let window else { return }
 
         let coordinator = context.coordinator
         // Only clear backgrounds when explicitly transitioning from non-floating to floating
@@ -600,7 +603,7 @@ struct WindowFrameConfigurator: NSViewRepresentable {
                 context.coordinator.currentWindow = window
                 context.coordinator.lastKnownFrame = window.frame
                 context.coordinator.currentLayoutMode = layoutMode
-                self.restoreFrame(for: window, mode: layoutMode, coordinator: context.coordinator)
+                restoreFrame(for: window, mode: layoutMode, coordinator: context.coordinator)
             }
         }
         return view
@@ -618,7 +621,7 @@ struct WindowFrameConfigurator: NSViewRepresentable {
 
             DispatchQueue.main.async {
                 guard let window = nsView.window else { return }
-                self.restoreFrame(for: window, mode: layoutMode, coordinator: coordinator)
+                restoreFrame(for: window, mode: layoutMode, coordinator: coordinator)
             }
         }
     }
@@ -641,7 +644,7 @@ struct WindowFrameConfigurator: NSViewRepresentable {
         WindowFrameStore.shared.saveFrame(window.frame, for: mode)
     }
 
-    private func restoreFrame(for window: NSWindow, mode: LayoutMode, coordinator: Coordinator) {
+    private func restoreFrame(for window: NSWindow, mode: LayoutMode, coordinator _: Coordinator) {
         let screenFrame = window.screen?.visibleFrame ?? NSScreen.main?.visibleFrame ?? .zero
 
         if let savedFrame = WindowFrameStore.shared.loadFrame(for: mode) {
@@ -708,7 +711,8 @@ private class WindowFrameTrackingView: NSView {
         super.init(frame: .zero)
     }
 
-    required init?(coder: NSCoder) {
+    @available(*, unavailable)
+    required init?(coder _: NSCoder) {
         fatalError("init(coder:) has not been implemented")
     }
 
@@ -717,7 +721,7 @@ private class WindowFrameTrackingView: NSView {
 
         removeObservers()
 
-        guard let window = window else { return }
+        guard let window else { return }
 
         coordinator?.lastKnownFrame = window.frame
 

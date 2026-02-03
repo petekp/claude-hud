@@ -52,7 +52,7 @@ struct SkeletonView: View {
                         colors: [
                             .clear,
                             .white.opacity(0.08),
-                            .clear
+                            .clear,
                         ],
                         startPoint: .leading,
                         endPoint: .trailing
@@ -64,7 +64,7 @@ struct SkeletonView: View {
         .onAppear {
             withAnimation(
                 .linear(duration: 1.5)
-                .repeatForever(autoreverses: false)
+                    .repeatForever(autoreverses: false)
             ) {
                 isAnimating = true
             }

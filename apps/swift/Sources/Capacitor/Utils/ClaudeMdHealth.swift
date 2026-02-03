@@ -11,7 +11,8 @@ enum HealthGrade: String, Comparable {
     static func < (lhs: HealthGrade, rhs: HealthGrade) -> Bool {
         let order: [HealthGrade] = [.f, .d, .c, .b, .a]
         guard let lhsIndex = order.firstIndex(of: lhs),
-              let rhsIndex = order.firstIndex(of: rhs) else {
+              let rhsIndex = order.firstIndex(of: rhs)
+        else {
             return false
         }
         return lhsIndex < rhsIndex
@@ -35,7 +36,7 @@ struct HealthCheck {
 
 struct ClaudeMdHealthScorer {
     static func score(content: String?) -> HealthScoreResult {
-        guard let content = content, !content.isEmpty else {
+        guard let content, !content.isEmpty else {
             return HealthScoreResult(
                 grade: .none,
                 score: 0,
@@ -112,7 +113,7 @@ struct ClaudeMdHealthScorer {
             "purpose",
             "## about",
             "what it does",
-            "description"
+            "description",
         ]
         return patterns.contains { content.contains($0) } || content.count > 100
     }
@@ -132,7 +133,7 @@ struct ClaudeMdHealthScorer {
             "swift ",
             "make ",
             "## quick start",
-            "## getting started"
+            "## getting started",
         ]
         return patterns.contains { content.contains($0) }
     }
@@ -150,7 +151,7 @@ struct ClaudeMdHealthScorer {
             "packages/",
             "apps/",
             "components/",
-            "## organization"
+            "## organization",
         ]
         return patterns.contains { content.contains($0) }
     }
@@ -168,19 +169,19 @@ struct ClaudeMdHealthScorer {
             "use ",
             "don't ",
             "## preferences",
-            "## rules"
+            "## rules",
         ]
         return patterns.contains { content.contains($0) }
     }
 
     private static func gradeFromScore(_ score: Int) -> HealthGrade {
         switch score {
-        case 90...100: return .a
-        case 75..<90: return .b
-        case 60..<75: return .c
-        case 40..<60: return .d
-        case 1..<40: return .f
-        default: return .none
+        case 90 ... 100: .a
+        case 75 ..< 90: .b
+        case 60 ..< 75: .c
+        case 40 ..< 60: .d
+        case 1 ..< 40: .f
+        default: .none
         }
     }
 }

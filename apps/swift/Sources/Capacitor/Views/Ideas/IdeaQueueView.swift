@@ -180,7 +180,8 @@ struct IdeaQueueView: View {
     private func moveItem(from sourceIndex: Int, to targetIndex: Int) {
         guard sourceIndex != targetIndex,
               sourceIndex >= 0, sourceIndex < queuedIdeas.count,
-              targetIndex >= 0, targetIndex < queuedIdeas.count else {
+              targetIndex >= 0, targetIndex < queuedIdeas.count
+        else {
             return
         }
 
@@ -189,7 +190,8 @@ struct IdeaQueueView: View {
         let targetId = queuedIdeas[targetIndex].id
 
         guard let sourceLocalIndex = localIdeas.firstIndex(where: { $0.id == sourceId }),
-              let targetLocalIndex = localIdeas.firstIndex(where: { $0.id == targetId }) else {
+              let targetLocalIndex = localIdeas.firstIndex(where: { $0.id == targetId })
+        else {
             return
         }
 
@@ -199,18 +201,16 @@ struct IdeaQueueView: View {
     }
 
     private func handleDragEnded() {
-        guard let draggingId = draggingId else { return }
+        guard let draggingId else { return }
 
         // Find the target position using actual row frame
         let targetIndex = queuedIdeas.firstIndex { $0.id == draggingId } ?? 0
         let targetIdea = queuedIdeas[targetIndex]
-        let targetY: CGFloat
-
-        if let frame = rowFrames[targetIdea.id] {
-            targetY = frame.midY
+        let targetY: CGFloat = if let frame = rowFrames[targetIdea.id] {
+            frame.midY
         } else {
             // Fallback: estimate based on other frames
-            targetY = containerFrame.minY + 22
+            containerFrame.minY + 22
         }
 
         // Start release animation
@@ -220,8 +220,8 @@ struct IdeaQueueView: View {
         // After animation completes, clean up
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
             self.draggingId = nil
-            self.dragPosition = .zero
-            self.isAnimatingRelease = false
+            dragPosition = .zero
+            isAnimatingRelease = false
 
             // Notify parent of final order
             let reorderedQueue = localIdeas.filter { $0.status != "done" }
@@ -270,7 +270,7 @@ struct IdeaQueueRow: View {
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
         .overlay(alignment: .trailing) {
-            if isHovered && !isGeneratingTitle {
+            if isHovered, !isGeneratingTitle {
                 hoverActions
                     .padding(.trailing, 14)
             }
@@ -307,7 +307,7 @@ struct IdeaQueueRow: View {
     @ViewBuilder
     private var hoverActions: some View {
         HStack(spacing: 6) {
-            if let onRemove = onRemove {
+            if let onRemove {
                 Button(action: onRemove) {
                     Image(systemName: "xmark")
                         .font(.system(size: 10, weight: .bold))
@@ -331,13 +331,13 @@ private struct NonMovableBackground: NSViewRepresentable {
         override var mouseDownCanMoveWindow: Bool { false }
     }
 
-    func makeNSView(context: Context) -> NSView {
+    func makeNSView(context _: Context) -> NSView {
         let view = NonMovableNSView()
         view.wantsLayer = true
         return view
     }
 
-    func updateNSView(_ nsView: NSView, context: Context) {}
+    func updateNSView(_: NSView, context _: Context) {}
 }
 
 // MARK: - Shimmering Text
@@ -356,7 +356,7 @@ struct ShimmeringText: View {
                         gradient: Gradient(stops: [
                             .init(color: .clear, location: clampedLocation(phase - 0.15)),
                             .init(color: .white.opacity(0.5), location: clampedLocation(phase)),
-                            .init(color: .clear, location: clampedLocation(phase + 0.15))
+                            .init(color: .clear, location: clampedLocation(phase + 0.15)),
                         ]),
                         startPoint: .leading,
                         endPoint: .trailing

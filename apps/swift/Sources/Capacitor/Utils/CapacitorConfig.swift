@@ -88,5 +88,4 @@ actor CapacitorConfig {
         config.setupCompletedAt = Date()
         await save(config)
     }
-
 }

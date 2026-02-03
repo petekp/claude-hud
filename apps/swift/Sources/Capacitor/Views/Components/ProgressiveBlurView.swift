@@ -15,33 +15,33 @@
 //
 // The blur extends in the specified direction from the edge of the view.
 
-import SwiftUI
 import AppKit
+import SwiftUI
 
 /// Direction the blur fades OUT toward (where it becomes transparent)
 enum BlurDirection {
-    case up      // Blur is solid at bottom, fades to transparent going up (for footer overlays)
-    case down    // Blur is solid at top, fades to transparent going down (for header overlays)
-    case left    // Blur is solid at right, fades to transparent going left
-    case right   // Blur is solid at left, fades to transparent going right
+    case up // Blur is solid at bottom, fades to transparent going up (for footer overlays)
+    case down // Blur is solid at top, fades to transparent going down (for header overlays)
+    case left // Blur is solid at right, fades to transparent going left
+    case right // Blur is solid at left, fades to transparent going right
 
     /// Where the gradient is CLEAR (blur hidden)
     var clearPoint: UnitPoint {
         switch self {
-        case .up: return .top
-        case .down: return .bottom
-        case .left: return .leading
-        case .right: return .trailing
+        case .up: .top
+        case .down: .bottom
+        case .left: .leading
+        case .right: .trailing
         }
     }
 
     /// Where the gradient is OPAQUE (blur visible)
     var opaquePoint: UnitPoint {
         switch self {
-        case .up: return .bottom
-        case .down: return .top
-        case .left: return .trailing
-        case .right: return .leading
+        case .up: .bottom
+        case .down: .top
+        case .left: .trailing
+        case .right: .leading
         }
     }
 }
@@ -65,7 +65,7 @@ struct ProgressiveBlurView: View {
         blendingMode: NSVisualEffectView.BlendingMode = .behindWindow
     ) {
         self.direction = direction
-        self.blurHeight = height
+        blurHeight = height
         self.material = material
         self.blendingMode = blendingMode
     }
@@ -99,7 +99,7 @@ extension View {
         height: CGFloat = 60,
         material: NSVisualEffectView.Material = .hudWindow
     ) -> some View {
-        self.overlay(alignment: edge.alignment) {
+        overlay(alignment: edge.alignment) {
             ProgressiveBlurView(
                 direction: edge.blurDirection,
                 height: height,
@@ -113,19 +113,19 @@ extension View {
 private extension Edge {
     var alignment: Alignment {
         switch self {
-        case .top: return .top
-        case .bottom: return .bottom
-        case .leading: return .leading
-        case .trailing: return .trailing
+        case .top: .top
+        case .bottom: .bottom
+        case .leading: .leading
+        case .trailing: .trailing
         }
     }
 
     var blurDirection: BlurDirection {
         switch self {
-        case .top: return .down
-        case .bottom: return .up
-        case .leading: return .left
-        case .trailing: return .right
+        case .top: .down
+        case .bottom: .up
+        case .leading: .left
+        case .trailing: .right
         }
     }
 }
@@ -134,7 +134,7 @@ private extension Edge {
     ZStack {
         // Simulated scrolling content
         VStack(spacing: 8) {
-            ForEach(0..<20) { i in
+            ForEach(0 ..< 20) { i in
                 RoundedRectangle(cornerRadius: 8)
                     .fill(Color.blue.opacity(0.3))
                     .frame(height: 44)
@@ -166,7 +166,7 @@ private extension Edge {
 #Preview("Progressive Blur - Header") {
     ZStack {
         VStack(spacing: 8) {
-            ForEach(0..<20) { i in
+            ForEach(0 ..< 20) { _ in
                 RoundedRectangle(cornerRadius: 8)
                     .fill(Color.green.opacity(0.3))
                     .frame(height: 44)

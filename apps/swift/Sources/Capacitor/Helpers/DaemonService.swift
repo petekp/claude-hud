@@ -124,14 +124,14 @@ enum DaemonService {
             try FileManager.default.createDirectory(at: logsDir, withIntermediateDirectories: true, attributes: nil)
 
             let environment: [String: String] = {
-#if DEBUG
-                return [
-                    "CAPACITOR_DEBUG_LOG": "1",
-                    "RUST_LOG": "debug"
-                ]
-#else
-                return [:]
-#endif
+                #if DEBUG
+                    return [
+                        "CAPACITOR_DEBUG_LOG": "1",
+                        "RUST_LOG": "debug",
+                    ]
+                #else
+                    return [:]
+                #endif
             }()
 
             var plist: [String: Any] = [
@@ -143,7 +143,7 @@ enum DaemonService {
                 "ProcessType": "Background",
                 "WorkingDirectory": home.appendingPathComponent(".capacitor").path,
                 "StandardOutPath": logsDir.appendingPathComponent("daemon.stdout.log").path,
-                "StandardErrorPath": logsDir.appendingPathComponent("daemon.stderr.log").path
+                "StandardErrorPath": logsDir.appendingPathComponent("daemon.stderr.log").path,
             ]
 
             if !environment.isEmpty {

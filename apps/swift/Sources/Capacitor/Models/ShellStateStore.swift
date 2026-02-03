@@ -101,7 +101,7 @@ final class ShellStateStore {
                 if entryApp == normalized {
                     return true
                 }
-                if allowsTmux && entryApp == "tmux" {
+                if allowsTmux, entryApp == "tmux" {
                     return true
                 }
                 return false

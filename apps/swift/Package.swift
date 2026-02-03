@@ -16,11 +16,11 @@ let package = Package(
     name: "Capacitor",
     platforms: [.macOS(.v14)],
     products: [
-        .executable(name: "Capacitor", targets: ["Capacitor"])
+        .executable(name: "Capacitor", targets: ["Capacitor"]),
     ],
     dependencies: [
         .package(url: "https://github.com/daprice/Variablur.git", from: "1.0.0"),
-        .package(url: "https://github.com/sparkle-project/Sparkle.git", from: "2.6.0")
+        .package(url: "https://github.com/sparkle-project/Sparkle.git", from: "2.6.0"),
     ],
     targets: [
         // System library wrapper for the Rust FFI
@@ -34,17 +34,17 @@ let package = Package(
             dependencies: [
                 "hud_coreFFI",
                 .product(name: "Variablur", package: "Variablur"),
-                .product(name: "Sparkle", package: "Sparkle")
+                .product(name: "Sparkle", package: "Sparkle"),
             ],
             path: "Sources/Capacitor",
             resources: [
                 .process("Resources/Assets.xcassets"),
                 .process("Resources/logomark.pdf"),
-                .process("Resources/logo.pdf")
+                .process("Resources/logo.pdf"),
             ],
             linkerSettings: [
                 .linkedLibrary("hud_core"),
-                .unsafeFlags(["-L", "../../target/release"])
+                .unsafeFlags(["-L", "../../target/release"]),
             ]
         ),
         // Unit tests
@@ -52,9 +52,9 @@ let package = Package(
             name: "CapacitorTests",
             dependencies: [
                 "Capacitor",
-                .product(name: "Sparkle", package: "Sparkle")
+                .product(name: "Sparkle", package: "Sparkle"),
             ],
             path: "Tests/CapacitorTests"
-        )
+        ),
     ]
 )

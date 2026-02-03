@@ -21,7 +21,7 @@ enum ResourceBundle {
         ]
 
         for (name, candidate) in candidates {
-            guard let candidate = candidate else {
+            guard let candidate else {
                 logger.debug("  Candidate \(name): nil")
                 continue
             }

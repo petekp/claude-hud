@@ -40,7 +40,7 @@ struct AddProjectView: View {
             }
             // Check for pending path from HeaderView's folder picker
             if let path = appState.pendingProjectPath {
-                appState.pendingProjectPath = nil  // Consume it
+                appState.pendingProjectPath = nil // Consume it
                 validateAndShow(path)
             }
         }
@@ -78,7 +78,7 @@ struct AddProjectView: View {
                                 LinearGradient(
                                     colors: [
                                         .white.opacity(isDragHovered ? 0.7 : 0.4),
-                                        .white.opacity(isDragHovered ? 0.5 : 0.25)
+                                        .white.opacity(isDragHovered ? 0.5 : 0.25),
                                     ],
                                     startPoint: .top,
                                     endPoint: .bottom
@@ -173,21 +173,21 @@ struct AddProjectView: View {
     private func validationTitle(for result: ValidationResultFfi) -> String {
         switch result.resultType {
         case "valid":
-            return result.hasClaudeMd ? "Ready to Connect" : "Valid Project"
+            result.hasClaudeMd ? "Ready to Connect" : "Valid Project"
         case "suggest_parent":
-            return "Did You Mean...?"
+            "Did You Mean...?"
         case "missing_claude_md":
-            return "Missing CLAUDE.md"
+            "Missing CLAUDE.md"
         case "not_a_project":
-            return "Not a Project"
+            "Not a Project"
         case "path_not_found":
-            return "Path Not Found"
+            "Path Not Found"
         case "dangerous_path":
-            return "Path Too Broad"
+            "Path Too Broad"
         case "already_tracked":
-            return "Already Connected"
+            "Already Connected"
         default:
-            return "Validation Result"
+            "Validation Result"
         }
     }
 
@@ -365,7 +365,8 @@ struct AddProjectView: View {
 
     private func displayPath(_ path: String) -> String {
         if let home = FileManager.default.homeDirectoryForCurrentUser.path as String?,
-           path.hasPrefix(home) {
+           path.hasPrefix(home)
+        {
             return "~" + path.dropFirst(home.count)
         }
         return path

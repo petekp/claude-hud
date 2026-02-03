@@ -1,5 +1,5 @@
-import SwiftUI
 import AppKit
+import SwiftUI
 
 // MARK: - First Mouse Click Support for Popovers
 
@@ -8,8 +8,8 @@ import AppKit
 /// See: https://christiantietze.de/posts/2024/04/enable-swiftui-button-click-through-inactive-windows/
 private struct ClickThroughBackdrop<Content: View>: NSViewRepresentable {
     final class Backdrop: NSHostingView<Content> {
-        override func acceptsFirstMouse(for event: NSEvent?) -> Bool {
-            return true
+        override func acceptsFirstMouse(for _: NSEvent?) -> Bool {
+            true
         }
     }
 
@@ -19,20 +19,20 @@ private struct ClickThroughBackdrop<Content: View>: NSViewRepresentable {
         self.content = content
     }
 
-    func makeNSView(context: Context) -> Backdrop {
+    func makeNSView(context _: Context) -> Backdrop {
         let backdrop = Backdrop(rootView: content)
         backdrop.translatesAutoresizingMaskIntoConstraints = false
         return backdrop
     }
 
-    func updateNSView(_ nsView: Backdrop, context: Context) {
+    func updateNSView(_ nsView: Backdrop, context _: Context) {
         nsView.rootView = content
     }
 }
 
-extension View {
+private extension View {
     /// Enables this view to receive clicks even when its window is inactive.
-    fileprivate func acceptClickThrough() -> some View {
+    func acceptClickThrough() -> some View {
         ClickThroughBackdrop(self)
     }
 }
@@ -87,7 +87,7 @@ struct FooterView: View {
 
 struct LogoView: View {
     #if DEBUG
-    @ObservedObject private var config = GlassConfig.shared
+        @ObservedObject private var config = GlassConfig.shared
     #endif
 
     private let baseHeight: CGFloat = 14
@@ -100,70 +100,80 @@ struct LogoView: View {
     }
 
     #if DEBUG
-    private var selectedMaterial: NSVisualEffectView.Material {
-        switch config.logoMaterialType {
-        case 0: return .hudWindow
-        case 1: return .popover
-        case 2: return .menu
-        case 3: return .sidebar
-        case 4: return .fullScreenUI
-        default: return .hudWindow
+        private var selectedMaterial: NSVisualEffectView.Material {
+            switch config.logoMaterialType {
+            case 0: .hudWindow
+            case 1: .popover
+            case 2: .menu
+            case 3: .sidebar
+            case 4: .fullScreenUI
+            default: .hudWindow
+            }
         }
-    }
 
-    private var selectedBlendingMode: NSVisualEffectView.BlendingMode {
-        switch config.logoBlendingMode {
-        case 0: return .behindWindow
-        case 1: return .withinWindow
-        default: return .behindWindow
+        private var selectedBlendingMode: NSVisualEffectView.BlendingMode {
+            switch config.logoBlendingMode {
+            case 0: .behindWindow
+            case 1: .withinWindow
+            default: .behindWindow
+            }
         }
-    }
 
-    private var selectedSwiftUIBlendMode: BlendMode {
-        switch config.logoSwiftUIBlendMode {
-        case 0: return .normal
-        case 1: return .plusLighter
-        case 2: return .softLight
-        case 3: return .overlay
-        case 4: return .screen
-        case 5: return .multiply
-        case 6: return .difference
-        case 7: return .colorDodge
-        case 8: return .hardLight
-        case 9: return .luminosity
-        default: return .normal
+        private var selectedSwiftUIBlendMode: BlendMode {
+            switch config.logoSwiftUIBlendMode {
+            case 0: .normal
+            case 1: .plusLighter
+            case 2: .softLight
+            case 3: .overlay
+            case 4: .screen
+            case 5: .multiply
+            case 6: .difference
+            case 7: .colorDodge
+            case 8: .hardLight
+            case 9: .luminosity
+            default: .normal
+            }
         }
-    }
     #endif
 
     var body: some View {
         if let nsImage = logoImage {
             #if DEBUG
-            logoContent(nsImage: nsImage)
-                .id(config.logoConfigHash)
+                logoContent(nsImage: nsImage)
+                    .id(config.logoConfigHash)
             #else
-            Image(nsImage: nsImage)
-                .renderingMode(.template)
-                .resizable()
-                .aspectRatio(contentMode: .fit)
-                .frame(height: baseHeight)
-                .foregroundStyle(.white.opacity(0.7))
+                Image(nsImage: nsImage)
+                    .renderingMode(.template)
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+                    .frame(height: baseHeight)
+                    .foregroundStyle(.white.opacity(0.7))
             #endif
         }
     }
 
     #if DEBUG
-    @ViewBuilder
-    private func logoContent(nsImage: NSImage) -> some View {
-        if config.logoUseVibrancy {
-            ZStack {
-                VibrancyView(
-                    material: selectedMaterial,
-                    blendingMode: selectedBlendingMode,
-                    isEmphasized: config.logoEmphasized,
-                    forceDarkAppearance: config.logoForceDarkAppearance
-                )
+        @ViewBuilder
+        private func logoContent(nsImage: NSImage) -> some View {
+            if config.logoUseVibrancy {
+                ZStack {
+                    VibrancyView(
+                        material: selectedMaterial,
+                        blendingMode: selectedBlendingMode,
+                        isEmphasized: config.logoEmphasized,
+                        forceDarkAppearance: config.logoForceDarkAppearance
+                    )
 
+                    Image(nsImage: nsImage)
+                        .renderingMode(.template)
+                        .resizable()
+                        .aspectRatio(contentMode: .fit)
+                        .frame(height: baseHeight * config.logoScale)
+                        .foregroundStyle(.white.opacity(config.logoOpacity))
+                        .blendMode(selectedSwiftUIBlendMode)
+                }
+                .fixedSize()
+            } else {
                 Image(nsImage: nsImage)
                     .renderingMode(.template)
                     .resizable()
@@ -172,17 +182,7 @@ struct LogoView: View {
                     .foregroundStyle(.white.opacity(config.logoOpacity))
                     .blendMode(selectedSwiftUIBlendMode)
             }
-            .fixedSize()
-        } else {
-            Image(nsImage: nsImage)
-                .renderingMode(.template)
-                .resizable()
-                .aspectRatio(contentMode: .fit)
-                .frame(height: baseHeight * config.logoScale)
-                .foregroundStyle(.white.opacity(config.logoOpacity))
-                .blendMode(selectedSwiftUIBlendMode)
         }
-    }
     #endif
 }
 
@@ -257,7 +257,7 @@ struct AddProjectButton: View {
                     LinearGradient(
                         colors: [
                             .white.opacity(isHovered ? 0.08 : 0.05),
-                            .white.opacity(0.02)
+                            .white.opacity(0.02),
                         ],
                         startPoint: .topLeading,
                         endPoint: .bottomTrailing
@@ -271,7 +271,7 @@ struct AddProjectButton: View {
                         LinearGradient(
                             colors: [
                                 .white.opacity(isHovered ? 0.25 : 0.15),
-                                .white.opacity(isHovered ? 0.12 : 0.08)
+                                .white.opacity(isHovered ? 0.12 : 0.08),
                             ],
                             startPoint: .topLeading,
                             endPoint: .bottomTrailing
@@ -292,4 +292,3 @@ struct AddProjectButton: View {
         }
     }
 }
-

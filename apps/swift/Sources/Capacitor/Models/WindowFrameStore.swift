@@ -1,5 +1,5 @@
-import Foundation
 import AppKit
+import Foundation
 
 /// Tracks window compact state for double-click behavior
 enum WindowCompactState {
@@ -32,7 +32,7 @@ final class WindowFrameStore {
             "x": frame.origin.x,
             "y": frame.origin.y,
             "width": frame.size.width,
-            "height": frame.size.height
+            "height": frame.size.height,
         ]
         userDefaults.set(frameDict, forKey: key)
     }
@@ -43,7 +43,8 @@ final class WindowFrameStore {
               let x = frameDict["x"],
               let y = frameDict["y"],
               let width = frameDict["width"],
-              let height = frameDict["height"] else {
+              let height = frameDict["height"]
+        else {
             return nil
         }
         return NSRect(x: x, y: y, width: width, height: height)
@@ -52,9 +53,9 @@ final class WindowFrameStore {
     private func frameKey(for layoutMode: LayoutMode) -> String {
         switch layoutMode {
         case .vertical:
-            return verticalFrameKey
+            verticalFrameKey
         case .dock:
-            return dockFrameKey
+            dockFrameKey
         }
     }
 

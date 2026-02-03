@@ -60,12 +60,12 @@ private struct DefaultAppleScriptClient: AppleScriptClient {
 extension ParentApp {
     var bundlePath: String? {
         switch self {
-        case .ghostty: return "/Applications/Ghostty.app"
-        case .iTerm: return "/Applications/iTerm.app"
-        case .alacritty: return "/Applications/Alacritty.app"
-        case .warp: return "/Applications/Warp.app"
-        case .kitty, .terminal: return nil
-        default: return nil
+        case .ghostty: "/Applications/Ghostty.app"
+        case .iTerm: "/Applications/iTerm.app"
+        case .alacritty: "/Applications/Alacritty.app"
+        case .warp: "/Applications/Warp.app"
+        case .kitty, .terminal: nil
+        default: nil
         }
     }
 
@@ -78,18 +78,18 @@ extension ParentApp {
     }
 
     static let terminalPriorityOrder: [ParentApp] = [
-        .ghostty, .iTerm, .alacritty, .kitty, .warp, .terminal
+        .ghostty, .iTerm, .alacritty, .kitty, .warp, .terminal,
     ]
 
     var runningAppMatchNames: [String] {
         switch self {
-        case .terminal: return ["Terminal", "Terminal.app"]
-        case .iTerm: return ["iTerm", "iTerm2", "iTerm.app"]
-        case .ghostty: return ["Ghostty"]
-        case .alacritty: return ["Alacritty"]
-        case .kitty: return ["kitty"]
-        case .warp: return ["Warp", "WarpTerminal"]
-        default: return [displayName]
+        case .terminal: ["Terminal", "Terminal.app"]
+        case .iTerm: ["iTerm", "iTerm2", "iTerm.app"]
+        case .ghostty: ["Ghostty"]
+        case .alacritty: ["Alacritty"]
+        case .kitty: ["kitty"]
+        case .warp: ["Warp", "WarpTerminal"]
+        default: [displayName]
         }
     }
 
@@ -100,21 +100,21 @@ extension ParentApp {
 
     var processName: String? {
         switch self {
-        case .cursor: return "Cursor"
-        case .vsCode: return "Code"
-        case .vsCodeInsiders: return "Code - Insiders"
-        case .zed: return "Zed"
-        default: return nil
+        case .cursor: "Cursor"
+        case .vsCode: "Code"
+        case .vsCodeInsiders: "Code - Insiders"
+        case .zed: "Zed"
+        default: nil
         }
     }
 
     var cliBinary: String? {
         switch self {
-        case .cursor: return "cursor"
-        case .vsCode: return "code"
-        case .vsCodeInsiders: return "code-insiders"
-        case .zed: return "zed"
-        default: return nil
+        case .cursor: "cursor"
+        case .vsCode: "code"
+        case .vsCodeInsiders: "code-insiders"
+        case .zed: "zed"
+        default: nil
         }
     }
 }
@@ -124,13 +124,13 @@ extension ParentApp {
 extension TerminalType {
     var appName: String {
         switch self {
-        case .iTerm: return "iTerm"
-        case .terminalApp: return "Terminal"
-        case .ghostty: return "Ghostty"
-        case .alacritty: return "Alacritty"
-        case .kitty: return "kitty"
-        case .warp: return "Warp"
-        case .unknown: return ""
+        case .iTerm: "iTerm"
+        case .terminalApp: "Terminal"
+        case .ghostty: "Ghostty"
+        case .alacritty: "Alacritty"
+        case .kitty: "kitty"
+        case .warp: "Warp"
+        case .unknown: ""
         }
     }
 }
@@ -155,6 +155,7 @@ private func bashDoubleQuoteEscape(_ s: String) -> String {
 }
 
 // MARK: - Terminal Launcher
+
 //
 // Handles "click project → focus terminal" activation. The goal is to bring the user
 // to their existing terminal window for a project, not spawn new windows unnecessarily.
@@ -258,7 +259,7 @@ final class TerminalLauncher: ActivationActionDependencies {
 
     static func performSwitchTmuxSession(
         sessionName: String,
-        projectPath: String,
+        projectPath _: String,
         runScript: (String) async -> (exitCode: Int32, output: String?),
         activateTerminal: () -> Void
     ) async -> Bool {
@@ -608,12 +609,11 @@ final class TerminalLauncher: ActivationActionDependencies {
     }
 
     private func activateIdeWindowAction(ideType: IdeType, projectPath: String) async -> Bool {
-        let parentApp: ParentApp
-        switch ideType {
-        case .cursor: parentApp = .cursor
-        case .vsCode: parentApp = .vsCode
-        case .vsCodeInsiders: parentApp = .vsCodeInsiders
-        case .zed: parentApp = .zed
+        let parentApp: ParentApp = switch ideType {
+        case .cursor: .cursor
+        case .vsCode: .vsCode
+        case .vsCodeInsiders: .vsCodeInsiders
+        case .zed: .zed
         }
 
         guard findRunningIDE(parentApp) != nil else { return false }
@@ -716,22 +716,22 @@ final class TerminalLauncher: ActivationActionDependencies {
 
         // Launch terminal with tmux command
         let script = """
-            if [ -d "/Applications/Ghostty.app" ]; then
-                open -na "Ghostty.app" --args -e sh -c "\(tmuxCmd)"
-            elif [ -d "/Applications/iTerm.app" ]; then
-                osascript -e "tell application \\"iTerm\\" to create window with default profile command \\"\(tmuxCmd)\\""
-                osascript -e 'tell application "iTerm" to activate'
-            elif [ -d "/Applications/Alacritty.app" ]; then
-                open -na "Alacritty.app" --args -e sh -c "\(tmuxCmd)"
-            elif command -v kitty &>/dev/null; then
-                kitty sh -c "\(tmuxCmd)" &
-            elif [ -d "/Applications/Warp.app" ]; then
-                open -a "Warp"
-            else
-                osascript -e "tell application \\"Terminal\\" to do script \\"\(tmuxCmd)\\""
-                osascript -e 'tell application "Terminal" to activate'
-            fi
-            """
+        if [ -d "/Applications/Ghostty.app" ]; then
+            open -na "Ghostty.app" --args -e sh -c "\(tmuxCmd)"
+        elif [ -d "/Applications/iTerm.app" ]; then
+            osascript -e "tell application \\"iTerm\\" to create window with default profile command \\"\(tmuxCmd)\\""
+            osascript -e 'tell application "iTerm" to activate'
+        elif [ -d "/Applications/Alacritty.app" ]; then
+            open -na "Alacritty.app" --args -e sh -c "\(tmuxCmd)"
+        elif command -v kitty &>/dev/null; then
+            kitty sh -c "\(tmuxCmd)" &
+        elif [ -d "/Applications/Warp.app" ]; then
+            open -a "Warp"
+        else
+            osascript -e "tell application \\"Terminal\\" to do script \\"\(tmuxCmd)\\""
+            osascript -e 'tell application "Terminal" to activate'
+        fi
+        """
         runBashScript(script)
     }
 
@@ -754,7 +754,7 @@ final class TerminalLauncher: ActivationActionDependencies {
         func normalizePath(_ path: String) -> String {
             if path == "/" { return "/" }
             var normalized = path
-            while normalized.hasSuffix("/") && normalized != "/" {
+            while normalized.hasSuffix("/"), normalized != "/" {
                 normalized.removeLast()
             }
             return normalized.lowercased()
@@ -852,11 +852,12 @@ final class TerminalLauncher: ActivationActionDependencies {
     }
 
     // MARK: - Ghostty Window Detection
+
     //
     // Ghostty has no API for selecting a specific window by TTY (unlike iTerm/Terminal.app).
     // When multiple Ghostty windows exist, we can't focus the correct one - only activate the app.
-        // Strategy: If a tmux client is attached, activate Ghostty (window count is unreliable).
-        // If no client is attached, launch a new terminal to guarantee the correct session.
+    // Strategy: If a tmux client is attached, activate Ghostty (window count is unreliable).
+    // If no client is attached, launch a new terminal to guarantee the correct session.
 
     private func countGhosttyWindowsInternal() -> Int {
         guard let ghosttyApp = NSWorkspace.shared.runningApplications.first(where: {
@@ -931,35 +932,35 @@ final class TerminalLauncher: ActivationActionDependencies {
 
     private func queryITermForTTY(_ tty: String) async -> Bool {
         let script = """
-            tell application "iTerm"
-                repeat with w in windows
-                    repeat with t in tabs of w
-                        repeat with s in sessions of t
-                            if tty of s is "\(tty)" then
-                                return "found"
-                            end if
-                        end repeat
+        tell application "iTerm"
+            repeat with w in windows
+                repeat with t in tabs of w
+                    repeat with s in sessions of t
+                        if tty of s is "\(tty)" then
+                            return "found"
+                        end if
                     end repeat
                 end repeat
-            end tell
-            return "not found"
-            """
+            end repeat
+        end tell
+        return "not found"
+        """
         return await runAppleScriptWithResultAsync(script) == "found"
     }
 
     private func queryTerminalAppForTTY(_ tty: String) async -> Bool {
         let script = """
-            tell application "Terminal"
-                repeat with w in windows
-                    repeat with t in tabs of w
-                        if tty of t is "\(tty)" then
-                            return "found"
-                        end if
-                    end repeat
+        tell application "Terminal"
+            repeat with w in windows
+                repeat with t in tabs of w
+                    if tty of t is "\(tty)" then
+                        return "found"
+                    end if
                 end repeat
-            end tell
-            return "not found"
-            """
+            end repeat
+        end tell
+        return "not found"
+        """
         return await runAppleScriptWithResultAsync(script) == "found"
     }
 
@@ -968,41 +969,41 @@ final class TerminalLauncher: ActivationActionDependencies {
     @discardableResult
     private func activateITermSession(tty: String) -> Bool {
         let script = """
-            tell application "iTerm"
-                activate
-                repeat with w in windows
-                    repeat with t in tabs of w
-                        repeat with s in sessions of t
-                            if tty of s is "\(tty)" then
-                                select t
-                                select s
-                                set index of w to 1
-                                return
-                            end if
-                        end repeat
+        tell application "iTerm"
+            activate
+            repeat with w in windows
+                repeat with t in tabs of w
+                    repeat with s in sessions of t
+                        if tty of s is "\(tty)" then
+                            select t
+                            select s
+                            set index of w to 1
+                            return
+                        end if
                     end repeat
                 end repeat
-            end tell
-            """
+            end repeat
+        end tell
+        """
         return runAppleScriptChecked(script)
     }
 
     @discardableResult
     private func activateTerminalAppSession(tty: String) -> Bool {
         let script = """
-            tell application "Terminal"
-                activate
-                repeat with w in windows
-                    repeat with t in tabs of w
-                        if tty of t is "\(tty)" then
-                            set selected tab of w to t
-                            set frontmost of w to true
-                            return
-                        end if
-                    end repeat
+        tell application "Terminal"
+            activate
+            repeat with w in windows
+                repeat with t in tabs of w
+                    if tty of t is "\(tty)" then
+                        set selected tab of w to t
+                        set frontmost of w to true
+                        return
+                    end if
                 end repeat
-            end tell
-            """
+            end repeat
+        end tell
+        """
         return runAppleScriptChecked(script)
     }
 
@@ -1010,7 +1011,7 @@ final class TerminalLauncher: ActivationActionDependencies {
 
     @discardableResult
     private func activateAppByName(_ name: String?) -> Bool {
-        guard let name = name,
+        guard let name,
               let app = NSWorkspace.shared.runningApplications.first(where: {
                   $0.localizedName?.lowercased().contains(name.lowercased()) == true
               }),
@@ -1044,7 +1045,7 @@ final class TerminalLauncher: ActivationActionDependencies {
     }
 
     private func findRunningApp(_ terminal: ParentApp) -> NSRunningApplication? {
-        return NSWorkspace.shared.runningApplications.first {
+        NSWorkspace.shared.runningApplications.first {
             guard let localizedName = $0.localizedName else { return false }
             return terminal.matchesRunningAppName(localizedName)
         }

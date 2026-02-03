@@ -111,4 +111,3 @@ extension ProjectCreation {
         completedAt.flatMap { ISO8601DateFormatter().date(from: $0) }
     }
 }
-

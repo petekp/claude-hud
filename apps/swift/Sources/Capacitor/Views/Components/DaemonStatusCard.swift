@@ -11,7 +11,7 @@ struct DaemonStatusCard: View {
     }
 
     var body: some View {
-        if status.isEnabled && !status.isHealthy {
+        if status.isEnabled, !status.isHealthy {
             VStack(alignment: .leading, spacing: 12) {
                 HStack(spacing: 8) {
                     Image(systemName: "bolt.horizontal.circle.fill")

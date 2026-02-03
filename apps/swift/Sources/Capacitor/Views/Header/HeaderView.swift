@@ -1,5 +1,5 @@
-import SwiftUI
 import AppKit
+import SwiftUI
 
 struct HeaderView: View {
     @EnvironmentObject var appState: AppState
@@ -71,13 +71,13 @@ struct HeaderView: View {
 struct HeaderDragArea: NSViewRepresentable {
     let onDoubleClick: () -> Void
 
-    func makeNSView(context: Context) -> HeaderDragNSView {
+    func makeNSView(context _: Context) -> HeaderDragNSView {
         let view = HeaderDragNSView()
         view.onDoubleClick = onDoubleClick
         return view
     }
 
-    func updateNSView(_ nsView: HeaderDragNSView, context: Context) {
+    func updateNSView(_ nsView: HeaderDragNSView, context _: Context) {
         nsView.onDoubleClick = onDoubleClick
     }
 }

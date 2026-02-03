@@ -216,7 +216,7 @@ struct DescriptionSection: View {
 
     var body: some View {
         ZStack(alignment: .leading) {
-            if let description = description {
+            if let description {
                 Text(description)
                     .font(AppTypography.body)
                     .foregroundColor(.white.opacity(0.6))
@@ -228,7 +228,7 @@ struct DescriptionSection: View {
                 ShimmeringText(text: "Generating description...")
             }
 
-            if description == nil && !isGenerating {
+            if description == nil, !isGenerating {
                 Button(action: onGenerate) {
                     HStack(spacing: 6) {
                         Image(systemName: "sparkles")

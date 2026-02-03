@@ -11,7 +11,7 @@ struct ContentView: View {
     @State private var showDragDropTip = false
 
     #if DEBUG
-    @ObservedObject private var glassConfig = GlassConfig.shared
+        @ObservedObject private var glassConfig = GlassConfig.shared
     #endif
 
     private var isCaptureModalOpen: Bool {
@@ -84,10 +84,10 @@ struct ContentView: View {
         .background {
             if floatingMode {
                 #if DEBUG
-                DarkFrostedGlass()
-                    .id(glassConfig.panelConfigHash)
+                    DarkFrostedGlass()
+                        .id(glassConfig.panelConfigHash)
                 #else
-                DarkFrostedGlass()
+                    DarkFrostedGlass()
                 #endif
             } else {
                 Color.hudBackground
@@ -154,7 +154,8 @@ struct ContentView: View {
             provider.loadItem(forTypeIdentifier: UTType.fileURL.identifier, options: nil) { data, _ in
                 defer { group.leave() }
                 guard let data = data as? Data,
-                      let url = URL(dataRepresentation: data, relativeTo: nil) else {
+                      let url = URL(dataRepresentation: data, relativeTo: nil)
+                else {
                     return
                 }
                 DispatchQueue.main.async {

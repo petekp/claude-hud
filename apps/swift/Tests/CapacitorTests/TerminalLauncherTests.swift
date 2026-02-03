@@ -1,13 +1,13 @@
-import XCTest
 @testable import Capacitor
+import XCTest
 
 @MainActor
 final class TerminalLauncherTests: XCTestCase {
     private struct StubAppleScriptClient: AppleScriptClient {
         let shouldSucceed: Bool
 
-        func run(_ script: String) {}
-        func runChecked(_ script: String) -> Bool { shouldSucceed }
+        func run(_: String) {}
+        func runChecked(_: String) -> Bool { shouldSucceed }
     }
 
     func testGhosttyWindowCountZeroDoesNotLaunchWhenClientAttached() {
@@ -73,7 +73,7 @@ final class TerminalLauncherTests: XCTestCase {
             sessionName: "broken",
             projectPath: "/Users/pete/Code/broken",
             runScript: { _ in
-                return (1, "switch failed")
+                (1, "switch failed")
             },
             activateTerminal: { activateCalls += 1 }
         )

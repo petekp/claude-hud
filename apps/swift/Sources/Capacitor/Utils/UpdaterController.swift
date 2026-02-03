@@ -6,8 +6,8 @@ struct SparkleConfiguration {
     let publicKey: String?
 
     init(bundle: Bundle = .main) {
-        self.feedURL = bundle.infoDictionary?["SUFeedURL"] as? String
-        self.publicKey = bundle.infoDictionary?["SUPublicEDKey"] as? String
+        feedURL = bundle.infoDictionary?["SUFeedURL"] as? String
+        publicKey = bundle.infoDictionary?["SUPublicEDKey"] as? String
     }
 
     init(feedURL: String?, publicKey: String?) {
@@ -51,7 +51,7 @@ final class UpdaterController: ObservableObject {
             updaterDelegate: nil,
             userDriverDelegate: nil
         )
-        self.updaterController = controller
+        updaterController = controller
 
         automaticallyChecksForUpdates = controller.updater.automaticallyChecksForUpdates
 

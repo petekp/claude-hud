@@ -119,7 +119,7 @@ struct SetupStatusCard: View {
     }
 
     private var firingLabel: String {
-        if diagnostic.isFirstRun && diagnostic.binaryOk && diagnostic.configOk {
+        if diagnostic.isFirstRun, diagnostic.binaryOk, diagnostic.configOk {
             return "Waiting for first Claude session"
         }
         return "Hooks responding"
@@ -195,7 +195,7 @@ struct SetupStatusCard: View {
 
     private var policyBlockedMessage: some View {
         VStack(alignment: .leading, spacing: 4) {
-            if case .policyBlocked(let reason) = diagnostic.primaryIssue {
+            if case let .policyBlocked(reason) = diagnostic.primaryIssue {
                 Text(reason)
                     .font(AppTypography.captionSmall)
                     .foregroundColor(.white.opacity(0.6))

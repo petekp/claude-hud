@@ -52,7 +52,7 @@ final class ActivationActionExecutor {
         self.terminalLauncher = terminalLauncher
     }
 
-    func execute(_ action: ActivationAction, projectPath: String, projectName: String) async -> Bool {
+    func execute(_ action: ActivationAction, projectPath: String, projectName _: String) async -> Bool {
         guard let deps = dependencies else {
             return false
         }
@@ -92,7 +92,7 @@ final class ActivationActionExecutor {
     func activateHostThenSwitchTmux(
         hostTty: String,
         sessionName: String,
-        projectPath: String
+        projectPath _: String
     ) async -> Bool {
         guard dependencies != nil else {
             return false

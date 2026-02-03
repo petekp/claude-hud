@@ -14,11 +14,11 @@ struct StatusIndicator: View {
 
     private var statusText: String {
         switch state {
-        case .ready: return "Ready"
-        case .working: return "Working"
-        case .waiting: return "Waiting"
-        case .compacting: return "Compacting"
-        case .idle: return "Idle"
+        case .ready: "Ready"
+        case .working: "Working"
+        case .waiting: "Waiting"
+        case .compacting: "Compacting"
+        case .idle: "Idle"
         }
     }
 
@@ -49,11 +49,11 @@ struct StatusIndicator: View {
 
     private var accessibilityDescription: String {
         switch state {
-        case .ready: return "Ready for input"
-        case .working: return "Currently working on a task"
-        case .waiting: return "Waiting for user action"
-        case .compacting: return "Compacting conversation history"
-        case .idle: return "Session is idle"
+        case .ready: "Ready for input"
+        case .working: "Currently working on a task"
+        case .waiting: "Waiting for user action"
+        case .compacting: "Compacting conversation history"
+        case .idle: "Session is idle"
         }
     }
 }
@@ -97,7 +97,7 @@ struct AnimatedCompactingText: View {
     @Environment(\.prefersReducedMotion) private var reduceMotion
 
     #if DEBUG
-    @ObservedObject private var config = GlassConfig.shared
+        @ObservedObject private var config = GlassConfig.shared
     #endif
 
     var body: some View {
@@ -131,31 +131,31 @@ struct AnimatedCompactingText: View {
 
     private var trackingParameters: CompactingTrackingParameters {
         #if DEBUG
-        CompactingTrackingParameters(
-            cycleLength: config.compactingCycleLength,
-            minTracking: config.compactingMinTracking,
-            maxTracking: config.compactingMaxTracking,
-            compressDuration: config.compactingCompressDuration,
-            holdDuration: config.compactingHoldDuration,
-            expandDuration: config.compactingExpandDuration,
-            compressDamping: config.compactingCompressDamping,
-            compressOmega: config.compactingCompressOmega,
-            expandDamping: config.compactingExpandDamping,
-            expandOmega: config.compactingExpandOmega
-        )
+            CompactingTrackingParameters(
+                cycleLength: config.compactingCycleLength,
+                minTracking: config.compactingMinTracking,
+                maxTracking: config.compactingMaxTracking,
+                compressDuration: config.compactingCompressDuration,
+                holdDuration: config.compactingHoldDuration,
+                expandDuration: config.compactingExpandDuration,
+                compressDamping: config.compactingCompressDamping,
+                compressOmega: config.compactingCompressOmega,
+                expandDamping: config.compactingExpandDamping,
+                expandOmega: config.compactingExpandOmega
+            )
         #else
-        CompactingTrackingParameters(
-            cycleLength: 1.8,
-            minTracking: 0.0,
-            maxTracking: 2.1,
-            compressDuration: 0.26,
-            holdDuration: 0.50,
-            expandDuration: 1.0,
-            compressDamping: 0.3,
-            compressOmega: 16.0,
-            expandDamping: 0.8,
-            expandOmega: 4.0
-        )
+            CompactingTrackingParameters(
+                cycleLength: 1.8,
+                minTracking: 0.0,
+                maxTracking: 2.1,
+                compressDuration: 0.26,
+                holdDuration: 0.50,
+                expandDuration: 1.0,
+                compressDamping: 0.3,
+                compressOmega: 16.0,
+                expandDamping: 0.8,
+                expandOmega: 4.0
+            )
         #endif
     }
 
@@ -246,7 +246,7 @@ struct ProjectContextMenu: View {
         Button(action: onInfoTap) {
             Label("View Details", systemImage: "info.circle")
         }
-        if let onCaptureIdea = onCaptureIdea {
+        if let onCaptureIdea {
             Button(action: onCaptureIdea) {
                 Label("Capture Idea...", systemImage: "lightbulb")
             }
@@ -271,7 +271,7 @@ struct ProjectCardBackground: View {
     @Environment(\.floatingMode) private var floatingMode
 
     #if DEBUG
-    var config: GlassConfig?
+        var config: GlassConfig?
     #endif
 
     private var cornerRadius: CGFloat {
@@ -288,13 +288,13 @@ struct ProjectCardBackground: View {
 
     private var floatingBackground: some View {
         #if DEBUG
-        if let config = config {
-            DarkFrostedCard(isHovered: isHovered, layoutMode: layoutMode, config: config)
-        } else {
-            DarkFrostedCard(isHovered: isHovered, layoutMode: layoutMode)
-        }
+            if let config {
+                DarkFrostedCard(isHovered: isHovered, layoutMode: layoutMode, config: config)
+            } else {
+                DarkFrostedCard(isHovered: isHovered, layoutMode: layoutMode)
+            }
         #else
-        DarkFrostedCard(isHovered: isHovered, layoutMode: layoutMode)
+            DarkFrostedCard(isHovered: isHovered, layoutMode: layoutMode)
         #endif
     }
 

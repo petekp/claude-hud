@@ -143,21 +143,20 @@ final class SessionStateManager {
         return merged
     }
 
-
     private func mapDaemonState(_ state: String) -> SessionState {
         switch state.lowercased() {
         case "working":
-            return .working
+            .working
         case "ready":
-            return .ready
+            .ready
         case "compacting":
-            return .compacting
+            .compacting
         case "waiting":
-            return .waiting
+            .waiting
         case "idle":
-            return .idle
+            .idle
         default:
-            return .idle
+            .idle
         }
     }
 }

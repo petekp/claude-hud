@@ -3,9 +3,9 @@ import SwiftUI
 
 extension Color {
     // Dark mode background (primary)
-    static let hudBackground = Color(hue: 260/360, saturation: 0.045, brightness: 0.11)
-    static let hudCard = Color(hue: 260/360, saturation: 0.055, brightness: 0.145)
-    static let hudCardElevated = Color(hue: 260/360, saturation: 0.06, brightness: 0.17)
+    static let hudBackground = Color(hue: 260 / 360, saturation: 0.045, brightness: 0.11)
+    static let hudCard = Color(hue: 260 / 360, saturation: 0.055, brightness: 0.145)
+    static let hudCardElevated = Color(hue: 260 / 360, saturation: 0.06, brightness: 0.17)
 
     // Status colors - driven by GlassConfig
     static var statusReady: Color {
@@ -47,23 +47,23 @@ extension Color {
     static func flashColor(for state: SessionState) -> Color {
         switch state {
         case .ready:
-            return statusReady
+            statusReady
         case .waiting:
-            return statusWaiting
+            statusWaiting
         case .compacting:
-            return statusCompacting
+            statusCompacting
         default:
-            return .clear
+            .clear
         }
     }
 
     static func statusColor(for state: SessionState) -> Color {
         switch state {
-        case .ready: return statusReady
-        case .working: return statusWorking
-        case .waiting: return statusWaiting
-        case .compacting: return statusCompacting
-        case .idle: return statusIdle
+        case .ready: statusReady
+        case .working: statusWorking
+        case .waiting: statusWaiting
+        case .compacting: statusCompacting
+        case .idle: statusIdle
         }
     }
 }

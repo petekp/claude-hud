@@ -202,15 +202,15 @@ struct CreationCard: View {
     private var statusColor: Color {
         switch creation.status {
         case .pending:
-            return .white.opacity(0.5)
+            .white.opacity(0.5)
         case .inProgress:
-            return .hudAccent
+            .hudAccent
         case .completed:
-            return .green
+            .green
         case .failed:
-            return .red
+            .red
         case .cancelled:
-            return .orange
+            .orange
         }
     }
 

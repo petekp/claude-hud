@@ -113,7 +113,7 @@ struct NavigationContainer: View {
         }
     }
 
-    private func handleNavigation(from oldValue: ProjectView, to newValue: ProjectView) {
+    private func handleNavigation(from _: ProjectView, to newValue: ProjectView) {
         switch newValue {
         case .list:
             withAnimation(navigationAnimation) {
@@ -138,7 +138,7 @@ struct NavigationContainer: View {
                 }
             }
 
-        case .detail(let project):
+        case let .detail(project):
             currentDetail = project
             showDetail = true
             if reduceMotion {
@@ -148,26 +148,26 @@ struct NavigationContainer: View {
             }
 
             DispatchQueue.main.async {
-                withAnimation(self.navigationAnimation) {
-                    if self.reduceMotion {
-                        self.listOpacity = 0
-                        self.detailOpacity = 1
-                        self.addLinkOpacity = 0
-                        self.newIdeaOpacity = 0
+                withAnimation(navigationAnimation) {
+                    if reduceMotion {
+                        listOpacity = 0
+                        detailOpacity = 1
+                        addLinkOpacity = 0
+                        newIdeaOpacity = 0
                     } else {
-                        self.listPosition = .left
-                        self.detailPosition = .center
-                        self.addLinkPosition = .right
-                        self.newIdeaPosition = .right
+                        listPosition = .left
+                        detailPosition = .center
+                        addLinkPosition = .right
+                        newIdeaPosition = .right
                     }
                 }
             }
 
             // Clean up other views after animation
             DispatchQueue.main.asyncAfter(deadline: .now() + animationDuration + 0.1) {
-                if case .detail = self.appState.projectView {
-                    self.showAddLink = false
-                    self.showNewIdea = false
+                if case .detail = appState.projectView {
+                    showAddLink = false
+                    showNewIdea = false
                 }
             }
 
@@ -180,27 +180,27 @@ struct NavigationContainer: View {
             }
 
             DispatchQueue.main.async {
-                withAnimation(self.navigationAnimation) {
-                    if self.reduceMotion {
-                        self.listOpacity = 0
-                        self.detailOpacity = 0
-                        self.addLinkOpacity = 1
-                        self.newIdeaOpacity = 0
+                withAnimation(navigationAnimation) {
+                    if reduceMotion {
+                        listOpacity = 0
+                        detailOpacity = 0
+                        addLinkOpacity = 1
+                        newIdeaOpacity = 0
                     } else {
-                        self.listPosition = .left
-                        self.detailPosition = .right
-                        self.addLinkPosition = .center
-                        self.newIdeaPosition = .right
+                        listPosition = .left
+                        detailPosition = .right
+                        addLinkPosition = .center
+                        newIdeaPosition = .right
                     }
                 }
             }
 
             // Clean up other views after animation
             DispatchQueue.main.asyncAfter(deadline: .now() + animationDuration + 0.1) {
-                if case .addLink = self.appState.projectView {
-                    self.showDetail = false
-                    self.showNewIdea = false
-                    self.currentDetail = nil
+                if case .addLink = appState.projectView {
+                    showDetail = false
+                    showNewIdea = false
+                    currentDetail = nil
                 }
             }
 
@@ -213,27 +213,27 @@ struct NavigationContainer: View {
             }
 
             DispatchQueue.main.async {
-                withAnimation(self.navigationAnimation) {
-                    if self.reduceMotion {
-                        self.listOpacity = 0
-                        self.detailOpacity = 0
-                        self.addLinkOpacity = 0
-                        self.newIdeaOpacity = 1
+                withAnimation(navigationAnimation) {
+                    if reduceMotion {
+                        listOpacity = 0
+                        detailOpacity = 0
+                        addLinkOpacity = 0
+                        newIdeaOpacity = 1
                     } else {
-                        self.listPosition = .left
-                        self.detailPosition = .right
-                        self.addLinkPosition = .right
-                        self.newIdeaPosition = .center
+                        listPosition = .left
+                        detailPosition = .right
+                        addLinkPosition = .right
+                        newIdeaPosition = .center
                     }
                 }
             }
 
             // Clean up other views after animation
             DispatchQueue.main.asyncAfter(deadline: .now() + animationDuration + 0.1) {
-                if case .newIdea = self.appState.projectView {
-                    self.showDetail = false
-                    self.showAddLink = false
-                    self.currentDetail = nil
+                if case .newIdea = appState.projectView {
+                    showDetail = false
+                    showAddLink = false
+                    currentDetail = nil
                 }
             }
         }

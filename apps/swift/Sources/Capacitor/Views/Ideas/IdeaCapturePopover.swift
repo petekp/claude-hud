@@ -1,5 +1,5 @@
-import SwiftUI
 import AppKit
+import SwiftUI
 
 struct IdeaCaptureOverlay: View {
     @Binding var isPresented: Bool
@@ -20,7 +20,7 @@ struct IdeaCaptureOverlay: View {
         "Dream big...",
         "I'm all ears",
         "What's next?",
-        "Make something happen"
+        "Make something happen",
     ]
 
     private enum Layout {
@@ -251,7 +251,7 @@ struct IdeaCaptureOverlay: View {
         switch result {
         case .success:
             return true
-        case .failure(let error):
+        case let .failure(error):
             captureError = error.localizedDescription
             return false
         }
@@ -467,7 +467,7 @@ struct CenteredTextEditor: NSViewRepresentable {
         let attributes: [NSAttributedString.Key: Any] = [
             .font: font,
             .foregroundColor: textColor,
-            .paragraphStyle: paragraphStyle
+            .paragraphStyle: paragraphStyle,
         ]
         textView.typingAttributes = attributes
 
@@ -481,7 +481,7 @@ struct CenteredTextEditor: NSViewRepresentable {
         return scrollView
     }
 
-    func updateNSView(_ scrollView: NSScrollView, context: Context) {
+    func updateNSView(_ scrollView: NSScrollView, context _: Context) {
         guard let textView = scrollView.documentView as? CenteredNSTextView else { return }
 
         let font = NSFont.systemFont(ofSize: fontSize, weight: .regular)
@@ -496,7 +496,7 @@ struct CenteredTextEditor: NSViewRepresentable {
         let attributes: [NSAttributedString.Key: Any] = [
             .font: font,
             .foregroundColor: textColor,
-            .paragraphStyle: paragraphStyle
+            .paragraphStyle: paragraphStyle,
         ]
 
         textView.typingAttributes = attributes
@@ -537,13 +537,13 @@ struct CenteredTextEditor: NSViewRepresentable {
             parent.text = textView.string
         }
 
-        func textDidBeginEditing(_ notification: Notification) {
+        func textDidBeginEditing(_: Notification) {
             DispatchQueue.main.async {
                 self.parent.isFocused = true
             }
         }
 
-        func textDidEndEditing(_ notification: Notification) {
+        func textDidEndEditing(_: Notification) {
             DispatchQueue.main.async {
                 self.parent.isFocused = false
             }

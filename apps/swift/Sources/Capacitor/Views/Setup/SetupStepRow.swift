@@ -92,31 +92,31 @@ struct SetupStepRow: View {
     private var titleColor: Color {
         switch step.status {
         case .pending:
-            return .secondary
+            .secondary
         case .error:
-            return .primary
+            .primary
         default:
-            return .primary
+            .primary
         }
     }
 
     private var detailColor: Color {
         switch step.status {
         case .error:
-            return .yellow
+            .yellow
         default:
-            return .secondary
+            .secondary
         }
     }
 
     private var rowBackground: Color {
         switch step.status {
         case .actionNeeded where isCurrentStep:
-            return Color.accentColor.opacity(0.1)
+            Color.accentColor.opacity(0.1)
         case .error:
-            return Color.yellow.opacity(0.1)
+            Color.yellow.opacity(0.1)
         default:
-            return Color.primary.opacity(0.05)
+            Color.primary.opacity(0.05)
         }
     }
 }

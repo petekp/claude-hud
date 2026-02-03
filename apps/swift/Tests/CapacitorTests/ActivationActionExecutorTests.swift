@@ -1,5 +1,5 @@
-import XCTest
 @testable import Capacitor
+import XCTest
 
 @MainActor
 final class ActivationActionExecutorTests: XCTestCase {
@@ -37,7 +37,7 @@ final class ActivationActionExecutorTests: XCTestCase {
             return activateAppResult
         }
 
-        func activateKittyWindow(shellPid: UInt32) -> Bool {
+        func activateKittyWindow(shellPid _: UInt32) -> Bool {
             lastAction = "activateKittyWindow"
             return activateKittyResult
         }
@@ -63,7 +63,7 @@ final class ActivationActionExecutorTests: XCTestCase {
             return ensureTmuxResult
         }
 
-        func activateHostThenSwitchTmux(hostTty: String, sessionName: String, projectPath: String) async -> Bool {
+        func activateHostThenSwitchTmux(hostTty _: String, sessionName: String, projectPath: String) async -> Bool {
             lastAction = "activateHostThenSwitchTmux"
             lastSessionName = sessionName
             lastProjectPath = projectPath
@@ -97,7 +97,7 @@ final class ActivationActionExecutorTests: XCTestCase {
 
         func hasAnyClientAttached() async -> Bool { hasClientAttached }
         func getCurrentClientTty() async -> String? { currentClientTty }
-        func switchClient(to sessionName: String) async -> Bool { switchResult }
+        func switchClient(to _: String) async -> Bool { switchResult }
     }
 
     @MainActor
@@ -108,11 +108,12 @@ final class ActivationActionExecutorTests: XCTestCase {
         var ghosttyRunning = false
         var ghosttyWindows = 1
 
-        func activateTerminalByTTY(tty: String) async -> Bool { activateByTtyResult }
+        func activateTerminalByTTY(tty _: String) async -> Bool { activateByTtyResult }
         func activateAppByName(_ appName: String) -> Bool {
             lastActivatedApp = appName
             return activateAppResult
         }
+
         func isGhosttyRunning() -> Bool { ghosttyRunning }
         func countGhosttyWindows() -> Int { ghosttyWindows }
     }

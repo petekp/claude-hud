@@ -23,104 +23,103 @@ extension View {
         // Only animate effects for active or hovered cards to reduce GPU load during scroll
         let shouldAnimate = isActive || isHovered
 
-        return self
-            .background {
-                ZStack {
-                    if floatingMode {
-                        floatingCardBackground
-                            .id(GlassConfig.shared.cardConfigHash)
-                    } else {
-                        solidCardBackground
-                    }
+        return background {
+            ZStack {
+                if floatingMode {
+                    floatingCardBackground
+                        .id(GlassConfig.shared.cardConfigHash)
+                } else {
+                    solidCardBackground
+                }
 
-                    if isWorking {
-                        WorkingStripeOverlay(layoutMode: layoutMode, animate: shouldAnimate)
-                            .transition(.opacity.animation(.easeInOut(duration: GlassConfig.shared.glowFadeDuration)))
-                    }
-                }
-            }
-            .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
-            .overlay {
-                let config = GlassConfig.shared
-                let borderOpacity = isHovered ? config.cardHoverBorderOpacity : config.cardBorderOpacity
-                RoundedRectangle(cornerRadius: cornerRadius)
-                    .strokeBorder(
-                        LinearGradient(
-                            colors: [
-                                .white.opacity(borderOpacity),
-                                .white.opacity(borderOpacity * 0.4)
-                            ],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        ),
-                        lineWidth: 0.5
-                    )
-            }
-            .overlay(
-                RoundedRectangle(cornerRadius: cornerRadius)
-                    .stroke(flashState.map { Color.flashColor(for: $0) } ?? .clear, lineWidth: 2)
-                    .opacity(flashOpacity)
-            )
-            .overlay {
-                ZStack {
-                    if isActive {
-                        RoundedRectangle(cornerRadius: cornerRadius)
-                            .strokeBorder(
-                                Color.white.opacity(0.3),
-                                lineWidth: 3
-                            )
-                            .blur(radius: 4)
-
-                        RoundedRectangle(cornerRadius: cornerRadius)
-                            .strokeBorder(
-                                Color.white.opacity(0.8),
-                                lineWidth: 1.5
-                            )
-                    }
-                }
-            }
-            .overlay {
-                let cfg = GlassConfig.shared
-                if isReady {
-                    ReadyAmbientGlow(layoutMode: layoutMode, animate: shouldAnimate)
-                        .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
-                        .transition(.opacity.animation(.easeOut(duration: cfg.glowFadeDuration)))
-                }
-            }
-            .overlay {
-                let cfg = GlassConfig.shared
-                if isReady {
-                    ReadyBorderGlow(seed: animationSeed, layoutMode: layoutMode, animate: shouldAnimate)
-                        .transition(.opacity.animation(.easeOut(duration: cfg.glowFadeDuration + cfg.glowBorderDelay).delay(cfg.glowBorderDelay)))
-                }
-            }
-            .overlay {
-                let cfg = GlassConfig.shared
-                if isWaiting {
-                    WaitingAmbientPulse(layoutMode: layoutMode, animate: shouldAnimate)
-                        .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
-                        .transition(.opacity.animation(.easeOut(duration: cfg.glowFadeDuration)))
-                }
-            }
-            .overlay {
-                let cfg = GlassConfig.shared
-                if isWaiting {
-                    WaitingBorderPulse(seed: animationSeed, layoutMode: layoutMode, animate: shouldAnimate)
-                        .transition(.opacity.animation(.easeOut(duration: cfg.glowFadeDuration + cfg.glowBorderDelay).delay(cfg.glowBorderDelay)))
-                }
-            }
-            .overlay {
-                let cfg = GlassConfig.shared
                 if isWorking {
-                    WorkingBorderGlow(seed: animationSeed, layoutMode: layoutMode, animate: shouldAnimate)
-                        .transition(.opacity.animation(.easeOut(duration: cfg.glowFadeDuration + cfg.glowBorderDelay).delay(cfg.glowBorderDelay)))
+                    WorkingStripeOverlay(layoutMode: layoutMode, animate: shouldAnimate)
+                        .transition(.opacity.animation(.easeInOut(duration: GlassConfig.shared.glowFadeDuration)))
                 }
             }
-            .shadow(
-                color: .black.opacity(shadowOpacity(isHovered: isHovered, isPressed: isPressed, floatingMode: floatingMode, layoutMode: layoutMode)),
-                radius: shadowRadius(isHovered: isHovered, isPressed: isPressed, floatingMode: floatingMode, layoutMode: layoutMode),
-                y: shadowY(isHovered: isHovered, isPressed: isPressed, floatingMode: floatingMode, layoutMode: layoutMode)
-            )
+        }
+        .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
+        .overlay {
+            let config = GlassConfig.shared
+            let borderOpacity = isHovered ? config.cardHoverBorderOpacity : config.cardBorderOpacity
+            RoundedRectangle(cornerRadius: cornerRadius)
+                .strokeBorder(
+                    LinearGradient(
+                        colors: [
+                            .white.opacity(borderOpacity),
+                            .white.opacity(borderOpacity * 0.4),
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    ),
+                    lineWidth: 0.5
+                )
+        }
+        .overlay(
+            RoundedRectangle(cornerRadius: cornerRadius)
+                .stroke(flashState.map { Color.flashColor(for: $0) } ?? .clear, lineWidth: 2)
+                .opacity(flashOpacity)
+        )
+        .overlay {
+            ZStack {
+                if isActive {
+                    RoundedRectangle(cornerRadius: cornerRadius)
+                        .strokeBorder(
+                            Color.white.opacity(0.3),
+                            lineWidth: 3
+                        )
+                        .blur(radius: 4)
+
+                    RoundedRectangle(cornerRadius: cornerRadius)
+                        .strokeBorder(
+                            Color.white.opacity(0.8),
+                            lineWidth: 1.5
+                        )
+                }
+            }
+        }
+        .overlay {
+            let cfg = GlassConfig.shared
+            if isReady {
+                ReadyAmbientGlow(layoutMode: layoutMode, animate: shouldAnimate)
+                    .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
+                    .transition(.opacity.animation(.easeOut(duration: cfg.glowFadeDuration)))
+            }
+        }
+        .overlay {
+            let cfg = GlassConfig.shared
+            if isReady {
+                ReadyBorderGlow(seed: animationSeed, layoutMode: layoutMode, animate: shouldAnimate)
+                    .transition(.opacity.animation(.easeOut(duration: cfg.glowFadeDuration + cfg.glowBorderDelay).delay(cfg.glowBorderDelay)))
+            }
+        }
+        .overlay {
+            let cfg = GlassConfig.shared
+            if isWaiting {
+                WaitingAmbientPulse(layoutMode: layoutMode, animate: shouldAnimate)
+                    .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
+                    .transition(.opacity.animation(.easeOut(duration: cfg.glowFadeDuration)))
+            }
+        }
+        .overlay {
+            let cfg = GlassConfig.shared
+            if isWaiting {
+                WaitingBorderPulse(seed: animationSeed, layoutMode: layoutMode, animate: shouldAnimate)
+                    .transition(.opacity.animation(.easeOut(duration: cfg.glowFadeDuration + cfg.glowBorderDelay).delay(cfg.glowBorderDelay)))
+            }
+        }
+        .overlay {
+            let cfg = GlassConfig.shared
+            if isWorking {
+                WorkingBorderGlow(seed: animationSeed, layoutMode: layoutMode, animate: shouldAnimate)
+                    .transition(.opacity.animation(.easeOut(duration: cfg.glowFadeDuration + cfg.glowBorderDelay).delay(cfg.glowBorderDelay)))
+            }
+        }
+        .shadow(
+            color: .black.opacity(shadowOpacity(isHovered: isHovered, isPressed: isPressed, floatingMode: floatingMode, layoutMode: layoutMode)),
+            radius: shadowRadius(isHovered: isHovered, isPressed: isPressed, floatingMode: floatingMode, layoutMode: layoutMode),
+            y: shadowY(isHovered: isHovered, isPressed: isPressed, floatingMode: floatingMode, layoutMode: layoutMode)
+        )
     }
 
     func cardInteractions(
@@ -128,8 +127,7 @@ extension View {
         onTap: @escaping () -> Void,
         onDragStarted: (() -> NSItemProvider)?
     ) -> some View {
-        self
-            .contentShape(Rectangle())
+        contentShape(Rectangle())
             .onTapGesture(perform: onTap)
             .focusable()
             .focusEffectDisabled()
@@ -157,15 +155,14 @@ extension View {
     func cardLifecycleHandlers(
         flashState: SessionState?,
         sessionState: ProjectSessionState?,
-        currentState: SessionState?,
+        currentState _: SessionState?,
         previousState: Binding<SessionState?>,
         lastChimeTime: Binding<Date?>,
         flashOpacity: Binding<Double>,
         chimeCooldown: TimeInterval,
         glassConfig: GlassConfig?
     ) -> some View {
-        self
-            .animation(.easeOut(duration: GlassConfig.shared.stateTransitionDuration), value: sessionState?.state)
+        animation(.easeOut(duration: GlassConfig.shared.stateTransitionDuration), value: sessionState?.state)
             .onChange(of: flashState) { _, newValue in
                 guard newValue != nil else { return }
                 withAnimation(.easeOut(duration: 0.1)) {
@@ -176,9 +173,9 @@ extension View {
                 }
             }
             .onChange(of: sessionState?.state) { oldValue, newValue in
-                if glassConfig?.previewState != Optional<PreviewState>.none { return }
+                if glassConfig?.previewState != PreviewState?.none { return }
 
-                if newValue == .ready && oldValue != .ready && oldValue != nil {
+                if newValue == .ready, oldValue != .ready, oldValue != nil {
                     let now = Date()
                     let shouldPlayChime = lastChimeTime.wrappedValue.map { now.timeIntervalSince($0) >= chimeCooldown } ?? true
                     if shouldPlayChime {
@@ -189,7 +186,7 @@ extension View {
                 previousState.wrappedValue = newValue
             }
             .onChange(of: glassConfig?.previewState) { oldValue, newValue in
-                if newValue == .ready && oldValue != .ready {
+                if newValue == .ready, oldValue != .ready {
                     ReadyChime.shared.play()
                 }
             }
@@ -209,7 +206,7 @@ extension View {
 
 // MARK: - Shadow Helpers
 
-private func shadowOpacity(isHovered: Bool, isPressed: Bool, floatingMode: Bool, layoutMode: LayoutMode) -> Double {
+private func shadowOpacity(isHovered: Bool, isPressed: Bool, floatingMode: Bool, layoutMode _: LayoutMode) -> Double {
     guard !floatingMode else { return 0.25 }
     let config = GlassConfig.shared
     if isPressed {
@@ -220,7 +217,7 @@ private func shadowOpacity(isHovered: Bool, isPressed: Bool, floatingMode: Bool,
     return config.cardIdleShadowOpacity
 }
 
-private func shadowRadius(isHovered: Bool, isPressed: Bool, floatingMode: Bool, layoutMode: LayoutMode) -> CGFloat {
+private func shadowRadius(isHovered: Bool, isPressed: Bool, floatingMode: Bool, layoutMode _: LayoutMode) -> CGFloat {
     guard !floatingMode else { return 8 }
     let config = GlassConfig.shared
     if isPressed {
@@ -231,7 +228,7 @@ private func shadowRadius(isHovered: Bool, isPressed: Bool, floatingMode: Bool, 
     return config.cardIdleShadowRadius
 }
 
-private func shadowY(isHovered: Bool, isPressed: Bool, floatingMode: Bool, layoutMode: LayoutMode) -> CGFloat {
+private func shadowY(isHovered: Bool, isPressed: Bool, floatingMode: Bool, layoutMode _: LayoutMode) -> CGFloat {
     guard !floatingMode else { return 3 }
     let config = GlassConfig.shared
     if isPressed {
@@ -251,11 +248,11 @@ struct WindowDragPreventer<Content: View>: NSViewRepresentable {
         self.content = content()
     }
 
-    func makeNSView(context: Context) -> NonDraggableHostingView<Content> {
+    func makeNSView(context _: Context) -> NonDraggableHostingView<Content> {
         NonDraggableHostingView(rootView: content)
     }
 
-    func updateNSView(_ nsView: NonDraggableHostingView<Content>, context: Context) {
+    func updateNSView(_ nsView: NonDraggableHostingView<Content>, context _: Context) {
         nsView.rootView = content
     }
 }
@@ -267,11 +264,11 @@ struct WindowDragHandle<Content: View>: NSViewRepresentable {
         self.content = content()
     }
 
-    func makeNSView(context: Context) -> DraggableHostingView<Content> {
+    func makeNSView(context _: Context) -> DraggableHostingView<Content> {
         DraggableHostingView(rootView: content)
     }
 
-    func updateNSView(_ nsView: DraggableHostingView<Content>, context: Context) {
+    func updateNSView(_ nsView: DraggableHostingView<Content>, context _: Context) {
         nsView.rootView = content
     }
 }

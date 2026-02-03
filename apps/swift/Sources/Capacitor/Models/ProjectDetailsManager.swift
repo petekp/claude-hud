@@ -30,9 +30,9 @@ final class ProjectDetailsManager {
     // MARK: - Idea Capture
 
     func captureIdea(for project: Project, text: String) -> Result<Void, Error> {
-        guard let engine = engine else {
+        guard let engine else {
             return .failure(NSError(domain: "HUD", code: 1, userInfo: [
-                NSLocalizedDescriptionKey: "Engine not initialized"
+                NSLocalizedDescriptionKey: "Engine not initialized",
             ]))
         }
 
@@ -47,7 +47,7 @@ final class ProjectDetailsManager {
     }
 
     func loadIdeas(for project: Project) {
-        guard let engine = engine else { return }
+        guard let engine else { return }
 
         do {
             let ideas = try engine.loadIdeas(projectPath: project.path)
@@ -59,7 +59,8 @@ final class ProjectDetailsManager {
             // Track mtime for change detection (ideas now in global storage)
             let ideasFilePath = engine.getIdeasFilePath(projectPath: project.path)
             if let attrs = try? FileManager.default.attributesOfItem(atPath: ideasFilePath),
-               let mtime = attrs[.modificationDate] as? Date {
+               let mtime = attrs[.modificationDate] as? Date
+            {
                 ideaFileMtimes[project.path] = mtime
             }
         } catch {
@@ -68,7 +69,7 @@ final class ProjectDetailsManager {
     }
 
     private func applyIdeasOrder(ideas: [Idea], for project: Project) -> [Idea] {
-        guard let engine = engine else { return ideas }
+        guard let engine else { return ideas }
 
         do {
             let orderedIds = try engine.loadIdeasOrder(projectPath: project.path)
@@ -115,13 +116,14 @@ final class ProjectDetailsManager {
         guard now.timeIntervalSince(lastIdeasCheck) >= Constants.ideasCheckIntervalSeconds else { return }
         lastIdeasCheck = now
 
-        guard let engine = engine else { return }
+        guard let engine else { return }
 
         for project in projects {
             let ideasFilePath = engine.getIdeasFilePath(projectPath: project.path)
 
             guard let attrs = try? FileManager.default.attributesOfItem(atPath: ideasFilePath),
-                  let currentMtime = attrs[.modificationDate] as? Date else {
+                  let currentMtime = attrs[.modificationDate] as? Date
+            else {
                 continue
             }
 
@@ -156,7 +158,7 @@ final class ProjectDetailsManager {
         projectIdeas[project.path] = reorderedIdeas
 
         // Persist order to disk asynchronously
-        let ideaIds = reorderedIdeas.map { $0.id }
+        let ideaIds = reorderedIdeas.map(\.id)
         _Concurrency.Task {
             do {
                 try engine?.saveIdeasOrder(projectPath: project.path, ideaIds: ideaIds)
@@ -336,19 +338,19 @@ final class ProjectDetailsManager {
         let contextSection = contextParts.isEmpty ? "" : "\n\nContext:\n\(contextParts.joined(separator: "\n"))"
 
         return """
-            Transform this raw idea capture into a structured format.
+        Transform this raw idea capture into a structured format.
 
-            ASSESS the input:
-            - If VAGUE (e.g., "that auth thing"): provide title AND 1-2 sentence description expanding what this likely means
-            - If MODERATE (e.g., "fix timeout in auth flow"): provide title AND brief description
-            - If SPECIFIC (e.g., "In auth.ts:42, handle 401"): provide title only, description can be null
+        ASSESS the input:
+        - If VAGUE (e.g., "that auth thing"): provide title AND 1-2 sentence description expanding what this likely means
+        - If MODERATE (e.g., "fix timeout in auth flow"): provide title AND brief description
+        - If SPECIFIC (e.g., "In auth.ts:42, handle 401"): provide title only, description can be null
 
-            Project: \(context.projectName)
-            Raw input: \(rawInput)\(contextSection)
+        Project: \(context.projectName)
+        Raw input: \(rawInput)\(contextSection)
 
-            Return ONLY valid JSON (no markdown, no explanation):
-            {"title": "3-8 word title", "description": "expansion or null", "confidence": 0.0-1.0}
-            """
+        Return ONLY valid JSON (no markdown, no explanation):
+        {"title": "3-8 word title", "description": "expansion or null", "confidence": 0.0-1.0}
+        """
     }
 
     private func parseSensemakingResponse(_ response: String) throws -> SensemakingResult {
@@ -413,12 +415,10 @@ final class ProjectDetailsManager {
         _Concurrency.Task {
             do {
                 let claudeMdPath = "\(project.path)/CLAUDE.md"
-                let claudeMdContent: String
-
-                if FileManager.default.fileExists(atPath: claudeMdPath) {
-                    claudeMdContent = try String(contentsOfFile: claudeMdPath, encoding: .utf8)
+                let claudeMdContent: String = if FileManager.default.fileExists(atPath: claudeMdPath) {
+                    try String(contentsOfFile: claudeMdPath, encoding: .utf8)
                 } else {
-                    claudeMdContent = "Project: \(project.name)\nPath: \(project.path)"
+                    "Project: \(project.name)\nPath: \(project.path)"
                 }
 
                 let description = try await generateWithHaiku(
@@ -445,15 +445,15 @@ final class ProjectDetailsManager {
         let truncatedContent = String(claudeMd.prefix(Constants.claudeMdTruncationLength))
 
         return """
-            Generate a concise 1-2 sentence description of this project based on its CLAUDE.md file.
-            Focus on WHAT the project does and its PURPOSE, not implementation details.
-            Return ONLY the description text, no quotes, no markdown formatting.
+        Generate a concise 1-2 sentence description of this project based on its CLAUDE.md file.
+        Focus on WHAT the project does and its PURPOSE, not implementation details.
+        Return ONLY the description text, no quotes, no markdown formatting.
 
-            Project: \(projectName)
+        Project: \(projectName)
 
-            CLAUDE.md content:
-            \(truncatedContent)
-            """
+        CLAUDE.md content:
+        \(truncatedContent)
+        """
     }
 }
 
@@ -486,7 +486,7 @@ private extension ProjectDetailsManager {
                     output = Self.stripTrailingPunctuation(output)
                 }
 
-                if process.terminationStatus == 0 && !output.isEmpty {
+                if process.terminationStatus == 0, !output.isEmpty {
                     continuation.resume(returning: output)
                 } else {
                     continuation.resume(throwing: NSError(
@@ -501,7 +501,7 @@ private extension ProjectDetailsManager {
 
     nonisolated static func stripSurroundingQuotes(_ text: String) -> String {
         var result = text
-        if result.hasPrefix("\"") && result.hasSuffix("\"") && result.count > 2 {
+        if result.hasPrefix("\""), result.hasSuffix("\""), result.count > 2 {
             result = String(result.dropFirst().dropLast())
         }
         return result

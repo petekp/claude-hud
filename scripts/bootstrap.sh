@@ -72,6 +72,21 @@ fi
 echo "Rust $(rustc --version | cut -d' ' -f2) found"
 
 # -----------------------------------------------------------------------------
+# SwiftFormat (code formatting)
+# -----------------------------------------------------------------------------
+
+if ! command -v swiftformat &>/dev/null; then
+    if command -v brew &>/dev/null; then
+        echo "Installing SwiftFormat..."
+        brew install swiftformat
+    else
+        echo "Warning: swiftformat not found. Install with: brew install swiftformat"
+    fi
+else
+    echo "SwiftFormat found"
+fi
+
+# -----------------------------------------------------------------------------
 # Build Rust core
 # -----------------------------------------------------------------------------
 

@@ -29,15 +29,15 @@ struct SetupStep: Identifiable {
     var statusDetail: String {
         switch status {
         case .pending:
-            return description
+            description
         case .checking:
-            return "Checking..."
-        case .completed(let detail):
-            return detail
-        case .actionNeeded(let message):
-            return message
-        case .error(let message):
-            return message
+            "Checking..."
+        case let .completed(detail):
+            detail
+        case let .actionNeeded(message):
+            message
+        case let .error(message):
+            message
         }
     }
 }
@@ -54,7 +54,7 @@ final class SetupRequirementsManager {
     private weak var shellStateStore: ShellStateStore?
 
     var allComplete: Bool {
-        steps.filter { !$0.isOptional }.allSatisfy { $0.status.isComplete }
+        steps.filter { !$0.isOptional }.allSatisfy(\.status.isComplete)
     }
 
     var hasBlockingError: Bool {
@@ -93,7 +93,7 @@ final class SetupRequirementsManager {
                 description: "Track active project across terminals",
                 status: .pending,
                 isOptional: true
-            )
+            ),
         ]
     }
 
@@ -160,19 +160,19 @@ final class SetupRequirementsManager {
         updateStep("hooks", status: .checking)
 
         switch hookStatus {
-        case .installed(let version):
+        case let .installed(version):
             updateStep("hooks", status: .completed(detail: "v\(version) installed"))
 
         case .notInstalled:
             updateStep("hooks", status: .actionNeeded(message: "Not installed yet"))
 
-        case .policyBlocked(let reason):
+        case let .policyBlocked(reason):
             updateStep("hooks", status: .error(message: reason))
 
-        case .binaryBroken(let reason):
+        case let .binaryBroken(reason):
             updateStep("hooks", status: .error(message: "Binary broken: \(reason)"))
 
-        case .symlinkBroken(let target, let reason):
+        case let .symlinkBroken(target, reason):
             updateStep("hooks", status: .error(message: "Symlink broken: \(reason) (target: \(target))"))
         }
     }

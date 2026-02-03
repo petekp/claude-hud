@@ -139,7 +139,7 @@ struct IdeaDetailModalOverlay: View {
 
     var body: some View {
         ZStack {
-            if let idea = idea {
+            if let idea {
                 scrimBackground
                     .onTapGesture { onDismiss() }
 

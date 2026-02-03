@@ -27,7 +27,8 @@ struct ProjectsView: View {
         guard let state = appState.getSessionState(for: project),
               state.state == .ready,
               let stateChangedAt = state.stateChangedAt,
-              let date = parseISO8601Date(stateChangedAt) else {
+              let date = parseISO8601Date(stateChangedAt)
+        else {
             return false
         }
         return Date().timeIntervalSince(date) > 86400
@@ -42,13 +43,13 @@ struct ProjectsView: View {
         ScrollView {
             LazyVStack(spacing: cardListSpacing) {
                 #if DEBUG
-                if let status = appState.daemonStatus, status.isEnabled {
-                    DaemonStatusBadge(status: status)
-                        .padding(.bottom, 4)
-                }
+                    if let status = appState.daemonStatus, status.isEnabled {
+                        DaemonStatusBadge(status: status)
+                            .padding(.bottom, 4)
+                    }
                 #endif
 
-                if let status = appState.daemonStatus, status.isEnabled && !status.isHealthy {
+                if let status = appState.daemonStatus, status.isEnabled, !status.isHealthy {
                     DaemonStatusCard(
                         status: status,
                         onRetry: {
@@ -59,10 +60,10 @@ struct ProjectsView: View {
                     .padding(.bottom, 4)
                 }
                 #if DEBUG
-                DebugActiveStateCard()
-                    .padding(.bottom, 6)
-                DebugActivationTraceCard()
-                    .padding(.bottom, 6)
+                    DebugActiveStateCard()
+                        .padding(.bottom, 6)
+                    DebugActivationTraceCard()
+                        .padding(.bottom, 6)
                 #endif
                 // Setup status card - show regardless of project state
                 if let diagnostic = appState.hookDiagnostic, !diagnostic.isHealthy {
@@ -85,7 +86,7 @@ struct ProjectsView: View {
                         SkeletonCard()
                     }
                     .padding(.top, 8)
-                } else if appState.projects.isEmpty && appState.activeCreations.isEmpty {
+                } else if appState.projects.isEmpty, appState.activeCreations.isEmpty {
                     EmptyProjectsView()
                 } else {
                     ActivityPanel()
@@ -95,8 +96,8 @@ struct ProjectsView: View {
                             title: "In Progress",
                             count: activeProjects.count
                         )
-                            .padding(.top, 4)
-                            .transition(.opacity)
+                        .padding(.top, 4)
+                        .transition(.opacity)
 
                         ForEach(Array(activeProjects.enumerated()), id: \.element.path) { index, project in
                             ProjectCardView(
@@ -207,7 +208,7 @@ struct ProjectsView: View {
         }
         .background(floatingMode ? Color.clear : Color.hudBackground)
         .onChange(of: pausedProjects.count) { oldCount, newCount in
-            if newCount > oldCount && pausedCollapsed {
+            if newCount > oldCount, pausedCollapsed {
                 withAnimation(.spring(response: glassConfig.sectionToggleSpringResponse, dampingFraction: 0.85)) {
                     pausedCollapsed = false
                 }
@@ -359,7 +360,7 @@ struct EmptyProjectsView: View {
                     LinearGradient(
                         colors: [
                             Color.hudAccent.opacity(isButtonHovered ? 0.9 : 0.7),
-                            Color.hudAccentDark.opacity(isButtonHovered ? 0.8 : 0.6)
+                            Color.hudAccentDark.opacity(isButtonHovered ? 0.8 : 0.6),
                         ],
                         startPoint: .top,
                         endPoint: .bottom
@@ -442,8 +443,8 @@ struct ProjectDropDelegate: DropDelegate {
     @Binding var draggedProject: Project?
     let appState: AppState
 
-    func dropEntered(info: DropInfo) {
-        guard let draggedProject = draggedProject,
+    func dropEntered(info _: DropInfo) {
+        guard let draggedProject,
               draggedProject.path != project.path,
               let fromIndex = activeProjects.firstIndex(where: { $0.path == draggedProject.path }),
               let toIndex = activeProjects.firstIndex(where: { $0.path == project.path })
@@ -458,11 +459,11 @@ struct ProjectDropDelegate: DropDelegate {
         }
     }
 
-    func dropUpdated(info: DropInfo) -> DropProposal? {
+    func dropUpdated(info _: DropInfo) -> DropProposal? {
         DropProposal(operation: .move)
     }
 
-    func performDrop(info: DropInfo) -> Bool {
+    func performDrop(info _: DropInfo) -> Bool {
         draggedProject = nil
         return true
     }

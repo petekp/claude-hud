@@ -23,7 +23,6 @@ thiserror.workspace = true
 fs-err.workspace = true
 tracing.workspace = true
 uniffi = { version = "0.28", features = ["cli"] }
-libc = "0.2"
 md5 = "0.7"
 ulid = "1.0"
 tempfile = "3.14"

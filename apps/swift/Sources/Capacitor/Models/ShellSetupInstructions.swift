@@ -9,26 +9,26 @@ enum ShellType: String, CaseIterable {
 
     var displayName: String {
         switch self {
-        case .zsh: return "Zsh"
-        case .bash: return "Bash"
-        case .fish: return "Fish"
-        case .unsupported: return "Unknown"
+        case .zsh: "Zsh"
+        case .bash: "Bash"
+        case .fish: "Fish"
+        case .unsupported: "Unknown"
         }
     }
 
     var configFile: String {
         switch self {
-        case .zsh: return "~/.zshrc"
-        case .bash: return "~/.bashrc"
-        case .fish: return "~/.config/fish/config.fish"
-        case .unsupported: return ""
+        case .zsh: "~/.zshrc"
+        case .bash: "~/.bashrc"
+        case .fish: "~/.config/fish/config.fish"
+        case .unsupported: ""
         }
     }
 
     var snippet: String {
         switch self {
         case .zsh:
-            return """
+            """
             # Capacitor shell integration
             if [[ -x "$HOME/.local/bin/hud-hook" ]]; then
               _capacitor_precmd() {
@@ -38,7 +38,7 @@ enum ShellType: String, CaseIterable {
             fi
             """
         case .bash:
-            return """
+            """
             # Capacitor shell integration
             if [[ -x "$HOME/.local/bin/hud-hook" ]]; then
               _capacitor_prompt() {
@@ -48,7 +48,7 @@ enum ShellType: String, CaseIterable {
             fi
             """
         case .fish:
-            return """
+            """
             # Capacitor shell integration
             if test -x "$HOME/.local/bin/hud-hook"
               function _capacitor_postexec --on-event fish_postexec
@@ -57,7 +57,7 @@ enum ShellType: String, CaseIterable {
             end
             """
         case .unsupported:
-            return "# Shell integration not available for this shell"
+            "# Shell integration not available for this shell"
         }
     }
 
@@ -97,7 +97,8 @@ enum ShellType: String, CaseIterable {
 
     var isSnippetInstalled: Bool {
         guard let url = configFileURL,
-              let contents = try? String(contentsOf: url, encoding: .utf8) else {
+              let contents = try? String(contentsOf: url, encoding: .utf8)
+        else {
             return false
         }
         return contents.contains("Capacitor shell integration")
@@ -150,13 +151,13 @@ enum ShellInstallError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .unsupportedShell:
-            return "Shell type not supported"
+            "Shell type not supported"
         case .noConfigFile:
-            return "Could not determine config file location"
+            "Could not determine config file location"
         case .alreadyInstalled:
-            return "Shell integration is already installed"
-        case .writeError(let message):
-            return "Failed to write config: \(message)"
+            "Shell integration is already installed"
+        case let .writeError(message):
+            "Failed to write config: \(message)"
         }
     }
 }

@@ -110,11 +110,11 @@ final class DaemonClient {
     private let transportOverride: Transport?
 
     init(transport: @escaping Transport) {
-        self.transportOverride = transport
+        transportOverride = transport
     }
 
     private init() {
-        self.transportOverride = nil
+        transportOverride = nil
     }
 
     var isEnabled: Bool {
@@ -126,7 +126,7 @@ final class DaemonClient {
     }
 
     func fetchHealth() async throws -> DaemonHealth {
-        try await performRequest(method: "get_health", params: Optional<String>.none)
+        try await performRequest(method: "get_health", params: String?.none)
     }
 
     func fetchShellState() async throws -> ShellCwdState {
@@ -142,24 +142,24 @@ final class DaemonClient {
 
         return try await performRequest(
             method: "get_shell_state",
-            params: Optional<String>.none,
+            params: String?.none,
             decoder: decoder
         )
     }
 
     func fetchSessions() async throws -> [DaemonSession] {
         DebugLog.write("DaemonClient.fetchSessions start enabled=\(isEnabled)")
-        return try await performRequest(method: "get_sessions", params: Optional<String>.none)
+        return try await performRequest(method: "get_sessions", params: String?.none)
     }
 
     func fetchProjectStates() async throws -> [DaemonProjectState] {
         DebugLog.write("DaemonClient.fetchProjectStates start enabled=\(isEnabled)")
-        return try await performRequest(method: "get_project_states", params: Optional<String>.none)
+        return try await performRequest(method: "get_project_states", params: String?.none)
     }
 
-    private func performRequest<Params: Encodable, Payload: Decodable>(
+    private func performRequest<Payload: Decodable>(
         method: String,
-        params: Params?,
+        params: (some Encodable)?,
         decoder: JSONDecoder = JSONDecoder()
     ) async throws -> Payload {
         guard isEnabled else {
@@ -227,7 +227,8 @@ final class DaemonClient {
             return date
         }
         if let normalized = normalizeFractional(dateStr),
-           let date = microFormatter.date(from: normalized) {
+           let date = microFormatter.date(from: normalized)
+        {
             return date
         }
         return nil
@@ -239,7 +240,7 @@ final class DaemonClient {
         var fraction = ""
         while idx < dateStr.endIndex {
             let ch = dateStr[idx]
-            if ch >= "0" && ch <= "9" {
+            if ch >= "0", ch <= "9" {
                 fraction.append(ch)
                 idx = dateStr.index(after: idx)
             } else {

@@ -25,7 +25,8 @@ actor ProjectIngestionWorker {
         for (index, path) in paths.enumerated() {
             var isDirectory: ObjCBool = false
             guard fm.fileExists(atPath: path, isDirectory: &isDirectory),
-                  isDirectory.boolValue else {
+                  isDirectory.boolValue
+            else {
                 continue
             }
 

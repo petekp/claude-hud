@@ -80,8 +80,9 @@ struct DockLayoutView: View {
     }
 
     private func calculateCurrentPage(cardsPerPage: Int) -> Int {
-        guard let scrolledID = scrolledID,
-              let index = activeProjects.firstIndex(where: { $0.path == scrolledID }) else {
+        guard let scrolledID,
+              let index = activeProjects.firstIndex(where: { $0.path == scrolledID })
+        else {
             return 0
         }
         return index / cardsPerPage
@@ -143,7 +144,8 @@ struct DockLayoutView: View {
         guard let sessionState = appState.getSessionState(for: project),
               sessionState.state == .ready,
               let stateChangedAtStr = sessionState.stateChangedAt,
-              let date = parseISO8601(stateChangedAtStr) else {
+              let date = parseISO8601(stateChangedAtStr)
+        else {
             return false
         }
         let hoursSince = Date().timeIntervalSince(date) / 3600
@@ -168,7 +170,7 @@ private struct PageIndicator: View {
 
     var body: some View {
         HStack(spacing: 6) {
-            ForEach(0..<totalPages, id: \.self) { page in
+            ForEach(0 ..< totalPages, id: \.self) { page in
                 Circle()
                     .fill(page == currentPage ? Color.white.opacity(0.8) : Color.white.opacity(0.3))
                     .frame(width: page == currentPage ? 8 : 6, height: page == currentPage ? 8 : 6)
@@ -189,8 +191,8 @@ struct DockDropDelegate: DropDelegate {
     @Binding var draggedProject: Project?
     let appState: AppState
 
-    func dropEntered(info: DropInfo) {
-        guard let draggedProject = draggedProject,
+    func dropEntered(info _: DropInfo) {
+        guard let draggedProject,
               draggedProject.path != project.path,
               let fromIndex = activeProjects.firstIndex(where: { $0.path == draggedProject.path }),
               let toIndex = activeProjects.firstIndex(where: { $0.path == project.path })
@@ -205,11 +207,11 @@ struct DockDropDelegate: DropDelegate {
         }
     }
 
-    func dropUpdated(info: DropInfo) -> DropProposal? {
+    func dropUpdated(info _: DropInfo) -> DropProposal? {
         DropProposal(operation: .move)
     }
 
-    func performDrop(info: DropInfo) -> Bool {
+    func performDrop(info _: DropInfo) -> Bool {
         draggedProject = nil
         return true
     }
