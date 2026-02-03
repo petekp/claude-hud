@@ -5,8 +5,8 @@
 //! # Architecture: Sidecar Pattern
 //!
 //! Claude HUD follows a **sidecar philosophy**: we observe Claude Code without interfering.
-//! The hook handler (`core/hud-hook/`) is authoritative for state transitions;
-//! this module is a passive reader that applies staleness heuristics.
+//! The daemon reducer is authoritative for state transitions; this module is a
+//! passive reader that maps daemon snapshots for clients.
 //!
 //! ```text
 //! Claude Code → Hook Script → Daemon → This Module → Swift UI
@@ -19,7 +19,7 @@
 //!
 //! # Module Structure
 //!
-//! - [`daemon`]: Daemon IPC helpers for session/activity snapshots
+//! - [`daemon`]: Daemon IPC helpers for session snapshots
 //! - [`types`]: Data structures, canonical state mapping
 //!
 //! # Key Entry Points
@@ -31,7 +31,7 @@ pub(crate) mod types;
 
 // Re-export path utilities for use across the crate
 pub use path_utils::{
-    normalize_path_for_comparison, normalize_path_for_hashing, normalize_path_for_matching,
+    normalize_path_for_comparison, normalize_path_for_matching,
 };
 
 pub use cleanup::{run_startup_cleanup, CleanupStats};

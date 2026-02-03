@@ -128,8 +128,6 @@ impl HudEngine {
     }
 
     /// Adds a project to the pinned projects list.
-    ///
-    /// Also reconciles any orphaned locks for this path to ensure correct state display.
     pub fn add_project(&self, path: String) -> Result<(), HudFfiError> {
         let mut config = load_hud_config_with_storage(&self.storage);
 
@@ -755,13 +753,9 @@ impl HudEngine {
     // Cleanup API
     // ─────────────────────────────────────────────────────────────────────────────
 
-    /// Performs startup cleanup of stale artifacts.
+    /// Performs startup cleanup of daemon-era artifacts.
     ///
-    /// Call this once when the app launches to clean up:
-    /// - Lock directories with dead PIDs
-    /// - Session records older than 24 hours
-    ///
-    /// Returns stats about what was cleaned up.
+    /// In daemon-only mode this is a no-op and returns any cleanup errors.
     pub fn run_startup_cleanup(&self) -> crate::state::CleanupStats {
         crate::state::run_startup_cleanup()
     }
@@ -980,7 +974,7 @@ impl HudEngine {
     ///
     /// # Arguments
     /// * `project_path` - The absolute path to the project
-    /// * `shell_state` - Current contents of shell-cwd.json (may be None if file missing)
+    /// * `shell_state` - Current daemon shell snapshot (may be None if unavailable)
     /// * `tmux_context` - Tmux state queried by Swift
     ///
     /// # Returns

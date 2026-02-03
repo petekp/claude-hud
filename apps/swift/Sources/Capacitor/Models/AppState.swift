@@ -85,7 +85,6 @@ class AppState: ObservableObject {
     // MARK: - Managers (extracted for cleaner architecture)
 
     let shellStateStore = ShellStateStore()
-    let shellHistoryStore = ShellHistoryStore()
     let terminalLauncher = TerminalLauncher()
     let sessionStateManager = SessionStateManager()
     let projectDetailsManager = ProjectDetailsManager()
@@ -134,9 +133,8 @@ class AppState: ObservableObject {
 
             ensureDaemonRunning()
             let cleanupStats = engine!.runStartupCleanup()
-            let totalCleaned = cleanupStats.locksRemoved + cleanupStats.legacyLocksRemoved + cleanupStats.orphanedProcessesKilled + cleanupStats.sessionsRemoved
-            if totalCleaned > 0 {
-                print("[Startup] Cleanup: \(cleanupStats.locksRemoved) locks, \(cleanupStats.legacyLocksRemoved) legacy locks, \(cleanupStats.orphanedProcessesKilled) orphaned processes, \(cleanupStats.sessionsRemoved) old sessions")
+            if !cleanupStats.errors.isEmpty {
+                print("[Startup] Cleanup errors: \(cleanupStats.errors.joined(separator: "; "))")
             }
 
             projectDetailsManager.configure(engine: engine)
@@ -190,21 +188,7 @@ class AppState: ObservableObject {
 
     private func startShellTracking() {
         shellStateStore.startPolling()
-        shellHistoryStore.load()
         activeProjectResolver.updateProjects(projects)
-    }
-
-    func recentlyVisitedProjects(limit: Int = 10) -> [String] {
-        let projectPaths = projects.map { $0.path }
-        return shellHistoryStore.recentlyVisitedProjects(matching: projectPaths, limit: limit)
-    }
-
-    func lastVisited(_ project: Project) -> Date? {
-        shellHistoryStore.lastVisited(project.path)
-    }
-
-    func visitCount(for project: Project) -> Int {
-        shellHistoryStore.visits(for: project.path)
     }
 
     // MARK: - Data Loading

@@ -50,15 +50,6 @@ pub fn normalize_path_for_comparison(path: &str) -> String {
     apply_case_normalization(&trimmed)
 }
 
-/// Normalizes a path for hashing (lock directory names).
-///
-/// Similar to `normalize_path_for_comparison`, but specifically for generating
-/// consistent hash inputs. Two paths that should share a lock will produce
-/// the same normalized output.
-pub fn normalize_path_for_hashing(path: &str) -> String {
-    normalize_path_for_comparison(path)
-}
-
 /// Simple path normalization without filesystem access.
 ///
 /// Use this for basic normalization when:
@@ -188,18 +179,5 @@ mod tests {
         assert_eq!(result, "/this/path/does/not/exist/12345");
     }
 
-    #[test]
-    fn hashing_normalization_consistent() {
-        let path1 = "/Users/Test/Project/";
-        let path2 = "/users/test/project";
-
-        let hash1 = normalize_path_for_hashing(path1);
-        let hash2 = normalize_path_for_hashing(path2);
-
-        #[cfg(target_os = "macos")]
-        assert_eq!(
-            hash1, hash2,
-            "Same directory with different casing should hash the same on macOS"
-        );
-    }
+    // Intentionally no hashing-specific tests in daemon-only mode.
 }

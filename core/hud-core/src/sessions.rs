@@ -5,19 +5,11 @@
 //!
 //! The daemon is the single writer; no file-based fallback.
 
-use crate::state::daemon::{
-    activity_snapshot, sessions_snapshot, DaemonActivitySnapshot, DaemonSessionRecord,
-    DaemonSessionsSnapshot,
-};
-use crate::state::types::{ACTIVE_STATE_STALE_SECS, STALE_THRESHOLD_SECS};
+use crate::state::daemon::{sessions_snapshot, DaemonSessionRecord, DaemonSessionsSnapshot};
 use crate::storage::StorageConfig;
 use crate::types::{ProjectSessionState, SessionState};
 use fs_err as fs;
 use std::path::Path;
-use std::time::Duration;
-
-/// Activity is considered "recent" if within this threshold.
-const ACTIVITY_THRESHOLD: Duration = Duration::from_secs(5 * 60); // 5 minutes
 
 /// Detects session state from daemon snapshots.
 pub fn detect_session_state(project_path: &str) -> ProjectSessionState {
@@ -29,46 +21,17 @@ pub fn detect_session_state_with_storage(
     project_path: &str,
 ) -> ProjectSessionState {
     let daemon_sessions = sessions_snapshot();
-    let daemon_activity = activity_snapshot(500);
-    detect_session_state_with_snapshots(
-        _storage,
-        project_path,
-        daemon_sessions.as_ref(),
-        daemon_activity.as_ref(),
-    )
+    detect_session_state_with_snapshots(_storage, project_path, daemon_sessions.as_ref())
 }
 
 fn detect_session_state_with_snapshots(
     _storage: &StorageConfig,
     project_path: &str,
     daemon_sessions: Option<&DaemonSessionsSnapshot>,
-    daemon_activity: Option<&DaemonActivitySnapshot>,
 ) -> ProjectSessionState {
     if let Some(snapshot) = daemon_sessions {
         if let Some(record) = snapshot.latest_for_project(project_path) {
             return project_state_from_daemon(record);
-        }
-    }
-
-    project_state_from_activity(project_path, daemon_activity)
-}
-
-fn project_state_from_activity(
-    project_path: &str,
-    daemon_activity: Option<&DaemonActivitySnapshot>,
-) -> ProjectSessionState {
-    if let Some(snapshot) = daemon_activity {
-        if snapshot.has_recent_activity_in_path(project_path, ACTIVITY_THRESHOLD) {
-            return ProjectSessionState {
-                state: SessionState::Working,
-                state_changed_at: None,
-                updated_at: None,
-                session_id: None,
-                working_on: None,
-                context: None,
-                thinking: Some(true),
-                is_locked: false,
-            };
         }
     }
 
@@ -80,7 +43,7 @@ fn project_state_from_activity(
         working_on: None,
         context: None,
         thinking: None,
-        is_locked: false,
+        has_session: false,
     }
 }
 
@@ -97,7 +60,6 @@ pub fn get_all_session_states_with_storage(
 ) -> std::collections::HashMap<String, ProjectSessionState> {
     let mut states = std::collections::HashMap::new();
     let daemon_sessions = sessions_snapshot();
-    let daemon_activity = activity_snapshot(500);
 
     for path in project_paths {
         states.insert(
@@ -106,7 +68,6 @@ pub fn get_all_session_states_with_storage(
                 storage,
                 path,
                 daemon_sessions.as_ref(),
-                daemon_activity.as_ref(),
             ),
         );
     }
@@ -115,35 +76,9 @@ pub fn get_all_session_states_with_storage(
 }
 
 fn project_state_from_daemon(record: &DaemonSessionRecord) -> ProjectSessionState {
-    let mut state = map_daemon_state(&record.state);
-    let mut is_locked = match record.is_alive {
-        Some(true) => state != SessionState::Idle,
-        Some(false) => false,
-        None => state != SessionState::Idle,
-    };
-
-    if !is_locked {
-        if matches!(state, SessionState::Working | SessionState::Waiting) {
-            if let Some(age) = age_since(&record.updated_at) {
-                if age > ACTIVE_STATE_STALE_SECS {
-                    state = SessionState::Ready;
-                }
-            }
-        }
-
-        if state == SessionState::Ready {
-            if let Some(age) = age_since(&record.state_changed_at) {
-                if age > STALE_THRESHOLD_SECS {
-                    state = SessionState::Idle;
-                }
-            }
-        }
-    }
-
-    if state == SessionState::Idle {
-        is_locked = false;
-    }
-
+    let state = map_daemon_state(&record.state);
+    let is_alive = record.is_alive.unwrap_or(true);
+    let has_session = is_alive && state != SessionState::Idle;
     let is_working = state == SessionState::Working;
 
     ProjectSessionState {
@@ -154,7 +89,7 @@ fn project_state_from_daemon(record: &DaemonSessionRecord) -> ProjectSessionStat
         working_on: None,
         context: None,
         thinking: Some(is_working),
-        is_locked,
+        has_session,
     }
 }
 
@@ -167,19 +102,6 @@ fn map_daemon_state(value: &str) -> SessionState {
         "idle" => SessionState::Idle,
         _ => SessionState::Idle,
     }
-}
-
-fn age_since(timestamp: &str) -> Option<i64> {
-    parse_rfc3339(timestamp).map(|ts| {
-        let now = chrono::Utc::now();
-        now.signed_duration_since(ts).num_seconds()
-    })
-}
-
-fn parse_rfc3339(value: &str) -> Option<chrono::DateTime<chrono::Utc>> {
-    chrono::DateTime::parse_from_rfc3339(value)
-        .ok()
-        .map(|dt| dt.with_timezone(&chrono::Utc))
 }
 
 /// Project status as stored in .claude/hud-status.json within each project.

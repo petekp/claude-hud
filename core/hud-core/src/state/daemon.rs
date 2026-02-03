@@ -3,7 +3,7 @@
 //! The daemon is authoritative; callers should not fall back to local checks.
 
 use capacitor_daemon_protocol::{Method, Request, Response, MAX_REQUEST_BYTES, PROTOCOL_VERSION};
-use chrono::{DateTime, Duration as ChronoDuration, Utc};
+use chrono::{DateTime, Utc};
 use serde::Deserialize;
 use std::env;
 use std::io::{Read, Write};
@@ -16,78 +16,6 @@ const SOCKET_ENV: &str = "CAPACITOR_DAEMON_SOCKET";
 const SOCKET_NAME: &str = "daemon.sock";
 const READ_TIMEOUT_MS: u64 = 150;
 const WRITE_TIMEOUT_MS: u64 = 150;
-
-#[derive(Debug, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct ProcessLivenessSnapshot {
-    #[serde(default)]
-    pub found: Option<bool>,
-    #[serde(default)]
-    pub pid: Option<u32>,
-    #[serde(default)]
-    #[allow(dead_code)]
-    pub proc_started: Option<u64>,
-    #[serde(default)]
-    #[allow(dead_code)]
-    pub current_start_time: Option<u64>,
-    #[serde(default)]
-    #[allow(dead_code)]
-    pub last_seen_at: Option<String>,
-    #[serde(default)]
-    pub is_alive: Option<bool>,
-    #[serde(default)]
-    pub identity_matches: Option<bool>,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct DaemonActivityEntry {
-    pub project_path: String,
-    pub file_path: String,
-    pub recorded_at: String,
-}
-
-pub struct DaemonActivitySnapshot {
-    entries: Vec<DaemonActivityEntry>,
-}
-
-impl DaemonActivitySnapshot {
-    pub fn has_recent_activity_in_path(&self, project_path: &str, threshold: Duration) -> bool {
-        let normalized_query = crate::state::normalize_path_for_comparison(project_path);
-        let prefix = if normalized_query == "/" {
-            "/".to_string()
-        } else {
-            format!("{}/", normalized_query)
-        };
-        let now = Utc::now();
-        let threshold =
-            ChronoDuration::from_std(threshold).unwrap_or_else(|_| ChronoDuration::zero());
-
-        for entry in &self.entries {
-            if crate::state::normalize_path_for_comparison(&entry.project_path) != normalized_query
-            {
-                continue;
-            }
-
-            let timestamp = match parse_rfc3339(&entry.recorded_at) {
-                Some(ts) => ts,
-                None => continue,
-            };
-            if now.signed_duration_since(timestamp) > threshold {
-                continue;
-            }
-
-            let activity_path = crate::state::normalize_path_for_comparison(&entry.file_path);
-            if !activity_path.starts_with('/') {
-                continue;
-            }
-            if activity_path == normalized_query || activity_path.starts_with(&prefix) {
-                return true;
-            }
-        }
-
-        false
-    }
-}
 
 #[derive(Debug, Deserialize)]
 #[allow(dead_code)]
@@ -137,57 +65,6 @@ impl DaemonSessionsSnapshot {
 
         best
     }
-}
-
-pub fn process_liveness(pid: u32) -> Option<ProcessLivenessSnapshot> {
-    if !daemon_enabled() {
-        return None;
-    }
-
-    let request = Request {
-        protocol_version: PROTOCOL_VERSION,
-        method: Method::GetProcessLiveness,
-        id: Some(format!("pid-{}", pid)),
-        params: Some(serde_json::json!({ "pid": pid })),
-    };
-
-    let response = send_request(request).ok()?;
-    if !response.ok {
-        return None;
-    }
-
-    let data = response.data?;
-    let snapshot: ProcessLivenessSnapshot = serde_json::from_value(data).ok()?;
-    if snapshot.found == Some(false) {
-        return None;
-    }
-    if snapshot.pid.is_none() {
-        return None;
-    }
-
-    Some(snapshot)
-}
-
-pub fn activity_snapshot(limit: usize) -> Option<DaemonActivitySnapshot> {
-    if !daemon_enabled() {
-        return None;
-    }
-
-    let request = Request {
-        protocol_version: PROTOCOL_VERSION,
-        method: Method::GetActivity,
-        id: Some("activity-snapshot".to_string()),
-        params: Some(serde_json::json!({ "limit": limit })),
-    };
-
-    let response = send_request(request).ok()?;
-    if !response.ok {
-        return None;
-    }
-
-    let data = response.data?;
-    let entries: Vec<DaemonActivityEntry> = serde_json::from_value(data).ok()?;
-    Some(DaemonActivitySnapshot { entries })
 }
 
 pub fn sessions_snapshot() -> Option<DaemonSessionsSnapshot> {
@@ -319,40 +196,6 @@ fn is_more_recent(left: &DaemonSessionRecord, right: &DaemonSessionRecord) -> bo
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn parses_process_liveness_payload() {
-        let value = serde_json::json!({
-            "pid": 123,
-            "proc_started": 10,
-            "current_start_time": 10,
-            "last_seen_at": "2026-01-30T00:03:00Z",
-            "is_alive": true,
-            "identity_matches": true
-        });
-
-        let snapshot: ProcessLivenessSnapshot =
-            serde_json::from_value(value).expect("parse snapshot");
-        assert_eq!(snapshot.pid, Some(123));
-        assert_eq!(snapshot.proc_started, Some(10));
-        assert_eq!(snapshot.identity_matches, Some(true));
-    }
-
-    #[test]
-    fn parses_activity_entries() {
-        let value = serde_json::json!([
-            {
-                "project_path": "/repo",
-                "file_path": "/repo/src/main.rs",
-                "recorded_at": "2026-01-31T00:00:00Z"
-            }
-        ]);
-
-        let entries: Vec<DaemonActivityEntry> =
-            serde_json::from_value(value).expect("parse activity entries");
-        assert_eq!(entries.len(), 1);
-        assert_eq!(entries[0].project_path, "/repo");
-    }
 
     #[test]
     fn sessions_snapshot_parses_entries() {

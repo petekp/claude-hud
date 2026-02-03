@@ -67,7 +67,7 @@ final class ActiveProjectResolver {
                 DebugLog.write("ActiveProjectResolver.clearOverride reason=shellMoved override=\(override.path) shell=\(shellProject.path)")
                 manualOverride = nil
             } else if let shellSessionState = sessionStateManager.getSessionState(for: shellProject),
-                      shellSessionState.isLocked {
+                  shellSessionState.hasSession {
                 logger.info("Clearing manual override (shell project has locked session): override=\(override.path, privacy: .public) shell=\(shellProject.path, privacy: .public)")
                 DebugLog.write("ActiveProjectResolver.clearOverride reason=shellLocked override=\(override.path) shell=\(shellProject.path)")
                 manualOverride = nil
@@ -124,7 +124,7 @@ final class ActiveProjectResolver {
         var sessionSummary: [String] = []
         for project in projects {
             guard let sessionState = sessionStateManager.getSessionState(for: project),
-                  sessionState.isLocked,
+                  sessionState.hasSession,
                   let sessionId = sessionState.sessionId else {
                 continue
             }

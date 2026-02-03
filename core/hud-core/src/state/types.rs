@@ -140,20 +140,11 @@ fn normalize_path(path: &str) -> String {
     }
 }
 
-/// Records older than this are considered stale and untrusted without a lock.
-pub const STALE_THRESHOLD_SECS: i64 = 300; // 5 minutes
-
-/// Active states (Working, Waiting) fall back to Ready after this threshold.
-/// This handles user interruptions (Escape key, cancel) where no hook event fires.
-/// 30 seconds balances interrupt recovery with accuracy during long generations
-/// (tool-free responses don't emit heartbeat events).
-pub const ACTIVE_STATE_STALE_SECS: i64 = 30;
-
 // -----------------------------------------------------------------------------
-// Canonical hook→state mapping (implemented in core/hud-hook/)
+// Canonical hook→state mapping (implemented in the daemon reducer)
 //
-// SessionStart           → ready    (+ creates lock)
-// UserPromptSubmit       → working  (+ creates lock if missing)
+// SessionStart           → ready
+// UserPromptSubmit       → working
 // PreToolUse             → working  (heartbeat if already working)
 // PostToolUse            → working  (+ tracks file activity)
 // PermissionRequest      → waiting
@@ -215,136 +206,4 @@ pub struct SessionRecord {
 }
 
 impl SessionRecord {
-    /// Returns true if this record is stale (not updated within [`STALE_THRESHOLD_SECS`]).
-    #[must_use]
-    pub fn is_stale(&self) -> bool {
-        let now = Utc::now();
-        let age = now.signed_duration_since(self.updated_at);
-        age.num_seconds() > STALE_THRESHOLD_SECS
-    }
-
-    /// Returns true if this record is in an "active" state that hasn't been updated recently.
-    /// Active states (Working, Waiting) should have frequent hook updates from tool use events.
-    /// If stale, the user likely interrupted (Escape key, cancel) and we should show Ready.
-    ///
-    /// Note: Compacting is NOT included here because it receives no heartbeat updates after
-    /// PreCompact fires. Compaction can take 30+ seconds, so it uses the general staleness
-    /// threshold instead of this aggressive 5-second check.
-    #[must_use]
-    pub fn is_active_state_stale(&self) -> bool {
-        let is_active = matches!(self.state, SessionState::Working | SessionState::Waiting);
-        if !is_active {
-            return false;
-        }
-        let now = Utc::now();
-        let age = now.signed_duration_since(self.updated_at);
-        age.num_seconds() > ACTIVE_STATE_STALE_SECS
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use chrono::Duration;
-
-    fn make_record(updated_at: DateTime<Utc>) -> SessionRecord {
-        SessionRecord {
-            session_id: "test".to_string(),
-            state: crate::types::SessionState::Ready,
-            cwd: "/test".to_string(),
-            updated_at,
-            state_changed_at: updated_at,
-            working_on: None,
-            transcript_path: None,
-            permission_mode: None,
-            project_dir: None,
-            last_event: None,
-            active_subagent_count: 0,
-        }
-    }
-
-    #[test]
-    fn test_is_stale_fresh_record() {
-        let record = make_record(Utc::now());
-        assert!(!record.is_stale());
-    }
-
-    #[test]
-    fn test_is_stale_old_record() {
-        let old_time = Utc::now() - Duration::seconds(STALE_THRESHOLD_SECS + 1);
-        let record = make_record(old_time);
-        assert!(record.is_stale());
-    }
-
-    #[test]
-    fn test_is_stale_boundary() {
-        // Exactly at threshold should NOT be stale (uses >)
-        let boundary_time = Utc::now() - Duration::seconds(STALE_THRESHOLD_SECS);
-        let record = make_record(boundary_time);
-        assert!(!record.is_stale());
-    }
-
-    fn make_record_with_state(
-        updated_at: DateTime<Utc>,
-        state: crate::types::SessionState,
-    ) -> SessionRecord {
-        SessionRecord {
-            session_id: "test".to_string(),
-            state,
-            cwd: "/test".to_string(),
-            updated_at,
-            state_changed_at: updated_at,
-            working_on: None,
-            transcript_path: None,
-            permission_mode: None,
-            project_dir: None,
-            last_event: None,
-            active_subagent_count: 0,
-        }
-    }
-
-    #[test]
-    fn test_active_state_stale_working_fresh() {
-        let record = make_record_with_state(Utc::now(), crate::types::SessionState::Working);
-        assert!(!record.is_active_state_stale());
-    }
-
-    #[test]
-    fn test_active_state_stale_working_old() {
-        let old_time = Utc::now() - Duration::seconds(ACTIVE_STATE_STALE_SECS + 1);
-        let record = make_record_with_state(old_time, crate::types::SessionState::Working);
-        assert!(record.is_active_state_stale());
-    }
-
-    #[test]
-    fn test_active_state_stale_waiting_old() {
-        let old_time = Utc::now() - Duration::seconds(ACTIVE_STATE_STALE_SECS + 1);
-        let record = make_record_with_state(old_time, crate::types::SessionState::Waiting);
-        assert!(record.is_active_state_stale());
-    }
-
-    #[test]
-    fn test_active_state_stale_compacting_not_affected() {
-        // Compacting is NOT subject to active staleness because it receives no heartbeat
-        // updates after PreCompact fires, and compaction can take 30+ seconds
-        let old_time = Utc::now() - Duration::seconds(ACTIVE_STATE_STALE_SECS + 1);
-        let record = make_record_with_state(old_time, crate::types::SessionState::Compacting);
-        assert!(!record.is_active_state_stale());
-    }
-
-    #[test]
-    fn test_active_state_stale_ready_not_affected() {
-        // Ready is not an "active" state, so it should never be active-stale
-        let old_time = Utc::now() - Duration::seconds(ACTIVE_STATE_STALE_SECS + 1);
-        let record = make_record_with_state(old_time, crate::types::SessionState::Ready);
-        assert!(!record.is_active_state_stale());
-    }
-
-    #[test]
-    fn test_active_state_stale_idle_not_affected() {
-        // Idle is not an "active" state, so it should never be active-stale
-        let old_time = Utc::now() - Duration::seconds(ACTIVE_STATE_STALE_SECS + 1);
-        let record = make_record_with_state(old_time, crate::types::SessionState::Idle);
-        assert!(!record.is_active_state_stale());
-    }
 }

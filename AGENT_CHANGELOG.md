@@ -1,19 +1,18 @@
 # Agent Changelog
 
 > This file helps coding agents understand project evolution, key decisions,
-> and deprecated patterns. Updated: 2026-02-02 (daemon-first migration in progress)
+> and deprecated patterns. Updated: 2026-02-03 (daemon-first migration in progress)
 
 ## Current State Summary
 
-Capacitor is a native macOS SwiftUI app (Apple Silicon, macOS 14+) that acts as a sidecar dashboard for Claude Code. The architecture uses a Rust core (`hud-core`) with UniFFI bindings to Swift plus a **Rust daemon (`capacitor-daemon`) that is now the canonical source of truth** for session, shell, activity, and process-liveness state. Hooks emit events to the daemon over a Unix socket (`~/.capacitor/daemon.sock`), and Swift reads daemon snapshots (shell state + session/project state). File-based JSON fallbacks (`sessions.json`, `shell-cwd.json`, `file-activity.json`) are **being removed or disabled** during the daemon-only migration; lock directories are in deprecation with daemon-backed liveness replacing PID-only checks. The app auto-starts the daemon via LaunchAgent and surfaces daemon status in debug builds only. Terminal activation uses a Rust-only decision path (Swift executes macOS APIs). **v0.1.27** completed hook audit remediations (heartbeat gating, safe hook tests, activity migration) and activation matching parity across Rust/Swift. Current migration work focuses on daemon-only correctness, lock deprecation, and stabilizing the debug app launch path (Sparkle/dylib bundling).
+Capacitor is a native macOS SwiftUI app (Apple Silicon, macOS 14+) that acts as a sidecar dashboard for Claude Code. The architecture uses a Rust core (`hud-core`) with UniFFI bindings to Swift plus a **Rust daemon (`capacitor-daemon`) that is now the canonical source of truth** for session, shell, activity, and process-liveness state. Hooks emit events to the daemon over a Unix socket (`~/.capacitor/daemon.sock`), and Swift reads daemon snapshots (shell state + session/project state). File-based JSON fallbacks (`sessions.json`, `shell-cwd.json`, `file-activity.json`) and lock compatibility have been removed in daemon-only mode. The app auto-starts the daemon via LaunchAgent and surfaces daemon status in debug builds only. Terminal activation uses a Rust-only decision path (Swift executes macOS APIs). **v0.1.27** completed hook audit remediations (heartbeat gating, safe hook tests, activity migration) and activation matching parity across Rust/Swift. Current migration work focuses on daemon-only correctness and stabilizing the debug app launch path (Sparkle/dylib bundling).
 
 ## Stale Information Detected
 
 | Location | States | Reality | Since |
 |----------|--------|---------|-------|
 | docs/architecture-decisions/003-sidecar-architecture-pattern.md | “Hooks write `~/.capacitor/sessions.json` and HUD reads files.” | Daemon is the single writer; hooks/app are IPC clients; JSON is legacy/fallback only. | 2026-01 |
-| README.md | “Fallback writes to `sessions.json` when daemon is down.” | Daemon-only migration disables file fallbacks; hooks should error when daemon unavailable. | 2026-02 |
-| docs/plans/daemon-lock-deprecation-plan.md | “Locks authoritative when daemon unavailable.” | Migration direction is daemon-only; lock creation is suppressed when daemon healthy and removal is pending. | 2026-02 |
+| docs/architecture-decisions/002-state-resolver-matching-logic.md | “Lock-file resolver is current.” | Superseded by daemon-based state; lock files are historical only. | 2026-02 |
 
 ## Timeline
 
@@ -31,6 +30,35 @@ Capacitor is a native macOS SwiftUI app (Apple Silicon, macOS 14+) that acts as 
 **Agent impact:**
 - Read `.claude/KNOWLEDGE.md` first to decide what to load for a task.
 - Prefer `.claude/compiled/*` for quick facts; use source docs only for deep dives.
+
+---
+
+### 2026-02 — Phase 7 Robustness + Daemon-Only State Authority (Completed)
+
+**What changed:**
+1. **Daemon TTL + aggregation policy solidified**
+   - Working/Waiting staleness uses `updated_at` (8s → Ready)
+   - TTL pruning enforced in daemon snapshots (Active 20m, Ready 30m, Idle 10m)
+   - Project-level aggregation via `GetProjectStates` is canonical
+
+2. **Client-side heuristics removed**
+   - `hud-core` no longer applies local staleness or activity fallbacks
+   - Session detection uses daemon snapshots only
+
+3. **UI refresh contract documented**
+   - Standardized polling cadence in `.claude/docs/ui-refresh-contract.md`
+
+4. **Legacy naming cleanup**
+   - `is_locked` renamed to `has_session` in daemon state + client models
+
+**Why:**
+- Ensure daemon is the single source of truth with deterministic TTL/aggregation.
+- Prevent divergent client interpretations from reintroducing state inconsistencies.
+
+**Agent impact:**
+- Treat daemon project aggregation as canonical (no client-side staleness logic).
+- Use `has_session` for “non-idle session exists” instead of any lock semantics.
+- Consult `.claude/docs/ui-refresh-contract.md` before changing polling cadence.
 
 ---
 

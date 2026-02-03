@@ -119,8 +119,6 @@ final class SetupRequirementsManager {
 
         if let store = shellStateStore, ShellIntegrationChecker.isConfigured(shellStateStore: store) {
             updateStep("shell", status: .completed(detail: "Receiving shell events"))
-        } else if ShellIntegrationChecker.stateFileExists() {
-            updateStep("shell", status: .completed(detail: "Receiving shell events"))
         } else if shellType.isSnippetInstalled {
             updateStep("shell", status: .completed(detail: "\(shellType.configFile) configured"))
         } else if shellType == .unsupported {

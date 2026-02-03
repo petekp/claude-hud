@@ -169,10 +169,4 @@ enum ShellIntegrationChecker {
         }
         return !state.shells.isEmpty
     }
-
-    static func stateFileExists() -> Bool {
-        let stateURL = FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent(".capacitor/shell-cwd.json")
-        return FileManager.default.fileExists(atPath: stateURL.path)
-    }
 }

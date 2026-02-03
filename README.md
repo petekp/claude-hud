@@ -251,7 +251,7 @@ cd apps/swift && swift run
 
 The state resolver handles edge cases like:
 - Multiple sessions in the same project
-- Crashed sessions (stale locks with dead PIDs)
+- Crashed sessions (daemon liveness checks)
 - Monorepo projects with nested paths
 
 ## Data Storage
@@ -263,8 +263,6 @@ Capacitor uses two namespaces:
 ~/.capacitor/
 ├── config.json                 # App preferences
 ├── projects.json               # Tracked projects list
-├── sessions.json               # (legacy) file snapshot, not authoritative in daemon-only mode
-├── sessions/                   # (legacy) lock directories (deprecated)
 ├── daemon.sock                 # Daemon IPC socket
 ├── daemon/                     # Daemon storage + logs
 │   ├── state.db                # SQLite state (WAL)
@@ -272,8 +270,6 @@ Capacitor uses two namespaces:
 │   └── daemon.stderr.log       # LaunchAgent stderr
 ├── stats-cache.json            # Token usage cache
 ├── summaries.json              # Session summaries
-├── shell-cwd.json              # (legacy) shell CWD snapshot (daemon-only mode uses IPC)
-├── shell-history.jsonl         # (legacy) CWD change history (daemon-only mode uses IPC)
 └── projects/{encoded-path}/    # Per-project data (ideas, order)
 ```
 

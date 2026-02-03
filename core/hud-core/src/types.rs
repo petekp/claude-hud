@@ -253,7 +253,7 @@ pub struct ProjectSessionState {
     pub thinking: Option<bool>,
     /// Whether the daemon considers this project actively running.
     #[serde(default)]
-    pub is_locked: bool,
+    pub has_session: bool,
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -423,7 +423,7 @@ pub struct HookDiagnosticReport {
 /// parsing strings directly.
 ///
 /// **JSON serialization:** Uses lowercase strings (e.g., `ParentApp::ITerm` → `"iterm2"`)
-/// for backward compatibility with existing `shell-cwd.json` files.
+/// to match the daemon shell snapshot JSON shape.
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default, uniffi::Enum,
 )]

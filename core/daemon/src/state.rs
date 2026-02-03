@@ -300,7 +300,7 @@ impl SharedState {
 
         let mut results = Vec::new();
         for (project_path, aggregate) in aggregates {
-            let is_locked = aggregate.state != crate::reducer::SessionState::Idle;
+            let has_session = aggregate.state != crate::reducer::SessionState::Idle;
             results.push(ProjectState {
                 project_path,
                 state: aggregate.state.clone(),
@@ -309,7 +309,7 @@ impl SharedState {
                 session_id: aggregate.session_id,
                 session_count: aggregate.session_count,
                 active_count: aggregate.active_count,
-                is_locked,
+                has_session,
             });
         }
 
@@ -419,7 +419,7 @@ pub struct ProjectState {
     pub session_id: Option<String>,
     pub session_count: usize,
     pub active_count: usize,
-    pub is_locked: bool,
+    pub has_session: bool,
 }
 
 #[derive(Debug, Clone)]

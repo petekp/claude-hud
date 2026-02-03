@@ -199,7 +199,7 @@ A **local daemon** is the **only writer** of state. Hooks and the Swift app beco
 - Done: daemon startup backoff to mitigate crash loops.
 - Done: orphaned-session cleanup skips when lock mode is read-only/off.
 - Done: hud-hook sends events/shell CWD to daemon and **returns errors** when daemon is unavailable (no file writes).
-- Remaining highest-leverage: remove any lingering legacy lock-holder cleanup references once safe.
+- Remaining highest-leverage: remove any lingering legacy lock-holder cleanup references once safe. (Done)
 
 ### Recent Learnings / Observations
 
@@ -210,9 +210,9 @@ A **local daemon** is the **only writer** of state. Hooks and the Swift app beco
 - Hook and shell CWD legacy write paths have been deleted; tests tied to JSON/lock/tombstone files were removed accordingly.
 - Removed legacy JSON/storage helpers (`ActivityStore`, `StateStore`, resolver, `state_check` bin) and daemonized agent/session detection.
 - Claude agent detection now prefers daemon session snapshots; when daemon is enabled, adapter mtime caching is effectively disabled to avoid stale file reads. If this becomes too chatty, add a daemon snapshot generation/etag for caching.
-- Daemon session snapshots currently omit some optional metadata (e.g., `working_on`, `permission_mode`, `project_dir`). Either extend the protocol or accept reduced detail in agent lists during daemon-first operation.
+- Daemon session snapshots currently omit some optional metadata (e.g., `working_on`, `permission_mode`, `project_dir`). **Decision:** accept reduced detail for now; no protocol extension required for Phase 7.
 - Staleness gating for Ready sessions now depends on daemon-provided `state_changed_at` + optional `is_alive`. Ensure the daemon always emits RFC3339 timestamps for these fields.
-- Remaining cleanup work: purge any lingering lock-holder cleanup references once all legacy processes are gone.
+- Remaining cleanup work: purge any lingering lock-holder cleanup references once all legacy processes are gone. (Done)
 - Swift UniFFI bindings were regenerated after daemon-only doc cleanup to keep Bridge comments in sync.
 - Dev tooling now prefers the repo-built `hud-hook` binary (avoids silently pointing to the installed app during daemon migration).
 - App session state no longer falls back to `hud-core` (daemon disabled clears session state instead of reading JSON).
@@ -269,7 +269,7 @@ A **local daemon** is the **only writer** of state. Hooks and the Swift app beco
 
 - Add LaunchAgent (auto-start + auto-restart). (Done)
 - Add health checks; daemon required when down. (Done: app probes health; crash-loop policy improved with backoff snapshot.)
-- Add crash loop backoff.
+- Add crash loop backoff. (Done)
 - Install LaunchAgent from the app at startup (label `com.capacitor.daemon`). (Done)
 - Default hook commands enable daemon routing (`CAPACITOR_DAEMON_ENABLED=1`). (Done)
 
@@ -281,65 +281,35 @@ A **local daemon** is the **only writer** of state. Hooks and the Swift app beco
 - Do not keep JSON snapshots.
 ### Phase 7 — Robustness & Policy (2–5 days)
 
-Goal: eliminate the remaining **signal-quality** brittleness by making session lifecycle,
+Goal: eliminate remaining **signal-quality** brittleness by making session lifecycle,
 aggregation, and UI cadence explicit and deterministic.
 
-**7.1 Session TTL / expiry (daemon-side)**
-- Add `last_event_at` (or reuse `updated_at`) to enforce a **session expiry policy**.
-- Policy proposal:
-  - If no event for **N minutes**, transition to `Idle` or drop the session.
-  - If `is_alive == false`, drop session immediately.
-  - If `is_alive == nil` (unknown), keep until TTL then drop.
-- Persist TTL decisions in `sessions` and/or keep in-memory with periodic prune.
+**7.1 Session TTL / expiry (daemon-side) — Done**
+- Uses `updated_at` for staleness/TTL decisions in daemon state.
+- Policy enforced in daemon snapshots:
+  - Active (Working/Waiting/Compacting) TTL: 20 min
+  - Ready TTL: 30 min
+  - Idle TTL: 10 min
+  - Working/Waiting downgrade to Ready after 8s of no updates
+- Sessions pruned when TTL expires or process is dead.
 
-**7.2 Project-level aggregation (daemon-side)**
-- Add a daemon query that returns **project-level state**, not raw sessions.
-- Aggregation rule: **Working > Waiting > Compacting > Ready > Idle** (max severity).
-- Include `latest_activity_at` for tie-breaking and UI “most recent” ordering.
+**7.2 Project-level aggregation (daemon-side) — Done**
+- `GetProjectStates` returns aggregated project state.
+- Aggregation rule: **Working > Waiting > Compacting > Ready > Idle**.
+- Includes `updated_at`, `state_changed_at`, `session_count`, `active_count`.
 - Swift app reads **aggregated project states** only (no local aggregation).
 
-**7.3 Explicit session heartbeat (optional, but strongly recommended)**
-- If hooks can emit periodic “heartbeat” events, TTL decisions become reliable.
-- If heartbeat is not feasible, TTL is still required to avoid stuck Ready/Working states.
+**7.3 Explicit session heartbeat — Not required**
+- No explicit heartbeat added; TTL relies on hook events + daemon staleness policy.
 
-**7.4 UI refresh contract**
-- Standardize the UI polling interval (e.g., every 2–3s with backoff on failure).
-- Remove any client-side heuristics that reinterpret session state.
+**7.4 UI refresh contract — Done**
+- Standardized 2s polling loops for session + shell state.
+- Client-side heuristics removed; daemon state is authoritative.
+- Documented in `.claude/docs/ui-refresh-contract.md`.
 
-**7.5 Diagnostics + debug tooling**
-- Add a daemon “policy snapshot” endpoint (optional) so the UI/debug panel can show TTL/aggregation decisions.
-- Add tests for TTL expiry and aggregation order to prevent regressions.
-
-### Phase 7 — Robustness & Policy (2–5 days)
-
-Goal: eliminate the remaining **signal-quality** brittleness by making session lifecycle,
-aggregation, and UI cadence explicit and deterministic.
-
-**7.1 Session TTL / expiry (daemon-side)**
-- Add `last_event_at` (or reuse `updated_at`) to enforce a **session expiry policy**.
-- Policy proposal:
-  - If no event for **N minutes**, transition to `Idle` or drop the session.
-  - If `is_alive == false`, drop session immediately.
-  - If `is_alive == nil` (unknown), keep until TTL then drop.
-- Persist TTL decisions in `sessions` and/or keep in-memory with periodic prune.
-
-**7.2 Project-level aggregation (daemon-side)**
-- Add a daemon query that returns **project-level state**, not raw sessions.
-- Aggregation rule: **Working > Waiting > Compacting > Ready > Idle** (max severity).
-- Include `latest_activity_at` for tie-breaking and UI “most recent” ordering.
-- Swift app reads **aggregated project states** only (no local aggregation).
-
-**7.3 Explicit session heartbeat (optional, but strongly recommended)**
-- If hooks can emit periodic “heartbeat” events, TTL decisions become reliable.
-- If heartbeat is not feasible, TTL is still required to avoid stuck Ready/Working states.
-
-**7.4 UI refresh contract**
-- Standardize the UI polling interval (e.g., every 2–3s with backoff on failure).
-- Remove any client-side heuristics that reinterpret session state.
-
-**7.5 Diagnostics + debug tooling**
-- Add a daemon “policy snapshot” endpoint (optional) so the UI/debug panel can show TTL/aggregation decisions.
-- Add tests for TTL expiry and aggregation order to prevent regressions.
+**7.5 Diagnostics + debug tooling — Done**
+- Tests cover TTL expiry + aggregation order in daemon.
+- (Optional) policy snapshot endpoint not implemented; not required currently.
 
 ---
 
@@ -465,11 +435,12 @@ aggregation, and UI cadence explicit and deterministic.
 ## 11. Open Questions
 
 - (Removed) JSON snapshots are not part of the daemon-only plan.
-- Should daemon export metrics (Prometheus-style) or just logs?
-- How should event schema evolve without breaking old hooks?
-- Do we need any legacy disk seeding now that replay from the event log restores shell state?
-- `process_liveness` rows are pruned after 24 hours; revisit if telemetry shows stale entries matter.
-- Do we need an in-app toggle for daemon enablement (GUI apps don’t inherit shell env vars)?
+**Decisions (2026-02-03):**
+- Metrics: logs only for now; no Prometheus export planned.
+- Schema evolution: bump protocol version + backward-compatible fields; hooks are expected to be upgradable via app.
+- Legacy disk seeding: not required (event log replay + shell state rebuild is sufficient).
+- `process_liveness` pruning: keep 24h TTL; revisit only if production telemetry flags missed liveness.
+- In-app daemon toggle: not needed; app bundles daemon and enforces enablement by default.
 
 ---
 

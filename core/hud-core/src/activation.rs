@@ -13,7 +13,7 @@
 //! ## Usage Flow
 //!
 //! ```text
-//! Swift: reads shell-cwd.json
+//! Swift: fetches daemon shell state snapshot (legacy JSON shape)
 //!    │
 //!    ▼
 //! Swift: queries tmux context (list-windows, list-clients)
@@ -35,10 +35,10 @@ use std::collections::HashMap;
 // FFI Types
 // ═══════════════════════════════════════════════════════════════════════════════
 
-/// Shell state as read from `~/.capacitor/shell-cwd.json`.
+/// Shell state as returned by the daemon (legacy JSON shape).
 ///
-/// This is the FFI-safe version of the shell state. Swift reads the JSON
-/// and converts it to this type before passing to Rust.
+/// This is the FFI-safe version of the shell state. Swift fetches the daemon
+/// snapshot and converts it to this type before passing to Rust.
 #[derive(Debug, Clone, Serialize, Deserialize, uniffi::Record)]
 pub struct ShellCwdStateFfi {
     pub version: u32,
@@ -191,7 +191,7 @@ impl TryFrom<ParentApp> for IdeType {
 ///
 /// # Arguments
 /// * `project_path` - The absolute path to the project
-/// * `shell_state` - Current contents of shell-cwd.json (may be None if file missing)
+/// * `shell_state` - Current daemon shell snapshot (may be None if unavailable)
 /// * `tmux_context` - Tmux state queried by Swift
 ///
 /// # Returns
@@ -203,7 +203,7 @@ pub fn resolve_activation(
 ) -> ActivationDecision {
     let action_path = normalize_path_for_actions(project_path);
 
-    // Priority 1: Find existing shell in shell-cwd.json
+    // Priority 1: Find existing shell in daemon snapshot
     // If a tmux client is attached, only consider tmux shells (or IDE shells).
     // This ensures clicks create/switch tmux sessions instead of focusing non-tmux terminals.
     if let Some(state) = shell_state {
@@ -240,8 +240,9 @@ pub fn resolve_activation(
                 session_name: project_name,
             },
             fallback: Some(ActivationAction::ActivatePriorityFallback),
-            reason: "No existing shell or tmux session found; tmux client attached, creating session"
-                .to_string(),
+            reason:
+                "No existing shell or tmux session found; tmux client attached, creating session"
+                    .to_string(),
         };
     }
 
@@ -471,7 +472,7 @@ fn match_type_excluding_home(
         })
 }
 
-/// Resolve activation for an existing shell found in shell-cwd.json.
+/// Resolve activation for an existing shell found in the daemon snapshot.
 fn resolve_for_existing_shell(
     pid: u32,
     shell: &ShellEntryFfi,
@@ -880,7 +881,7 @@ mod tests {
     }
 
     // ─────────────────────────────────────────────────────────────────────────────
-    // Scenario: Shell exists in shell-cwd.json (Native Terminal)
+    // Scenario: Shell exists in daemon shell snapshot (Native Terminal)
     // ─────────────────────────────────────────────────────────────────────────────
 
     #[test]
@@ -995,7 +996,7 @@ mod tests {
     }
 
     // ─────────────────────────────────────────────────────────────────────────────
-    // Scenario: Shell exists in shell-cwd.json (IDE)
+    // Scenario: Shell exists in daemon shell snapshot (IDE)
     // ─────────────────────────────────────────────────────────────────────────────
 
     #[test]
@@ -1069,7 +1070,7 @@ mod tests {
     }
 
     // ─────────────────────────────────────────────────────────────────────────────
-    // Scenario: Shell exists in shell-cwd.json (with tmux)
+    // Scenario: Shell exists in daemon shell snapshot (with tmux)
     // ─────────────────────────────────────────────────────────────────────────────
 
     #[test]

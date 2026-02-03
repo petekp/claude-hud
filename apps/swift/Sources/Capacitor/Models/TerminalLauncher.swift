@@ -103,7 +103,7 @@ private func bashDoubleQuoteEscape(_ s: String) -> String {
 //
 // ACTIVATION PRIORITY (ordered by user intent signal strength):
 //
-//   1. Active shell in shell-cwd.json → User has a terminal window open RIGHT NOW
+//   1. Active shell in daemon snapshot → User has a terminal window open RIGHT NOW
 //      These are verified-live PIDs from recent shell hook activity.
 //
 //   2. Tmux session at project path → User has a session but may not be attached
@@ -115,7 +115,7 @@ private func bashDoubleQuoteEscape(_ s: String) -> String {
 // Previously, tmux was checked first. This caused a bug: if a user had a Ghostty
 // window open (non-tmux) AND a tmux session existed at the same path, clicking
 // the project would open a NEW window in tmux instead of focusing the existing
-// Ghostty window. The shell-cwd.json check finds the actively-used terminal.
+// Ghostty window. The daemon shell snapshot finds the actively-used terminal.
 
 @MainActor
 final class TerminalLauncher {

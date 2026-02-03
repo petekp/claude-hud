@@ -30,7 +30,7 @@ final class DaemonClientTests: XCTestCase {
 
     private func makeProjectStatesResponse() -> Data {
         let json = """
-        {"ok":true,"id":"test","data":[{"project_path":"/tmp/project","state":"working","updated_at":"2026-02-02T19:00:00Z","state_changed_at":"2026-02-02T19:00:00Z","session_id":null,"session_count":1,"active_count":1,"is_locked":false}]}
+        {"ok":true,"id":"test","data":[{"project_path":"/tmp/project","state":"working","updated_at":"2026-02-02T19:00:00Z","state_changed_at":"2026-02-02T19:00:00Z","session_id":null,"session_count":1,"active_count":1,"has_session":false}]}
         """
         var data = Data(json.utf8)
         data.append(0x0A)

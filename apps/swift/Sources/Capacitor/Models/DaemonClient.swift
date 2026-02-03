@@ -47,7 +47,7 @@ struct DaemonProjectState: Decodable {
     let sessionId: String?
     let sessionCount: Int
     let activeCount: Int
-    let isLocked: Bool
+    let hasSession: Bool
 
     enum CodingKeys: String, CodingKey {
         case projectPath = "project_path"
@@ -57,7 +57,7 @@ struct DaemonProjectState: Decodable {
         case sessionId = "session_id"
         case sessionCount = "session_count"
         case activeCount = "active_count"
-        case isLocked = "is_locked"
+        case hasSession = "has_session"
     }
 }
 

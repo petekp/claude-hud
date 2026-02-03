@@ -517,8 +517,6 @@ private struct FfiConverterString: FfiConverter {
 public protocol HudEngineProtocol: AnyObject {
     /**
      * Adds a project to the pinned projects list.
-     *
-     * Also reconciles any orphaned locks for this path to ensure correct state display.
      */
     func addProject(path: String) throws
 
@@ -762,7 +760,7 @@ public protocol HudEngineProtocol: AnyObject {
      *
      * # Arguments
      * * `project_path` - The absolute path to the project
-     * * `shell_state` - Current contents of shell-cwd.json (may be None if file missing)
+     * * `shell_state` - Current daemon shell snapshot (may be None if unavailable)
      * * `tmux_context` - Tmux state queried by Swift
      *
      * # Returns
@@ -793,13 +791,9 @@ public protocol HudEngineProtocol: AnyObject {
     func runHookTest() -> HookTestResult
 
     /**
-     * Performs startup cleanup of stale artifacts.
+     * Performs startup cleanup of daemon-era artifacts.
      *
-     * Call this once when the app launches to clean up:
-     * - Lock directories with dead PIDs
-     * - Session records older than 24 hours
-     *
-     * Returns stats about what was cleaned up.
+     * In daemon-only mode this is a no-op and returns any cleanup errors.
      */
     func runStartupCleanup() -> CleanupStats
 
@@ -932,8 +926,6 @@ open class HudEngine:
 
     /**
      * Adds a project to the pinned projects list.
-     *
-     * Also reconciles any orphaned locks for this path to ensure correct state display.
      */
     open func addProject(path: String) throws { try rustCallWithError(FfiConverterTypeHudFfiError.lift) {
         uniffi_hud_core_fn_method_hudengine_add_project(self.uniffiClonePointer(),
@@ -1308,7 +1300,7 @@ open class HudEngine:
      *
      * # Arguments
      * * `project_path` - The absolute path to the project
-     * * `shell_state` - Current contents of shell-cwd.json (may be None if file missing)
+     * * `shell_state` - Current daemon shell snapshot (may be None if unavailable)
      * * `tmux_context` - Tmux state queried by Swift
      *
      * # Returns
@@ -1350,13 +1342,9 @@ open class HudEngine:
     }
 
     /**
-     * Performs startup cleanup of stale artifacts.
+     * Performs startup cleanup of daemon-era artifacts.
      *
-     * Call this once when the app launches to clean up:
-     * - Lock directories with dead PIDs
-     * - Session records older than 24 hours
-     *
-     * Returns stats about what was cleaned up.
+     * In daemon-only mode this is a no-op and returns any cleanup errors.
      */
     open func runStartupCleanup() -> CleanupStats {
         return try! FfiConverterTypeCleanupStats.lift(try! rustCall {
@@ -1938,34 +1926,6 @@ public func FfiConverterTypeCachedProjectStats_lower(_ value: CachedProjectStats
  */
 public struct CleanupStats {
     /**
-     * Number of orphaned legacy lock directories removed (dead PIDs).
-     */
-    public var locksRemoved: UInt32
-    /**
-     * Number of legacy MD5-hash locks removed (dead PIDs).
-     */
-    public var legacyLocksRemoved: UInt32
-    /**
-     * Number of orphaned lock-holder processes killed (monitoring dead PIDs).
-     */
-    public var orphanedProcessesKilled: UInt32
-    /**
-     * Number of orphaned session records removed (stale + no active lock).
-     */
-    public var orphanedSessionsRemoved: UInt32
-    /**
-     * Number of expired session records removed (> 24 hours old).
-     */
-    public var sessionsRemoved: UInt32
-    /**
-     * Number of old tombstone files removed (> 1 minute old).
-     */
-    public var tombstonesRemoved: UInt32
-    /**
-     * Number of old file activity entries cleaned up (> 24 hours old).
-     */
-    public var activityEntriesRemoved: UInt32
-    /**
      * Errors encountered during cleanup.
      */
     public var errors: [String]
@@ -1974,64 +1934,15 @@ public struct CleanupStats {
     // declare one manually.
     public init(
         /**
-         * Number of orphaned legacy lock directories removed (dead PIDs).
-         */ locksRemoved: UInt32,
-        /**
-            * Number of legacy MD5-hash locks removed (dead PIDs).
-            */ legacyLocksRemoved: UInt32,
-        /**
-            * Number of orphaned lock-holder processes killed (monitoring dead PIDs).
-            */ orphanedProcessesKilled: UInt32,
-        /**
-            * Number of orphaned session records removed (stale + no active lock).
-            */ orphanedSessionsRemoved: UInt32,
-        /**
-            * Number of expired session records removed (> 24 hours old).
-            */ sessionsRemoved: UInt32,
-        /**
-            * Number of old tombstone files removed (> 1 minute old).
-            */ tombstonesRemoved: UInt32,
-        /**
-            * Number of old file activity entries cleaned up (> 24 hours old).
-            */ activityEntriesRemoved: UInt32,
-        /**
-            * Errors encountered during cleanup.
-            */ errors: [String]
+         * Errors encountered during cleanup.
+         */ errors: [String]
     ) {
-        self.locksRemoved = locksRemoved
-        self.legacyLocksRemoved = legacyLocksRemoved
-        self.orphanedProcessesKilled = orphanedProcessesKilled
-        self.orphanedSessionsRemoved = orphanedSessionsRemoved
-        self.sessionsRemoved = sessionsRemoved
-        self.tombstonesRemoved = tombstonesRemoved
-        self.activityEntriesRemoved = activityEntriesRemoved
         self.errors = errors
     }
 }
 
 extension CleanupStats: Equatable, Hashable {
     public static func == (lhs: CleanupStats, rhs: CleanupStats) -> Bool {
-        if lhs.locksRemoved != rhs.locksRemoved {
-            return false
-        }
-        if lhs.legacyLocksRemoved != rhs.legacyLocksRemoved {
-            return false
-        }
-        if lhs.orphanedProcessesKilled != rhs.orphanedProcessesKilled {
-            return false
-        }
-        if lhs.orphanedSessionsRemoved != rhs.orphanedSessionsRemoved {
-            return false
-        }
-        if lhs.sessionsRemoved != rhs.sessionsRemoved {
-            return false
-        }
-        if lhs.tombstonesRemoved != rhs.tombstonesRemoved {
-            return false
-        }
-        if lhs.activityEntriesRemoved != rhs.activityEntriesRemoved {
-            return false
-        }
         if lhs.errors != rhs.errors {
             return false
         }
@@ -2039,13 +1950,6 @@ extension CleanupStats: Equatable, Hashable {
     }
 
     public func hash(into hasher: inout Hasher) {
-        hasher.combine(locksRemoved)
-        hasher.combine(legacyLocksRemoved)
-        hasher.combine(orphanedProcessesKilled)
-        hasher.combine(orphanedSessionsRemoved)
-        hasher.combine(sessionsRemoved)
-        hasher.combine(tombstonesRemoved)
-        hasher.combine(activityEntriesRemoved)
         hasher.combine(errors)
     }
 }
@@ -2057,25 +1961,11 @@ public struct FfiConverterTypeCleanupStats: FfiConverterRustBuffer {
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> CleanupStats {
         return
             try CleanupStats(
-                locksRemoved: FfiConverterUInt32.read(from: &buf),
-                legacyLocksRemoved: FfiConverterUInt32.read(from: &buf),
-                orphanedProcessesKilled: FfiConverterUInt32.read(from: &buf),
-                orphanedSessionsRemoved: FfiConverterUInt32.read(from: &buf),
-                sessionsRemoved: FfiConverterUInt32.read(from: &buf),
-                tombstonesRemoved: FfiConverterUInt32.read(from: &buf),
-                activityEntriesRemoved: FfiConverterUInt32.read(from: &buf),
                 errors: FfiConverterSequenceString.read(from: &buf)
             )
     }
 
     public static func write(_ value: CleanupStats, into buf: inout [UInt8]) {
-        FfiConverterUInt32.write(value.locksRemoved, into: &buf)
-        FfiConverterUInt32.write(value.legacyLocksRemoved, into: &buf)
-        FfiConverterUInt32.write(value.orphanedProcessesKilled, into: &buf)
-        FfiConverterUInt32.write(value.orphanedSessionsRemoved, into: &buf)
-        FfiConverterUInt32.write(value.sessionsRemoved, into: &buf)
-        FfiConverterUInt32.write(value.tombstonesRemoved, into: &buf)
-        FfiConverterUInt32.write(value.activityEntriesRemoved, into: &buf)
         FfiConverterSequenceString.write(value.errors, into: &buf)
     }
 }
@@ -3927,7 +3817,7 @@ public struct ProjectSessionState {
     /**
      * Whether the daemon considers this project actively running.
      */
-    public var isLocked: Bool
+    public var hasSession: Bool
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
@@ -3942,7 +3832,7 @@ public struct ProjectSessionState {
                     */ thinking: Bool?,
                 /**
                     * Whether the daemon considers this project actively running.
-                    */ isLocked: Bool)
+                    */ hasSession: Bool)
     {
         self.state = state
         self.stateChangedAt = stateChangedAt
@@ -3951,7 +3841,7 @@ public struct ProjectSessionState {
         self.workingOn = workingOn
         self.context = context
         self.thinking = thinking
-        self.isLocked = isLocked
+        self.hasSession = hasSession
     }
 }
 
@@ -3978,7 +3868,7 @@ extension ProjectSessionState: Equatable, Hashable {
         if lhs.thinking != rhs.thinking {
             return false
         }
-        if lhs.isLocked != rhs.isLocked {
+        if lhs.hasSession != rhs.hasSession {
             return false
         }
         return true
@@ -3992,7 +3882,7 @@ extension ProjectSessionState: Equatable, Hashable {
         hasher.combine(workingOn)
         hasher.combine(context)
         hasher.combine(thinking)
-        hasher.combine(isLocked)
+        hasher.combine(hasSession)
     }
 }
 
@@ -4010,7 +3900,7 @@ public struct FfiConverterTypeProjectSessionState: FfiConverterRustBuffer {
                 workingOn: FfiConverterOptionString.read(from: &buf),
                 context: FfiConverterOptionTypeContextInfo.read(from: &buf),
                 thinking: FfiConverterOptionBool.read(from: &buf),
-                isLocked: FfiConverterBool.read(from: &buf)
+                hasSession: FfiConverterBool.read(from: &buf)
             )
     }
 
@@ -4022,7 +3912,7 @@ public struct FfiConverterTypeProjectSessionState: FfiConverterRustBuffer {
         FfiConverterOptionString.write(value.workingOn, into: &buf)
         FfiConverterOptionTypeContextInfo.write(value.context, into: &buf)
         FfiConverterOptionBool.write(value.thinking, into: &buf)
-        FfiConverterBool.write(value.isLocked, into: &buf)
+        FfiConverterBool.write(value.hasSession, into: &buf)
     }
 }
 
@@ -4350,10 +4240,10 @@ public func FfiConverterTypeSetupStatus_lower(_ value: SetupStatus) -> RustBuffe
 }
 
 /**
- * Shell state as read from `~/.capacitor/shell-cwd.json`.
+ * Shell state as returned by the daemon (legacy JSON shape).
  *
- * This is the FFI-safe version of the shell state. Swift reads the JSON
- * and converts it to this type before passing to Rust.
+ * This is the FFI-safe version of the shell state. Swift fetches the daemon
+ * snapshot and converts it to this type before passing to Rust.
  */
 public struct ShellCwdStateFfi {
     public var version: UInt32
@@ -5780,7 +5670,7 @@ extension IdeType: Equatable, Hashable {}
  * parsing strings directly.
  *
  * **JSON serialization:** Uses lowercase strings (e.g., `ParentApp::ITerm` → `"iterm2"`)
- * for backward compatibility with existing `shell-cwd.json` files.
+ * to match the daemon shell snapshot JSON shape.
  */
 
 public enum ParentApp {
@@ -6704,7 +6594,7 @@ private var initializationResult: InitializationResult = {
     if uniffi_hud_core_checksum_func_paths_match() != 59842 {
         return InitializationResult.apiChecksumMismatch
     }
-    if uniffi_hud_core_checksum_method_hudengine_add_project() != 9786 {
+    if uniffi_hud_core_checksum_method_hudengine_add_project() != 20195 {
         return InitializationResult.apiChecksumMismatch
     }
     if uniffi_hud_core_checksum_method_hudengine_capacitor_dir() != 14668 {
@@ -6794,13 +6684,13 @@ private var initializationResult: InitializationResult = {
     if uniffi_hud_core_checksum_method_hudengine_remove_project() != 46288 {
         return InitializationResult.apiChecksumMismatch
     }
-    if uniffi_hud_core_checksum_method_hudengine_resolve_activation() != 6034 {
+    if uniffi_hud_core_checksum_method_hudengine_resolve_activation() != 10157 {
         return InitializationResult.apiChecksumMismatch
     }
     if uniffi_hud_core_checksum_method_hudengine_run_hook_test() != 13412 {
         return InitializationResult.apiChecksumMismatch
     }
-    if uniffi_hud_core_checksum_method_hudengine_run_startup_cleanup() != 39678 {
+    if uniffi_hud_core_checksum_method_hudengine_run_startup_cleanup() != 52730 {
         return InitializationResult.apiChecksumMismatch
     }
     if uniffi_hud_core_checksum_method_hudengine_save_ideas_order() != 34756 {

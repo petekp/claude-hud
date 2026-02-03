@@ -3,8 +3,6 @@
 use crate::state::daemon::{sessions_snapshot, DaemonSessionRecord};
 use crate::storage::StorageConfig;
 use crate::types::SessionState;
-use chrono::Utc;
-
 use super::types::{AgentSession, AgentState, AgentType};
 use super::AgentAdapter;
 
@@ -109,13 +107,6 @@ fn daemon_session_to_agent(record: &DaemonSessionRecord) -> Option<AgentSession>
         return None;
     }
 
-    if state == SessionState::Ready
-        && record.is_alive != Some(true)
-        && is_stale_ready(&record.state_changed_at)
-    {
-        return None;
-    }
-
     Some(AgentSession {
         agent_type: AgentType::Claude,
         agent_name: "Claude Code".to_string(),
@@ -128,19 +119,9 @@ fn daemon_session_to_agent(record: &DaemonSessionRecord) -> Option<AgentSession>
     })
 }
 
-fn is_stale_ready(state_changed_at: &str) -> bool {
-    let Ok(parsed) = chrono::DateTime::parse_from_rfc3339(state_changed_at) else {
-        return false;
-    };
-    let updated_at = parsed.with_timezone(&Utc);
-    let age = Utc::now().signed_duration_since(updated_at).num_seconds();
-    age > crate::state::types::STALE_THRESHOLD_SECS
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use chrono::{Duration as ChronoDuration, Utc};
 
     #[test]
     fn test_state_mapping_compacting_detail() {
@@ -156,24 +137,5 @@ mod tests {
             ClaudeAdapter::state_detail(SessionState::Waiting),
             Some("waiting for permission".to_string())
         );
-    }
-
-    #[test]
-    fn test_is_stale_ready_invalid_timestamp() {
-        assert!(!is_stale_ready("not-a-date"));
-    }
-
-    #[test]
-    fn test_is_stale_ready_old() {
-        let timestamp = (Utc::now()
-            - ChronoDuration::seconds(crate::state::types::STALE_THRESHOLD_SECS + 1))
-        .to_rfc3339();
-        assert!(is_stale_ready(&timestamp));
-    }
-
-    #[test]
-    fn test_is_stale_ready_fresh() {
-        let timestamp = Utc::now().to_rfc3339();
-        assert!(!is_stale_ready(&timestamp));
     }
 }

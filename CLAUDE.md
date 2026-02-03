@@ -56,15 +56,13 @@ capacitor/
 
 ## State Tracking
 
-Hooks → **daemon** → Capacitor reads (JSON files are fallback only)
+Hooks → **daemon** → Capacitor reads daemon snapshots only
 
-- **Daemon socket:** `~/.capacitor/daemon.sock` (primary)
-- **State file (fallback):** `~/.capacitor/sessions.json`
-- **Locks (compat):** `~/.capacitor/sessions/{session_id}-{pid}.lock/` (read-only/off when daemon healthy)
-- **Shell CWD (fallback):** `~/.capacitor/shell-cwd.json`
+- **Daemon socket:** `~/.capacitor/daemon.sock`
+- **Daemon storage/logs:** `~/.capacitor/daemon/`
 - **Hook binary:** `~/.local/bin/hud-hook`
 
-**Resolution:** daemon sessions are authoritative when healthy; fallback uses lock existence with live PID.
+**Resolution:** daemon sessions and shell state are authoritative (no file-based fallback).
 
 ## Common Gotchas
 

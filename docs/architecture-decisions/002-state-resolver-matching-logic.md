@@ -1,7 +1,8 @@
 # ADR-002: State Resolver Matching Logic
 
-**Status:** Accepted
+**Status:** Superseded by ADR-005: Daemon-Based State Service
 **Date:** 2026-01-13
+**Superseded:** 2026-02-02
 **Deciders:** Core team + ChatGPT iterative review (8 rounds)
 
 ## Context

@@ -62,9 +62,9 @@ killall cfprefsd 2>/dev/null && echo "  ✓ Refreshed preferences cache" || true
 #
 # ~/.capacitor/ is our namespace (sidecar architecture - we never write to
 # ~/.claude/). Contains:
-#   - sessions.json: Session state records from hooks
-#   - sessions/: Lock directories for active sessions
-#   - file-activity.json: Recent file edits for monorepo tracking
+#   - daemon.sock: daemon IPC socket
+#   - daemon/: SQLite state + daemon logs
+#   - config.json/projects.json: app preferences + pinned projects
 # ─────────────────────────────────────────────────────────────────────────────
 echo "→ Clearing ~/.capacitor/ (HUD state)..."
 if [[ -d "$HOME/.capacitor" ]]; then

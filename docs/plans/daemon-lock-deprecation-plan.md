@@ -1,5 +1,10 @@
 # Daemon Lock Deprecation Plan
 
+**Status:** completed (historical)
+
+**Note:** As of 2026-02-02 the system is daemon-only; lock directories and lock-holder
+compatibility have been removed. This plan is preserved for historical context.
+
 This document defines the migration path from filesystem lock directories
 (`~/.capacitor/sessions/{session_id}-{pid}.lock/`) to daemon-owned liveness
 (`process_liveness` table + `get_process_liveness` IPC).
@@ -21,9 +26,9 @@ This document defines the migration path from filesystem lock directories
 
 **Note:** The project direction is now **daemon-only**; locks are no longer authoritative.
 
-## Phase B — Read-only locks (Current)
+## Phase B — Read-only locks (Historical)
 
-**Status:** in progress (lock writes suppressed when daemon is healthy)
+**Status:** completed
 
 - Hooks stop creating new lock directories when daemon is healthy.
 - Existing lock directories are treated as **legacy artifacts**, not authoritative state.
@@ -33,7 +38,7 @@ This document defines the migration path from filesystem lock directories
 - daemon liveness coverage verified across all hook event types.
 - `process_liveness` replay is stable on daemon restart.
 
-## Phase C — Removal (Next)
+## Phase C — Removal (Completed)
 
 - Stop reading lock directories entirely.
 - Remove lock cleanup logic from `hud-core`.
@@ -51,7 +56,7 @@ This document defines the migration path from filesystem lock directories
 - Lock-mode/lock-health toggles removed (daemon-only; no compatibility).
 - Hook installation normalizes commands to include `CAPACITOR_DAEMON_ENABLED=1` only.
 
-## Open Questions
+## Open Questions (Resolved)
 
-- Should lock directories be retained for manual recovery tooling?
-- Do we keep a debug flag to re-enable lock creation for troubleshooting?
+- Lock directories are not retained; the daemon is authoritative.
+- No debug flag remains for re-enabling lock creation.

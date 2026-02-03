@@ -135,7 +135,7 @@ final class SessionStateManager {
                 workingOn: nil,
                 context: nil,
                 thinking: nil,
-                isLocked: state.isLocked
+                hasSession: state.hasSession
             )
             merged[projectPath] = sessionState
         }
