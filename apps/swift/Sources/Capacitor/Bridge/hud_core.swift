@@ -779,6 +779,11 @@ public protocol HudEngineProtocol: AnyObject {
     func resolveActivation(projectPath: String, shellState: ShellCwdStateFfi?, tmuxContext: TmuxContextFfi) -> ActivationDecision
 
     /**
+     * Resolves activation and optionally returns a decision trace for debugging.
+     */
+    func resolveActivationWithTrace(projectPath: String, shellState: ShellCwdStateFfi?, tmuxContext: TmuxContextFfi, includeTrace: Bool) -> ActivationDecision
+
+    /**
      * Runs a comprehensive hook system test.
      *
      * This verifies:
@@ -1326,6 +1331,19 @@ open class HudEngine:
     }
 
     /**
+     * Resolves activation and optionally returns a decision trace for debugging.
+     */
+    open func resolveActivationWithTrace(projectPath: String, shellState: ShellCwdStateFfi?, tmuxContext: TmuxContextFfi, includeTrace: Bool) -> ActivationDecision {
+        return try! FfiConverterTypeActivationDecision.lift(try! rustCall {
+            uniffi_hud_core_fn_method_hudengine_resolve_activation_with_trace(self.uniffiClonePointer(),
+                                                                              FfiConverterString.lower(projectPath),
+                                                                              FfiConverterOptionTypeShellCwdStateFfi.lower(shellState),
+                                                                              FfiConverterTypeTmuxContextFfi.lower(tmuxContext),
+                                                                              FfiConverterBool.lower(includeTrace), $0)
+        })
+    }
+
+    /**
      * Runs a comprehensive hook system test.
      *
      * This verifies:
@@ -1515,6 +1533,10 @@ public struct ActivationDecision {
      * Debug context explaining why this decision was made
      */
     public var reason: String
+    /**
+     * Optional decision trace for debugging selection logic
+     */
+    public var trace: DecisionTraceFfi?
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
@@ -1527,11 +1549,15 @@ public struct ActivationDecision {
             */ fallback: ActivationAction?,
         /**
             * Debug context explaining why this decision was made
-            */ reason: String
+            */ reason: String,
+        /**
+            * Optional decision trace for debugging selection logic
+            */ trace: DecisionTraceFfi?
     ) {
         self.primary = primary
         self.fallback = fallback
         self.reason = reason
+        self.trace = trace
     }
 }
 
@@ -1546,6 +1572,9 @@ extension ActivationDecision: Equatable, Hashable {
         if lhs.reason != rhs.reason {
             return false
         }
+        if lhs.trace != rhs.trace {
+            return false
+        }
         return true
     }
 
@@ -1553,6 +1582,7 @@ extension ActivationDecision: Equatable, Hashable {
         hasher.combine(primary)
         hasher.combine(fallback)
         hasher.combine(reason)
+        hasher.combine(trace)
     }
 }
 
@@ -1565,7 +1595,8 @@ public struct FfiConverterTypeActivationDecision: FfiConverterRustBuffer {
             try ActivationDecision(
                 primary: FfiConverterTypeActivationAction.read(from: &buf),
                 fallback: FfiConverterOptionTypeActivationAction.read(from: &buf),
-                reason: FfiConverterString.read(from: &buf)
+                reason: FfiConverterString.read(from: &buf),
+                trace: FfiConverterOptionTypeDecisionTraceFfi.read(from: &buf)
             )
     }
 
@@ -1573,6 +1604,7 @@ public struct FfiConverterTypeActivationDecision: FfiConverterRustBuffer {
         FfiConverterTypeActivationAction.write(value.primary, into: &buf)
         FfiConverterOptionTypeActivationAction.write(value.fallback, into: &buf)
         FfiConverterString.write(value.reason, into: &buf)
+        FfiConverterOptionTypeDecisionTraceFfi.write(value.trace, into: &buf)
     }
 }
 
@@ -1919,6 +1951,131 @@ public func FfiConverterTypeCachedProjectStats_lift(_ buf: RustBuffer) throws ->
 #endif
 public func FfiConverterTypeCachedProjectStats_lower(_ value: CachedProjectStats) -> RustBuffer {
     return FfiConverterTypeCachedProjectStats.lower(value)
+}
+
+public struct CandidateTraceFfi {
+    public var pid: UInt32
+    public var cwd: String
+    public var tty: String
+    public var parentApp: ParentApp
+    public var isLive: Bool
+    public var hasTmux: Bool
+    public var matchType: String
+    public var matchRank: UInt8
+    public var updatedAt: String
+    public var rankKey: [String]
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(pid: UInt32, cwd: String, tty: String, parentApp: ParentApp, isLive: Bool, hasTmux: Bool, matchType: String, matchRank: UInt8, updatedAt: String, rankKey: [String]) {
+        self.pid = pid
+        self.cwd = cwd
+        self.tty = tty
+        self.parentApp = parentApp
+        self.isLive = isLive
+        self.hasTmux = hasTmux
+        self.matchType = matchType
+        self.matchRank = matchRank
+        self.updatedAt = updatedAt
+        self.rankKey = rankKey
+    }
+}
+
+extension CandidateTraceFfi: Equatable, Hashable {
+    public static func == (lhs: CandidateTraceFfi, rhs: CandidateTraceFfi) -> Bool {
+        if lhs.pid != rhs.pid {
+            return false
+        }
+        if lhs.cwd != rhs.cwd {
+            return false
+        }
+        if lhs.tty != rhs.tty {
+            return false
+        }
+        if lhs.parentApp != rhs.parentApp {
+            return false
+        }
+        if lhs.isLive != rhs.isLive {
+            return false
+        }
+        if lhs.hasTmux != rhs.hasTmux {
+            return false
+        }
+        if lhs.matchType != rhs.matchType {
+            return false
+        }
+        if lhs.matchRank != rhs.matchRank {
+            return false
+        }
+        if lhs.updatedAt != rhs.updatedAt {
+            return false
+        }
+        if lhs.rankKey != rhs.rankKey {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(pid)
+        hasher.combine(cwd)
+        hasher.combine(tty)
+        hasher.combine(parentApp)
+        hasher.combine(isLive)
+        hasher.combine(hasTmux)
+        hasher.combine(matchType)
+        hasher.combine(matchRank)
+        hasher.combine(updatedAt)
+        hasher.combine(rankKey)
+    }
+}
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeCandidateTraceFfi: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> CandidateTraceFfi {
+        return
+            try CandidateTraceFfi(
+                pid: FfiConverterUInt32.read(from: &buf),
+                cwd: FfiConverterString.read(from: &buf),
+                tty: FfiConverterString.read(from: &buf),
+                parentApp: FfiConverterTypeParentApp.read(from: &buf),
+                isLive: FfiConverterBool.read(from: &buf),
+                hasTmux: FfiConverterBool.read(from: &buf),
+                matchType: FfiConverterString.read(from: &buf),
+                matchRank: FfiConverterUInt8.read(from: &buf),
+                updatedAt: FfiConverterString.read(from: &buf),
+                rankKey: FfiConverterSequenceString.read(from: &buf)
+            )
+    }
+
+    public static func write(_ value: CandidateTraceFfi, into buf: inout [UInt8]) {
+        FfiConverterUInt32.write(value.pid, into: &buf)
+        FfiConverterString.write(value.cwd, into: &buf)
+        FfiConverterString.write(value.tty, into: &buf)
+        FfiConverterTypeParentApp.write(value.parentApp, into: &buf)
+        FfiConverterBool.write(value.isLive, into: &buf)
+        FfiConverterBool.write(value.hasTmux, into: &buf)
+        FfiConverterString.write(value.matchType, into: &buf)
+        FfiConverterUInt8.write(value.matchRank, into: &buf)
+        FfiConverterString.write(value.updatedAt, into: &buf)
+        FfiConverterSequenceString.write(value.rankKey, into: &buf)
+    }
+}
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+public func FfiConverterTypeCandidateTraceFfi_lift(_ buf: RustBuffer) throws -> CandidateTraceFfi {
+    return try FfiConverterTypeCandidateTraceFfi.lift(buf)
+}
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+public func FfiConverterTypeCandidateTraceFfi_lower(_ value: CandidateTraceFfi) -> RustBuffer {
+    return FfiConverterTypeCandidateTraceFfi.lower(value)
 }
 
 /**
@@ -2286,6 +2443,83 @@ public func FfiConverterTypeDashboardData_lift(_ buf: RustBuffer) throws -> Dash
 #endif
 public func FfiConverterTypeDashboardData_lower(_ value: DashboardData) -> RustBuffer {
     return FfiConverterTypeDashboardData.lower(value)
+}
+
+public struct DecisionTraceFfi {
+    public var preferTmux: Bool
+    public var policyOrder: [String]
+    public var candidates: [CandidateTraceFfi]
+    public var selectedPid: UInt32?
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(preferTmux: Bool, policyOrder: [String], candidates: [CandidateTraceFfi], selectedPid: UInt32?) {
+        self.preferTmux = preferTmux
+        self.policyOrder = policyOrder
+        self.candidates = candidates
+        self.selectedPid = selectedPid
+    }
+}
+
+extension DecisionTraceFfi: Equatable, Hashable {
+    public static func == (lhs: DecisionTraceFfi, rhs: DecisionTraceFfi) -> Bool {
+        if lhs.preferTmux != rhs.preferTmux {
+            return false
+        }
+        if lhs.policyOrder != rhs.policyOrder {
+            return false
+        }
+        if lhs.candidates != rhs.candidates {
+            return false
+        }
+        if lhs.selectedPid != rhs.selectedPid {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(preferTmux)
+        hasher.combine(policyOrder)
+        hasher.combine(candidates)
+        hasher.combine(selectedPid)
+    }
+}
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeDecisionTraceFfi: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> DecisionTraceFfi {
+        return
+            try DecisionTraceFfi(
+                preferTmux: FfiConverterBool.read(from: &buf),
+                policyOrder: FfiConverterSequenceString.read(from: &buf),
+                candidates: FfiConverterSequenceTypeCandidateTraceFfi.read(from: &buf),
+                selectedPid: FfiConverterOptionUInt32.read(from: &buf)
+            )
+    }
+
+    public static func write(_ value: DecisionTraceFfi, into buf: inout [UInt8]) {
+        FfiConverterBool.write(value.preferTmux, into: &buf)
+        FfiConverterSequenceString.write(value.policyOrder, into: &buf)
+        FfiConverterSequenceTypeCandidateTraceFfi.write(value.candidates, into: &buf)
+        FfiConverterOptionUInt32.write(value.selectedPid, into: &buf)
+    }
+}
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+public func FfiConverterTypeDecisionTraceFfi_lift(_ buf: RustBuffer) throws -> DecisionTraceFfi {
+    return try FfiConverterTypeDecisionTraceFfi.lift(buf)
+}
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+public func FfiConverterTypeDecisionTraceFfi_lower(_ value: DecisionTraceFfi) -> RustBuffer {
+    return FfiConverterTypeDecisionTraceFfi.lower(value)
 }
 
 public struct DependencyStatus {
@@ -4922,6 +5156,10 @@ public enum ActivationAction {
     case switchTmuxSession(sessionName: String
     )
     /**
+     * Ensure tmux session exists (create if needed), then switch
+     */
+    case ensureTmuxSession(sessionName: String, projectPath: String)
+    /**
      * Discover host terminal via TTY, then switch tmux session
      */
     case activateHostThenSwitchTmux(hostTty: String, sessionName: String)
@@ -4965,15 +5203,17 @@ public struct FfiConverterTypeActivationAction: FfiConverterRustBuffer {
         case 5: return try .switchTmuxSession(sessionName: FfiConverterString.read(from: &buf)
             )
 
-        case 6: return try .activateHostThenSwitchTmux(hostTty: FfiConverterString.read(from: &buf), sessionName: FfiConverterString.read(from: &buf))
+        case 6: return try .ensureTmuxSession(sessionName: FfiConverterString.read(from: &buf), projectPath: FfiConverterString.read(from: &buf))
 
-        case 7: return try .launchTerminalWithTmux(sessionName: FfiConverterString.read(from: &buf), projectPath: FfiConverterString.read(from: &buf))
+        case 7: return try .activateHostThenSwitchTmux(hostTty: FfiConverterString.read(from: &buf), sessionName: FfiConverterString.read(from: &buf))
 
-        case 8: return try .launchNewTerminal(projectPath: FfiConverterString.read(from: &buf), projectName: FfiConverterString.read(from: &buf))
+        case 8: return try .launchTerminalWithTmux(sessionName: FfiConverterString.read(from: &buf), projectPath: FfiConverterString.read(from: &buf))
 
-        case 9: return .activatePriorityFallback
+        case 9: return try .launchNewTerminal(projectPath: FfiConverterString.read(from: &buf), projectName: FfiConverterString.read(from: &buf))
 
-        case 10: return .skip
+        case 10: return .activatePriorityFallback
+
+        case 11: return .skip
 
         default: throw UniffiInternalError.unexpectedEnumCase
         }
@@ -5003,26 +5243,31 @@ public struct FfiConverterTypeActivationAction: FfiConverterRustBuffer {
             writeInt(&buf, Int32(5))
             FfiConverterString.write(sessionName, into: &buf)
 
-        case let .activateHostThenSwitchTmux(hostTty, sessionName):
+        case let .ensureTmuxSession(sessionName, projectPath):
             writeInt(&buf, Int32(6))
+            FfiConverterString.write(sessionName, into: &buf)
+            FfiConverterString.write(projectPath, into: &buf)
+
+        case let .activateHostThenSwitchTmux(hostTty, sessionName):
+            writeInt(&buf, Int32(7))
             FfiConverterString.write(hostTty, into: &buf)
             FfiConverterString.write(sessionName, into: &buf)
 
         case let .launchTerminalWithTmux(sessionName, projectPath):
-            writeInt(&buf, Int32(7))
+            writeInt(&buf, Int32(8))
             FfiConverterString.write(sessionName, into: &buf)
             FfiConverterString.write(projectPath, into: &buf)
 
         case let .launchNewTerminal(projectPath, projectName):
-            writeInt(&buf, Int32(8))
+            writeInt(&buf, Int32(9))
             FfiConverterString.write(projectPath, into: &buf)
             FfiConverterString.write(projectName, into: &buf)
 
         case .activatePriorityFallback:
-            writeInt(&buf, Int32(9))
+            writeInt(&buf, Int32(10))
 
         case .skip:
-            writeInt(&buf, Int32(10))
+            writeInt(&buf, Int32(11))
         }
     }
 }
@@ -5967,6 +6212,30 @@ private struct FfiConverterOptionUInt8: FfiConverterRustBuffer {
 #if swift(>=5.8)
     @_documentation(visibility: private)
 #endif
+private struct FfiConverterOptionUInt32: FfiConverterRustBuffer {
+    typealias SwiftType = UInt32?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterUInt32.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterUInt32.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
 private struct FfiConverterOptionUInt64: FfiConverterRustBuffer {
     typealias SwiftType = UInt64?
 
@@ -6103,6 +6372,30 @@ private struct FfiConverterOptionTypeCreationProgress: FfiConverterRustBuffer {
         switch try readInt(&buf) as Int8 {
         case 0: return nil
         case 1: return try FfiConverterTypeCreationProgress.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+private struct FfiConverterOptionTypeDecisionTraceFfi: FfiConverterRustBuffer {
+    typealias SwiftType = DecisionTraceFfi?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeDecisionTraceFfi.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeDecisionTraceFfi.read(from: &buf)
         default: throw UniffiInternalError.unexpectedOptionalTag
         }
     }
@@ -6298,6 +6591,31 @@ private struct FfiConverterSequenceTypeArtifact: FfiConverterRustBuffer {
         seq.reserveCapacity(Int(len))
         for _ in 0 ..< len {
             try seq.append(FfiConverterTypeArtifact.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+private struct FfiConverterSequenceTypeCandidateTraceFfi: FfiConverterRustBuffer {
+    typealias SwiftType = [CandidateTraceFfi]
+
+    public static func write(_ value: [CandidateTraceFfi], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeCandidateTraceFfi.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [CandidateTraceFfi] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [CandidateTraceFfi]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            try seq.append(FfiConverterTypeCandidateTraceFfi.read(from: &buf))
         }
         return seq
     }
@@ -6558,6 +6876,17 @@ private struct FfiConverterDictionaryStringTypeShellEntryFfi: FfiConverterRustBu
 }
 
 /**
+ * Formats a decision trace for logging.
+ */
+public func formatActivationTrace(trace: DecisionTraceFfi) -> String {
+    return try! FfiConverterString.lift(try! rustCall {
+        uniffi_hud_core_fn_func_format_activation_trace(
+            FfiConverterTypeDecisionTraceFfi.lower(trace), $0
+        )
+    })
+}
+
+/**
  * Check if two paths refer to the same location or are parent/child.
  *
  * Returns true if:
@@ -6590,6 +6919,9 @@ private var initializationResult: InitializationResult = {
     let scaffolding_contract_version = ffi_hud_core_uniffi_contract_version()
     if bindings_contract_version != scaffolding_contract_version {
         return InitializationResult.contractVersionMismatch
+    }
+    if uniffi_hud_core_checksum_func_format_activation_trace() != 49525 {
+        return InitializationResult.apiChecksumMismatch
     }
     if uniffi_hud_core_checksum_func_paths_match() != 59842 {
         return InitializationResult.apiChecksumMismatch
@@ -6685,6 +7017,9 @@ private var initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if uniffi_hud_core_checksum_method_hudengine_resolve_activation() != 10157 {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if uniffi_hud_core_checksum_method_hudengine_resolve_activation_with_trace() != 50469 {
         return InitializationResult.apiChecksumMismatch
     }
     if uniffi_hud_core_checksum_method_hudengine_run_hook_test() != 13412 {

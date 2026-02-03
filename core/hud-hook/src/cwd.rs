@@ -43,7 +43,7 @@ pub struct ShellEntry {
 
 impl ShellEntry {
     fn new(cwd: String, tty: String, parent_app: ParentApp) -> Self {
-        let (tmux_session, tmux_client_tty) = if parent_app == ParentApp::Tmux {
+        let (tmux_session, tmux_client_tty) = if std::env::var("TMUX").is_ok() {
             detect_tmux_context().map_or((None, None), |(s, t)| (Some(s), Some(t)))
         } else {
             (None, None)
@@ -127,9 +127,6 @@ fn resolve_tty(tty: &str) -> Result<String, CwdError> {
 }
 
 fn detect_parent_app(_pid: u32) -> ParentApp {
-    if std::env::var("TMUX").is_ok() {
-        return ParentApp::Tmux;
-    }
     if let Ok(term_program) = std::env::var("TERM_PROGRAM") {
         let normalized = term_program.to_lowercase();
         match normalized.as_str() {
@@ -153,6 +150,10 @@ fn detect_parent_app(_pid: u32) -> ParentApp {
         if normalized.contains("alacritty") {
             return ParentApp::Alacritty;
         }
+    }
+
+    if std::env::var("TMUX").is_ok() {
+        return ParentApp::Tmux;
     }
 
     ParentApp::Unknown
@@ -192,5 +193,63 @@ fn detect_tmux_context() -> Option<(String, String)> {
     match (session, client_tty) {
         (Some(session), Some(client_tty)) => Some((session, client_tty)),
         _ => None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::{Mutex, MutexGuard};
+
+    static ENV_LOCK: Mutex<()> = Mutex::new(());
+
+    struct EnvGuard {
+        _lock: MutexGuard<'static, ()>,
+        tmux: Option<String>,
+        term_program: Option<String>,
+        term: Option<String>,
+    }
+
+    impl EnvGuard {
+        fn acquire() -> Self {
+            let lock = ENV_LOCK.lock().expect("env lock");
+            Self {
+                _lock: lock,
+                tmux: std::env::var("TMUX").ok(),
+                term_program: std::env::var("TERM_PROGRAM").ok(),
+                term: std::env::var("TERM").ok(),
+            }
+        }
+
+        fn set_var(&self, key: &str, value: &str) {
+            std::env::set_var(key, value);
+        }
+    }
+
+    impl Drop for EnvGuard {
+        fn drop(&mut self) {
+            match &self.tmux {
+                Some(value) => std::env::set_var("TMUX", value),
+                None => std::env::remove_var("TMUX"),
+            }
+            match &self.term_program {
+                Some(value) => std::env::set_var("TERM_PROGRAM", value),
+                None => std::env::remove_var("TERM_PROGRAM"),
+            }
+            match &self.term {
+                Some(value) => std::env::set_var("TERM", value),
+                None => std::env::remove_var("TERM"),
+            }
+        }
+    }
+
+    #[test]
+    fn test_detect_parent_app_preserves_host_when_tmux_set() {
+        let guard = EnvGuard::acquire();
+        guard.set_var("TMUX", "/tmp/tmux-123");
+        guard.set_var("TERM_PROGRAM", "cursor");
+
+        let app = detect_parent_app(12345);
+        assert_eq!(app, ParentApp::Cursor);
     }
 }

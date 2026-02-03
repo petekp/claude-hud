@@ -3,6 +3,13 @@ import XCTest
 
 @MainActor
 final class TerminalLauncherTests: XCTestCase {
+    private struct StubAppleScriptClient: AppleScriptClient {
+        let shouldSucceed: Bool
+
+        func run(_ script: String) {}
+        func runChecked(_ script: String) -> Bool { shouldSucceed }
+    }
+
     func testGhosttyWindowCountZeroDoesNotLaunchWhenClientAttached() {
         let decision = TerminalLauncher.ghosttyWindowDecision(windowCount: 0, anyClientAttached: true)
         XCTAssertEqual(decision, .activateAndSwitch)
@@ -37,11 +44,11 @@ final class TerminalLauncherTests: XCTestCase {
         XCTAssertTrue(scripts.first?.contains("tmux switch-client") == true)
     }
 
-    func testSwitchTmuxSessionCreatesThenActivates() async {
+    func testEnsureTmuxSessionCreatesThenActivates() async {
         var activateCalls = 0
         var callCount = 0
 
-        let result = await TerminalLauncher.performSwitchTmuxSession(
+        let result = await TerminalLauncher.performEnsureTmuxSession(
             sessionName: "newproj",
             projectPath: "/Users/pete/Code/newproj",
             runScript: { _ in
@@ -61,22 +68,52 @@ final class TerminalLauncherTests: XCTestCase {
 
     func testSwitchTmuxSessionDoesNotActivateOnFailure() async {
         var activateCalls = 0
-        var callCount = 0
 
         let result = await TerminalLauncher.performSwitchTmuxSession(
             sessionName: "broken",
             projectPath: "/Users/pete/Code/broken",
             runScript: { _ in
-                defer { callCount += 1 }
-                switch callCount {
-                case 0: return (1, "switch failed")
-                default: return (1, "create failed")
-                }
+                return (1, "switch failed")
             },
             activateTerminal: { activateCalls += 1 }
         )
 
         XCTAssertFalse(result)
         XCTAssertEqual(activateCalls, 0)
+    }
+
+    func testActivateByTtyReturnsFalseWhenAppleScriptFails() async {
+        let launcher = TerminalLauncher(appleScript: StubAppleScriptClient(shouldSucceed: false))
+        let result = await launcher.activateByTtyAction(tty: "/dev/ttys001", terminalType: .iTerm)
+        XCTAssertFalse(result)
+    }
+
+    func testActivateByTtyReturnsFalseWhenTerminalAppAppleScriptFails() async {
+        let launcher = TerminalLauncher(appleScript: StubAppleScriptClient(shouldSucceed: false))
+        let result = await launcher.activateByTtyAction(tty: "/dev/ttys002", terminalType: .terminalApp)
+        XCTAssertFalse(result)
+    }
+
+    func testLaunchNoTmuxScriptDoesNotReferenceTmux() {
+        let script = TerminalScripts.launchNoTmux(
+            projectPath: "/Users/pete/Code/myproject",
+            projectName: "myproject",
+            claudePath: "/opt/homebrew/bin/claude"
+        )
+        XCTAssertFalse(script.lowercased().contains("tmux"))
+    }
+
+    func testLaunchNewTerminalScriptDoesNotReferenceTmux() {
+        let script = TerminalLauncher.launchNewTerminalScript(
+            projectPath: "/Users/pete/Code/myproject",
+            projectName: "myproject",
+            claudePath: "/opt/homebrew/bin/claude"
+        )
+        XCTAssertFalse(script.lowercased().contains("tmux"))
+    }
+
+    func testTerminalAppMatchingNames() {
+        XCTAssertTrue(ParentApp.terminal.matchesRunningAppName("Terminal"))
+        XCTAssertTrue(ParentApp.terminal.matchesRunningAppName("Terminal.app"))
     }
 }

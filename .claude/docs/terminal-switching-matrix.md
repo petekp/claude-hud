@@ -51,7 +51,7 @@ This document maps out all scenarios for the "click project → activate termina
 | 3 | Direct shell | 2+ tabs, project in tab 2 | "iTerm2" | Activate iTerm, select tab 2 | ❓ | |
 | 4 | tmux session | 1 tab | "tmux" | Activate iTerm w/ tmux | 🔄 | Phase 2: Uses tmux_client_tty for host terminal discovery |
 | 5 | tmux session | 2+ tabs | "tmux" | Activate iTerm, switch tmux session | 🔄 | Phase 2: Runs `tmux switch-client -t <session>` |
-| 6 | tmux + direct | 2 tabs (1 tmux, 1 direct) | mixed | Prefer direct shell tab | ✅ | By design |
+| 6 | tmux + direct | 2 tabs (1 tmux, 1 direct) | mixed | Prefer tmux shell when client attached | ✅ | Tmux preferred only when a client is attached |
 
 ### Ghostty
 
@@ -72,8 +72,8 @@ This document maps out all scenarios for the "click project → activate termina
 
 | # | Context | Tabs | parent_app | Expected | Current | Notes |
 |---|---------|------|------------|----------|---------|-------|
-| 12 | Direct shell | 1 tab | nil | Activate Terminal | 🔄 | Phase 1: TTY discovery queries both iTerm & Terminal |
-| 13 | Direct shell | 2+ tabs | nil | Activate Terminal, select tab | 🔄 | Phase 1: TTY discovery + AppleScript tab selection |
+| 12 | Direct shell | 1 tab | nil | Activate Terminal | 🔄 | TTY discovery + Terminal.app matching fixed |
+| 13 | Direct shell | 2+ tabs | nil | Activate Terminal, select tab | 🔄 | TTY discovery + AppleScript tab selection |
 | 14 | Direct shell | 2+ tabs | "Terminal" | Activate Terminal, select tab | ❓ | |
 | 15 | tmux session | any | "tmux" | Activate Terminal w/ tmux | 🔄 | Phase 2: Uses tmux_client_tty + TTY discovery |
 
@@ -111,7 +111,7 @@ This document maps out all scenarios for the "click project → activate termina
 | 26 | iTerm + Ghostty | Ghostty | nil | Activate Ghostty | 🔄 | Phase 1: TTY discovery queries both terminals |
 | 27 | iTerm + Ghostty | Ghostty | "Ghostty" | Activate Ghostty | ✅ | |
 | 28 | iTerm + Terminal | iTerm | nil | Activate iTerm | 🔄 | Phase 1: TTY discovery |
-| 29 | iTerm + Terminal | Terminal | nil | Activate Terminal | 🔄 | Phase 1: TTY discovery queries both terminals |
+| 29 | iTerm + Terminal | Terminal | nil | Activate Terminal | 🔄 | TTY discovery + Terminal.app matching fixed |
 | 30 | Ghostty + Terminal | Ghostty | nil | Activate Ghostty | 🔄 | Phase 1: TTY discovery (Ghostty not queryable, falls back) |
 | 31 | 3+ terminals | varies | nil | Activate correct one | 🔄 | Phase 1: Queries iTerm + Terminal, others by priority |
 
@@ -125,20 +125,20 @@ IDEs like Cursor and VS Code have integrated terminals. When `parent_app` is det
 
 | # | Context | Windows | parent_app | Expected | Current | Notes |
 |---|---------|---------|------------|----------|---------|-------|
-| 41 | Integrated terminal | 1 window | "cursor" | Activate Cursor | ❌ | Falls through, activates random terminal |
-| 42 | Integrated terminal | 2+ windows | "cursor" | Activate correct Cursor window | ❌ | No window selection |
-| 43 | Integrated + tmux | 1 window | "cursor" | Activate Cursor, switch tmux | ⚠️ | tmux switches, but Cursor not activated |
-| 44 | Integrated + tmux | 2+ windows | "cursor" | Activate correct window, switch tmux | ❌ | Neither works |
+| 41 | Integrated terminal | 1 window | "cursor" | Activate Cursor | 🔄 | CLI activation implemented, needs manual verification |
+| 42 | Integrated terminal | 2+ windows | "cursor" | Activate correct Cursor window | 🔄 | CLI activation should target project window |
+| 43 | Integrated + tmux | 1 window | "cursor" | Activate Cursor, switch tmux | 🔄 | Host app preserved under tmux; verify end-to-end |
+| 44 | Integrated + tmux | 2+ windows | "cursor" | Activate correct window, switch tmux | 🔄 | CLI + tmux fallback path |
 | 45 | Integrated terminal | any | "cursor" | Focus terminal panel | ❌ | No terminal focus support |
 
 ### VS Code
 
 | # | Context | Windows | parent_app | Expected | Current | Notes |
 |---|---------|---------|------------|----------|---------|-------|
-| 46 | Integrated terminal | 1 window | "vscode" | Activate VS Code | ❌ | Falls through, activates random terminal |
-| 47 | Integrated terminal | 2+ windows | "vscode" | Activate correct VS Code window | ❌ | No window selection |
-| 48 | Integrated + tmux | 1 window | "vscode" | Activate VS Code, switch tmux | ⚠️ | tmux switches, but VS Code not activated |
-| 49 | Integrated + tmux | 2+ windows | "vscode" | Activate correct window, switch tmux | ❌ | Neither works |
+| 46 | Integrated terminal | 1 window | "vscode" | Activate VS Code | 🔄 | CLI activation implemented, needs manual verification |
+| 47 | Integrated terminal | 2+ windows | "vscode" | Activate correct VS Code window | 🔄 | CLI activation should target project window |
+| 48 | Integrated + tmux | 1 window | "vscode" | Activate VS Code, switch tmux | 🔄 | Host app preserved under tmux; verify end-to-end |
+| 49 | Integrated + tmux | 2+ windows | "vscode" | Activate correct window, switch tmux | 🔄 | CLI + tmux fallback path |
 | 50 | Integrated terminal | any | "vscode" | Focus terminal panel | ❌ | No terminal focus support |
 
 ### IDE + External Terminal
@@ -162,8 +162,8 @@ IDEs like Cursor and VS Code have integrated terminals. When `parent_app` is det
 3. User could bind custom key, but we can't assume this
 
 **Detection already works:**
-- `parent_app="cursor"` detected via process tree (cwd.rs lines 343-344)
-- `parent_app="vscode"` detected similarly (lines 345-347)
+- `parent_app="cursor"` detected via `TERM_PROGRAM` in the shell hook
+- `parent_app="vscode"` detected similarly via `TERM_PROGRAM`
 
 ---
 
@@ -173,7 +173,7 @@ IDEs like Cursor and VS Code have integrated terminals. When `parent_app` is det
 |---|----------|----------|---------|-------|
 | 32 | No terminal open with project | Open new terminal | ✅ | Falls through to bash script |
 | 33 | Shell CWD is subdir of project | Activate that terminal | ✅ | Handled in findShellInProject |
-| 34 | Multiple shells same project | Activate most recent? | ❓ | Uses first match |
+| 34 | Multiple shells same project | Activate most recent (tmux preferred when attached) | ✅ | Deterministic ranking + recency tests |
 | 35 | Stale shell entry (process dead) | Skip, find live shell | ✅ | kill(pid,0) check |
 | 36 | TTY reused by different shell | Don't match wrong session | ✅ | PID check handles this |
 | 37 | IDE integrated terminal (Cursor) | See IDE section (#41-45) | — | Moved to dedicated section |

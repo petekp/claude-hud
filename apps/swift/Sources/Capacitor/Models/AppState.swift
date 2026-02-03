@@ -60,6 +60,10 @@ class AppState: ObservableObject {
 
     @Published var hookDiagnostic: HookDiagnosticReport?
 
+    // MARK: - Activation Trace (Debug)
+
+    @Published var activationTrace: String?
+
     // MARK: - Daemon Diagnostic
 
     @Published var daemonStatus: DaemonStatus?
@@ -88,6 +92,7 @@ class AppState: ObservableObject {
     let terminalLauncher = TerminalLauncher()
     let sessionStateManager = SessionStateManager()
     let projectDetailsManager = ProjectDetailsManager()
+    private let projectIngestionWorker = ProjectIngestionWorker()
 
     private(set) var activeProjectResolver: ActiveProjectResolver!
 
@@ -127,6 +132,12 @@ class AppState: ObservableObject {
             sessionStateManager: sessionStateManager,
             shellStateStore: shellStateStore
         )
+
+        terminalLauncher.onActivationTrace = { [weak self] trace in
+            _Concurrency.Task { @MainActor in
+                self?.activationTrace = trace
+            }
+        }
 
         do {
             engine = try HudEngine()
@@ -281,20 +292,20 @@ class AppState: ObservableObject {
     // MARK: - Daemon Diagnostic
 
     func ensureDaemonRunning() {
-        _Concurrency.Task.detached { [weak self] in
-            let errorMessage = DaemonService.ensureRunning()
-            await MainActor.run {
-                if let message = errorMessage {
-                    self?.daemonStatus = DaemonStatus(
-                        isEnabled: true,
-                        isHealthy: false,
-                        message: message,
-                        pid: nil,
-                        version: nil
-                    )
-                }
+        _Concurrency.Task { @MainActor [weak self] in
+            let errorMessage = await _Concurrency.Task.detached {
+                DaemonService.ensureRunning()
+            }.value
+            if let message = errorMessage {
+                self?.daemonStatus = DaemonStatus(
+                    isEnabled: true,
+                    isHealthy: false,
+                    message: message,
+                    pid: nil,
+                    version: nil
+                )
             }
-            await self?.checkDaemonHealth()
+            self?.checkDaemonHealth()
         }
     }
 
@@ -409,53 +420,26 @@ class AppState: ObservableObject {
     /// Already-tracked projects are silently moved from Paused to In Progress
     /// if applicable, showing "Moved to In Progress" rather than an error.
     func addProjectsFromDrop(_ urls: [URL]) {
-        guard let engine = engine else { return }
+        guard engine != nil else { return }
+        guard let worker = projectIngestionWorker else { return }
 
         // Navigate to list view first if not already there
         if projectView != .list {
             showProjectList()
         }
 
-        DispatchQueue.global(qos: .userInitiated).async {
-            let fm = FileManager.default
-            var addedCount = 0
-            var addedPaths: [String] = []
-            var alreadyTrackedPaths: [String] = []
-            var failedNames: [String] = []
+        let paths = urls.map { $0.path }
 
-            for url in urls {
-                var isDirectory: ObjCBool = false
-                guard fm.fileExists(atPath: url.path, isDirectory: &isDirectory),
-                      isDirectory.boolValue else {
-                    continue
-                }
+        _Concurrency.Task { [weak self] in
+            let outcome = await worker.addProjects(paths: paths)
+            await MainActor.run {
+                guard let self else { return }
 
-                let result = engine.validateProject(path: url.path)
+                let finalAddedCount = outcome.addedCount
+                let finalAddedPaths = outcome.addedPaths
+                let finalAlreadyTrackedPaths = outcome.alreadyTrackedPaths
+                let finalFailedNames = outcome.failedNames
 
-                switch result.resultType {
-                case "valid", "missing_claude_md", "suggest_parent", "not_a_project":
-                    do {
-                        try engine.addProject(path: url.path)
-                        addedCount += 1
-                        addedPaths.append(url.path)
-                    } catch {
-                        failedNames.append(url.lastPathComponent)
-                    }
-                case "already_tracked":
-                    alreadyTrackedPaths.append(result.path)
-                case "path_not_found", "dangerous_path":
-                    failedNames.append(url.lastPathComponent)
-                default:
-                    failedNames.append(url.lastPathComponent)
-                }
-            }
-
-            let finalAddedCount = addedCount
-            let finalAddedPaths = addedPaths
-            let finalAlreadyTrackedPaths = alreadyTrackedPaths
-            let finalFailedNames = failedNames
-
-            DispatchQueue.main.async {
                 // Separate already-tracked projects into paused vs already in progress
                 var movedCount = 0
                 var alreadyInProgressCount = 0

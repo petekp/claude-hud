@@ -61,6 +61,8 @@ struct ProjectsView: View {
                 #if DEBUG
                 DebugActiveStateCard()
                     .padding(.bottom, 6)
+                DebugActivationTraceCard()
+                    .padding(.bottom, 6)
                 #endif
                 // Setup status card - show regardless of project state
                 if let diagnostic = appState.hookDiagnostic, !diagnostic.isHealthy {

@@ -997,6 +997,22 @@ impl HudEngine {
     ) -> crate::activation::ActivationDecision {
         crate::activation::resolve_activation(&project_path, shell_state.as_ref(), &tmux_context)
     }
+
+    /// Resolves activation and optionally returns a decision trace for debugging.
+    pub fn resolve_activation_with_trace(
+        &self,
+        project_path: String,
+        shell_state: Option<crate::activation::ShellCwdStateFfi>,
+        tmux_context: crate::activation::TmuxContextFfi,
+        include_trace: bool,
+    ) -> crate::activation::ActivationDecision {
+        crate::activation::resolve_activation_with_trace(
+            &project_path,
+            shell_state.as_ref(),
+            &tmux_context,
+            include_trace,
+        )
+    }
 }
 
 impl HudEngine {

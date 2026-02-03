@@ -25,11 +25,15 @@
 //! Swift: executes returned ActivationAction
 //! ```
 
+mod policy;
+mod trace;
+
 use crate::state::normalize_path_for_matching;
 use crate::types::ParentApp;
-use chrono::{DateTime, Utc};
+use policy::{select_best_shell, SelectionPolicy};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use trace::DecisionTraceFfi;
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // FFI Types
@@ -81,6 +85,8 @@ pub struct ActivationDecision {
     pub fallback: Option<ActivationAction>,
     /// Debug context explaining why this decision was made
     pub reason: String,
+    /// Optional decision trace for debugging selection logic
+    pub trace: Option<DecisionTraceFfi>,
 }
 
 /// A single action for Swift to execute.
@@ -106,6 +112,12 @@ pub enum ActivationAction {
 
     /// Switch tmux session in attached client
     SwitchTmuxSession { session_name: String },
+
+    /// Ensure tmux session exists (create if needed), then switch
+    EnsureTmuxSession {
+        session_name: String,
+        project_path: String,
+    },
 
     /// Discover host terminal via TTY, then switch tmux session
     ActivateHostThenSwitchTmux {
@@ -201,33 +213,66 @@ pub fn resolve_activation(
     shell_state: Option<&ShellCwdStateFfi>,
     tmux_context: &TmuxContextFfi,
 ) -> ActivationDecision {
-    let action_path = normalize_path_for_actions(project_path);
+    resolve_activation_internal(project_path, shell_state, tmux_context, false)
+}
 
-    // Priority 1: Find existing shell in daemon snapshot
-    // If a tmux client is attached, only consider tmux shells (or IDE shells).
-    // This ensures clicks create/switch tmux sessions instead of focusing non-tmux terminals.
+/// Resolves what activation action to take for a project, optionally returning a trace.
+pub fn resolve_activation_with_trace(
+    project_path: &str,
+    shell_state: Option<&ShellCwdStateFfi>,
+    tmux_context: &TmuxContextFfi,
+    include_trace: bool,
+) -> ActivationDecision {
+    resolve_activation_internal(project_path, shell_state, tmux_context, include_trace)
+}
+
+fn resolve_activation_internal(
+    project_path: &str,
+    shell_state: Option<&ShellCwdStateFfi>,
+    tmux_context: &TmuxContextFfi,
+    include_trace: bool,
+) -> ActivationDecision {
+    let action_path = normalize_path_for_actions(project_path);
+    let mut trace: Option<DecisionTraceFfi> = None;
+
+    // Priority 1: Find existing shell in daemon snapshot.
     if let Some(state) = shell_state {
-        let require_tmux_or_ide = tmux_context.has_attached_client;
-        if let Some((pid, shell)) = find_shell_at_path(
+        let policy = SelectionPolicy {
+            prefer_tmux: tmux_context.has_attached_client,
+        };
+        let selection = select_best_shell(
             &state.shells,
             project_path,
-            tmux_context,
-            require_tmux_or_ide,
-        ) {
-            return resolve_for_existing_shell(pid, shell, tmux_context, &action_path);
+            &tmux_context.home_dir,
+            &policy,
+            include_trace,
+        );
+
+        if include_trace {
+            trace = Some(DecisionTraceFfi::from_shell_candidates(
+                &policy,
+                &selection.candidates,
+                selection.best.as_ref().map(|candidate| candidate.pid),
+            ));
+        }
+
+        if let Some(best) = selection.best {
+            let mut decision =
+                resolve_for_existing_shell(best.pid, best.shell, tmux_context, &action_path);
+            decision.trace = trace;
+            return decision;
         }
     }
 
     // Priority 2: Check for tmux session at path
     if let Some(session_name) = &tmux_context.session_at_path {
-        return resolve_for_tmux_session(
-            session_name,
-            tmux_context.has_attached_client,
-            &action_path,
-        );
+        let mut decision =
+            resolve_for_tmux_session(session_name, tmux_context.has_attached_client, &action_path);
+        decision.trace = trace;
+        return decision;
     }
 
-    // Priority 3: If tmux client is attached, create/switch to a new session for this project.
+    // Priority 3: If tmux client is attached, ensure a session for this project.
     if tmux_context.has_attached_client {
         let project_name = action_path
             .rsplit('/')
@@ -235,15 +280,19 @@ pub fn resolve_activation(
             .unwrap_or(&action_path)
             .to_string();
 
-        return ActivationDecision {
-            primary: ActivationAction::SwitchTmuxSession {
+        let mut decision = ActivationDecision {
+            primary: ActivationAction::EnsureTmuxSession {
                 session_name: project_name,
+                project_path: action_path,
             },
             fallback: Some(ActivationAction::ActivatePriorityFallback),
             reason:
-                "No existing shell or tmux session found; tmux client attached, creating session"
+                "No existing shell or tmux session found; tmux client attached, ensuring session"
                     .to_string(),
+            trace: None,
         };
+        decision.trace = trace;
+        return decision;
     }
 
     // Priority 4: Prefer activating an existing terminal app, then fall back to launch.
@@ -253,7 +302,7 @@ pub fn resolve_activation(
         .unwrap_or(&action_path)
         .to_string();
 
-    ActivationDecision {
+    let mut decision = ActivationDecision {
         primary: ActivationAction::ActivatePriorityFallback,
         fallback: Some(ActivationAction::LaunchNewTerminal {
             project_path: action_path,
@@ -262,123 +311,10 @@ pub fn resolve_activation(
         reason:
             "No existing shell or tmux session found; activating existing terminal if available"
                 .to_string(),
-    }
-}
-
-/// Find a shell entry at the given path.
-///
-/// Returns the best shell at the path using a deterministic priority order:
-///
-/// **Priority (highest to lowest):**
-/// 1. Live shells beat dead shells (process still running)
-/// 2. When tmux client is attached: shells with `tmux_session` beat those without
-/// 3. Path specificity: exact > child > parent
-/// 4. Among same-tier shells: most recently updated wins
-///
-/// This ensures predictable behavior:
-/// - If you're using tmux with an attached client, we'll always pick the tmux shell
-/// - This guarantees `ActivateHostThenSwitchTmux` is chosen for proper session switching
-/// - Non-tmux shells are only preferred when no tmux client is attached
-fn find_shell_at_path<'a>(
-    shells: &'a HashMap<String, ShellEntryFfi>,
-    project_path: &str,
-    tmux_context: &TmuxContextFfi,
-    require_tmux_or_ide: bool,
-) -> Option<(u32, &'a ShellEntryFfi)> {
-    let project_path_normalized = normalize_path_for_matching(project_path);
-    let home_dir_normalized = normalize_path_for_matching(&tmux_context.home_dir);
-    let mut best_shell: Option<(u32, &ShellEntryFfi)> = None;
-    let mut best_is_live = false;
-    let mut best_has_tmux = false;
-    let mut best_match_rank: u8 = 0;
-    let mut best_timestamp: Option<DateTime<Utc>> = None;
-
-    // Only prefer tmux shells when a client is actually attached
-    // (If no client attached, picking a tmux shell would just launch a new terminal anyway)
-    let prefer_tmux = tmux_context.has_attached_client;
-
-    for (pid_str, shell) in shells {
-        if require_tmux_or_ide && shell.tmux_session.is_none() && !shell.parent_app.is_ide() {
-            continue;
-        }
-        let shell_path = normalize_path_for_matching(&shell.cwd);
-        let Some(match_type) =
-            match_type_excluding_home(&shell_path, &project_path_normalized, &home_dir_normalized)
-        else {
-            continue;
-        };
-
-        let pid: u32 = match pid_str.parse() {
-            Ok(p) => p,
-            Err(_) => continue,
-        };
-
-        let shell_time = parse_timestamp(&shell.updated_at);
-        let shell_has_tmux = shell.tmux_session.is_some();
-        let shell_match_rank = match_type.rank();
-
-        // Determine if current best dominates this candidate
-        // Priority order: live > dead, then (if prefer_tmux) tmux > non-tmux, then newer > older
-        let dominated = match (shell.is_live, best_is_live) {
-            (false, true) => true,  // Dead shell can't beat live shell
-            (true, false) => false, // Live shell always beats dead
-            _ => {
-                // Same liveness tier - check tmux preference if enabled
-                if prefer_tmux {
-                    match (shell_has_tmux, best_has_tmux) {
-                        (false, true) => true,  // Non-tmux can't beat tmux when client attached
-                        (true, false) => false, // Tmux beats non-tmux when client attached
-                        _ => {
-                            if shell_match_rank != best_match_rank {
-                                shell_match_rank < best_match_rank
-                            } else {
-                                is_timestamp_older_or_equal(shell_time, best_timestamp)
-                            }
-                        }
-                    }
-                } else {
-                    // No tmux client attached - compare path specificity, then timestamp
-                    if shell_match_rank != best_match_rank {
-                        shell_match_rank < best_match_rank
-                    } else {
-                        is_timestamp_older_or_equal(shell_time, best_timestamp)
-                    }
-                }
-            }
-        };
-
-        if !dominated {
-            best_shell = Some((pid, shell));
-            best_is_live = shell.is_live;
-            best_has_tmux = shell_has_tmux;
-            best_match_rank = shell_match_rank;
-            best_timestamp = shell_time;
-        }
-    }
-
-    best_shell
-}
-
-/// Parse an RFC3339 timestamp string into a DateTime<Utc>.
-/// Returns None if parsing fails (malformed timestamp).
-fn parse_timestamp(s: &str) -> Option<DateTime<Utc>> {
-    DateTime::parse_from_rfc3339(s)
-        .ok()
-        .map(|dt| dt.with_timezone(&Utc))
-}
-
-/// Check if `candidate` is older than or equal to `best`.
-/// If either timestamp is unparseable, falls back to string comparison.
-fn is_timestamp_older_or_equal(
-    candidate: Option<DateTime<Utc>>,
-    best: Option<DateTime<Utc>>,
-) -> bool {
-    match (candidate, best) {
-        (Some(c), Some(b)) => c <= b,
-        (None, Some(_)) => true, // Unparseable candidate loses to parseable best
-        (Some(_), None) => false, // Parseable candidate beats unparseable best
-        (None, None) => true,    // Both unparseable, treat as dominated
-    }
+        trace: None,
+    };
+    decision.trace = trace;
+    decision
 }
 
 /// Check if two paths refer to the same location or are parent/child.
@@ -408,21 +344,10 @@ pub fn paths_match(a: &str, b: &str) -> bool {
         .is_some_and(|rest| rest.starts_with('/'))
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum PathMatch {
-    Exact,
-    Child,
-    Parent,
-}
-
-impl PathMatch {
-    fn rank(self) -> u8 {
-        match self {
-            Self::Exact => 2,
-            Self::Child => 1,
-            Self::Parent => 0,
-        }
-    }
+/// Formats a decision trace for logging.
+#[uniffi::export]
+pub fn format_activation_trace(trace: DecisionTraceFfi) -> String {
+    trace::format_decision_trace(&trace)
 }
 
 /// Check if two paths match, excluding HOME as a parent.
@@ -437,39 +362,7 @@ fn paths_match_excluding_home(shell_path: &str, project_path: &str, home_dir: &s
     let shell_path = normalize_path_for_matching(shell_path);
     let project_path = normalize_path_for_matching(project_path);
     let home_dir = normalize_path_for_matching(home_dir);
-    match_type_excluding_home(&shell_path, &project_path, &home_dir).is_some()
-}
-
-fn match_type_excluding_home(
-    shell_path: &str,
-    project_path: &str,
-    home_dir: &str,
-) -> Option<PathMatch> {
-    if shell_path == project_path {
-        return Some(PathMatch::Exact);
-    }
-
-    let (shorter, longer) = if shell_path.len() < project_path.len() {
-        (shell_path, project_path)
-    } else {
-        (project_path, shell_path)
-    };
-
-    // HOME is too broad to be a useful parent - exclude it from parent matching
-    if shorter == home_dir {
-        return None;
-    }
-
-    longer
-        .strip_prefix(shorter)
-        .is_some_and(|rest| rest.starts_with('/'))
-        .then(|| {
-            if shorter == project_path {
-                PathMatch::Child
-            } else {
-                PathMatch::Parent
-            }
-        })
+    policy::match_type_excluding_home(&shell_path, &project_path, &home_dir).is_some()
 }
 
 /// Resolve activation for an existing shell found in the daemon snapshot.
@@ -485,12 +378,25 @@ fn resolve_for_existing_shell(
     // IDE: Always use IDE window activation
     if parent_app.is_ide() {
         if let Ok(ide_type) = IdeType::try_from(parent_app) {
-            let fallback = if has_tmux {
+            let fallback = if tmux_context.has_attached_client {
+                let session_name = shell.tmux_session.clone().unwrap_or_else(|| {
+                    project_path
+                        .rsplit('/')
+                        .next()
+                        .unwrap_or(project_path)
+                        .to_string()
+                });
+                Some(ActivationAction::EnsureTmuxSession {
+                    session_name,
+                    project_path: project_path.to_string(),
+                })
+            } else if has_tmux {
                 shell
                     .tmux_session
                     .as_ref()
-                    .map(|s| ActivationAction::SwitchTmuxSession {
+                    .map(|s| ActivationAction::LaunchTerminalWithTmux {
                         session_name: s.clone(),
+                        project_path: project_path.to_string(),
                     })
             } else {
                 let project_name = project_path
@@ -511,6 +417,7 @@ fn resolve_for_existing_shell(
                 },
                 fallback,
                 reason: format!("Found shell (pid={}) in IDE {:?}", pid, parent_app),
+                trace: None,
             };
         }
     }
@@ -534,6 +441,7 @@ fn resolve_for_existing_shell(
                     "Found shell (pid={}) in tmux session '{}' but no client attached, launching terminal to attach",
                     pid, session_name
                 ),
+                trace: None,
             };
         }
 
@@ -554,6 +462,7 @@ fn resolve_for_existing_shell(
                 pid,
                 shell.tmux_session.as_ref().unwrap()
             ),
+            trace: None,
         };
     }
 
@@ -565,6 +474,7 @@ fn resolve_for_existing_shell(
                 app_name: "kitty".to_string(),
             }),
             reason: format!("Found shell (pid={}) in kitty", pid),
+            trace: None,
         };
     }
 
@@ -580,6 +490,7 @@ fn resolve_for_existing_shell(
                 "Found shell (pid={}) in {:?}, using TTY lookup",
                 pid, parent_app
             ),
+            trace: None,
         };
     }
 
@@ -601,6 +512,7 @@ fn resolve_for_existing_shell(
                 "Found shell (pid={}) in {}, activating app (no tab selection)",
                 pid, app_name
             ),
+            trace: None,
         };
     }
 
@@ -615,6 +527,7 @@ fn resolve_for_existing_shell(
             "Found shell (pid={}) with unknown parent, trying TTY discovery",
             pid
         ),
+        trace: None,
     }
 }
 
@@ -635,6 +548,7 @@ fn resolve_for_tmux_session(
                 "Tmux session '{}' exists with attached client",
                 session_name
             ),
+            trace: None,
         }
     } else {
         // No client attached: launch new terminal that attaches to session
@@ -649,6 +563,7 @@ fn resolve_for_tmux_session(
                 "Tmux session '{}' exists but no client attached, launching terminal to attach",
                 session_name
             ),
+            trace: None,
         }
     }
 }
@@ -810,7 +725,7 @@ mod tests {
     }
 
     #[test]
-    fn test_no_shell_with_attached_tmux_creates_session() {
+    fn test_no_shell_with_attached_tmux_ensures_session() {
         let decision = resolve_activation(
             "/Users/pete/Code/myproject",
             None,
@@ -819,11 +734,16 @@ mod tests {
 
         assert!(matches!(
             decision.primary,
-            ActivationAction::SwitchTmuxSession { .. }
+            ActivationAction::EnsureTmuxSession { .. }
         ));
 
-        if let ActivationAction::SwitchTmuxSession { session_name } = decision.primary {
+        if let ActivationAction::EnsureTmuxSession {
+            session_name,
+            project_path,
+        } = decision.primary
+        {
             assert_eq!(session_name, "myproject");
+            assert_eq!(project_path, "/Users/pete/Code/myproject");
         }
     }
 
@@ -1150,7 +1070,7 @@ mod tests {
     }
 
     #[test]
-    fn test_ide_with_tmux_has_switch_fallback() {
+    fn test_ide_with_tmux_attached_has_ensure_fallback() {
         let state = make_shell_state(vec![(
             "12345",
             make_shell_entry(
@@ -1164,7 +1084,7 @@ mod tests {
         let decision = resolve_activation(
             "/Users/pete/Code/myproject",
             Some(&state),
-            &tmux_context_none(),
+            &tmux_context_attached("myproject"),
         );
 
         assert!(matches!(
@@ -1177,7 +1097,76 @@ mod tests {
 
         assert!(matches!(
             decision.fallback,
-            Some(ActivationAction::SwitchTmuxSession { .. })
+            Some(ActivationAction::EnsureTmuxSession { .. })
+        ));
+    }
+
+    #[test]
+    fn test_ide_without_tmux_with_attached_client_ensures_session() {
+        let state = make_shell_state(vec![(
+            "12345",
+            make_shell_entry(
+                "/Users/pete/Code/myproject",
+                "/dev/pts/0",
+                ParentApp::Cursor,
+                None,
+            ),
+        )]);
+
+        let decision = resolve_activation(
+            "/Users/pete/Code/myproject",
+            Some(&state),
+            &tmux_context_attached_no_session(),
+        );
+
+        assert!(matches!(
+            decision.primary,
+            ActivationAction::ActivateIdeWindow {
+                ide_type: IdeType::Cursor,
+                ..
+            }
+        ));
+
+        assert!(
+            matches!(
+                decision.fallback,
+                Some(ActivationAction::EnsureTmuxSession { ref session_name, .. })
+                    if session_name == "myproject"
+            ),
+            "Expected EnsureTmuxSession fallback when tmux client attached, got {:?}",
+            decision.fallback
+        );
+    }
+
+    #[test]
+    fn test_ide_with_tmux_no_client_fallbacks_to_launch_with_tmux() {
+        let state = make_shell_state(vec![(
+            "12345",
+            make_shell_entry(
+                "/Users/pete/Code/myproject",
+                "/dev/pts/0",
+                ParentApp::Cursor,
+                Some("myproject"),
+            ),
+        )]);
+
+        let decision = resolve_activation(
+            "/Users/pete/Code/myproject",
+            Some(&state),
+            &tmux_context_detached("myproject"),
+        );
+
+        assert!(matches!(
+            decision.primary,
+            ActivationAction::ActivateIdeWindow {
+                ide_type: IdeType::Cursor,
+                ..
+            }
+        ));
+
+        assert!(matches!(
+            decision.fallback,
+            Some(ActivationAction::LaunchTerminalWithTmux { .. })
         ));
     }
 
@@ -1472,7 +1461,7 @@ mod tests {
     // ─────────────────────────────────────────────────────────────────────────────
 
     #[test]
-    fn test_tmux_session_takes_priority_over_non_tmux_shell_when_attached() {
+    fn test_non_tmux_shell_selected_even_when_tmux_client_attached() {
         let state = make_shell_state(vec![(
             "12345",
             make_shell_entry(
@@ -1489,14 +1478,15 @@ mod tests {
             &tmux_context_attached("myproject"),
         );
 
-        assert!(matches!(
-            decision.primary,
-            ActivationAction::SwitchTmuxSession { .. }
-        ));
+        assert!(
+            matches!(decision.primary, ActivationAction::ActivateApp { ref app_name } if app_name == "Ghostty"),
+            "Expected ActivateApp(Ghostty) to avoid masking direct shells, got {:?}",
+            decision.primary
+        );
     }
 
     #[test]
-    fn test_non_tmux_shell_with_attached_tmux_creates_session() {
+    fn test_non_tmux_shell_with_attached_tmux_prefers_terminal() {
         let state = make_shell_state(vec![(
             "12345",
             make_shell_entry(
@@ -1515,12 +1505,11 @@ mod tests {
 
         assert!(matches!(
             decision.primary,
-            ActivationAction::SwitchTmuxSession { .. }
+            ActivationAction::ActivateByTty {
+                terminal_type: TerminalType::TerminalApp,
+                ..
+            }
         ));
-
-        if let ActivationAction::SwitchTmuxSession { session_name } = decision.primary {
-            assert_eq!(session_name, "myproject");
-        }
     }
 
     // ─────────────────────────────────────────────────────────────────────────────
@@ -1585,6 +1574,163 @@ mod tests {
             "Expected ActivateHostThenSwitchTmux when tmux client attached, got {:?}",
             decision.primary
         );
+    }
+
+    #[test]
+    fn test_exact_non_tmux_beats_parent_tmux_when_attached() {
+        // Exact path match should beat a tmux shell that only matches as a parent.
+        let parent_tmux_shell = make_shell_entry_with_time(
+            "/Users/pete/Code",
+            "/dev/pts/0",
+            ParentApp::Tmux,
+            Some("code"),
+            "2026-01-27T08:00:00Z",
+        );
+
+        let exact_shell = make_shell_entry_with_time(
+            "/Users/pete/Code/myproject",
+            "/dev/ttys001",
+            ParentApp::Ghostty,
+            None,
+            "2026-01-27T07:00:00Z",
+        );
+
+        let state = make_shell_state(vec![("11111", parent_tmux_shell), ("22222", exact_shell)]);
+
+        let decision = resolve_activation(
+            "/Users/pete/Code/myproject",
+            Some(&state),
+            &tmux_context_attached("code"),
+        );
+
+        assert!(
+            matches!(decision.primary, ActivationAction::ActivateApp { ref app_name } if app_name == "Ghostty"),
+            "Expected exact non-tmux shell to win over parent tmux shell, got {:?}",
+            decision.primary
+        );
+    }
+
+    #[test]
+    fn test_pid_tiebreaker_is_deterministic() {
+        let lower_pid_shell = make_shell_entry_with_time(
+            "/Users/pete/Code/myproject",
+            "/dev/ttys001",
+            ParentApp::Terminal,
+            None,
+            "2026-01-27T10:00:00Z",
+        );
+
+        let higher_pid_shell = make_shell_entry_with_time(
+            "/Users/pete/Code/myproject",
+            "/dev/ttys002",
+            ParentApp::Ghostty,
+            None,
+            "2026-01-27T10:00:00Z",
+        );
+
+        let state = make_shell_state(vec![
+            ("11111", lower_pid_shell),
+            ("22222", higher_pid_shell),
+        ]);
+
+        let decision = resolve_activation(
+            "/Users/pete/Code/myproject",
+            Some(&state),
+            &tmux_context_none(),
+        );
+
+        assert!(
+            matches!(decision.primary, ActivationAction::ActivateApp { ref app_name } if app_name == "Ghostty"),
+            "Expected higher PID shell to win deterministic tie-breaker, got {:?}",
+            decision.primary
+        );
+    }
+
+    #[test]
+    fn test_trace_reports_candidates_and_selection() {
+        let shell_one = make_shell_entry_with_time(
+            "/Users/pete/Code/myproject",
+            "/dev/ttys001",
+            ParentApp::Terminal,
+            None,
+            "2026-01-27T09:00:00Z",
+        );
+
+        let shell_two = make_shell_entry_with_time(
+            "/Users/pete/Code/myproject",
+            "/dev/ttys002",
+            ParentApp::Ghostty,
+            None,
+            "2026-01-27T10:00:00Z",
+        );
+
+        let state = make_shell_state(vec![("11111", shell_one), ("22222", shell_two)]);
+        let decision = resolve_activation_with_trace(
+            "/Users/pete/Code/myproject",
+            Some(&state),
+            &tmux_context_none(),
+            true,
+        );
+
+        let trace = decision.trace.expect("expected trace");
+        assert_eq!(trace.selected_pid, Some(22222));
+        assert_eq!(trace.candidates.len(), 2);
+        assert_eq!(trace.candidates[0].pid, 22222);
+    }
+
+    #[test]
+    fn test_trace_is_none_when_disabled() {
+        let state = make_shell_state(vec![(
+            "11111",
+            make_shell_entry(
+                "/Users/pete/Code/myproject",
+                "/dev/ttys001",
+                ParentApp::Terminal,
+                None,
+            ),
+        )]);
+
+        let decision = resolve_activation(
+            "/Users/pete/Code/myproject",
+            Some(&state),
+            &tmux_context_none(),
+        );
+
+        assert!(decision.trace.is_none());
+    }
+
+    #[test]
+    fn test_format_activation_trace_contains_core_fields() {
+        let shell_one = make_shell_entry_with_time(
+            "/Users/pete/Code/myproject",
+            "/dev/ttys001",
+            ParentApp::Terminal,
+            None,
+            "2026-01-27T09:00:00Z",
+        );
+
+        let shell_two = make_shell_entry_with_time(
+            "/Users/pete/Code/myproject",
+            "/dev/ttys002",
+            ParentApp::Ghostty,
+            None,
+            "2026-01-27T10:00:00Z",
+        );
+
+        let state = make_shell_state(vec![("11111", shell_one), ("22222", shell_two)]);
+        let decision = resolve_activation_with_trace(
+            "/Users/pete/Code/myproject",
+            Some(&state),
+            &tmux_context_none(),
+            true,
+        );
+
+        let trace = decision.trace.expect("expected trace");
+        let formatted = format_activation_trace(trace);
+
+        assert!(formatted.contains("ActivationTrace preferTmux="));
+        assert!(formatted.contains("ActivationTrace policyOrder="));
+        assert!(formatted.contains("ActivationTrace candidate pid="));
     }
 
     #[test]

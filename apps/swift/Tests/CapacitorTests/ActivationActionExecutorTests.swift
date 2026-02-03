@@ -1,0 +1,342 @@
+import XCTest
+@testable import Capacitor
+
+@MainActor
+final class ActivationActionExecutorTests: XCTestCase {
+    private final class StubDependencies: ActivationActionDependencies {
+        var lastAction: String?
+        var lastTty: String?
+        var lastTerminalType: TerminalType?
+        var lastAppName: String?
+        var lastSessionName: String?
+        var lastProjectPath: String?
+        var lastProjectName: String?
+        var lastIdeType: IdeType?
+
+        var activateByTtyResult = true
+        var activateAppResult = true
+        var activateKittyResult = true
+        var activateIdeResult = true
+        var switchTmuxResult = true
+        var ensureTmuxResult = true
+        var activateHostThenSwitchResult = true
+        var launchWithTmuxResult = true
+        var launchNewResult = true
+        var activateFallbackResult = true
+
+        func activateByTty(tty: String, terminalType: TerminalType) async -> Bool {
+            lastAction = "activateByTty"
+            lastTty = tty
+            lastTerminalType = terminalType
+            return activateByTtyResult
+        }
+
+        func activateApp(appName: String) -> Bool {
+            lastAction = "activateApp"
+            lastAppName = appName
+            return activateAppResult
+        }
+
+        func activateKittyWindow(shellPid: UInt32) -> Bool {
+            lastAction = "activateKittyWindow"
+            return activateKittyResult
+        }
+
+        func activateIdeWindow(ideType: IdeType, projectPath: String) async -> Bool {
+            lastAction = "activateIdeWindow"
+            lastIdeType = ideType
+            lastProjectPath = projectPath
+            return activateIdeResult
+        }
+
+        func switchTmuxSession(sessionName: String, projectPath: String) async -> Bool {
+            lastAction = "switchTmuxSession"
+            lastSessionName = sessionName
+            lastProjectPath = projectPath
+            return switchTmuxResult
+        }
+
+        func ensureTmuxSession(sessionName: String, projectPath: String) async -> Bool {
+            lastAction = "ensureTmuxSession"
+            lastSessionName = sessionName
+            lastProjectPath = projectPath
+            return ensureTmuxResult
+        }
+
+        func activateHostThenSwitchTmux(hostTty: String, sessionName: String, projectPath: String) async -> Bool {
+            lastAction = "activateHostThenSwitchTmux"
+            lastSessionName = sessionName
+            lastProjectPath = projectPath
+            return activateHostThenSwitchResult
+        }
+
+        func launchTerminalWithTmux(sessionName: String, projectPath: String) -> Bool {
+            lastAction = "launchTerminalWithTmux"
+            lastSessionName = sessionName
+            lastProjectPath = projectPath
+            return launchWithTmuxResult
+        }
+
+        func launchNewTerminal(projectPath: String, projectName: String) -> Bool {
+            lastAction = "launchNewTerminal"
+            lastProjectPath = projectPath
+            lastProjectName = projectName
+            return launchNewResult
+        }
+
+        func activatePriorityFallback() -> Bool {
+            lastAction = "activatePriorityFallback"
+            return activateFallbackResult
+        }
+    }
+
+    private final class StubTmuxClient: TmuxClient {
+        var hasClientAttached = true
+        var currentClientTty: String? = "/dev/ttys001"
+        var switchResult = true
+
+        func hasAnyClientAttached() async -> Bool { hasClientAttached }
+        func getCurrentClientTty() async -> String? { currentClientTty }
+        func switchClient(to sessionName: String) async -> Bool { switchResult }
+    }
+
+    @MainActor
+    private final class StubTerminalDiscovery: TerminalDiscovery {
+        var activateByTtyResult = true
+        var activateAppResult = true
+        var lastActivatedApp: String?
+        var ghosttyRunning = false
+        var ghosttyWindows = 1
+
+        func activateTerminalByTTY(tty: String) async -> Bool { activateByTtyResult }
+        func activateAppByName(_ appName: String) -> Bool {
+            lastActivatedApp = appName
+            return activateAppResult
+        }
+        func isGhosttyRunning() -> Bool { ghosttyRunning }
+        func countGhosttyWindows() -> Int { ghosttyWindows }
+    }
+
+    @MainActor
+    private final class StubTerminalLauncherClient: TerminalLauncherClient {
+        var launchedSession: String?
+        func launchTerminalWithTmux(sessionName: String) {
+            launchedSession = sessionName
+        }
+    }
+
+    func testExecuteRoutesActivateByTty() async {
+        let deps = StubDependencies()
+        deps.activateByTtyResult = false
+        let executor = ActivationActionExecutor(
+            dependencies: deps,
+            tmuxClient: StubTmuxClient(),
+            terminalDiscovery: StubTerminalDiscovery(),
+            terminalLauncher: StubTerminalLauncherClient()
+        )
+
+        let result = await executor.execute(
+            .activateByTty(tty: "/dev/ttys001", terminalType: .iTerm),
+            projectPath: "/Users/pete/Code/project",
+            projectName: "project"
+        )
+
+        XCTAssertFalse(result)
+        XCTAssertEqual(deps.lastAction, "activateByTty")
+        XCTAssertEqual(deps.lastTty, "/dev/ttys001")
+        XCTAssertEqual(deps.lastTerminalType, .iTerm)
+    }
+
+    func testExecuteRoutesSwitchTmuxSession() async {
+        let deps = StubDependencies()
+        deps.switchTmuxResult = false
+        let executor = ActivationActionExecutor(
+            dependencies: deps,
+            tmuxClient: StubTmuxClient(),
+            terminalDiscovery: StubTerminalDiscovery(),
+            terminalLauncher: StubTerminalLauncherClient()
+        )
+
+        let result = await executor.execute(
+            .switchTmuxSession(sessionName: "cap"),
+            projectPath: "/Users/pete/Code/cap",
+            projectName: "cap"
+        )
+
+        XCTAssertFalse(result)
+        XCTAssertEqual(deps.lastAction, "switchTmuxSession")
+        XCTAssertEqual(deps.lastSessionName, "cap")
+        XCTAssertEqual(deps.lastProjectPath, "/Users/pete/Code/cap")
+    }
+
+    func testExecuteRoutesEnsureTmuxSession() async {
+        let deps = StubDependencies()
+        deps.ensureTmuxResult = false
+        let executor = ActivationActionExecutor(
+            dependencies: deps,
+            tmuxClient: StubTmuxClient(),
+            terminalDiscovery: StubTerminalDiscovery(),
+            terminalLauncher: StubTerminalLauncherClient()
+        )
+
+        let result = await executor.execute(
+            .ensureTmuxSession(sessionName: "cap", projectPath: "/Users/pete/Code/cap"),
+            projectPath: "/Users/pete/Code/other",
+            projectName: "cap"
+        )
+
+        XCTAssertFalse(result)
+        XCTAssertEqual(deps.lastAction, "ensureTmuxSession")
+        XCTAssertEqual(deps.lastSessionName, "cap")
+        XCTAssertEqual(deps.lastProjectPath, "/Users/pete/Code/cap")
+    }
+
+    func testExecuteRoutesLaunchNewTerminal() async {
+        let deps = StubDependencies()
+        let executor = ActivationActionExecutor(
+            dependencies: deps,
+            tmuxClient: StubTmuxClient(),
+            terminalDiscovery: StubTerminalDiscovery(),
+            terminalLauncher: StubTerminalLauncherClient()
+        )
+
+        let result = await executor.execute(
+            .launchNewTerminal(projectPath: "/Users/pete/Code/app", projectName: "app"),
+            projectPath: "/Users/pete/Code/app",
+            projectName: "app"
+        )
+
+        XCTAssertTrue(result)
+        XCTAssertEqual(deps.lastAction, "launchNewTerminal")
+        XCTAssertEqual(deps.lastProjectPath, "/Users/pete/Code/app")
+        XCTAssertEqual(deps.lastProjectName, "app")
+    }
+
+    func testActivateHostThenSwitchTmuxLaunchesWhenNoClientAttached() async {
+        let deps = StubDependencies()
+        let tmux = StubTmuxClient()
+        tmux.hasClientAttached = false
+        let terminalDiscovery = StubTerminalDiscovery()
+        let launcher = StubTerminalLauncherClient()
+
+        let executor = ActivationActionExecutor(
+            dependencies: deps,
+            tmuxClient: tmux,
+            terminalDiscovery: terminalDiscovery,
+            terminalLauncher: launcher
+        )
+
+        let result = await executor.activateHostThenSwitchTmux(
+            hostTty: "/dev/ttys000",
+            sessionName: "cap",
+            projectPath: "/Users/pete/Code/cap"
+        )
+
+        XCTAssertTrue(result)
+        XCTAssertEqual(launcher.launchedSession, "cap")
+    }
+
+    func testActivateHostThenSwitchTmuxUsesTtyDiscoveryThenSwitches() async {
+        let deps = StubDependencies()
+        let tmux = StubTmuxClient()
+        tmux.switchResult = true
+        let terminalDiscovery = StubTerminalDiscovery()
+        terminalDiscovery.activateByTtyResult = true
+        let launcher = StubTerminalLauncherClient()
+
+        let executor = ActivationActionExecutor(
+            dependencies: deps,
+            tmuxClient: tmux,
+            terminalDiscovery: terminalDiscovery,
+            terminalLauncher: launcher
+        )
+
+        let result = await executor.activateHostThenSwitchTmux(
+            hostTty: "/dev/ttys000",
+            sessionName: "cap",
+            projectPath: "/Users/pete/Code/cap"
+        )
+
+        XCTAssertTrue(result)
+        XCTAssertNil(launcher.launchedSession)
+    }
+
+    func testActivateHostThenSwitchTmuxGhosttyFallbackActivatesApp() async {
+        let deps = StubDependencies()
+        let tmux = StubTmuxClient()
+        tmux.switchResult = true
+        let terminalDiscovery = StubTerminalDiscovery()
+        terminalDiscovery.activateByTtyResult = false
+        terminalDiscovery.ghosttyRunning = true
+        terminalDiscovery.ghosttyWindows = 2
+        let launcher = StubTerminalLauncherClient()
+
+        let executor = ActivationActionExecutor(
+            dependencies: deps,
+            tmuxClient: tmux,
+            terminalDiscovery: terminalDiscovery,
+            terminalLauncher: launcher
+        )
+
+        let result = await executor.activateHostThenSwitchTmux(
+            hostTty: "/dev/ttys000",
+            sessionName: "cap",
+            projectPath: "/Users/pete/Code/cap"
+        )
+
+        XCTAssertTrue(result)
+        XCTAssertEqual(terminalDiscovery.lastActivatedApp, "Ghostty")
+        XCTAssertNil(launcher.launchedSession)
+    }
+
+    func testActivateHostThenSwitchTmuxReturnsFalseWhenNoTtyAndNoGhostty() async {
+        let deps = StubDependencies()
+        let tmux = StubTmuxClient()
+        tmux.switchResult = true
+        let terminalDiscovery = StubTerminalDiscovery()
+        terminalDiscovery.activateByTtyResult = false
+        terminalDiscovery.ghosttyRunning = false
+        let launcher = StubTerminalLauncherClient()
+
+        let executor = ActivationActionExecutor(
+            dependencies: deps,
+            tmuxClient: tmux,
+            terminalDiscovery: terminalDiscovery,
+            terminalLauncher: launcher
+        )
+
+        let result = await executor.activateHostThenSwitchTmux(
+            hostTty: "/dev/ttys000",
+            sessionName: "cap",
+            projectPath: "/Users/pete/Code/cap"
+        )
+
+        XCTAssertFalse(result)
+        XCTAssertNil(launcher.launchedSession)
+    }
+
+    func testActivateHostThenSwitchTmuxReturnsFalseWhenSwitchFails() async {
+        let deps = StubDependencies()
+        let tmux = StubTmuxClient()
+        tmux.switchResult = false
+        let terminalDiscovery = StubTerminalDiscovery()
+        terminalDiscovery.activateByTtyResult = true
+        let launcher = StubTerminalLauncherClient()
+
+        let executor = ActivationActionExecutor(
+            dependencies: deps,
+            tmuxClient: tmux,
+            terminalDiscovery: terminalDiscovery,
+            terminalLauncher: launcher
+        )
+
+        let result = await executor.activateHostThenSwitchTmux(
+            hostTty: "/dev/ttys000",
+            sessionName: "cap",
+            projectPath: "/Users/pete/Code/cap"
+        )
+
+        XCTAssertFalse(result)
+        XCTAssertNil(launcher.launchedSession)
+    }
+}

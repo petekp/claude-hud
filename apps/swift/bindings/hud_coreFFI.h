@@ -422,6 +422,11 @@ void uniffi_hud_core_fn_method_hudengine_remove_project(void*_Nonnull ptr, RustB
 RustBuffer uniffi_hud_core_fn_method_hudengine_resolve_activation(void*_Nonnull ptr, RustBuffer project_path, RustBuffer shell_state, RustBuffer tmux_context, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_HUD_CORE_FN_METHOD_HUDENGINE_RESOLVE_ACTIVATION_WITH_TRACE
+#define UNIFFI_FFIDEF_UNIFFI_HUD_CORE_FN_METHOD_HUDENGINE_RESOLVE_ACTIVATION_WITH_TRACE
+RustBuffer uniffi_hud_core_fn_method_hudengine_resolve_activation_with_trace(void*_Nonnull ptr, RustBuffer project_path, RustBuffer shell_state, RustBuffer tmux_context, int8_t include_trace, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_HUD_CORE_FN_METHOD_HUDENGINE_RUN_HOOK_TEST
 #define UNIFFI_FFIDEF_UNIFFI_HUD_CORE_FN_METHOD_HUDENGINE_RUN_HOOK_TEST
 RustBuffer uniffi_hud_core_fn_method_hudengine_run_hook_test(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
@@ -465,6 +470,11 @@ void uniffi_hud_core_fn_method_hudengine_update_idea_triage(void*_Nonnull ptr, R
 #ifndef UNIFFI_FFIDEF_UNIFFI_HUD_CORE_FN_METHOD_HUDENGINE_VALIDATE_PROJECT
 #define UNIFFI_FFIDEF_UNIFFI_HUD_CORE_FN_METHOD_HUDENGINE_VALIDATE_PROJECT
 RustBuffer uniffi_hud_core_fn_method_hudengine_validate_project(void*_Nonnull ptr, RustBuffer path, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_HUD_CORE_FN_FUNC_FORMAT_ACTIVATION_TRACE
+#define UNIFFI_FFIDEF_UNIFFI_HUD_CORE_FN_FUNC_FORMAT_ACTIVATION_TRACE
+RustBuffer uniffi_hud_core_fn_func_format_activation_trace(RustBuffer trace, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_HUD_CORE_FN_FUNC_PATHS_MATCH
@@ -752,6 +762,12 @@ void ffi_hud_core_rust_future_free_void(uint64_t handle
 void ffi_hud_core_rust_future_complete_void(uint64_t handle, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_HUD_CORE_CHECKSUM_FUNC_FORMAT_ACTIVATION_TRACE
+#define UNIFFI_FFIDEF_UNIFFI_HUD_CORE_CHECKSUM_FUNC_FORMAT_ACTIVATION_TRACE
+uint16_t uniffi_hud_core_checksum_func_format_activation_trace(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_HUD_CORE_CHECKSUM_FUNC_PATHS_MATCH
 #define UNIFFI_FFIDEF_UNIFFI_HUD_CORE_CHECKSUM_FUNC_PATHS_MATCH
 uint16_t uniffi_hud_core_checksum_func_paths_match(void
@@ -941,6 +957,12 @@ uint16_t uniffi_hud_core_checksum_method_hudengine_remove_project(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_HUD_CORE_CHECKSUM_METHOD_HUDENGINE_RESOLVE_ACTIVATION
 #define UNIFFI_FFIDEF_UNIFFI_HUD_CORE_CHECKSUM_METHOD_HUDENGINE_RESOLVE_ACTIVATION
 uint16_t uniffi_hud_core_checksum_method_hudengine_resolve_activation(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_HUD_CORE_CHECKSUM_METHOD_HUDENGINE_RESOLVE_ACTIVATION_WITH_TRACE
+#define UNIFFI_FFIDEF_UNIFFI_HUD_CORE_CHECKSUM_METHOD_HUDENGINE_RESOLVE_ACTIVATION_WITH_TRACE
+uint16_t uniffi_hud_core_checksum_method_hudengine_resolve_activation_with_trace(void
     
 );
 #endif
