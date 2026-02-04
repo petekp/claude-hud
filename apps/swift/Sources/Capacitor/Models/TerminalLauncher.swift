@@ -307,11 +307,11 @@ final class TerminalLauncher: ActivationActionDependencies {
             return .launchNew
         }
 
-        // Ghostty window enumeration can return 0 when Accessibility APIs fail.
-        // If a tmux client is already attached, prefer activating existing Ghostty
-        // instead of spawning a new window.
-        if windowCount == 0 {
-            return .activateAndSwitch
+        // When multiple Ghostty windows exist and we couldn't activate by TTY,
+        // activating the app risks focusing the wrong window. Prefer launching
+        // a new tmux window in that case.
+        if windowCount > 1 {
+            return .launchNew
         }
 
         return .activateAndSwitch
@@ -895,7 +895,25 @@ final class TerminalLauncher: ActivationActionDependencies {
             return 0
         }
 
+        if Self.activationTraceEnabled {
+            let titles = windows.compactMap { ghosttyWindowTitle($0) }
+            if titles.isEmpty {
+                debugLog("ghostty windows count=\(windows.count) titles=unavailable")
+            } else {
+                debugLog("ghostty windows count=\(windows.count) titles=\(titles)")
+            }
+        }
+
         return windows.count
+    }
+
+    private func ghosttyWindowTitle(_ window: AXUIElement) -> String? {
+        var titleRef: CFTypeRef?
+        let result = AXUIElementCopyAttributeValue(window, kAXTitleAttribute as CFString, &titleRef)
+        guard result == .success, let title = titleRef as? String else {
+            return nil
+        }
+        return title
     }
 
     private func isGhosttyRunningInternal() -> Bool {

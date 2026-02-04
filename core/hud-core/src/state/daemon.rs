@@ -43,13 +43,17 @@ impl DaemonSessionsSnapshot {
     }
 
     pub fn latest_for_project(&self, project_path: &str) -> Option<&DaemonSessionRecord> {
-        let normalized_query = crate::state::normalize_path_for_comparison(project_path);
+        let home_dir = dirs::home_dir().map(|path| path.to_string_lossy().to_string());
         let mut best: Option<&DaemonSessionRecord> = None;
 
         for session in &self.sessions {
-            if crate::state::normalize_path_for_comparison(&session.project_path)
-                != normalized_query
-            {
+            let matches = super::path_utils::path_is_parent_or_self_excluding_home(
+                project_path,
+                &session.project_path,
+                home_dir.as_deref(),
+            );
+
+            if !matches {
                 continue;
             }
 
@@ -197,6 +201,24 @@ fn is_more_recent(left: &DaemonSessionRecord, right: &DaemonSessionRecord) -> bo
 mod tests {
     use super::*;
 
+    fn make_session_record(
+        session_id: &str,
+        project_path: &str,
+        updated_at: &str,
+    ) -> DaemonSessionRecord {
+        DaemonSessionRecord {
+            session_id: session_id.to_string(),
+            pid: 123,
+            state: "working".to_string(),
+            cwd: project_path.to_string(),
+            project_path: project_path.to_string(),
+            updated_at: updated_at.to_string(),
+            state_changed_at: updated_at.to_string(),
+            last_event: None,
+            is_alive: Some(true),
+        }
+    }
+
     #[test]
     fn sessions_snapshot_parses_entries() {
         let value = serde_json::json!([
@@ -216,5 +238,40 @@ mod tests {
             serde_json::from_value(value).expect("parse sessions");
         assert_eq!(entries.len(), 1);
         assert_eq!(entries[0].session_id, "session-1");
+    }
+
+    #[test]
+    fn latest_for_project_matches_subpath() {
+        let snapshot = DaemonSessionsSnapshot {
+            sessions: vec![make_session_record(
+                "session-1",
+                "/Users/pete/Code/assistant-ui/packages/web",
+                "2026-02-01T00:00:00Z",
+            )],
+        };
+
+        let selected = snapshot
+            .latest_for_project("/Users/pete/Code/assistant-ui")
+            .expect("expected parent project to match child session path");
+
+        assert_eq!(
+            selected.project_path,
+            "/Users/pete/Code/assistant-ui/packages/web"
+        );
+    }
+
+    #[test]
+    fn latest_for_project_does_not_match_parent_path() {
+        let snapshot = DaemonSessionsSnapshot {
+            sessions: vec![make_session_record(
+                "session-1",
+                "/Users/pete/Code/assistant-ui",
+                "2026-02-01T00:00:00Z",
+            )],
+        };
+
+        let selected = snapshot.latest_for_project("/Users/pete/Code/assistant-ui/packages/web");
+
+        assert!(selected.is_none());
     }
 }

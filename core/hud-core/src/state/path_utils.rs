@@ -63,6 +63,45 @@ pub fn normalize_path_for_matching(path: &str) -> String {
     apply_case_normalization(&trimmed)
 }
 
+/// Checks whether `child` is the same as `parent` or nested inside it,
+/// excluding HOME from parent matching.
+///
+/// This avoids treating HOME as a parent directory, which would match nearly
+/// everything under the user directory.
+pub fn path_is_parent_or_self_excluding_home(
+    parent: &str,
+    child: &str,
+    home_dir: Option<&str>,
+) -> bool {
+    let parent_normalized = normalize_path_for_comparison(parent);
+    let child_normalized = normalize_path_for_comparison(child);
+    let home_normalized = home_dir.map(normalize_path_for_comparison);
+
+    path_is_parent_or_self_normalized_excluding_home(
+        &parent_normalized,
+        &child_normalized,
+        home_normalized.as_deref(),
+    )
+}
+
+pub(crate) fn path_is_parent_or_self_normalized_excluding_home(
+    parent: &str,
+    child: &str,
+    home_dir: Option<&str>,
+) -> bool {
+    if parent == child {
+        return true;
+    }
+
+    if home_dir.is_some_and(|home| home == parent) {
+        return false;
+    }
+
+    child
+        .strip_prefix(parent)
+        .is_some_and(|rest| rest.starts_with('/'))
+}
+
 #[cfg(test)]
 fn normalize_path_simple(path: &str) -> String {
     normalize_path_for_matching(path)
@@ -177,6 +216,33 @@ mod tests {
         assert_eq!(result, "/this/path/does/not/exist/12345");
         #[cfg(not(target_os = "macos"))]
         assert_eq!(result, "/this/path/does/not/exist/12345");
+    }
+
+    #[test]
+    fn parent_or_self_excluding_home_matches_child() {
+        assert!(path_is_parent_or_self_excluding_home(
+            "/Users/pete/Code/project",
+            "/Users/pete/Code/project/src",
+            Some("/Users/pete"),
+        ));
+    }
+
+    #[test]
+    fn parent_or_self_excluding_home_excludes_home_parent() {
+        assert!(!path_is_parent_or_self_excluding_home(
+            "/Users/pete",
+            "/Users/pete/Code/project",
+            Some("/Users/pete"),
+        ));
+    }
+
+    #[test]
+    fn parent_or_self_excluding_home_allows_exact_home() {
+        assert!(path_is_parent_or_self_excluding_home(
+            "/Users/pete",
+            "/Users/pete",
+            Some("/Users/pete"),
+        ));
     }
 
     // Intentionally no hashing-specific tests in daemon-only mode.

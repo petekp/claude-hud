@@ -15,9 +15,9 @@ final class TerminalLauncherTests: XCTestCase {
         XCTAssertEqual(decision, .activateAndSwitch)
     }
 
-    func testGhosttyWindowCountPositiveActivatesWhenClientAttached() {
+    func testGhosttyWindowCountMultipleLaunchesWhenClientAttached() {
         let decision = TerminalLauncher.ghosttyWindowDecision(windowCount: 2, anyClientAttached: true)
-        XCTAssertEqual(decision, .activateAndSwitch)
+        XCTAssertEqual(decision, .launchNew)
     }
 
     func testGhosttyLaunchesWhenNoClientAttached() {

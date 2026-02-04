@@ -2118,6 +2118,33 @@ mod tests {
     }
 
     #[test]
+    fn test_home_shell_does_not_block_tmux_attach_when_detached() {
+        let home_shell = make_shell_entry(
+            "/Users/pete",
+            "/dev/ttys007",
+            ParentApp::Ghostty,
+            None,
+        );
+
+        let state = make_shell_state(vec![("87855", home_shell)]);
+
+        let decision = resolve_activation(
+            "/Users/pete/Code/capacitor",
+            Some(&state),
+            &tmux_context_detached("capacitor"),
+        );
+
+        assert!(
+            matches!(
+                decision.primary,
+                ActivationAction::LaunchTerminalWithTmux { .. }
+            ),
+            "Expected LaunchTerminalWithTmux when HOME shell exists and tmux client is detached, got {:?}",
+            decision.primary
+        );
+    }
+
+    #[test]
     fn test_home_shell_still_matches_exact_home() {
         // Shell at HOME should still match when clicking HOME itself
         let home_shell = make_shell_entry("/Users/pete", "/dev/ttys007", ParentApp::Unknown, None);

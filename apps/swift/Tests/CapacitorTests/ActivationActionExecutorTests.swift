@@ -268,7 +268,35 @@ final class ActivationActionExecutorTests: XCTestCase {
         XCTAssertNil(launcher.launchedSession)
     }
 
-    func testActivateHostThenSwitchTmuxGhosttyFallbackActivatesApp() async {
+    func testActivateHostThenSwitchTmuxGhosttyFallbackActivatesAppWhenSingleWindow() async {
+        let deps = StubDependencies()
+        let tmux = StubTmuxClient()
+        tmux.switchResult = true
+        let terminalDiscovery = StubTerminalDiscovery()
+        terminalDiscovery.activateByTtyResult = false
+        terminalDiscovery.ghosttyRunning = true
+        terminalDiscovery.ghosttyWindows = 1
+        let launcher = StubTerminalLauncherClient()
+
+        let executor = ActivationActionExecutor(
+            dependencies: deps,
+            tmuxClient: tmux,
+            terminalDiscovery: terminalDiscovery,
+            terminalLauncher: launcher
+        )
+
+        let result = await executor.activateHostThenSwitchTmux(
+            hostTty: "/dev/ttys000",
+            sessionName: "cap",
+            projectPath: "/Users/pete/Code/cap"
+        )
+
+        XCTAssertTrue(result)
+        XCTAssertEqual(terminalDiscovery.lastActivatedApp, "Ghostty")
+        XCTAssertNil(launcher.launchedSession)
+    }
+
+    func testActivateHostThenSwitchTmuxGhosttyFallbackLaunchesNewWhenMultipleWindows() async {
         let deps = StubDependencies()
         let tmux = StubTmuxClient()
         tmux.switchResult = true
@@ -292,8 +320,8 @@ final class ActivationActionExecutorTests: XCTestCase {
         )
 
         XCTAssertTrue(result)
-        XCTAssertEqual(terminalDiscovery.lastActivatedApp, "Ghostty")
-        XCTAssertNil(launcher.launchedSession)
+        XCTAssertNil(terminalDiscovery.lastActivatedApp)
+        XCTAssertEqual(launcher.launchedSession, "cap")
     }
 
     func testActivateHostThenSwitchTmuxReturnsFalseWhenNoTtyAndNoGhostty() async {

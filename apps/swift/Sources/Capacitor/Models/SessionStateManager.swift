@@ -113,26 +113,64 @@ final class SessionStateManager {
         _ states: [DaemonProjectState],
         projects: [Project]
     ) -> [String: ProjectSessionState] {
-        var merged: [String: ProjectSessionState] = [:]
-        var projectLookup: [String: Project] = [:]
-        for project in projects {
-            let key = PathNormalizer.normalize(project.path)
-            if projectLookup[key] == nil {
-                projectLookup[key] = project
-            }
+        struct ProjectMatchInfo {
+            let project: Project
+            let normalizedPath: String
+            let depth: Int
         }
-        if !states.isEmpty {
-            let unmatched = states.filter { projectLookup[PathNormalizer.normalize($0.projectPath)] == nil }
-            if !unmatched.isEmpty {
-                let sample = unmatched.prefix(3).map { "\($0.projectPath) [\($0.state)]" }.joined(separator: ", ")
-                DebugLog.write("SessionStateManager.mergeDaemonProjectStates unmatched=\(unmatched.count) sample=\(sample)")
+
+        let homeNormalized = PathNormalizer.normalize(NSHomeDirectory())
+        var projectInfos: [ProjectMatchInfo] = []
+        var seen: Set<String> = []
+
+        for project in projects {
+            let normalized = PathNormalizer.normalize(project.path)
+            guard !seen.contains(normalized) else { continue }
+            seen.insert(normalized)
+            let depth = normalized.split(separator: "/").count
+            projectInfos.append(ProjectMatchInfo(project: project, normalizedPath: normalized, depth: depth))
+        }
+
+        let sortedProjects = projectInfos.sorted { lhs, rhs in
+            if lhs.depth == rhs.depth {
+                return lhs.normalizedPath > rhs.normalizedPath
+            }
+            return lhs.depth > rhs.depth
+        }
+
+        var bestStates: [String: DaemonProjectState] = [:]
+        var unmatched: [DaemonProjectState] = []
+
+        for state in states {
+            let normalizedStatePath = PathNormalizer.normalize(state.projectPath)
+            guard let match = sortedProjects.first(where: {
+                isParentOrSelfExcludingHome(
+                    parent: $0.normalizedPath,
+                    child: normalizedStatePath,
+                    homeNormalized: homeNormalized
+                )
+            }) else {
+                unmatched.append(state)
+                continue
+            }
+
+            let projectPath = match.project.path
+            if let existing = bestStates[projectPath] {
+                if isMoreRecent(state, than: existing) {
+                    bestStates[projectPath] = state
+                }
+            } else {
+                bestStates[projectPath] = state
             }
         }
 
-        for state in states {
-            let normalizedProjectPath = PathNormalizer.normalize(state.projectPath)
-            guard let project = projectLookup[normalizedProjectPath] else { continue }
-            let projectPath = project.path
+        if !unmatched.isEmpty {
+            let sample = unmatched.prefix(3).map { "\($0.projectPath) [\($0.state)]" }.joined(separator: ", ")
+            DebugLog.write("SessionStateManager.mergeDaemonProjectStates unmatched=\(unmatched.count) sample=\(sample)")
+        }
+
+        var merged: [String: ProjectSessionState] = [:]
+        for (projectPath, state) in bestStates {
             let mappedState = mapDaemonState(state.state)
             let sessionState = ProjectSessionState(
                 state: mappedState,
@@ -148,6 +186,30 @@ final class SessionStateManager {
         }
 
         return merged
+    }
+
+    private func isParentOrSelfExcludingHome(parent: String, child: String, homeNormalized: String) -> Bool {
+        if parent == child {
+            return true
+        }
+        if parent == homeNormalized {
+            return false
+        }
+        return child.hasPrefix(parent + "/")
+    }
+
+    private func isMoreRecent(_ candidate: DaemonProjectState, than existing: DaemonProjectState) -> Bool {
+        let candidateTime = parseISO8601Date(candidate.updatedAt) ?? parseISO8601Date(candidate.stateChangedAt)
+        let existingTime = parseISO8601Date(existing.updatedAt) ?? parseISO8601Date(existing.stateChangedAt)
+
+        switch (candidateTime, existingTime) {
+        case let (candidate?, existing?):
+            return candidate > existing
+        case (_?, nil):
+            return true
+        default:
+            return false
+        }
     }
 
     private func mapDaemonState(_ state: String) -> SessionState {
