@@ -5,8 +5,6 @@ struct HeaderView: View {
     @EnvironmentObject var appState: AppState
     @Environment(\.floatingMode) private var floatingMode
 
-    private let progressiveBlurHeight: CGFloat = 30
-
     private var isOnListView: Bool {
         if case .list = appState.projectView { return true }
         return false
@@ -34,31 +32,15 @@ struct HeaderView: View {
             .padding(.bottom, 6)
             .background {
                 if floatingMode {
-                    // Use NSViewRepresentable for drag + double-click handling
-                    // SwiftUI's onTapGesture(count: 2) blocks mouseDown events needed for window drag
+                    // Use NSViewRepresentable for drag + double-click handling.
+                    // Keep background clear so it matches the panel and avoids seams.
                     HeaderDragArea {
                         WindowFrameStore.shared.cycleCompactState()
                     }
-                    .background(
-                        VibrancyView(
-                            material: .hudWindow,
-                            blendingMode: .behindWindow,
-                            isEmphasized: false,
-                            forceDarkAppearance: true
-                        )
-                    )
                 } else {
                     Color.hudBackground
                 }
             }
-
-            // Progressive blur zone - fades content below into the header
-            ProgressiveBlurView(
-                direction: .down,
-                height: progressiveBlurHeight,
-                material: floatingMode ? .hudWindow : .windowBackground
-            )
-            .allowsHitTesting(false)
         }
     }
 }

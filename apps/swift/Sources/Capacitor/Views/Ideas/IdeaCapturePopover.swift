@@ -276,7 +276,7 @@ struct IdeaCaptureModalOverlay: View {
     @State private var shouldFocusTextArea = false
 
     private var cornerRadius: CGFloat {
-        floatingMode ? 22 : 0
+        WindowCornerRadius.value(floatingMode: floatingMode)
     }
 
     private var anchorPoint: UnitPoint {

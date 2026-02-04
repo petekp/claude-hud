@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 struct ProjectsView: View {
@@ -42,6 +43,16 @@ struct ProjectsView: View {
         // (same pattern as DockLayoutView crash fix)
         let cardListSpacing = glassConfig.cardListSpacingRounded
         let listHorizontalPadding = glassConfig.listHorizontalPaddingRounded
+        let contentTopPadding: CGFloat = floatingMode ? 56 : 12
+        let contentBottomPadding: CGFloat = floatingMode ? 64 : 8
+        let edgeFadeHeight: CGFloat = floatingMode ? 30 : 0
+        let topFade = contentTopPadding + edgeFadeHeight
+        let bottomFade = contentBottomPadding + edgeFadeHeight
+
+        let scrollbarWidth = NSScroller.scrollerWidth(for: .regular, scrollerStyle: NSScroller.preferredScrollerStyle)
+        let maskScrollbarInset: CGFloat = 8
+        let maskScrollbarWidth = max(scrollbarWidth - maskScrollbarInset, 0)
+        let scrollbarInset = floatingMode ? WindowCornerRadius.value(floatingMode: floatingMode) : 0
 
         ScrollView {
             LazyVStack(spacing: cardListSpacing) {
@@ -211,9 +222,36 @@ struct ProjectsView: View {
                 }
             }
             .padding(.horizontal, listHorizontalPadding)
-            .padding(.top, floatingMode ? 56 : 12)
-            .padding(.bottom, floatingMode ? 64 : 8)
+            .padding(.top, contentTopPadding)
+            .padding(.bottom, contentBottomPadding)
         }
+        .mask {
+            GeometryReader { proxy in
+                let sizes = ScrollMaskLayout.sizes(
+                    totalWidth: proxy.size.width,
+                    scrollbarWidth: maskScrollbarWidth
+                )
+
+                HStack(spacing: 0) {
+                    ScrollEdgeFadeMask(
+                        topInset: 0,
+                        bottomInset: 0,
+                        topFade: topFade,
+                        bottomFade: bottomFade
+                    )
+                    .frame(width: sizes.content, height: proxy.size.height)
+
+                    Color.white
+                        .frame(width: sizes.scrollbar, height: proxy.size.height)
+                }
+            }
+        }
+        .background(
+            ScrollViewScrollerInsetsConfigurator(
+                topInset: scrollbarInset,
+                bottomInset: scrollbarInset
+            )
+        )
         .background(floatingMode ? Color.clear : Color.hudBackground)
         .onChange(of: pausedProjects.count) { oldCount, newCount in
             if newCount > oldCount, pausedCollapsed {

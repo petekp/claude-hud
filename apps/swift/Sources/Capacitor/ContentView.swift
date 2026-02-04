@@ -97,7 +97,8 @@ struct ContentView: View {
     }
 
     private var verticalLayout: some View {
-        ZStack {
+        let cornerRadius = WindowCornerRadius.value(floatingMode: floatingMode)
+        return ZStack {
             NavigationContainer()
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
 
@@ -107,7 +108,7 @@ struct ContentView: View {
                 FooterView(isPinned: $alwaysOnTopStorage)
             }
         }
-        .clipShape(RoundedRectangle(cornerRadius: floatingMode ? 22 : 0))
+        .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
     }
 
     private var dockLayout: some View {
@@ -115,11 +116,13 @@ struct ContentView: View {
     }
 
     private var dropOverlay: some View {
-        ZStack {
-            RoundedRectangle(cornerRadius: floatingMode ? 22 : 0)
+        let cornerRadius = WindowCornerRadius.value(floatingMode: floatingMode)
+        let innerCornerRadius = max(cornerRadius - 2, 0)
+        return ZStack {
+            RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                 .fill(Color.hudAccent.opacity(0.15))
 
-            RoundedRectangle(cornerRadius: floatingMode ? 20 : 0)
+            RoundedRectangle(cornerRadius: innerCornerRadius, style: .continuous)
                 .strokeBorder(
                     style: StrokeStyle(lineWidth: 2, dash: [8, 6])
                 )

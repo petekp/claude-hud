@@ -56,7 +56,7 @@ struct CapacitorApp: App {
                             Color.hudBackground
                         }
                     }
-                    .clipShape(RoundedRectangle(cornerRadius: floatingMode ? 22 : 0))
+                    .clipShape(RoundedRectangle(cornerRadius: WindowCornerRadius.value(floatingMode: floatingMode)))
                     .background(FloatingWindowConfigurator(enabled: floatingMode, alwaysOnTop: alwaysOnTop))
                     .transition(.asymmetric(
                         insertion: .identity,

@@ -153,6 +153,35 @@ var body: some View {
 
 **See:** `DockLayoutView.swift:20-22`, `ProjectsView.swift:37-41`, crash log `Capacitor-2026-01-29-102502.ips`
 
+### ScrollView Fade Mask Without Masking Scrollbars
+
+**Problem:** Applying `.mask` to a SwiftUI `ScrollView` also masks the scroll indicators, and AppKit clip-view masks can appear to “scroll” with content.
+
+**Cause:** SwiftUI masks apply to the entire view hierarchy (including scrollbars). AppKit masks on the clip view can follow document rendering instead of remaining fixed to the viewport.
+
+**Solution:** Keep a SwiftUI mask on the `ScrollView`, but reserve a right-hand strip for the scrollbar so it remains unmasked. Use `NSScroller.scrollerWidth(...)` to match the current scroller style and split the mask horizontally (gradient for content + solid white for scrollbar).
+
+```swift
+let scrollbarWidth = NSScroller.scrollerWidth(for: .regular, scrollerStyle: NSScroller.preferredScrollerStyle)
+
+ScrollView {
+    content
+}
+.mask {
+    GeometryReader { proxy in
+        let sizes = ScrollMaskLayout.sizes(totalWidth: proxy.size.width,
+                                           scrollbarWidth: scrollbarWidth)
+        HStack(spacing: 0) {
+            ScrollEdgeFadeMask(topInset: 0, bottomInset: 0,
+                               topFade: topFade, bottomFade: bottomFade)
+                .frame(width: sizes.content, height: proxy.size.height)
+            Color.white
+                .frame(width: sizes.scrollbar, height: proxy.size.height)
+        }
+    }
+}
+```
+
 ### SwiftUI Rapid State Changes Cause Recursive Layout Crashes
 
 When `objectWillChange.send()` is called synchronously during rapid state changes (e.g., killing multiple Claude Code sessions), SwiftUI can crash with `EXC_BREAKPOINT` in `-[NSWindow(NSDisplayCycle) _postWindowNeedsUpdateConstraints]`.
