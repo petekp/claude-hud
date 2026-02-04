@@ -260,7 +260,7 @@ This section describes a planned feature for automatic idea enrichment when sess
 - Prevent nested invocation with `HUD_HOOK_RUNNING` env var
 - Check for pending ideas before invoking Claude
 - Use `--settings <(echo '{"hooks":{}}')` to isolate hook invocation
-- Log all activity to `~/.capacitor/hud-hook-debug.log`
+- Log all activity to `~/.capacitor/hud-hook-debug.{date}.log`
 
 ## Performance
 

@@ -19,7 +19,6 @@
 - Remove or disable any remaining legacy cleanup paths
 - Stabilize debug build launch workflow
 
-## Canonical Plan
-- `docs/plans/2026-01-30-daemon-architecture-migration-plan.md`
+## Canonical Reference
 - `docs/architecture-decisions/005-daemon-based-state-service.md`
-
+- `.claude/docs/architecture-deep-dive.md`

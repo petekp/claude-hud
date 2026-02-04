@@ -145,7 +145,7 @@ fn upsert_session(
         .clone()
         .or_else(|| current.map(|record| record.cwd.clone()))
         .unwrap_or_default();
-    let project_path = derive_project_path(&cwd)
+    let project_path = derive_project_path(&cwd, event.file_path.as_deref())
         .or_else(|| current.map(|record| record.project_path.clone()))
         .or_else(|| {
             if cwd.trim().is_empty() {
@@ -174,11 +174,34 @@ fn upsert_session(
     })
 }
 
-fn derive_project_path(cwd: &str) -> Option<String> {
+fn derive_project_path(cwd: &str, file_path: Option<&str>) -> Option<String> {
+    if let Some(file_path) = file_path {
+        if let Some(resolved) = resolve_file_path(cwd, file_path) {
+            if let Some(boundary) = find_project_boundary(&resolved) {
+                return Some(boundary.path);
+            }
+        }
+    }
+
     if cwd.trim().is_empty() {
         return None;
     }
+
     find_project_boundary(cwd).map(|boundary| boundary.path)
+}
+
+fn resolve_file_path(cwd: &str, file_path: &str) -> Option<String> {
+    let path = std::path::Path::new(file_path);
+    if path.is_absolute() {
+        return Some(file_path.to_string());
+    }
+
+    if cwd.trim().is_empty() {
+        return None;
+    }
+
+    let combined = std::path::Path::new(cwd).join(file_path);
+    combined.to_str().map(|value| value.to_string())
 }
 
 fn event_type_string(event_type: &EventType) -> String {
@@ -266,6 +289,32 @@ mod tests {
         match update {
             SessionUpdate::Upsert(record) => {
                 assert_eq!(record.project_path, current.project_path);
+            }
+            _ => panic!("expected upsert"),
+        }
+    }
+
+    #[test]
+    fn file_path_boundary_overrides_cwd_boundary() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let repo_root = temp_dir.path().join("repo");
+        let docs_dir = repo_root.join("apps").join("docs");
+        let src_dir = docs_dir.join("src");
+
+        std::fs::create_dir_all(&src_dir).expect("create dirs");
+        std::fs::create_dir_all(repo_root.join(".git")).expect("create git dir");
+        std::fs::write(docs_dir.join("package.json"), "{}").expect("package marker");
+        std::fs::write(src_dir.join("index.ts"), "export {}").expect("file");
+
+        let mut event = event_base(EventType::PostToolUse);
+        event.cwd = Some(repo_root.to_string_lossy().to_string());
+        event.file_path = Some(src_dir.join("index.ts").to_string_lossy().to_string());
+
+        let update = reduce_session(None, &event);
+
+        match update {
+            SessionUpdate::Upsert(record) => {
+                assert_eq!(record.project_path, docs_dir.to_string_lossy());
             }
             _ => panic!("expected upsert"),
         }

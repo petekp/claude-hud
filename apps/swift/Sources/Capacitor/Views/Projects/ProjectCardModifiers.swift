@@ -1,6 +1,12 @@
 import AppKit
 import SwiftUI
 
+enum CardEffectAnimationPolicy {
+    static func shouldAnimate(isActive: Bool, isHovered: Bool, isWaiting: Bool, isWorking: Bool) -> Bool {
+        isActive || isHovered || isWaiting || isWorking
+    }
+}
+
 extension View {
     func cardStyling(
         isHovered: Bool,
@@ -20,8 +26,13 @@ extension View {
         // Single source of truth for corner radius
         let cornerRadius = GlassConfig.shared.cardCornerRadius(for: layoutMode)
 
-        // Only animate effects for active or hovered cards to reduce GPU load during scroll
-        let shouldAnimate = isActive || isHovered
+        // Only animate effects for active, hovered, waiting, or working cards to reduce GPU load during scroll
+        let shouldAnimate = CardEffectAnimationPolicy.shouldAnimate(
+            isActive: isActive,
+            isHovered: isHovered,
+            isWaiting: isWaiting,
+            isWorking: isWorking
+        )
 
         return background {
             ZStack {
@@ -155,14 +166,14 @@ extension View {
     func cardLifecycleHandlers(
         flashState: SessionState?,
         sessionState: ProjectSessionState?,
-        currentState _: SessionState?,
+        currentState: SessionState,
         previousState: Binding<SessionState?>,
         lastChimeTime: Binding<Date?>,
         flashOpacity: Binding<Double>,
         chimeCooldown: TimeInterval,
         glassConfig: GlassConfig?
     ) -> some View {
-        animation(.easeOut(duration: GlassConfig.shared.stateTransitionDuration), value: sessionState?.state)
+        animation(.easeOut(duration: GlassConfig.shared.stateTransitionDuration), value: currentState)
             .onChange(of: flashState) { _, newValue in
                 guard newValue != nil else { return }
                 withAnimation(.easeOut(duration: 0.1)) {

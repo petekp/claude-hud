@@ -31,8 +31,8 @@ struct DockProjectCard: View {
         GlassConfig.shared.cardCornerRadius(for: .dock)
     }
 
-    private var currentState: SessionState? {
-        sessionState?.state
+    private var currentState: SessionState {
+        sessionState?.state ?? .idle
     }
 
     private var isReady: Bool {
@@ -210,13 +210,12 @@ struct DockProjectCard: View {
     }
 
     private var statusDescription: String {
-        guard let state = currentState else { return "No active session" }
-        switch state {
-        case .ready: return "Ready for input"
-        case .working: return "Working"
-        case .waiting: return "Waiting for user action"
-        case .compacting: return "Compacting history"
-        case .idle: return "Idle"
+        switch currentState {
+        case .ready: "Ready for input"
+        case .working: "Working"
+        case .waiting: "Waiting for user action"
+        case .compacting: "Compacting history"
+        case .idle: "Idle"
         }
     }
 }

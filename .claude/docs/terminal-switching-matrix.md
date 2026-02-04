@@ -11,12 +11,12 @@ This document maps out all scenarios for the "click project → activate termina
 | iTerm2 | ✅ Full | AppleScript | Query sessions by TTY, select window/tab |
 | Terminal.app | ✅ Full | AppleScript | Query by TTY, select tab |
 | kitty | ✅ Full | `kitty @` | Requires `allow_remote_control yes` |
-| Ghostty | ❌ None | — | No external API (as of 2024) |
+| Ghostty | ❌ None | — | No external API (as of 2026-02) |
 | Warp | ❌ None | — | No AppleScript/CLI API |
 | Alacritty | N/A | — | No tabs, windows only |
-| Cursor/VS Code | ⚠️ Window only | CLI | `cursor /path` activates window, no terminal panel focus |
+| Cursor/VS Code/Zed | ⚠️ Window only | CLI | `cursor`/`code`/`code-insiders`/`zed` activates window, no terminal panel focus |
 
-**Fallback behavior:** When tab selection isn't available, we activate the app (brings all windows forward) but can't select the specific tab containing the project.
+**Fallback behavior:** When tab selection isn't available, we activate the app (brings all windows forward) but can't select the specific tab containing the project. For Ghostty + tmux with multiple windows, we may open a new window to guarantee the correct session.
 
 ## Dimensions
 
@@ -55,16 +55,20 @@ This document maps out all scenarios for the "click project → activate termina
 
 ### Ghostty
 
-**Note:** Ghostty has no external API for window/tab selection (as of 2025). We use a window-count strategy:
-- **1 window:** Activate app (it's the only one)
-- **0 or multiple windows:** Launch new terminal (can't pick the right one)
+**Note:** Ghostty has no external API for window/tab selection (as of 2026-02). Behavior differs by activation path:
+- **Ghostty shell (parent_app=Ghostty):** Rust chooses `ActivateApp("Ghostty")` (no window count). This simply activates the app and may focus the wrong window if multiple exist.
+- **Unknown parent (TTY discovery fails):** Swift may fall back to `activateGhosttyWithHeuristic` (window-count-based).
+- **Tmux activation (ActivateHostThenSwitchTmux):** if TTY discovery fails and Ghostty is running, use `ghosttyWindowDecision`:
+  - no tmux client attached → launch new terminal
+  - tmux client attached + >1 windows → launch new terminal
+  - otherwise → activate Ghostty + switch tmux
 
 | # | Context | Windows | parent_app | Expected | Current | Notes |
 |---|---------|---------|------------|----------|---------|-------|
 | 7 | Direct shell | 1 | nil | Activate Ghostty | ✅ | Window count = 1, safe to activate |
 | 8 | Direct shell | 1 | "Ghostty" | Activate Ghostty | ✅ | |
-| 9 | Direct shell | 2+ | nil | Activate Ghostty | ⚠️ | No window selection - activates app, may be wrong window |
-| 10 | Direct shell | 2+ | "Ghostty" | Activate Ghostty | ⚠️ | No window selection - activates app, may be wrong window |
+| 9 | Direct shell | 2+ | nil | Activate Ghostty (may be wrong window) | ⚠️ | No window selection - activates app, may be wrong window |
+| 10 | Direct shell | 2+ | "Ghostty" | Activate Ghostty (may be wrong window) | ⚠️ | No window selection - activates app, may be wrong window |
 | 11 | tmux session | 1 | "tmux" | Activate Ghostty, switch session | ✅ | Window count = 1, activate + tmux switch-client |
 | 11b | tmux session | 2+ | "tmux" | Launch new terminal | ✅ | Window count > 1, launch new to guarantee correct session |
 
@@ -154,6 +158,8 @@ IDEs like Cursor and VS Code have integrated terminals. When `parent_app` is det
 **CLI-based window activation:**
 - `cursor /path/to/project` — Opens or focuses window for that project
 - `code /path/to/project` — Same for VS Code
+- `code-insiders /path/to/project` — Same for VS Code Insiders
+- `zed /path/to/project` — Same for Zed
 - This handles multi-window scenarios (#42, #44, #47, #49)
 
 **Terminal panel focus options:**
@@ -164,6 +170,8 @@ IDEs like Cursor and VS Code have integrated terminals. When `parent_app` is det
 **Detection already works:**
 - `parent_app="cursor"` detected via `TERM_PROGRAM` in the shell hook
 - `parent_app="vscode"` detected similarly via `TERM_PROGRAM`
+- `parent_app="vscode-insiders"` detected similarly via `TERM_PROGRAM`
+- `parent_app="zed"` detected similarly via `TERM_PROGRAM`
 
 ---
 
@@ -208,11 +216,10 @@ Based on matrix analysis:
    - Status: **Implemented** — Needs manual testing (requires `allow_remote_control yes`)
 
 ### Medium-High Impact (Growing use case)
-5. ⏳ **IDE integrated terminal support** (#41-50)
-   - Root cause: `TerminalApp(fromParentApp:)` returns nil for "cursor"/"vscode"
-   - Fix: Phase 4 — Use IDE CLI to activate correct window (`cursor /path/to/project`)
+5. ✅ **IDE integrated terminal support** (#41-50)
+   - Fix: Phase 4 — Use IDE CLI to activate correct window (`cursor`/`code`/`code-insiders`/`zed`)
    - Optional: Send keystroke to focus terminal panel (toggle risk)
-   - Status: **Not started** — Detection works, activation doesn't
+   - Status: **Implemented** — Needs manual testing; terminal panel focus still unsupported
 
 ### Low Impact (Rare scenarios)
 6. **Handle screen sessions** (#40)
@@ -238,32 +245,23 @@ Based on matrix analysis:
 - Requires user to have `allow_remote_control yes` in kitty config
 
 **Phase 3b: Ghostty Window-Count Strategy** — ✅ Complete
-- Ghostty has no API for window/tab selection (confirmed as of Jan 2025)
+- Ghostty has no API for window/tab selection (confirmed as of 2026-02)
 - Added `countGhosttyWindows()` using Accessibility API (AXUIElement)
-- For tmux activation with Ghostty:
-  - 1 window: Activate app + `tmux switch-client` (safe, it's the only window)
-  - 0 or 2+ windows: Launch new terminal with tmux attach (guarantees correct session)
-- **Session launch cache** (prevents duplicate windows on rapid clicks):
-  - `recentlyLaunchedGhosttySessions` tracks launches for 30 seconds
-  - If clicked again within 30s, just activates Ghostty + switches tmux client
-  - Cache auto-cleans expired entries on each activation check
+- Tmux activation uses `ghosttyWindowDecision` when TTY discovery fails:
+  - no tmux client attached → launch new terminal
+  - tmux client attached + >1 windows → launch new terminal
+  - otherwise → activate Ghostty + `tmux switch-client`
+- Direct-shell activation uses `activateGhosttyWithHeuristic` (activates app for 1 or 2+ windows; returns false for 0 windows)
 - **AppleScript activation** (critical fix):
   - `NSRunningApplication.activate()` can silently fail when SwiftUI windows steal focus
   - Use AppleScript `tell application "Ghostty" to activate` instead for reliable activation
-- Documented decision: Reliable activation > avoiding duplicate windows
 
-**Phase 4: IDE Integrated Terminal Support** — ⏳ Not Started
-- Goal: Activate correct IDE window when `parent_app` is "cursor" or "vscode"
-- Approach:
-  1. Detect IDE via existing `parent_app` field (already works)
-  2. Run `cursor /path/to/project` or `code /path/to/project` to focus correct window
-  3. (Optional) Send keystroke to focus terminal panel
-- Challenges:
-  - Terminal focus: `Ctrl+\`` toggles (might close terminal)
+**Phase 4: IDE Integrated Terminal Support** — ✅ Complete (window activation only)
+- Rust emits `ActivateIdeWindow` when `parent_app` is an IDE (Cursor/VS Code/VS Code Insiders/Zed)
+- Swift runs the IDE CLI (`cursor`/`code`/`code-insiders`/`zed`) with the project path
+- Challenges remain:
+  - Terminal panel focus: `Ctrl+\`` toggles (might close terminal)
   - No external API for `workbench.action.terminal.focus`
-- Files to modify:
-  - `TerminalLauncher.swift` — Add IDE case handling in `activateExistingTerminal()`
-  - Possibly add `IDEApp` enum or extend `TerminalApp`
 
 ---
 
@@ -272,7 +270,7 @@ Based on matrix analysis:
 To verify each scenario:
 
 1. Set up the terminal configuration described
-2. Ensure shell hook has reported CWD (`cat ~/.capacitor/shell-cwd.json (legacy)`)
+2. Ensure daemon shell snapshot includes the project (e.g. `printf '{"protocol_version":1,"method":"get_shell_state","id":"shell","params":null}\n' | nc -U ~/.capacitor/daemon.sock | jq '.data.shells | to_entries | .[0:5]'`)
 3. Click the project in Capacitor
 4. Verify: correct app activates, correct tab selected
 5. Record actual behavior in "Current" column

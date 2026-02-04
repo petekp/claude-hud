@@ -18,7 +18,7 @@ ln -s target/release/hud-hook ~/.local/bin/hud-hook
 See `scripts/sync-hooks.sh`.
 
 ### hud-hook Must Point to Dev Build
-During development, `~/.local/bin/hud-hook` must symlink to `target/release/hud-hook` (not app bundle) to pick up changes. After Rust changes: rebuild, verify symlink target. Stale hooks create stale locks.
+During development, `~/.local/bin/hud-hook` must symlink to `target/release/hud-hook` (not app bundle) to pick up changes. After Rust changes: rebuild, verify symlink target. Stale hooks lead to stale daemon state and missing events.
 
 ### Logging Guard Must Be Held
 `logging::init()` returns `Option<WorkerGuard>` which must be held in `main()` scope. Using `std::mem::forget()` prevents log flushing. See `logging.rs` and `main.rs:70`.
@@ -310,7 +310,7 @@ swift build
 **Why touching App.swift works:** It's the entry point, so touching it forces Swift to recompile and relink everything.
 
 ### Rust Activation Resolver Is Sole Path
-Terminal activation now uses a single path: Rust decides (`engine.resolveActivation()`), Swift executes (`executeActivationAction()`). The legacy Swift-only strategy methods were removed in Jan 2026. All decision logic lives in `core/hud-core/src/activation.rs` (25+ unit tests).
+Terminal activation now uses a single path: Rust decides (`engine.resolveActivation()`), Swift executes (`executeActivationAction()`). The legacy Swift-only strategy methods were removed in Jan 2026. All decision logic lives in `core/hud-core/src/activation.rs` (50+ unit tests).
 
 ### Terminal Activation: TTY Discovery First
 In `activateHostThenSwitchTmux`, always try TTY discovery before Ghostty-specific handling. Without this, Ghostty gets activated even when tmux is running in iTerm.
@@ -322,8 +322,8 @@ In `activateHostThenSwitchTmux`, always try TTY discovery before Ghostty-specifi
 4. Otherwise → trigger fallback
 
 ### Shell Selection: Tmux Priority When Client Attached
-> **Daemon-only note (2026-02):** `shell-cwd.json (legacy)` is a historical file. In daemon-only mode, shell selection uses daemon IPC state; keep the priority logic but do not reintroduce file reads.
-When multiple shells exist at the same path in `shell-cwd.json (legacy)` (e.g., one tmux shell, two direct shells), the Rust `find_shell_at_path()` function uses this priority order:
+> **Daemon-only note (2026-02):** Shell selection uses the daemon shell snapshot (`get_shell_state`). Legacy files are non-authoritative.
+When multiple shells exist at the same path in the daemon shell snapshot (e.g., one tmux shell, two direct shells), the Rust `find_shell_at_path()` function uses this priority order:
 
 1. **Live shells** beat dead shells
 2. **Tmux shells** beat non-tmux shells (only when tmux client is attached)
@@ -338,7 +338,7 @@ When multiple shells exist at the same path in `shell-cwd.json (legacy)` (e.g., 
 **Problem:** Clicking a project doesn’t open Ghostty; activation falls back or does nothing.  
 **Cause:** The most recent shell entry can have `parent_app=unknown` (missing `TERM_PROGRAM`), which forces TTY discovery (iTerm/Terminal only). Ghostty can’t be identified, so activation fails even if an older shell entry is tagged `ghostty`.  
 **Solution:** In the activation resolver, rank shells with known `parent_app` ahead of unknown before timestamp tie-breakers.  
-**Where:** `core/hud-core/src/activation/policy.rs`, test `test_known_terminal_beats_newer_unknown_shell`.
+**Where:** `core/hud-core/src/activation.rs`, test `test_known_terminal_beats_newer_unknown_shell`.
 
 ### Shell Selection: HOME Excluded from Parent Matching
 
@@ -372,7 +372,7 @@ hasTmuxClientAttached()  // ✅ Returns true if ANY client exists
 
 ### Terminal Activation: Query Fresh Client TTY
 
-Shell records in `shell-cwd.json (legacy)` store `tmux_client_tty` at shell creation time. This TTY becomes **stale** when users reconnect to tmux—they get assigned new TTY devices (e.g., `/dev/ttys012` instead of `/dev/ttys000`).
+Daemon shell records include `tmux_client_tty` captured at hook time. This TTY becomes **stale** when users reconnect to tmux—they get assigned new TTY devices (e.g., `/dev/ttys012` instead of `/dev/ttys000`).
 
 **Symptom:** TTY discovery fails, falls through to Ghostty window-count check, sees 0 windows (user is in Terminal.app/iTerm), spawns new terminal.
 
@@ -422,22 +422,10 @@ Note: `-c` only affects session creation. If the session already exists, it atta
 
 **See:** `TerminalLauncher.swift:launchTerminalWithTmuxSession()`
 
-## State & Locks
-
-### Session-Based Locks (v4)
-Locks keyed by `{session_id}-{pid}`, NOT path hash. Multiple concurrent sessions per directory allowed. Legacy MD5-hash locks (`{hash}.lock`) are stale—delete them. See `create_session_lock()` in `lock.rs`.
-
-### Exact-Match Only for State Resolution
-Lock and session matching uses exact path comparison. No child→parent inheritance. `/project/src` lock does NOT make `/project` active. Monorepo packages track independently.
-
-### Diagnosing Stale Locks
-Check `~/.capacitor/sessions/*.lock`. Session locks have UUID format. MD5-hash locks (32 hex chars) are legacy/stale. Use `ps -p {pid}` to verify lock holder.
+## State & Focus
 
 ### Focus Override Behavior
 Manual override persists until clicking different project OR navigating to directory with active session. Navigating to project without session keeps focus (prevents timestamp racing). See `ActiveProjectResolver.swift`.
-
-### Lock Dir Read Errors
-`count_other_session_locks()` returns `usize::MAX` on I/O errors (not 0). Non-zero count preserves session record. Returning 0 would incorrectly tombstone active sessions. See `lock.rs:682-697`.
 
 ## Hooks
 
@@ -449,18 +437,8 @@ App auto-repairs hooks at startup. Claude Code interactions keep heartbeat fresh
 1. Remove both `~/.local/bin/hud-hook` AND `apps/swift/.build/.../hud-hook` to prevent auto-repair, OR
 2. Add `disableAllHooks: true` to `~/.claude/settings.json`
 
-Heartbeat check returns `Healthy` if any active lock exists, even with stale heartbeat. See `check_hook_health()` in `engine.rs:782-787`.
+Heartbeat check allows a short grace window when an active daemon session exists, to avoid false alarms during quiet periods. See `check_hook_health()` in `engine.rs`.
 
 ## Activity Tracking
 
-### Hook Format Detection in ActivityStore::load()
-The activity store supports two formats: legacy hook format (`"files"` array from older hud-hook versions) and native format (`"activity"` array with `project_path`). The hook now writes native format and migrates legacy files on write, but `ActivityStore::load()` still checks for hook format markers before attempting native format parsing to preserve backward compatibility.
-
-**Why this matters:** Hook format JSON successfully deserializes as native format (due to `serde(default)`), but with empty `activity` arrays. Without explicit hook marker detection, file activity data gets silently discarded, breaking the activity-based fallback for state resolution.
-
-**Related test:** `loads_hook_format_with_boundary_detection` in `activity.rs`.
-
-## Accepted Tradeoffs
-
-### Cleanup Race Condition
-`run_startup_cleanup()` uses read-modify-write without file locking. Concurrent hook events during cleanup could be lost. Accepted because: (1) cleanup runs only at app launch, (2) window is milliseconds, (3) lost events self-heal. See `cleanup.rs`.
+Activity entries are now derived and stored by the daemon (`core/daemon/src/activity.rs`) and queried over IPC. No file-based ActivityStore is used in daemon-only mode.

@@ -68,7 +68,7 @@ The crate is organized into three layers:
 ┌──────────────────────────┼──────────────────────────────────┐
 │  Infrastructure          │                                  │
 │  ┌──────────┐ ┌──────────┴───┐ ┌──────────┐ ┌──────────┐   │
-│  │ state/   │ │ activity.rs  │ │boundaries│ │ config   │   │
+│  │ state/   │ │ storage.rs   │ │boundaries│ │ config   │   │
 │  │ (module) │ │              │ │          │ │          │   │
 │  └──────────┘ └──────────────┘ └──────────┘ └──────────┘   │
 └─────────────────────────────────────────────────────────────┘
@@ -87,7 +87,7 @@ The crate is organized into three layers:
 | Module | Purpose |
 |--------|---------|
 | `projects.rs` | Project loading, discovery, path encoding, indicators |
-| `sessions.rs` | High-level session state detection (wraps `state/` module) |
+| `sessions.rs` | Session state detection from daemon snapshots |
 | `artifacts.rs` | Skill/command/agent discovery and frontmatter parsing |
 | `ideas.rs` | Idea capture, status tracking, effort estimation |
 | `stats.rs` | Token usage parsing from JSONL, mtime-based caching |
@@ -97,48 +97,30 @@ The crate is organized into three layers:
 
 | Module | Purpose |
 |--------|---------|
-| `state/` | **Session state subsystem** - lock detection, state resolution, persistence |
-| `activity.rs` | File activity tracking for monorepo project attribution |
+| `state/` | **Session state subsystem** - daemon snapshot mapping, path normalization, cleanup |
+| `storage.rs` | Path encoding + project data directory resolution |
 | `boundaries.rs` | Project boundary detection (CLAUDE.md, .git, package.json, etc.) |
 | `validation.rs` | Path validation, dangerous path detection |
 | `config.rs` | Path resolution (`~/.claude`), config file I/O |
 | `patterns.rs` | Pre-compiled regex patterns for JSONL parsing |
 
-### The `state/` Subsystem
+### The `state/` Subsystem (Daemon-First)
 
-Session state detection following the **sidecar philosophy**: the hook script is authoritative for state transitions, Rust is a passive reader.
+Session state detection follows the **sidecar philosophy**: the daemon is authoritative for state transitions, and Rust is a passive reader that maps snapshots for Swift.
 
 ```
 state/
-├── mod.rs        # Module overview, architecture diagram
-├── types.rs      # SessionRecord, LockInfo, LastEvent
-├── store.rs      # StateStore - reads session states from JSON
-├── lock.rs       # Lock detection, PID verification
-└── resolver.rs   # Two-layer resolution algorithm
+├── mod.rs        # Module overview + re-exports
+├── daemon.rs     # IPC helpers (`get_sessions`, `get_health`)
+├── types.rs      # SessionRecord + hook event types
+├── path_utils.rs # Path normalization for matching
+└── cleanup.rs    # Startup cleanup (daemon-aware)
 ```
 
-**Key Types:**
-
-```rust
-pub enum SessionState { Ready, Working, Waiting, Compacting, Idle }
-
-pub struct SessionRecord {
-    pub session_id: String,
-    pub state: SessionState,
-    pub cwd: String,
-    pub updated_at: DateTime<Utc>,        // Any update (including heartbeats)
-    pub state_changed_at: DateTime<Utc>,  // When state actually changed
-    pub project_dir: Option<String>,      // Stable project root
-    pub last_event: Option<LastEvent>,    // For debugging
-    // ...
-}
-```
-
-**Two-Layer Resolution:**
-1. **Primary (locks):** Check for lock at project path → use matching record's state
-2. **Fallback (fresh records):** Trust records updated within 30 seconds even without locks
-
-This handles edge cases like session startup race conditions where the hook fires before the lock holder spawns.
+**Key facts:**
+- No file-based session state or lock parsing in daemon-only mode.
+- Liveness is sourced from daemon snapshot fields (`is_alive`, timestamps).
+- `sessions.rs` uses `state::daemon::sessions_snapshot()` to build `ProjectSessionState`.
 
 For complete documentation, see the inline doc comments in each module file, or run `cargo doc -p hud-core --open`.
 
@@ -179,7 +161,7 @@ pub struct AgentSession {
 }
 ```
 
-**Starship-style pattern:** Each CLI gets an adapter that knows how to detect installation and parse session state from that tool's specific files.
+**Adapter pattern:** Each CLI gets an adapter. Currently only the Claude adapter is implemented and reads daemon snapshots; other CLIs are stubs (not installed).
 
 See [Adding a New CLI Agent Guide](adding-new-cli-agent-guide.md) for implementation details.
 
@@ -188,22 +170,16 @@ See [Adding a New CLI Agent Guide](adding-new-cli-agent-guide.md) for implementa
 **Session Detection (`sessions.rs`):**
 - `detect_session_state()` - Main entry point for Swift; returns `ProjectSessionState`
 
-**State Resolution (`state/resolver.rs`):**
-- `resolve_state()` - Returns `Option<ClaudeState>` for a project path
-- `resolve_state_with_details()` - Returns `ResolvedState` with session ID and cwd
+**Daemon Snapshot (`state/daemon.rs`):**
+- `sessions_snapshot()` - Reads daemon `get_sessions` snapshot
+- `daemon_health()` - Checks daemon health via IPC
 
-**Lock Management (`state/lock.rs`):**
-- `is_session_running()` - Checks if a lock exists for path (or children)
-- `get_lock_info()` - Returns lock metadata (PID, path, timestamps)
-- `reconcile_orphaned_lock()` - Cleans up locks with no matching state record
+**Path Normalization (`state/path_utils.rs`):**
+- `normalize_path_for_matching()` - Canonicalize project paths for matching
 
 **Project Boundary (`boundaries.rs`):**
 - `find_project_boundary()` - Walks up to find nearest CLAUDE.md, .git, etc.
 - `is_dangerous_path()` - Rejects `/`, `/Users`, `/home`, etc.
-
-**Activity Tracking (`activity.rs`):**
-- `ActivityStore::record_activity()` - Records file edit with project attribution
-- `ActivityStore::has_recent_activity()` - Checks for activity within threshold
 
 **Configuration (`config.rs`):**
 - `get_claude_dir()` - Resolves `~/.claude` directory
@@ -261,8 +237,6 @@ User runs claude → Hooks fire → Daemon updates state.db → Swift app reads 
 
 **State store:** `~/.capacitor/daemon/state.db` (daemon-owned SQLite WAL)
 
-**Legacy artifacts (deprecated):** `~/.capacitor/sessions.json`, `~/.capacitor/sessions/*.lock/` (should not be written in daemon-only mode)
-
 **Hook binary:** `~/.local/bin/hud-hook`
 
 **Architecture:** See `core/hud-hook/src/main.rs` for the hook implementation and `core/daemon/src/reducer.rs` for canonical state mapping.
@@ -280,7 +254,6 @@ The app uses two namespaces:
 │   ├── state.db                   # Authoritative state store (WAL)
 │   ├── daemon.stdout.log          # LaunchAgent stdout
 │   └── daemon.stderr.log          # LaunchAgent stderr
-├── sessions.json                  # (legacy) session snapshot, not authoritative
 ├── stats-cache.json               # Cached token usage
 ├── summaries.json                 # Session summaries cache
 ├── project-summaries.json         # Project overview bullets

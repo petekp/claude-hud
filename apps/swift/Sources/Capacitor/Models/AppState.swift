@@ -103,6 +103,7 @@ class AppState: ObservableObject {
     private let layoutModeKey = "layoutMode"
     private var engine: HudEngine?
     private var stalenessTimer: Timer?
+    private var daemonStatusEvaluator = DaemonStatusEvaluator()
 
     /// Debounce work item for coalescing rapid state updates.
     /// Prevents recursive layout crashes when multiple sessions change simultaneously.
@@ -292,6 +293,7 @@ class AppState: ObservableObject {
     // MARK: - Daemon Diagnostic
 
     func ensureDaemonRunning() {
+        daemonStatus = daemonStatusEvaluator.beginStartup(currentStatus: daemonStatus)
         _Concurrency.Task { @MainActor [weak self] in
             let errorMessage = await _Concurrency.Task.detached {
                 DaemonService.ensureRunning()
@@ -325,23 +327,23 @@ class AppState: ObservableObject {
             do {
                 let health = try await DaemonClient.shared.fetchHealth()
                 await MainActor.run {
-                    self?.daemonStatus = DaemonStatus(
+                    guard let self else { return }
+                    if let status = self.daemonStatusEvaluator.statusForHealthResult(
                         isEnabled: true,
-                        isHealthy: health.status == "ok",
-                        message: health.status,
-                        pid: health.pid,
-                        version: health.version
-                    )
+                        result: .success(health)
+                    ) {
+                        self.daemonStatus = status
+                    }
                 }
             } catch {
                 await MainActor.run {
-                    self?.daemonStatus = DaemonStatus(
+                    guard let self else { return }
+                    if let status = self.daemonStatusEvaluator.statusForHealthResult(
                         isEnabled: true,
-                        isHealthy: false,
-                        message: "Daemon unavailable",
-                        pid: nil,
-                        version: nil
-                    )
+                        result: .failure(error)
+                    ) {
+                        self.daemonStatus = status
+                    }
                 }
             }
         }

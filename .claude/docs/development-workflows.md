@@ -104,7 +104,6 @@ Hook handling is implemented in Rust (`core/hud-hook/`) and forwarded to the dae
 **Architecture:**
 - `core/hud-hook/src/main.rs` — Entry point for hook binary
 - `core/hud-hook/src/handle.rs` — Main hook handler (state transitions)
-- `core/hud-hook/src/lock_holder.rs` — Lock management daemon (legacy; should not run in daemon-only mode)
 - `core/daemon/src/reducer.rs` — Canonical hook→state mapping (daemon-only)
 
 **To modify hook behavior:**
@@ -115,7 +114,6 @@ Hook handling is implemented in Rust (`core/hud-hook/`) and forwarded to the dae
 
 2. **Make your changes** in the Rust crate (`core/hud-hook/src/`)
    - State transitions: `handle.rs`
-   - Lock behavior: `lock_holder.rs`
 
 3. **Build and install:**
    ```bash

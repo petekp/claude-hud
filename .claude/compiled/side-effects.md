@@ -6,20 +6,14 @@
 - `~/.capacitor/daemon/daemon.*.log` — daemon stdout/stderr
 - `~/.capacitor/hud-hook-heartbeat` — hook proof-of-life
 - `~/.capacitor/config.json` — user prefs
-- `~/.capacitor/projects.json` — project cache
-- `~/.capacitor/ideas.json` — ideas
-- `~/.capacitor/stats_cache.json` — stats cache
+- `~/.capacitor/projects.json` — tracked projects list
+- `~/.capacitor/stats-cache.json` — stats cache
 - `~/.local/bin/hud-hook` — symlinked hook binary
 - `~/.claude/settings.json` — hooks section only (preserve other settings)
 
 ## Legacy (Non-Authoritative)
-- `~/.capacitor/sessions.json`
-- `~/.capacitor/sessions/*.lock/`
-- `~/.capacitor/shell-cwd.json`
-- `~/.capacitor/file-activity.json`
-- `~/.capacitor/ended-sessions/*`
+Legacy files are deprecated in daemon-only mode and should not be used. If they exist from old installs, they can be deleted.
 
 ## IPC
 - Socket: `~/.capacitor/daemon.sock`
 - Clients: `hud-hook`, Swift app, `hud-core`
-

@@ -7,12 +7,13 @@
 
 Capacitor is a native macOS SwiftUI app (Apple Silicon, macOS 14+) that acts as a sidecar dashboard for Claude Code. The architecture uses a Rust core (`hud-core`) with UniFFI bindings to Swift plus a **Rust daemon (`capacitor-daemon`) that is the canonical source of truth** for session, shell, activity, and process-liveness state. Hooks emit events to the daemon over a Unix socket (`~/.capacitor/daemon.sock`), and Swift reads daemon snapshots (shell state + project aggregation). File-based JSON fallbacks (`sessions.json`, `shell-cwd.json`, `file-activity.json`) and lock compatibility have been removed in daemon-only mode. The app auto-starts the daemon via LaunchAgent and surfaces daemon status in debug builds only. Terminal activation uses a Rust-only decision path (Swift executes macOS APIs). **v0.1.27** completed hook audit remediations (heartbeat gating, safe hook tests, activity migration) and activation matching parity across Rust/Swift.
 
+> **Historical note:** Timeline entries below may reference pre-daemon artifacts (locks, `sessions.json`, `shell-cwd.json`). Treat them as historical context only; they are not current behavior.
+
 ## Stale Information Detected
 
 | Location | States | Reality | Since |
 |----------|--------|---------|-------|
 | docs/architecture-decisions/003-sidecar-architecture-pattern.md | “Hooks write `~/.capacitor/sessions.json` and HUD reads files.” | Daemon is the single writer; hooks/app are IPC clients; JSON is legacy/fallback only. | 2026-01 |
-| docs/architecture-decisions/002-state-resolver-matching-logic.md | “Lock-file resolver is current.” | Superseded by daemon-based state; lock files are historical only. | 2026-02 (now marked superseded) |
 
 ## Timeline
 
@@ -67,7 +68,7 @@ Capacitor is a native macOS SwiftUI app (Apple Silicon, macOS 14+) that acts as 
 **What changed:**
 - Removed remaining client-side heuristics and activity fallbacks in `hud-core`.
 - Renamed `is_locked` → `has_session` across daemon, Rust core, and Swift client models.
-- Added an audit trail for legacy/dead code removals under `.claude/docs/audit/`.
+- Audit trail for legacy/dead code removals is kept in git history; `.claude/docs/audit/` was removed during cleanup.
 
 **Why:**
 - Eliminate legacy lock semantics from the daemon-first architecture.
@@ -130,7 +131,7 @@ Capacitor is a native macOS SwiftUI app (Apple Silicon, macOS 14+) that acts as 
 - Establish a single-writer architecture and a clear migration sequence for lock deprecation and daemon-only behavior.
 
 **Agent impact:**
-- Consult `docs/plans/2026-01-30-daemon-architecture-migration-plan.md` for invariants, protocol, and phase checklist.
+- Consult `.claude/docs/architecture-deep-dive.md` and `.claude/docs/ui-refresh-contract.md` for invariants and current daemon-only behavior.
 
 **Commits:** `6809018`
 
@@ -141,8 +142,8 @@ Capacitor is a native macOS SwiftUI app (Apple Silicon, macOS 14+) that acts as 
 **What changed:**
 
 1. **Hook test safety + heartbeat gating** (commit `9a987d0`)
-   - `run_hook_test()` writes an isolated sessions-format file instead of touching live `sessions.json`
-   - Health checks now verify `sessions.json` is writable when present
+- `run_hook_test()` writes an isolated legacy sessions-format file instead of touching live `sessions.json` (historical; daemon-only no longer depends on this)
+- Health checks verified `sessions.json` writability when present (historical)
    - Heartbeat updates only after parsing a valid hook event (no false positives)
 
 2. **Activity migration consolidation** (`hud-hook`)
@@ -168,8 +169,8 @@ Capacitor is a native macOS SwiftUI app (Apple Silicon, macOS 14+) that acts as 
 
 **Agent impact:**
 - Use `normalize_path_for_matching` for activation comparisons; keep action paths unmodified
-- Do not write to live `sessions.json` for hook tests; always use isolated files
-- Reference the new audit docs at `.claude/docs/audit/hooks-functionality-2026-01-29/` and `.claude/docs/audit/terminal-shell-ide-audit.md`
+- Historical: hook tests avoided writing live `sessions.json`; daemon-only builds no longer rely on that file
+- Audit docs from this period were removed during cleanup; use git history if you need the original audit context.
 
 **Commits:** `9a987d0`, `7271c5a`, `9e98dde`, `366930b`
 
@@ -260,7 +261,7 @@ Capacitor is a native macOS SwiftUI app (Apple Silicon, macOS 14+) that acts as 
 Two additional terminal activation bugs fixed after v0.1.25 release:
 
 1. **Stale tmux_client_tty fix** (`TerminalLauncher.swift`)
-   - Shell records in `shell-cwd.json` store `tmux_client_tty` at creation time
+- Daemon shell snapshots store `tmux_client_tty` captured at hook time
    - TTY becomes stale when users reconnect to tmux (get new TTY device)
    - Fix: Query fresh client TTY via `tmux display-message -p '#{client_tty}'` at activation time
    - Telemetry shows: `Fresh TTY query: /dev/ttys000 (shell record had: /dev/ttys005)`
@@ -506,12 +507,12 @@ Without this fix, projects showed "Idle" even when actively working because file
 ### 2026-01-27 — Terminal Launcher Priority Fix
 
 **What changed:**
-Fixed terminal activation to check shell-cwd.json BEFORE tmux sessions.
+Fixed terminal activation to check the daemon shell snapshot BEFORE tmux sessions.
 
-**Root cause:** `launchTerminalAsync()` checked tmux first (lines 90-96), returning early before checking shell-cwd.json. If user had a non-tmux terminal window open AND a tmux session existed at the same path, clicking the project would open a NEW window in tmux instead of focusing the existing terminal.
+**Root cause:** `launchTerminalAsync()` checked tmux first (lines 90-96), returning early before checking the daemon shell snapshot. If user had a non-tmux terminal window open AND a tmux session existed at the same path, clicking the project would open a NEW window in tmux instead of focusing the existing terminal.
 
 **Fix:** Inverted priority order:
-1. Check shell-cwd.json first (active shells with verified-live PIDs)
+1. Check daemon shell snapshot first (active shells with verified-live PIDs)
 2. Then check tmux sessions
 3. Finally launch new terminal
 
@@ -521,7 +522,7 @@ Fixed terminal activation to check shell-cwd.json BEFORE tmux sessions.
 - User intent: focus what they're currently using, not what they used before
 
 **Agent impact:**
-- Terminal activation priority: shell-cwd.json → tmux → new terminal
+- Terminal activation priority: daemon shell snapshot → tmux → new terminal
 - Comments in `TerminalLauncher.swift` now document this priority chain and why
 - When implementing activation features, prioritize "currently active" signals over "exists" signals
 
@@ -539,7 +540,7 @@ Fixed terminal activation to check shell-cwd.json BEFORE tmux sessions.
 
 **Test approach:**
 - Heartbeat check: Is the heartbeat file recent (< 60s)?
-- State file I/O: Can we write/read/delete a test record in sessions.json?
+- Historical: state file I/O checks against `sessions.json` (deprecated in daemon-only mode)
 
 **Why:** Gives users confidence that the hook system is working. No subprocess spawn needed—tests what actually matters (file I/O, not binary execution).
 
@@ -631,11 +632,11 @@ Fixed terminal activation to check shell-cwd.json BEFORE tmux sessions.
 - When `Drop` has side effects, hold values in scope rather than `forget()`ing them
 - New CLAUDE.md gotchas document both patterns
 
-**Files changed:** `core/hud-core/src/state/lock.rs`, `core/hud-hook/src/logging.rs`, `core/hud-hook/src/main.rs`
+**Files changed (historical; lock.rs removed in daemon-only mode):** `core/hud-hook/src/logging.rs`, `core/hud-hook/src/main.rs`
 
 **Tests added:** `test_count_other_session_locks_nonexistent_dir`, `test_count_other_session_locks_unreadable_dir`
 
-**Audit doc:** `.claude/docs/audit/12-hud-hook-system.md`
+**Audit doc:** Removed during cleanup; see git history if needed.
 
 ---
 
@@ -652,7 +653,7 @@ Fixed terminal activation to check shell-cwd.json BEFORE tmux sessions.
 
 **Key findings:**
 1. **All 11 subsystems passed** — No critical bugs or design flaws found
-2. **1 doc fix applied** — `lock.rs` exact-match-only documentation (commit `3d78b1b`)
+2. **1 doc fix applied (historical)** — `lock.rs` exact-match-only documentation (commit `3d78b1b`)
 3. **1 low-priority item** — Vestigial function name `find_matching_child_lock` (optional rename)
 4. **All 6 CLAUDE.md gotchas verified accurate** — Session-based locks, exact-match-only, hud-hook symlink, async hooks, Swift timestamp decoder, focus override
 5. **Shell vs Lock path matching is intentionally different:**
@@ -660,7 +661,7 @@ Fixed terminal activation to check shell-cwd.json BEFORE tmux sessions.
    - Shell: child-path matching (shell in `/project/src` matches project `/project`)
 
 **Agent impact:**
-- Audit artifacts in `.claude/docs/audit/01-*.md` through `11-*.md`
+- Audit artifacts from this period were removed during cleanup; use git history if needed.
 - Design decisions documented and validated—don't second-guess these patterns
 - `ActiveProjectResolver` focus override mechanism is intentionally implicit (no clearManualOverride method)
 - Active sessions (Working/Waiting/Compacting) always beat passive sessions (Ready) in priority
@@ -684,10 +685,10 @@ Fixed terminal activation to check shell-cwd.json BEFORE tmux sessions.
 **Agent impact:**
 - Lock holder now tracks exit reason: only releases lock if `pid_exited == true`
 - Functions removed: `is_session_active()`, `is_session_active_with_storage()`, `find_by_cwd()`, `boundaries::normalize_path()`
-- Documentation in `store.rs`, `mod.rs`, `lock.rs`, `resolver.rs` now accurately describes v4 behavior
+- Documentation in `store.rs`, `mod.rs`, `lock.rs`, `resolver.rs` now accurately describes v4 behavior (historical; lock/resolver removed in daemon-only mode)
 - Path matching is exact-match-only—don't implement child→parent inheritance
 
-**Files changed:** `lock_holder.rs`, `sessions.rs`, `store.rs`, `boundaries.rs`, `lock.rs`, `mod.rs`, `resolver.rs`, `claude.rs`
+**Files changed (historical; lock_holder/lock/resolver removed in daemon-only mode):** `sessions.rs`, `store.rs`, `boundaries.rs`, `mod.rs`, `claude.rs`
 
 **Commit:** `3d78b1b`
 
@@ -725,7 +726,7 @@ Fixed terminal activation to check shell-cwd.json BEFORE tmux sessions.
 2. Fixed `needless_collect` lint (use `count()` directly instead of collecting to Vec)
 3. Removed unused `Instant` from thread-local sysinfo cache
 4. Extracted helper functions in `handle.rs` for clearer event processing
-5. Fixed ignored return value in `lock_holder.rs` (now logs success/failure)
+5. Fixed ignored return value in `lock_holder.rs` (historical; lock-holder removed in daemon-only mode)
 
 **Why:** Code review identified patterns that could lead to bugs (ignored boolean returns) and unnecessary allocations (collecting iterators just to count).
 
@@ -752,7 +753,7 @@ Fixed terminal activation to check shell-cwd.json BEFORE tmux sessions.
 - All `unsafe` blocks must have `// SAFETY:` comments explaining why the operation is safe
 - Use `unwrap_or_else(|_| cache.write().unwrap_or_else(...))` pattern for RwLock recovery
 - Static regex compilation can use `expect()` with `#![allow(clippy::unwrap_used)]` at module level
-- See `cwd.rs`, `lock_holder.rs`, `handle.rs` for canonical `// SAFETY:` comment format
+- See `cwd.rs`, `handle.rs` for canonical `// SAFETY:` comment format (lock_holder.rs removed in daemon-only mode)
 
 **Commit:** `a28eee5`
 
@@ -761,7 +762,7 @@ Fixed terminal activation to check shell-cwd.json BEFORE tmux sessions.
 ### 2026-01-26 — Self-Healing Lock Management
 
 **What changed:** Added multi-layered cleanup to prevent accumulation of stale lock artifacts:
-1. `cleanup_orphaned_lock_holders()` kills lock-holder processes whose monitored PID is dead
+1. `cleanup_orphaned_lock_holders()` kills lock-holder processes whose monitored PID is dead (historical)
 2. `cleanup_legacy_locks()` removes MD5-hash format locks from older versions
 3. Lock-holders have 24-hour safety timeout (`MAX_LIFETIME_SECS`)
 4. Locks now include `lock_version` field for debugging
@@ -774,7 +775,7 @@ Fixed terminal activation to check shell-cwd.json BEFORE tmux sessions.
 - `run_startup_cleanup()` runs process cleanup **first** (before file cleanup) to prevent races
 - Lock-holder processes self-terminate after 24 hours regardless of PID monitoring state
 
-**Files changed:** `cleanup.rs` (process/legacy cleanup), `lock_holder.rs` (timeout), `lock.rs` (version), `types.rs` (LockInfo)
+**Files changed (historical; lock-holder removed in daemon-only mode):** `cleanup.rs` (process/legacy cleanup), `types.rs` (LockInfo)
 
 ---
 
@@ -867,7 +868,7 @@ Fixed terminal activation to check shell-cwd.json BEFORE tmux sessions.
 **Why:** Avoid terminal window proliferation. Users typically want to switch to existing sessions, not create new ones.
 
 **Agent impact:**
-- `TerminalLauncher` now searches `shell-cwd.json` for matching shells before launching new terminals
+- `TerminalLauncher` now searches daemon shell snapshots for matching shells before launching new terminals
 - Supports iTerm, Terminal.app tab selection via AppleScript
 - Supports kitty remote control for window focus
 - Tmux sessions are switched via `tmux switch-client -t <session>`
@@ -932,7 +933,7 @@ Fixed terminal activation to check shell-cwd.json BEFORE tmux sessions.
 
 **Why:** Lock existence + live PID is more reliable than timestamp freshness. Handles tool-free text generation where no hook events fire.
 
-**Agent impact:** When debugging state detection, check `~/.capacitor/sessions/` for lock files. Lock existence = session active.
+**Agent impact (historical):** Pre-daemon debugging used lock files. In daemon-only mode, use `get_sessions`/`get_project_states` over IPC instead.
 
 **Deprecated:** Previous state detection approaches that relied on timestamp freshness.
 
@@ -960,11 +961,9 @@ Fixed terminal activation to check shell-cwd.json BEFORE tmux sessions.
 
 **Agent impact:** All Capacitor state files are in `~/.capacitor/`. Claude Code config remains in `~/.claude/`.
 
-**Key paths:**
-- `~/.capacitor/sessions.json` — Session state
-- `~/.capacitor/sessions/` — Lock directory
-- `~/.capacitor/shell-cwd.json` — Active shell sessions
-- `~/.capacitor/hud-hook-debug.{date}.log` — Debug logs (NEW)
+**Key paths (historical):**
+- `~/.capacitor/hud-hook-debug.{date}.log` — Debug logs
+- Legacy session/lock JSON files are deprecated in daemon-only mode.
 
 **Commits:** `1d6c4ae`, `1edae7d`
 
@@ -1077,7 +1076,7 @@ Fixed terminal activation to check shell-cwd.json BEFORE tmux sessions.
 | Make multiple tmux subprocess calls for related data | Combine into single call with tab separator | 2026-01-27 |
 | Filter dead shells before passing to Rust | Pass `is_live` flag, let Rust prefer live shells | 2026-01-27 |
 | Rely on `serde(default)` to distinguish file formats | Check raw JSON for format-specific keys | 2026-01-27 |
-| Check tmux before shell-cwd.json in terminal activation | Check shell-cwd.json first (active > exists) | 2026-01-27 |
+| Check tmux before daemon shell snapshot in terminal activation | Check daemon shell snapshot first (active > exists) | 2026-01-27 |
 | Use `Task` in Swift files with UniFFI imports | Use `_Concurrency.Task` to avoid shadowing | 2026-01-27 |
 | Return `true` unconditionally from strategy methods | Return actual success status for fallback chains | 2026-01-27 |
 | Create fake objects to extract few fields | Add overloads that accept the needed fields directly | 2026-01-27 |

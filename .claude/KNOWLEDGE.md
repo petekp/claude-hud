@@ -5,15 +5,15 @@
 
 | Context | Load | Search |
 |---|---|---|
-| Daemon IPC / state tracking | docs/daemon-ipc.md, .claude/docs/architecture-overview.md, .claude/docs/side-effects-map.md, .claude/compiled/daemon.md | daemon.sock, get_sessions, get_shell_state |
+| Daemon IPC / state tracking | docs/daemon-ipc.md, .claude/docs/architecture-overview.md, .claude/compiled/daemon.md | daemon.sock, get_sessions, get_shell_state |
 | Hook behavior / install | core/hud-hook/, .claude/docs/development-workflows.md, .claude/compiled/hooks.md | hud-hook, sync-hooks, hook events |
 | Swift UI + app state | apps/swift/, .claude/docs/architecture-overview.md, .claude/compiled/rules.md | AppState, HudEngine, SwiftUI |
 | UniFFI bindings | CLAUDE.md, .claude/docs/development-workflows.md | uniffi-bindgen, hud_core.swift |
 | Terminal activation | .claude/docs/terminal-switching-matrix.md, .claude/docs/terminal-activation-test-matrix.md, .claude/compiled/terminal.md | tmux, Ghostty, Warp |
 | Debugging / daemon health | .claude/docs/debugging-guide.md, .claude/compiled/debugging.md | daemon stderr, get_health |
-| Side effects / storage | .claude/docs/side-effects-map.md, .claude/compiled/side-effects.md | state.db, daemon.sock |
+| Side effects / storage | .claude/compiled/side-effects.md | state.db, daemon.sock |
 | Session UI state | .claude/compiled/ui-state.md | Working, Ready, Idle |
-| Migration plan / invariants | docs/plans/2026-01-30-daemon-architecture-migration-plan.md, docs/architecture-decisions/005-daemon-based-state-service.md, .claude/compiled/migration.md | daemon-only, lock deprecation |
+| Migration / invariants | docs/architecture-decisions/005-daemon-based-state-service.md, .claude/docs/architecture-deep-dive.md, .claude/compiled/migration.md | daemon-only, lock deprecation |
 
 ## Always-Loaded Facts
 

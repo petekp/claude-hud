@@ -28,18 +28,22 @@ struct StatusIndicator: View {
 
     var body: some View {
         HStack(spacing: 0) {
-            if state == .compacting {
-                AnimatedCompactingText(color: statusColor)
-            } else {
-                Text(statusText.uppercased())
-                    .font(.system(.callout, design: .monospaced).weight(.semibold))
-                    .tracking(0.5)
-                    .foregroundColor(isActive ? statusColor : statusColor.opacity(0.55))
-                    .contentTransition(reduceMotion ? .identity : .numericText())
+            Group {
+                if state == .compacting {
+                    AnimatedCompactingText(color: statusColor)
+                } else {
+                    Text(statusText.uppercased())
+                        .font(.system(.callout, design: .monospaced).weight(.semibold))
+                        .tracking(0.5)
+                        .foregroundStyle(isActive ? statusColor : statusColor.opacity(0.55))
+                        .contentTransition(reduceMotion ? .identity : .numericText())
+                }
             }
+            .transition(.opacity)
 
             if state == .working {
                 AnimatedEllipsis(color: statusColor)
+                    .transition(.opacity)
             }
         }
         .animation(reduceMotion ? AppMotion.reducedMotionFallback : .smooth(duration: 0.3), value: state)
@@ -73,7 +77,7 @@ struct AnimatedEllipsis: View {
         Text(String(repeating: ".", count: dotCount))
             .font(.system(.callout, design: .monospaced).weight(.semibold))
             .tracking(-1)
-            .foregroundColor(color)
+            .foregroundStyle(color)
             .frame(width: 24, alignment: .leading)
             .onReceive(timer) { _ in
                 guard !reduceMotion else { return }
@@ -112,7 +116,7 @@ struct AnimatedCompactingText: View {
         Text("COMPACTING")
             .font(.system(.callout, design: .monospaced).weight(.semibold))
             .tracking(0.5)
-            .foregroundColor(color)
+            .foregroundStyle(color)
     }
 
     private var animatedText: some View {
@@ -125,7 +129,7 @@ struct AnimatedCompactingText: View {
             Text("COMPACTING")
                 .font(.system(.callout, design: .monospaced).weight(.semibold))
                 .tracking(tracking)
-                .foregroundColor(color)
+                .foregroundStyle(color)
         }
     }
 
@@ -335,12 +339,12 @@ struct ClickableProjectTitle: View {
             HStack(spacing: 4) {
                 Text(name)
                     .font(font)
-                    .foregroundColor(isHovered ? nameColor.opacity(1.0) : nameColor)
+                    .foregroundStyle(isHovered ? nameColor.opacity(1.0) : nameColor)
                     .strikethrough(isMissing, color: .white.opacity(0.3))
 
                 Image(systemName: "chevron.right")
                     .font(.system(size: 10, weight: .semibold))
-                    .foregroundColor(.white.opacity(isHovered ? 0.6 : 0.35))
+                    .foregroundStyle(.white.opacity(isHovered ? 0.6 : 0.35))
                     .opacity(isHovered ? 1 : 0)
                     .offset(x: isHovered ? 0 : -4)
             }
@@ -372,7 +376,7 @@ struct StaleBadge: View {
     var body: some View {
         Text("stale")
             .font(style == .compact ? AppTypography.label : AppTypography.captionSmall.weight(.medium))
-            .foregroundColor(.white.opacity(style == .compact ? 0.4 : 0.5))
+            .foregroundStyle(.white.opacity(style == .compact ? 0.4 : 0.5))
             .padding(.horizontal, style == .compact ? 6 : 5)
             .padding(.vertical, 2)
             .background(Color.white.opacity(style == .compact ? 0.06 : 0.08))
@@ -394,6 +398,6 @@ struct BlockerBadge: View {
     var body: some View {
         Image(systemName: "exclamationmark.triangle.fill")
             .font(style == .compact ? AppTypography.label : AppTypography.captionSmall)
-            .foregroundColor(.orange)
+            .foregroundStyle(.orange)
     }
 }

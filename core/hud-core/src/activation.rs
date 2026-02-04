@@ -2119,12 +2119,7 @@ mod tests {
 
     #[test]
     fn test_home_shell_does_not_block_tmux_attach_when_detached() {
-        let home_shell = make_shell_entry(
-            "/Users/pete",
-            "/dev/ttys007",
-            ParentApp::Ghostty,
-            None,
-        );
+        let home_shell = make_shell_entry("/Users/pete", "/dev/ttys007", ParentApp::Ghostty, None);
 
         let state = make_shell_state(vec![("87855", home_shell)]);
 

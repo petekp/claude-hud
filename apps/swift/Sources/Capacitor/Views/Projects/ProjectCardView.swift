@@ -31,9 +31,9 @@ struct ProjectCardView: View {
 
     // MARK: - Computed Properties
 
-    private var currentState: SessionState? {
+    private var currentState: SessionState {
         switch glassConfig.previewState {
-        case .none: sessionState?.state
+        case .none: sessionState?.state ?? .idle
         case .ready: .ready
         case .working: .working
         case .waiting: .waiting
@@ -143,13 +143,12 @@ struct ProjectCardView: View {
     // MARK: - Computed View Helpers
 
     private var accessibilityStatusDescription: String {
-        guard let state = currentState else { return "No active session" }
-        switch state {
-        case .ready: return "Ready for input"
-        case .working: return "Working"
-        case .waiting: return "Waiting for user action"
-        case .compacting: return "Compacting history"
-        case .idle: return "Idle"
+        switch currentState {
+        case .ready: "Ready for input"
+        case .working: "Working"
+        case .waiting: "Waiting for user action"
+        case .compacting: "Compacting history"
+        case .idle: "Idle"
         }
     }
 

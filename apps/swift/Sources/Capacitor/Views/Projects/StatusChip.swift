@@ -46,20 +46,11 @@ struct StatusChip: View {
     }
 
     var body: some View {
-        Group {
-            if let state {
-                StatusIndicator(state: state)
-                    .scaleEffect(style == .compact ? 0.85 : 1.0, anchor: .leading)
-            } else {
-                Text("IDLE")
-                    .font(.system(.callout, design: .monospaced).weight(.semibold))
-                    .tracking(0.5)
-                    .foregroundColor(.white.opacity(0.35))
-            }
-        }
-        .opacity(chipOpacity)
-        .animation(reduceMotion ? AppMotion.reducedMotionFallback : .smooth(duration: 0.3), value: effectiveState)
-        .accessibilityLabel(Text(accessibilityLabelText))
+        StatusIndicator(state: effectiveState)
+            .scaleEffect(style == .compact ? 0.85 : 1.0, anchor: .leading)
+            .opacity(chipOpacity)
+            .animation(reduceMotion ? AppMotion.reducedMotionFallback : .smooth(duration: 0.3), value: effectiveState)
+            .accessibilityLabel(Text(accessibilityLabelText))
     }
 }
 

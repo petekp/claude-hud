@@ -92,7 +92,7 @@ This is the only option that **structurally removes** multi-writer races while p
 
 ## Migration plan
 
-See `docs/plans/2026-01-30-daemon-architecture-migration-plan.md` for the staged, end-to-end plan.
+Historical migration notes were removed during cleanup. The system is now daemon-only; use current docs and code as the source of truth.
 
 ## Related decisions
 

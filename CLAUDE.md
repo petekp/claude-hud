@@ -87,7 +87,7 @@ Hooks → **daemon** → Capacitor reads daemon snapshots only
 | Architecture deep-dive | `.claude/docs/architecture-overview.md` |
 | Debugging | `.claude/docs/debugging-guide.md` |
 | Terminal support matrix | `.claude/docs/terminal-switching-matrix.md` |
-| Side effects reference | `.claude/docs/side-effects-map.md` |
+| Side effects reference | `.claude/compiled/side-effects.md` |
 | All gotchas | `.claude/docs/gotchas.md` |
 
 ## Plans

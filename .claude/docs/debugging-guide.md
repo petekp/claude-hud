@@ -27,7 +27,7 @@ echo '{"input_tokens":1234}' | rg 'input_tokens":(\d+)'
 
 The hook binary (`~/.local/bin/hud-hook`) handles Claude Code hook events and forwards them to the daemon (single-writer state).
 
-> **Daemon-only note (2026-02):** Shell/session debugging should use daemon IPC. Legacy files are non-authoritative and may be stale.
+> **Daemon-only note (2026-02):** Shell/session debugging should use daemon IPC. Legacy files are non-authoritative; if they exist from old installs, they can be deleted.
 
 Quick commands (daemon-first):
 ```bash
@@ -35,13 +35,6 @@ tail -f ~/.capacitor/daemon/daemon.stderr.log  # Daemon logs
 printf '{"protocol_version":1,"method":"get_health","id":"health","params":null}\n' | nc -U ~/.capacitor/daemon.sock
 printf '{"protocol_version":1,"method":"get_sessions","id":"sessions","params":null}\n' | nc -U ~/.capacitor/daemon.sock
 printf '{"protocol_version":1,"method":"get_shell_state","id":"shell","params":null}\n' | nc -U ~/.capacitor/daemon.sock
-```
-
-Legacy artifacts (non-authoritative in daemon-only mode):
-```bash
-cat ~/.capacitor/sessions.json | jq .          # Legacy snapshot (if present)
-ls ~/.capacitor/sessions/                      # Legacy locks
-cat ~/.capacitor/shell-cwd.json | jq .         # Legacy shell snapshot (if present)
 ```
 
 ## Common Issues
@@ -65,7 +58,7 @@ If you see `UniFFI API checksum mismatch: try cleaning and rebuilding your proje
 
 **Symptoms:** Project shows Working or Waiting but Claude session has ended.
 
-**Root cause:** Daemon heuristics or stale events; in legacy mode it could be lock-holder cleanup gaps.
+**Root cause:** Daemon heuristics or stale events.
 
 **Debug (daemon-first):**
 ```bash
@@ -73,51 +66,10 @@ printf '{"protocol_version":1,"method":"get_sessions","id":"sessions","params":n
 printf '{"protocol_version":1,"method":"get_project_states","id":"projects","params":null}\n' | nc -U ~/.capacitor/daemon.sock
 ```
 
-**Legacy debug (historical):**
-```bash
-ls ~/.capacitor/sessions/
-cat ~/.capacitor/sessions/*.lock/pid | xargs -I {} ps -p {}
-```
-
-### Legacy Locks (Daemon Disabled or Old Install)
-
-**Symptoms:** Project shows wrong state (e.g., Ready when should be Idle), multiple projects show same state, or clicking different projects opens the same session.
-
-**Root cause (legacy):** Path-based locks (v3) or stale session-based locks polluting the lock directory. In daemon-only mode, these are ignored but can confuse debugging if you look at legacy files.
-
-**Diagnosis:**
-```bash
-# List all locks with their format
-for lock in ~/.capacitor/sessions/*.lock; do
-  name=$(basename "$lock" .lock)
-  if [[ "$name" =~ ^[a-f0-9]{32}$ ]]; then
-    echo "LEGACY (delete): $name"
-  else
-    echo "SESSION-BASED: $name"
-  fi
-  cat "$lock/meta.json" 2>/dev/null | jq -c '{path, pid, session_id}'
-done
-
-# Check if lock PIDs are alive
-for lock in ~/.capacitor/sessions/*.lock; do
-  pid=$(cat "$lock/pid" 2>/dev/null)
-  name=$(basename "$lock")
-  if ps -p "$pid" > /dev/null 2>&1; then
-    echo "$name: PID $pid ALIVE"
-  else
-    echo "$name: PID $pid DEAD (stale)"
-  fi
-done
-```
-
-**Fix:**
-1. Delete legacy locks (32-char hex names like `abc123...def.lock`)
-2. Delete session-based locks where PID is dead
-3. Verify `hud-hook` symlink points to current build (see below)
 
 ### hud-hook Binary Out of Date
 
-**Symptoms:** New lock/state features not working, old lock format still being created, hooks not firing correctly.
+**Symptoms:** New hook/state features not working, hook events missing, or daemon state not updating after changes.
 
 **Root cause:** The `~/.local/bin/hud-hook` symlink points to old binary (app bundle instead of dev build).
 
@@ -149,7 +101,7 @@ cargo build -p hud-hook --release
 
 **Root cause (historical bug, now fixed):** Pre-daemon logic could treat stale timestamps as inactivity even when Claude was still running.
 
-**Current behavior (daemon-only):** UI state should reflect daemon session snapshots (single-writer). If a project flips to Ready while a session is still running, inspect daemon records and hook health rather than legacy locks.
+**Current behavior (daemon-only):** UI state should reflect daemon session snapshots (single-writer). If a project flips to Ready while a session is still running, inspect daemon records and hook health rather than legacy artifacts.
 
 **Debug (daemon-first):**
 ```bash
@@ -161,7 +113,7 @@ printf '{"protocol_version":1,"method":"get_project_states","id":"projects","par
 ls -la ~/.capacitor/hud-hook-heartbeat
 ```
 
-**Key insight:** In daemon-only mode, trust daemon session snapshots + hook health. Legacy locks are not authoritative.
+**Key insight:** In daemon-only mode, trust daemon session snapshots + hook health. Legacy artifacts are not authoritative.
 
 ### SwiftUI Layout Broken (Gaps, Components Not Filling Space)
 
@@ -393,7 +345,7 @@ The telemetry uses structured markers for easy filtering:
 
 **Rust layer (activation.rs):**
 - Decision logic is pure—add `tracing::info!` or `eprintln!` if needed
-- Test coverage is the primary debugging tool (26+ tests)
+- Test coverage is the primary debugging tool (50+ tests)
 
 **Swift layer (TerminalLauncher.swift):**
 ```
