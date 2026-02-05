@@ -821,7 +821,7 @@ final class TerminalLauncher: ActivationActionDependencies {
 
         let normalizedProjectPath = normalizePath(projectPath)
         let homeDir = normalizePath(homeDirectory)
-        let worktreeRoot = managedWorktreeRoot(normalizedProjectPath)
+        let projectManagedRoot = managedWorktreeRoot(normalizedProjectPath)
         var bestMatch: (rank: Int, session: String)?
 
         for line in output.split(separator: "\n") {
@@ -829,8 +829,13 @@ final class TerminalLauncher: ActivationActionDependencies {
             guard parts.count == 2 else { continue }
             let sessionName = String(parts[0])
             let panePath = normalizePath(String(parts[1]))
+            let paneManagedRoot = managedWorktreeRoot(panePath)
 
-            if let worktreeRoot, !isWithinPath(panePath, root: worktreeRoot) {
+            if let projectManagedRoot {
+                if paneManagedRoot != projectManagedRoot || !isWithinPath(panePath, root: projectManagedRoot) {
+                    continue
+                }
+            } else if paneManagedRoot != nil {
                 continue
             }
 

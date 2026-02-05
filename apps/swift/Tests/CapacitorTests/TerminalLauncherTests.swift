@@ -129,4 +129,19 @@ final class TerminalLauncherTests: XCTestCase {
 
         XCTAssertNil(session)
     }
+
+    func testBestTmuxSessionForPathDoesNotMatchManagedWorktreeForRepoRootPath() {
+        let output = """
+        mcp-app-studio-tool-metadata-workstream-1\t/Users/pete/Code/codex/.capacitor/worktrees/mcp-app-studio-tool-metadata-workstream-1
+        """
+        let projectPath = "/Users/pete/Code/codex"
+
+        let session = TerminalLauncher.bestTmuxSessionForPath(
+            output: output,
+            projectPath: projectPath,
+            homeDirectory: "/Users/pete"
+        )
+
+        XCTAssertNil(session)
+    }
 }
