@@ -13,7 +13,9 @@ Implementation plans for Capacitor. Files are prefixed by status.
 
 ## Active Plans
 
-None currently.
+| Plan | Summary |
+|------|---------|
+| `ACTIVE-workstreams-lifecycle.md` | Workstreams lifecycle delivery plan (create/list/open/destroy + guardrails), building on completed identity foundation. |
 
 ## Done
 
