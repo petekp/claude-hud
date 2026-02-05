@@ -50,6 +50,17 @@ pub const PROJECT_MARKERS: &[(&str, u8)] = &[
     ("CMakeLists.txt", 4),
 ];
 
+/// Markers that represent package-level boundaries.
+pub const PACKAGE_MARKERS: &[&str] = &[
+    "package.json",
+    "Cargo.toml",
+    "pyproject.toml",
+    "go.mod",
+    "pubspec.yaml",
+    "Project.toml",
+    "deno.json",
+];
+
 /// Paths that are too broad to be meaningful project boundaries.
 /// Pinning these would encompass many unrelated projects.
 pub const DANGEROUS_PATHS: &[&str] = &["/", "/Users", "/home", "/var", "/tmp", "/opt"];
@@ -80,7 +91,7 @@ pub struct ProjectBoundary {
 /// 3. Track the highest-priority boundary found so far
 /// 4. When we encounter an ignored directory, discard any boundary found so far
 ///    (it was inside the ignored subtree)
-/// 5. CLAUDE.md at any level (outside ignored dirs) immediately wins (priority 1)
+/// 5. CLAUDE.md at any level (outside ignored dirs) wins unless a nearer package marker was found
 /// 6. Otherwise, return the nearest boundary found
 /// 7. Stop at root, home directory, or max depth
 pub fn find_project_boundary(file_path: &str) -> Option<ProjectBoundary> {
@@ -134,8 +145,14 @@ pub fn find_project_boundary(file_path: &str) -> Option<ProjectBoundary> {
                     priority: *priority,
                 };
 
-                // CLAUDE.md (priority 1) immediately wins - it's explicit intent
+                // CLAUDE.md (priority 1) wins unless a nearer package marker already exists
                 if *priority == 1 {
+                    if let Some(existing) = &best_boundary {
+                        if is_package_marker(&existing.marker) {
+                            // Prefer nearer package markers over parent CLAUDE.md
+                            continue;
+                        }
+                    }
                     return Some(boundary);
                 }
 
@@ -247,6 +264,10 @@ pub fn canonicalize_path(path: &str) -> std::io::Result<String> {
 /// Checks if a path has a specific marker file or directory.
 fn has_marker(dir: &Path, marker: &str) -> bool {
     dir.join(marker).exists()
+}
+
+fn is_package_marker(marker: &str) -> bool {
+    PACKAGE_MARKERS.contains(&marker)
 }
 
 #[cfg(test)]
@@ -364,6 +385,26 @@ mod tests {
             "CLAUDE.md should have priority over .git"
         );
         assert_eq!(boundary.priority, 1);
+    }
+
+    #[test]
+    fn package_marker_wins_over_parent_claude_md() {
+        let tmp = create_test_dir();
+        let repo_root = tmp.path().join("repo");
+        let app_dir = repo_root.join("apps").join("docs");
+        let src_dir = app_dir.join("src");
+
+        fs::create_dir_all(&src_dir).expect("create dirs");
+        fs::write(repo_root.join("CLAUDE.md"), "# Root marker").expect("root claude");
+        fs::write(app_dir.join("package.json"), "{}").expect("package marker");
+        fs::write(src_dir.join("index.ts"), "export {}").expect("file");
+
+        let result = find_project_boundary(src_dir.join("index.ts").to_str().unwrap());
+
+        assert!(result.is_some());
+        let boundary = result.unwrap();
+        assert_eq!(boundary.marker, "package.json");
+        assert_eq!(boundary.path, app_dir.to_string_lossy());
     }
 
     #[test]

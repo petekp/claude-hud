@@ -1,7 +1,7 @@
 use capacitor_daemon_protocol::{EventEnvelope, EventType};
 use serde::Serialize;
 
-use crate::boundaries::find_project_boundary;
+use crate::project_identity::resolve_project_identity;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "lowercase")]
@@ -49,6 +49,7 @@ pub struct SessionRecord {
     pub pid: u32,
     pub state: SessionState,
     pub cwd: String,
+    pub project_id: String,
     pub project_path: String,
     pub updated_at: String,
     pub state_changed_at: String,
@@ -145,7 +146,10 @@ fn upsert_session(
         .clone()
         .or_else(|| current.map(|record| record.cwd.clone()))
         .unwrap_or_default();
-    let project_path = derive_project_path(&cwd, event.file_path.as_deref())
+    let identity = derive_project_identity(&cwd, event.file_path.as_deref());
+    let project_path = identity
+        .as_ref()
+        .map(|identity| identity.project_path.clone())
         .or_else(|| current.map(|record| record.project_path.clone()))
         .or_else(|| {
             if cwd.trim().is_empty() {
@@ -155,6 +159,32 @@ fn upsert_session(
             }
         })
         .unwrap_or_default();
+    let project_id = identity
+        .as_ref()
+        .map(|identity| identity.project_id.clone())
+        .or_else(|| current.map(|record| record.project_id.clone()))
+        .or_else(|| {
+            if project_path.trim().is_empty() {
+                None
+            } else {
+                Some(project_path.clone())
+            }
+        })
+        .unwrap_or_default();
+    let mut project_path = project_path;
+    let mut project_id = project_id;
+    if event.file_path.is_none() {
+        if let Some(current_record) = current {
+            if !current_record.project_path.is_empty()
+                && is_parent_path(&project_path, &current_record.project_path)
+            {
+                project_path = current_record.project_path.clone();
+                if !current_record.project_id.trim().is_empty() {
+                    project_id = current_record.project_id.clone();
+                }
+            }
+        }
+    }
 
     let updated_at = event.recorded_at.clone();
     let state_changed_at = match current {
@@ -167,6 +197,7 @@ fn upsert_session(
         pid,
         state: new_state,
         cwd,
+        project_id,
         project_path,
         updated_at,
         state_changed_at,
@@ -174,11 +205,29 @@ fn upsert_session(
     })
 }
 
-fn derive_project_path(cwd: &str, file_path: Option<&str>) -> Option<String> {
+fn is_parent_path(parent: &str, child: &str) -> bool {
+    if parent == child {
+        return true;
+    }
+    let parent = parent.trim_end_matches('/');
+    let child = child.trim_end_matches('/');
+    if parent.is_empty() || child.is_empty() {
+        return false;
+    }
+    if child == parent {
+        return true;
+    }
+    child.starts_with(&(parent.to_string() + "/"))
+}
+
+fn derive_project_identity(
+    cwd: &str,
+    file_path: Option<&str>,
+) -> Option<crate::project_identity::ProjectIdentity> {
     if let Some(file_path) = file_path {
         if let Some(resolved) = resolve_file_path(cwd, file_path) {
-            if let Some(boundary) = find_project_boundary(&resolved) {
-                return Some(boundary.path);
+            if let Some(identity) = resolve_project_identity(&resolved) {
+                return Some(identity);
             }
         }
     }
@@ -187,7 +236,7 @@ fn derive_project_path(cwd: &str, file_path: Option<&str>) -> Option<String> {
         return None;
     }
 
-    find_project_boundary(cwd).map(|boundary| boundary.path)
+    resolve_project_identity(cwd)
 }
 
 fn resolve_file_path(cwd: &str, file_path: &str) -> Option<String> {
@@ -247,6 +296,7 @@ mod tests {
             pid: 1234,
             state,
             cwd: "/repo".to_string(),
+            project_id: "/repo/.git".to_string(),
             project_path: "/repo".to_string(),
             updated_at: "2026-01-30T23:59:00Z".to_string(),
             state_changed_at: state_changed_at.to_string(),
@@ -314,7 +364,117 @@ mod tests {
 
         match update {
             SessionUpdate::Upsert(record) => {
-                assert_eq!(record.project_path, docs_dir.to_string_lossy());
+                let expected = std::fs::canonicalize(&docs_dir)
+                    .unwrap_or(docs_dir.clone())
+                    .to_string_lossy()
+                    .to_string();
+                assert_eq!(record.project_path, expected);
+            }
+            _ => panic!("expected upsert"),
+        }
+    }
+
+    #[test]
+    fn worktree_boundary_canonicalizes_to_repo_root() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let repo_root = temp_dir.path().join("assistant-ui");
+        let repo_git = repo_root.join(".git");
+        let docs_dir = repo_root.join("apps").join("docs");
+        let src_dir = docs_dir.join("src");
+
+        std::fs::create_dir_all(&src_dir).expect("create repo dirs");
+        std::fs::create_dir_all(&repo_git).expect("create git dir");
+        std::fs::write(docs_dir.join("package.json"), "{}").expect("package marker");
+        std::fs::write(src_dir.join("index.ts"), "export {}").expect("file");
+
+        let worktree_root = temp_dir.path().join("assistant-ui-wt");
+        let worktree_docs = worktree_root.join("apps").join("docs");
+        std::fs::create_dir_all(worktree_docs.join("src")).expect("create worktree dirs");
+        std::fs::write(worktree_docs.join("package.json"), "{}").expect("package marker");
+        std::fs::write(worktree_docs.join("src").join("index.ts"), "export {}").expect("file");
+
+        let worktree_gitdir = repo_git.join("worktrees").join("feat-docs");
+        std::fs::create_dir_all(&worktree_gitdir).expect("create gitdir");
+        std::fs::write(worktree_gitdir.join("commondir"), "../..").expect("commondir");
+        std::fs::write(
+            worktree_root.join(".git"),
+            format!("gitdir: {}\n", worktree_gitdir.to_string_lossy()),
+        )
+        .expect("git file");
+
+        let mut event = event_base(EventType::PostToolUse);
+        event.cwd = Some(worktree_root.to_string_lossy().to_string());
+        event.file_path = Some(
+            worktree_docs
+                .join("src")
+                .join("index.ts")
+                .to_string_lossy()
+                .to_string(),
+        );
+
+        let update = reduce_session(None, &event);
+
+        match update {
+            SessionUpdate::Upsert(record) => {
+                let expected_docs = std::fs::canonicalize(&docs_dir)
+                    .unwrap_or(docs_dir.clone())
+                    .to_string_lossy()
+                    .to_string();
+                let expected_git = std::fs::canonicalize(&repo_git)
+                    .unwrap_or(repo_git.clone())
+                    .to_string_lossy()
+                    .to_string();
+                assert_eq!(record.project_path, expected_docs);
+                assert_eq!(record.project_id, expected_git);
+            }
+            _ => panic!("expected upsert"),
+        }
+    }
+
+    #[test]
+    fn pre_compact_keeps_previous_package_project() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let repo_root = temp_dir.path().join("assistant-ui");
+        let repo_git = repo_root.join(".git");
+        let docs_dir = repo_root.join("apps").join("docs");
+        let docs_git = docs_dir.join(".git");
+        let src_dir = docs_dir.join("src");
+
+        std::fs::create_dir_all(&src_dir).expect("create repo dirs");
+        std::fs::create_dir_all(&repo_git).expect("create git dir");
+        std::fs::create_dir_all(&docs_git).expect("create docs git dir");
+        std::fs::write(docs_dir.join("package.json"), "{}").expect("package marker");
+
+        let expected_docs = std::fs::canonicalize(&docs_dir)
+            .unwrap_or(docs_dir.clone())
+            .to_string_lossy()
+            .to_string();
+        let expected_git = std::fs::canonicalize(&docs_git)
+            .unwrap_or(docs_git.clone())
+            .to_string_lossy()
+            .to_string();
+
+        let current = SessionRecord {
+            session_id: "session-1".to_string(),
+            pid: 1234,
+            state: SessionState::Working,
+            cwd: repo_root.to_string_lossy().to_string(),
+            project_id: expected_git.clone(),
+            project_path: expected_docs.clone(),
+            updated_at: "2026-01-31T00:00:00Z".to_string(),
+            state_changed_at: "2026-01-31T00:00:00Z".to_string(),
+            last_event: Some("post_tool_use".to_string()),
+        };
+
+        let mut event = event_base(EventType::PreCompact);
+        event.cwd = Some(repo_root.to_string_lossy().to_string());
+
+        let update = reduce_session(Some(&current), &event);
+
+        match update {
+            SessionUpdate::Upsert(record) => {
+                assert_eq!(record.project_path, expected_docs);
+                assert_eq!(record.project_id, expected_git);
             }
             _ => panic!("expected upsert"),
         }
@@ -444,6 +604,7 @@ mod tests {
             pid: 1234,
             state: SessionState::Ready,
             cwd: "/repo".to_string(),
+            project_id: "/repo/.git".to_string(),
             project_path: "/repo".to_string(),
             updated_at: "2026-01-31T00:00:10Z".to_string(),
             state_changed_at: "2026-01-31T00:00:10Z".to_string(),

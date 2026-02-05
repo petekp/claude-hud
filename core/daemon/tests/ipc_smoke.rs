@@ -2,13 +2,13 @@ use capacitor_daemon_protocol::{
     EventEnvelope, EventType, Method, Request, Response, PROTOCOL_VERSION,
 };
 use chrono::{Duration as ChronoDuration, Utc};
+use std::fs;
 use std::io::{Read, Write};
-use std::os::unix::net::UnixStream;
+use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::thread::sleep;
 use std::time::{Duration, Instant};
-use tempfile::TempDir;
 
 struct DaemonGuard {
     child: Child,
@@ -34,6 +34,19 @@ fn socket_path(home: &Path) -> PathBuf {
     home.join(".capacitor").join("daemon.sock")
 }
 
+fn can_bind_socket(home: &Path) -> bool {
+    let probe_path = home.join("probe.sock");
+    match UnixListener::bind(&probe_path) {
+        Ok(listener) => {
+            drop(listener);
+            let _ = fs::remove_file(&probe_path);
+            true
+        }
+        Err(err) if err.kind() == std::io::ErrorKind::PermissionDenied => false,
+        Err(_) => true,
+    }
+}
+
 fn wait_for_socket(path: &Path, timeout: Duration) {
     let deadline = Instant::now() + timeout;
     while Instant::now() < deadline {
@@ -43,6 +56,13 @@ fn wait_for_socket(path: &Path, timeout: Duration) {
         sleep(Duration::from_millis(25));
     }
     panic!("Timed out waiting for daemon socket at {}", path.display());
+}
+
+fn canonicalize_path(path: &str) -> String {
+    std::fs::canonicalize(path)
+        .unwrap_or_else(|_| PathBuf::from(path))
+        .to_string_lossy()
+        .to_string()
 }
 
 fn send_request(socket: &Path, request: Request) -> Response {
@@ -79,12 +99,21 @@ fn read_response(stream: &mut UnixStream) -> Response {
 
 #[test]
 fn daemon_ipc_health_and_liveness_smoke() {
-    let home = TempDir::new().expect("Failed to create temp HOME");
+    let home = tempfile::Builder::new()
+        .prefix("capacitor-daemon")
+        .tempdir_in("/tmp")
+        .expect("Failed to create temp HOME");
     let socket = socket_path(home.path());
+    if !can_bind_socket(home.path()) {
+        eprintln!(
+            "Skipping ipc smoke test: unix socket binding not permitted in this environment."
+        );
+        return;
+    }
     let child = spawn_daemon(home.path());
     let _guard = DaemonGuard { child };
 
-    wait_for_socket(&socket, Duration::from_secs(2));
+    wait_for_socket(&socket, Duration::from_secs(5));
 
     let health = send_request(
         &socket,
@@ -196,6 +225,23 @@ fn daemon_ipc_health_and_liveness_smoke() {
         session.get("state").and_then(|value| value.as_str()),
         Some("working")
     );
+    let expected_project_path = std::fs::canonicalize(&repo_root)
+        .unwrap_or(repo_root.clone())
+        .to_string_lossy()
+        .to_string();
+    let session_project_id = session
+        .get("project_id")
+        .and_then(|value| value.as_str())
+        .map(|value| canonicalize_path(value));
+    assert_eq!(
+        session_project_id.as_deref(),
+        Some(expected_project_path.as_str())
+    );
+    assert!(session
+        .get("workspace_id")
+        .and_then(|value| value.as_str())
+        .map(|value| !value.is_empty())
+        .unwrap_or(false));
 
     let project_states = send_request(
         &socket,
@@ -213,10 +259,27 @@ fn daemon_ipc_health_and_liveness_smoke() {
         .expect("project states payload is array");
     assert_eq!(project_array.len(), 1);
     let project = &project_array[0];
+    let project_path_value = project
+        .get("project_path")
+        .and_then(|value| value.as_str())
+        .map(|value| canonicalize_path(value));
+    let project_id_value = project
+        .get("project_id")
+        .and_then(|value| value.as_str())
+        .map(|value| canonicalize_path(value));
     assert_eq!(
-        project.get("project_path").and_then(|value| value.as_str()),
-        Some(repo_root.to_string_lossy().as_ref())
+        project_path_value.as_deref(),
+        Some(expected_project_path.as_str())
     );
+    assert_eq!(
+        project_id_value.as_deref(),
+        Some(expected_project_path.as_str())
+    );
+    assert!(project
+        .get("workspace_id")
+        .and_then(|value| value.as_str())
+        .map(|value| !value.is_empty())
+        .unwrap_or(false));
     assert_eq!(
         project.get("state").and_then(|value| value.as_str()),
         Some("working")

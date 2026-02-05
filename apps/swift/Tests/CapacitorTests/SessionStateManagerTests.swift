@@ -163,6 +163,61 @@ final class SessionStateManagerTests: XCTestCase {
         XCTAssertNil(packageState)
     }
 
+    func testSessionStateMatchesWorktreeToPinnedPath() async throws {
+        setenv("CAPACITOR_DAEMON_ENABLED", "1", 1)
+        defer { unsetenv("CAPACITOR_DAEMON_ENABLED") }
+
+        let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+
+        let repoRoot = tempDir.appendingPathComponent("assistant-ui")
+        let repoGit = repoRoot.appendingPathComponent(".git")
+        let pinnedPath = repoRoot.appendingPathComponent("apps/docs")
+
+        try FileManager.default.createDirectory(at: repoGit, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: pinnedPath, withIntermediateDirectories: true)
+
+        let worktreeRoot = tempDir.appendingPathComponent("assistant-ui-wt")
+        let worktreePath = worktreeRoot.appendingPathComponent("apps/docs")
+        try FileManager.default.createDirectory(at: worktreePath, withIntermediateDirectories: true)
+
+        let worktreeGitDir = repoGit.appendingPathComponent("worktrees/feat-docs")
+        try FileManager.default.createDirectory(at: worktreeGitDir, withIntermediateDirectories: true)
+        let commondirPath = worktreeGitDir.appendingPathComponent("commondir")
+        try "../..".write(to: commondirPath, atomically: true, encoding: .utf8)
+
+        let gitFile = worktreeRoot.appendingPathComponent(".git")
+        let gitFileContents = "gitdir: \(worktreeGitDir.path)\n"
+        try gitFileContents.write(to: gitFile, atomically: true, encoding: .utf8)
+
+        let socketPath = tempDir.appendingPathComponent("daemon.sock").path
+        let server = try UnixSocketServer(path: socketPath)
+        defer { server.stop() }
+        server.start(response: makeProjectStatesResponse([
+            .init(
+                projectPath: worktreePath.path,
+                state: "working",
+                updatedAt: "2026-02-02T19:00:00Z",
+                stateChangedAt: "2026-02-02T19:00:00Z",
+                sessionId: "session-1"
+            ),
+        ]))
+
+        setenv("CAPACITOR_DAEMON_SOCKET", socketPath, 1)
+        defer { unsetenv("CAPACITOR_DAEMON_SOCKET") }
+
+        let manager = SessionStateManager()
+        let project = makeProject(
+            "assistant-ui-docs",
+            path: pinnedPath.path
+        )
+
+        manager.refreshSessionStates(for: [project])
+        let state = await waitForSessionState(manager, project: project)
+
+        XCTAssertNotNil(state)
+    }
+
     private func waitForSessionState(
         _ manager: SessionStateManager,
         project: Project,

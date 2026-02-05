@@ -57,6 +57,7 @@ pub enum HookEvent {
     UserPromptSubmit,
     PreToolUse {
         tool_name: Option<String>,
+        file_path: Option<String>,
     },
     PostToolUse {
         tool_name: Option<String>,
@@ -79,6 +80,11 @@ impl HookInput {
     /// Parse a HookEvent from the raw input.
     pub fn to_event(&self) -> Option<HookEvent> {
         let event_name = self.hook_event_name.as_deref()?;
+        let tool_input_file_path = || {
+            self.tool_input
+                .as_ref()
+                .and_then(|ti| ti.file_path.clone().or_else(|| ti.path.clone()))
+        };
 
         Some(match event_name {
             "SessionStart" => HookEvent::SessionStart,
@@ -86,18 +92,15 @@ impl HookInput {
             "UserPromptSubmit" => HookEvent::UserPromptSubmit,
             "PreToolUse" => HookEvent::PreToolUse {
                 tool_name: self.tool_name.clone(),
+                file_path: tool_input_file_path(),
             },
             "PostToolUse" => {
                 // Resolve file path from multiple possible locations
-                let file_path = self
-                    .tool_input
-                    .as_ref()
-                    .and_then(|ti| ti.file_path.clone().or_else(|| ti.path.clone()))
-                    .or_else(|| {
-                        self.tool_response
-                            .as_ref()
-                            .and_then(|tr| tr.file_path.clone())
-                    });
+                let file_path = tool_input_file_path().or_else(|| {
+                    self.tool_response
+                        .as_ref()
+                        .and_then(|tr| tr.file_path.clone())
+                });
 
                 HookEvent::PostToolUse {
                     tool_name: self.tool_name.clone(),
@@ -137,6 +140,78 @@ fn normalize_path(path: &str) -> String {
         "/".to_string()
     } else {
         trimmed.to_string()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn base_input() -> HookInput {
+        HookInput {
+            hook_event_name: None,
+            session_id: None,
+            cwd: None,
+            trigger: None,
+            notification_type: None,
+            stop_hook_active: None,
+            tool_name: None,
+            tool_use_id: None,
+            tool_input: None,
+            tool_response: None,
+            source: None,
+            reason: None,
+            agent_id: None,
+            agent_transcript_path: None,
+        }
+    }
+
+    #[test]
+    fn pre_tool_use_preserves_file_path_from_tool_input() {
+        let mut input = base_input();
+        input.hook_event_name = Some("PreToolUse".to_string());
+        input.tool_name = Some("Edit".to_string());
+        input.tool_input = Some(ToolInput {
+            file_path: Some("apps/docs/src/index.md".to_string()),
+            path: None,
+        });
+
+        let event = input.to_event().expect("event");
+
+        match event {
+            HookEvent::PreToolUse {
+                tool_name,
+                file_path,
+            } => {
+                assert_eq!(tool_name, Some("Edit".to_string()));
+                assert_eq!(file_path, Some("apps/docs/src/index.md".to_string()));
+            }
+            _ => panic!("expected PreToolUse"),
+        }
+    }
+
+    #[test]
+    fn pre_tool_use_preserves_file_path_from_tool_input_path() {
+        let mut input = base_input();
+        input.hook_event_name = Some("PreToolUse".to_string());
+        input.tool_name = Some("Read".to_string());
+        input.tool_input = Some(ToolInput {
+            file_path: None,
+            path: Some("apps/docs/src/path.md".to_string()),
+        });
+
+        let event = input.to_event().expect("event");
+
+        match event {
+            HookEvent::PreToolUse {
+                tool_name,
+                file_path,
+            } => {
+                assert_eq!(tool_name, Some("Read".to_string()));
+                assert_eq!(file_path, Some("apps/docs/src/path.md".to_string()));
+            }
+            _ => panic!("expected PreToolUse"),
+        }
     }
 }
 

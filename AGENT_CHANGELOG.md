@@ -17,6 +17,25 @@ Capacitor is a native macOS SwiftUI app (Apple Silicon, macOS 14+) that acts as 
 
 ## Timeline
 
+### 2026-02-04 — Worktrees + Workspace Mapping (In Progress)
+
+**What changed:**
+- Started branch `codex/worktrees-model` to explore multi-workspace support across git worktrees.
+- Drafted schema and daemon mapping algorithm for `project_id` + `workspace_id` (see notes in thread).
+- Added Swift-side worktree-aware project matching (git common dir detection) plus a failing/now-targeted test.
+- Added daemon-side project identity resolution (canonicalizes worktree paths, emits `project_id` in sessions/project states).
+- Added daemon `workspace_id` derivation and a worktree stability test; ipc_smoke now skips in environments where unix sockets cannot be bound.
+- Swift client now computes workspace identities (MD5 over project_id + relative path) and prefers workspace_id matching when merging daemon project states.
+- Session snapshots now include `workspace_id` alongside `project_id`.
+- Fixed daemon reducer to preserve the last package-level project_path on events without file_path (e.g., PreCompact) to avoid sticky Working/Compacting on monorepos.
+
+**Why:**
+- Users want parallel tasks within a project without caring about worktrees or monorepo layout.
+
+**Next steps:**
+- Introduce IDs and mapping logic in daemon + hud-core.
+- Add deterministic mapping tests + focus cache behavior tests.
+
 ### 2026-02 — Agent Knowledge Optimization + Daemon-Only Doc Sweep
 
 **What changed:**

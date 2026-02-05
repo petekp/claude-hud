@@ -10,6 +10,21 @@ import Foundation
 /// All state logic (staleness, lock detection, resolution) lives in Rust.
 @MainActor
 final class SessionStateManager {
+    private struct ProjectMatchInfo {
+        let project: Project
+        let normalizedPath: String
+        let depth: Int
+        let repoInfo: GitRepositoryInfo?
+        let workspaceId: String
+    }
+
+    private struct StateMatchInfo {
+        let state: DaemonProjectState
+        let normalizedPath: String
+        let repoInfo: GitRepositoryInfo?
+        let workspaceId: String
+    }
+
     private enum Constants {
         static let flashDurationSeconds: TimeInterval = 1.4
     }
@@ -113,12 +128,6 @@ final class SessionStateManager {
         _ states: [DaemonProjectState],
         projects: [Project]
     ) -> [String: ProjectSessionState] {
-        struct ProjectMatchInfo {
-            let project: Project
-            let normalizedPath: String
-            let depth: Int
-        }
-
         let homeNormalized = PathNormalizer.normalize(NSHomeDirectory())
         var projectInfos: [ProjectMatchInfo] = []
         var seen: Set<String> = []
@@ -128,7 +137,18 @@ final class SessionStateManager {
             guard !seen.contains(normalized) else { continue }
             seen.insert(normalized)
             let depth = normalized.split(separator: "/").count
-            projectInfos.append(ProjectMatchInfo(project: project, normalizedPath: normalized, depth: depth))
+            let repoInfo = GitRepositoryInfo.resolve(for: project.path)
+            let workspaceId = repoInfo.map { WorkspaceIdentity.fromGitInfo($0) }
+                ?? WorkspaceIdentity.fromPath(project.path)
+            projectInfos.append(
+                ProjectMatchInfo(
+                    project: project,
+                    normalizedPath: normalized,
+                    depth: depth,
+                    repoInfo: repoInfo,
+                    workspaceId: workspaceId
+                )
+            )
         }
 
         let sortedProjects = projectInfos.sorted { lhs, rhs in
@@ -143,10 +163,20 @@ final class SessionStateManager {
 
         for state in states {
             let normalizedStatePath = PathNormalizer.normalize(state.projectPath)
-            guard let match = sortedProjects.first(where: {
-                isParentOrSelfExcludingHome(
-                    parent: $0.normalizedPath,
-                    child: normalizedStatePath,
+            let stateRepoInfo = GitRepositoryInfo.resolve(for: state.projectPath)
+            let stateWorkspaceId = state.workspaceId
+                ?? stateRepoInfo.map { WorkspaceIdentity.fromGitInfo($0) }
+                ?? WorkspaceIdentity.fromPath(state.projectPath)
+            let stateInfo = StateMatchInfo(
+                state: state,
+                normalizedPath: normalizedStatePath,
+                repoInfo: stateRepoInfo,
+                workspaceId: stateWorkspaceId
+            )
+            guard let match = sortedProjects.first(where: { info in
+                matchesProject(
+                    info,
+                    state: stateInfo,
                     homeNormalized: homeNormalized
                 )
             }) else {
@@ -186,6 +216,44 @@ final class SessionStateManager {
         }
 
         return merged
+    }
+
+    private func matchesProject(
+        _ project: ProjectMatchInfo,
+        state: StateMatchInfo,
+        homeNormalized: String
+    ) -> Bool {
+        if project.workspaceId == state.workspaceId {
+            return true
+        }
+
+        if isParentOrSelfExcludingHome(
+            parent: project.normalizedPath,
+            child: state.normalizedPath,
+            homeNormalized: homeNormalized
+        ) {
+            return true
+        }
+
+        guard
+            let projectInfo = project.repoInfo,
+            let stateInfo = state.repoInfo,
+            let projectCommon = projectInfo.commonDir,
+            let stateCommon = stateInfo.commonDir,
+            projectCommon == stateCommon
+        else {
+            return false
+        }
+
+        let projectRel = projectInfo.relativePath
+        let stateRel = stateInfo.relativePath
+        if projectRel.isEmpty {
+            return true
+        }
+        if projectRel == stateRel {
+            return true
+        }
+        return stateRel.hasPrefix(projectRel + "/")
     }
 
     private func isParentOrSelfExcludingHome(parent: String, child: String, homeNormalized: String) -> Bool {

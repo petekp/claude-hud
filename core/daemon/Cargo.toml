@@ -22,6 +22,7 @@ capacitor-daemon-protocol = { path = "../daemon-protocol" }
 chrono.workspace = true
 rusqlite = "0.31"
 sysinfo = "0.30"
+md5 = "0.7"
 
 [dev-dependencies]
 tempfile = "3.14"

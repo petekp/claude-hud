@@ -18,6 +18,8 @@ struct DaemonSession: Decodable {
     let pid: UInt32
     let state: String
     let cwd: String
+    let projectId: String?
+    let workspaceId: String?
     let projectPath: String
     let updatedAt: String
     let stateChangedAt: String
@@ -31,6 +33,8 @@ struct DaemonSession: Decodable {
         case pid
         case state
         case cwd
+        case projectId = "project_id"
+        case workspaceId = "workspace_id"
         case projectPath = "project_path"
         case updatedAt = "updated_at"
         case stateChangedAt = "state_changed_at"
@@ -40,6 +44,8 @@ struct DaemonSession: Decodable {
 }
 
 struct DaemonProjectState: Decodable {
+    let projectId: String?
+    let workspaceId: String?
     let projectPath: String
     let state: String
     let updatedAt: String
@@ -50,6 +56,8 @@ struct DaemonProjectState: Decodable {
     let hasSession: Bool
 
     enum CodingKeys: String, CodingKey {
+        case projectId = "project_id"
+        case workspaceId = "workspace_id"
         case projectPath = "project_path"
         case state
         case updatedAt = "updated_at"

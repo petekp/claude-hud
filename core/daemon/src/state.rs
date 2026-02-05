@@ -12,6 +12,7 @@ use std::sync::Mutex;
 use crate::activity::{reduce_activity, ActivityEntry};
 use crate::db::{Db, TombstoneRow};
 use crate::process::get_process_start_time;
+use crate::project_identity::workspace_id;
 use crate::reducer::{SessionRecord, SessionUpdate};
 use crate::replay::rebuild_from_events;
 use crate::session_store::handle_session_event;
@@ -202,11 +203,16 @@ impl SharedState {
                 continue;
             }
 
+            let project_id = record.project_id.clone();
+            let computed_workspace_id = workspace_id(&project_id, &record.project_path);
+
             enriched.push(EnrichedSession {
                 session_id: record.session_id,
                 pid: record.pid,
                 state: record.state,
                 cwd: record.cwd,
+                project_id,
+                workspace_id: computed_workspace_id,
                 project_path: record.project_path,
                 updated_at: record.updated_at,
                 state_changed_at: record.state_changed_at,
@@ -276,6 +282,10 @@ impl SharedState {
                     )
                 });
 
+            if entry.project_id.is_empty() && !record.project_id.is_empty() {
+                entry.project_id = record.project_id.clone();
+            }
+
             entry.session_count += 1;
             if is_active {
                 entry.active_count += 1;
@@ -300,7 +310,10 @@ impl SharedState {
         let mut results = Vec::new();
         for (project_path, aggregate) in aggregates {
             let has_session = aggregate.state != crate::reducer::SessionState::Idle;
+            let computed_workspace_id = workspace_id(&aggregate.project_id, &project_path);
             results.push(ProjectState {
+                project_id: aggregate.project_id.clone(),
+                workspace_id: computed_workspace_id,
                 project_path,
                 state: aggregate.state.clone(),
                 state_changed_at: aggregate.state_changed_at,
@@ -411,6 +424,8 @@ impl SharedState {
 
 #[derive(Debug, Clone, Serialize)]
 pub struct ProjectState {
+    pub project_id: String,
+    pub workspace_id: String,
     pub project_path: String,
     pub state: crate::reducer::SessionState,
     pub state_changed_at: String,
@@ -423,6 +438,7 @@ pub struct ProjectState {
 
 #[derive(Debug, Clone)]
 struct ProjectAggregate {
+    project_id: String,
     state: crate::reducer::SessionState,
     state_changed_at: String,
     updated_at: String,
@@ -443,6 +459,7 @@ impl ProjectAggregate {
         _is_active: bool,
     ) -> Self {
         Self {
+            project_id: record.project_id.clone(),
             state,
             state_changed_at: record.state_changed_at.clone(),
             updated_at: record.updated_at.clone(),
@@ -519,6 +536,7 @@ mod tests {
             pid: 0,
             state,
             cwd: project_path.to_string(),
+            project_id: format!("{}/.git", project_path),
             project_path: project_path.to_string(),
             updated_at: updated_at.clone(),
             state_changed_at: updated_at,
@@ -597,6 +615,8 @@ mod tests {
         assert_eq!(aggregates.len(), 1);
         let aggregate = &aggregates[0];
         assert_eq!(aggregate.project_path, "/repo");
+        let expected_workspace = workspace_id(&aggregate.project_id, &aggregate.project_path);
+        assert_eq!(aggregate.workspace_id, expected_workspace);
         assert_eq!(aggregate.state, SessionState::Working);
         assert_eq!(aggregate.session_count, 2);
         assert_eq!(aggregate.active_count, 1);
@@ -630,6 +650,8 @@ pub struct EnrichedSession {
     pub pid: u32,
     pub state: crate::reducer::SessionState,
     pub cwd: String,
+    pub project_id: String,
+    pub workspace_id: String,
     pub project_path: String,
     pub updated_at: String,
     pub state_changed_at: String,

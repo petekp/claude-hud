@@ -26,6 +26,7 @@ mod backoff;
 mod boundaries;
 mod db;
 mod process;
+mod project_identity;
 mod reducer;
 mod replay;
 mod session_store;

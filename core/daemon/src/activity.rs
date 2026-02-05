@@ -2,7 +2,7 @@ use capacitor_daemon_protocol::{EventEnvelope, EventType};
 use serde::Serialize;
 use std::path::{Path, PathBuf};
 
-use crate::boundaries::find_project_boundary;
+use crate::project_identity::resolve_project_identity;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct ActivityEntry {
@@ -23,8 +23,8 @@ pub fn reduce_activity(event: &EventEnvelope) -> Option<ActivityEntry> {
     let file_path = event.file_path.as_ref()?;
 
     let resolved_path = resolve_file_path(cwd, file_path)?;
-    let project_path = find_project_boundary(&resolved_path)
-        .map(|boundary| boundary.path)
+    let project_path = resolve_project_identity(&resolved_path)
+        .map(|identity| identity.project_path)
         .unwrap_or_else(|| cwd.to_string());
 
     Some(ActivityEntry {
@@ -86,9 +86,17 @@ mod tests {
 
         let entry = reduce_activity(&event).expect("entry");
         let expected_path = repo_root.join("src/main.rs").to_string_lossy().to_string();
+        let expected_project = std::fs::canonicalize(&repo_root)
+            .unwrap_or(repo_root.clone())
+            .to_string_lossy()
+            .to_string();
+        let canonical_entry = std::fs::canonicalize(&entry.project_path)
+            .unwrap_or_else(|_| std::path::PathBuf::from(&entry.project_path))
+            .to_string_lossy()
+            .to_string();
 
         assert_eq!(entry.file_path, expected_path);
-        assert_eq!(entry.project_path, repo_root.to_string_lossy().to_string());
+        assert_eq!(canonical_entry, expected_project);
         assert_eq!(entry.tool_name, Some("Edit".to_string()));
     }
 

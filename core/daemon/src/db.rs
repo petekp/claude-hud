@@ -242,12 +242,13 @@ impl Db {
     pub fn upsert_session(&self, record: &SessionRecord) -> Result<(), String> {
         self.with_connection(|conn| {
             conn.execute(
-                "INSERT INTO sessions (session_id, pid, state, cwd, project_path, updated_at, state_changed_at, last_event) \
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8) \
+                "INSERT INTO sessions (session_id, pid, state, cwd, project_id, project_path, updated_at, state_changed_at, last_event) \
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9) \
                  ON CONFLICT(session_id) DO UPDATE SET \
                     pid = excluded.pid, \
                     state = excluded.state, \
                     cwd = excluded.cwd, \
+                    project_id = excluded.project_id, \
                     project_path = excluded.project_path, \
                     updated_at = excluded.updated_at, \
                     state_changed_at = excluded.state_changed_at, \
@@ -257,6 +258,7 @@ impl Db {
                     record.pid,
                     record.state.as_str(),
                     record.cwd,
+                    record.project_id,
                     record.project_path,
                     record.updated_at,
                     record.state_changed_at,
@@ -271,7 +273,10 @@ impl Db {
     pub fn get_session(&self, session_id: &str) -> Result<Option<SessionRecord>, String> {
         self.with_connection(|conn| {
             conn.query_row(
-                "SELECT session_id, COALESCE(pid, 0), state, cwd, COALESCE(project_path, cwd), updated_at, state_changed_at, last_event \
+                "SELECT session_id, COALESCE(pid, 0), state, cwd, \
+                        COALESCE(project_id, project_path, cwd), \
+                        COALESCE(project_path, cwd), \
+                        updated_at, state_changed_at, last_event \
                  FROM sessions WHERE session_id = ?1",
                 params![session_id],
                 |row| {
@@ -292,10 +297,11 @@ impl Db {
                         pid: row.get(1)?,
                         state,
                         cwd: row.get(3)?,
-                        project_path: row.get(4)?,
-                        updated_at: row.get(5)?,
-                        state_changed_at: row.get(6)?,
-                        last_event: row.get(7)?,
+                        project_id: row.get(4)?,
+                        project_path: row.get(5)?,
+                        updated_at: row.get(6)?,
+                        state_changed_at: row.get(7)?,
+                        last_event: row.get(8)?,
                     })
                 },
             )
@@ -308,7 +314,10 @@ impl Db {
         self.with_connection(|conn| {
             let mut stmt = conn
                 .prepare(
-                    "SELECT session_id, COALESCE(pid, 0), state, cwd, COALESCE(project_path, cwd), updated_at, state_changed_at, last_event \
+                    "SELECT session_id, COALESCE(pid, 0), state, cwd, \
+                            COALESCE(project_id, project_path, cwd), \
+                            COALESCE(project_path, cwd), \
+                            updated_at, state_changed_at, last_event \
                      FROM sessions ORDER BY updated_at DESC",
                 )
                 .map_err(|err| format!("Failed to prepare sessions query: {}", err))?;
@@ -331,10 +340,11 @@ impl Db {
                         pid: row.get(1)?,
                         state,
                         cwd: row.get(3)?,
-                        project_path: row.get(4)?,
-                        updated_at: row.get(5)?,
-                        state_changed_at: row.get(6)?,
-                        last_event: row.get(7)?,
+                        project_id: row.get(4)?,
+                        project_path: row.get(5)?,
+                        updated_at: row.get(6)?,
+                        state_changed_at: row.get(7)?,
+                        last_event: row.get(8)?,
                     })
                 })
                 .map_err(|err| format!("Failed to query sessions: {}", err))?;
@@ -750,6 +760,7 @@ impl Db {
                     pid INTEGER NOT NULL DEFAULT 0,
                     state TEXT NOT NULL,
                     cwd TEXT NOT NULL,
+                    project_id TEXT,
                     project_path TEXT,
                     updated_at TEXT NOT NULL,
                     state_changed_at TEXT NOT NULL,
@@ -823,6 +834,11 @@ fn ensure_sessions_columns(conn: &Connection) -> Result<(), String> {
     if !columns.iter().any(|name| name == "project_path") {
         conn.execute("ALTER TABLE sessions ADD COLUMN project_path TEXT", [])
             .map_err(|err| format!("Failed to add project_path column: {}", err))?;
+    }
+
+    if !columns.iter().any(|name| name == "project_id") {
+        conn.execute("ALTER TABLE sessions ADD COLUMN project_id TEXT", [])
+            .map_err(|err| format!("Failed to add project_id column: {}", err))?;
     }
 
     if !columns.iter().any(|name| name == "pid") {
@@ -1114,6 +1130,7 @@ mod tests {
             pid: 1234,
             state: crate::reducer::SessionState::Ready,
             cwd: "/repo".to_string(),
+            project_id: "/repo/.git".to_string(),
             project_path: "/repo".to_string(),
             updated_at: "2026-01-31T00:00:00Z".to_string(),
             state_changed_at: "2026-01-31T00:00:00Z".to_string(),
@@ -1130,6 +1147,7 @@ mod tests {
         assert_eq!(loaded.session_id, record.session_id);
         assert_eq!(loaded.state, record.state);
         assert_eq!(loaded.cwd, record.cwd);
+        assert_eq!(loaded.project_id, record.project_id);
         assert_eq!(loaded.project_path, record.project_path);
         assert_eq!(loaded.last_event, record.last_event);
 

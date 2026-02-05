@@ -34,7 +34,10 @@ pub fn send_handle_event(event: &HookEvent, session_id: &str, pid: u32, cwd: &st
     };
 
     let (tool, file_path, notification_type, stop_hook_active) = match event {
-        HookEvent::PreToolUse { tool_name } => (tool_name.clone(), None, None, None),
+        HookEvent::PreToolUse {
+            tool_name,
+            file_path,
+        } => (tool_name.clone(), file_path.clone(), None, None),
         HookEvent::PostToolUse {
             tool_name,
             file_path,
