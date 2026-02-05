@@ -22,12 +22,24 @@ struct WorktreeService {
 
     enum Error: Swift.Error, Equatable, LocalizedError {
         case invalidWorktreeName(String)
+        case dirtyWorktree(path: String)
+        case activeSessionWorktree(path: String)
+        case lockedWorktree(path: String, message: String)
         case gitCommandFailed(arguments: [String], exitCode: Int32, output: String)
 
         var errorDescription: String? {
             switch self {
             case let .invalidWorktreeName(name):
                 return "Invalid worktree name: \(name)"
+            case let .dirtyWorktree(path):
+                return "Cannot remove dirty worktree at \(path)"
+            case let .activeSessionWorktree(path):
+                return "Cannot remove worktree with active session at \(path)"
+            case let .lockedWorktree(path, message):
+                if message.isEmpty {
+                    return "Cannot remove locked worktree at \(path)"
+                }
+                return "Cannot remove locked worktree at \(path): \(message)"
             case let .gitCommandFailed(arguments, exitCode, output):
                 let command = (["git"] + arguments).joined(separator: " ")
                 if output.isEmpty {
@@ -121,8 +133,11 @@ struct WorktreeService {
     }
 
     func listManagedWorktrees(in repoPath: String) throws -> [Worktree] {
-        let result = runGit(["worktree", "list", "--porcelain"], repoPath)
-        try ensureGitSuccess(result, arguments: ["worktree", "list", "--porcelain"])
+        try pruneWorktrees(in: repoPath)
+
+        let listArgs = ["worktree", "list", "--porcelain"]
+        let result = runGit(listArgs, repoPath)
+        try ensureGitSuccess(result, arguments: listArgs)
 
         let managedRoot = Self.managedRootPath(in: repoPath)
         return Self.parseWorktreeListPorcelain(result.stdout)
@@ -153,8 +168,31 @@ struct WorktreeService {
         )
     }
 
-    func removeManagedWorktree(in repoPath: String, name: String, force: Bool = false) throws {
+    func removeManagedWorktree(
+        in repoPath: String,
+        name: String,
+        force: Bool = false,
+        activeWorktreePaths: Set<String> = []
+    ) throws {
         try validateWorktreeName(name)
+        let worktreePath = managedWorktreePath(in: repoPath, name: name)
+
+        if !force {
+            let activePaths = Set(activeWorktreePaths.map(PathNormalizer.normalize))
+            if activePaths.contains(worktreePath) {
+                throw Error.activeSessionWorktree(path: worktreePath)
+            }
+        }
+
+        try pruneWorktrees(in: repoPath)
+
+        if !force {
+            let statusResult = runGit(["status", "--porcelain"], worktreePath)
+            try ensureGitSuccess(statusResult, arguments: ["status", "--porcelain"])
+            if !statusResult.stdout.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                throw Error.dirtyWorktree(path: worktreePath)
+            }
+        }
 
         var arguments = ["worktree", "remove"]
         if force {
@@ -163,7 +201,16 @@ struct WorktreeService {
         arguments.append(".capacitor/worktrees/\(name)")
 
         let result = runGit(arguments, repoPath)
-        try ensureGitSuccess(result, arguments: arguments)
+        do {
+            try ensureGitSuccess(result, arguments: arguments)
+        } catch let error as Error {
+            if case let .gitCommandFailed(_, _, output) = error,
+               output.lowercased().contains("locked")
+            {
+                throw Error.lockedWorktree(path: worktreePath, message: output)
+            }
+            throw error
+        }
     }
 
     private static func managedRootPath(in repoPath: String) -> String {
@@ -177,11 +224,25 @@ struct WorktreeService {
         path == managedRoot || path.hasPrefix(managedRoot + "/")
     }
 
+    private func managedWorktreePath(in repoPath: String, name: String) -> String {
+        let path = URL(fileURLWithPath: repoPath)
+            .appendingPathComponent(".capacitor/worktrees", isDirectory: true)
+            .appendingPathComponent(name, isDirectory: true)
+            .path
+        return PathNormalizer.normalize(path)
+    }
+
     private func validateWorktreeName(_ name: String) throws {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmed.isEmpty || trimmed.contains("/") || trimmed.contains("..") {
             throw Error.invalidWorktreeName(name)
         }
+    }
+
+    private func pruneWorktrees(in repoPath: String) throws {
+        let pruneArgs = ["worktree", "prune"]
+        let pruneResult = runGit(pruneArgs, repoPath)
+        try ensureGitSuccess(pruneResult, arguments: pruneArgs)
     }
 
     private func ensureGitSuccess(_ result: GitCommandResult, arguments: [String]) throws {

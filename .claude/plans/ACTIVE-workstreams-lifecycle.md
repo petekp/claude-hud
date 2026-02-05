@@ -38,7 +38,7 @@ Identity and mapping foundations are already complete (project/workspace IDs, wo
 | Phase | Status | Owner | Notes |
 |------|--------|-------|-------|
 | Phase 1: Worktree Service Core | Done (2026-02-05) | Codex | `WorktreeService` + deterministic tests for parse/list/create/remove |
-| Phase 2: Safety Guardrails | Not Started | Codex | Dirty/active/locked protections |
+| Phase 2: Safety Guardrails | Done (2026-02-05) | Codex | Dirty + active-session blocks, locked error mapping, prune-before-list/remove |
 | Phase 3: Workstreams UI | Not Started | Codex | Panel + actions + state wiring |
 | Phase 4: Integration + Docs | Not Started | Codex | End-to-end tests + doc completion |
 
@@ -94,16 +94,16 @@ For every scoped change:
 
 ### Tasks
 
-- [ ] Add failing tests for dirty detection (`git status --porcelain` non-empty => blocked).
-- [ ] Add failing tests for active-session guard (block or force-confirm path).
-- [ ] Add failing tests for locked-worktree removal behavior.
-- [ ] Add failing tests for stale metadata handling (`prune` path before listing/removing).
-- [ ] Implement guardrail behavior to satisfy tests.
+- [x] Add failing tests for dirty detection (`git status --porcelain` non-empty => blocked).
+- [x] Add failing tests for active-session guard (block or force-confirm path).
+- [x] Add failing tests for locked-worktree removal behavior.
+- [x] Add failing tests for stale metadata handling (`prune` path before listing/removing).
+- [x] Implement guardrail behavior to satisfy tests.
 
 ### Acceptance Criteria
 
-- [ ] Default destroy path blocks unsafe deletion (dirty or active worktree).
-- [ ] Guardrail errors are explicit enough to surface in UI without string parsing hacks.
+- [x] Default destroy path blocks unsafe deletion (dirty or active worktree).
+- [x] Guardrail errors are explicit enough to surface in UI without string parsing hacks.
 
 ## Phase 3: Workstreams UI
 

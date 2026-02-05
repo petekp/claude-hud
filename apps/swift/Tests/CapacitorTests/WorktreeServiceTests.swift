@@ -4,6 +4,11 @@ import XCTest
 @testable import Capacitor
 
 final class WorktreeServiceTests: XCTestCase {
+    private struct CommandCall: Equatable {
+        let args: [String]
+        let cwd: String
+    }
+
     func testParseWorktreeListPorcelainBuildsTypedEntries() {
         let output = """
         worktree /tmp/repo
@@ -69,6 +74,37 @@ final class WorktreeServiceTests: XCTestCase {
         XCTAssertEqual(managed.map(\.name), ["workstream-1", "workstream-2"])
     }
 
+    func testListManagedWorktreesPrunesBeforeListing() throws {
+        var calls: [CommandCall] = []
+        let repoPath = "/tmp/repo"
+
+        let output = """
+        worktree /tmp/repo/.capacitor/worktrees/workstream-1
+        HEAD 2222222222222222222222222222222222222222
+        branch refs/heads/workstream-1
+        """
+
+        let service = WorktreeService(runGit: { args, cwd in
+            calls.append(CommandCall(args: args, cwd: cwd))
+            switch args {
+            case ["worktree", "prune"]:
+                return .init(exitCode: 0, stdout: "", stderr: "")
+            case ["worktree", "list", "--porcelain"]:
+                return .init(exitCode: 0, stdout: output, stderr: "")
+            default:
+                XCTFail("Unexpected command: \(args)")
+                return .init(exitCode: 1, stdout: "", stderr: "")
+            }
+        })
+
+        _ = try service.listManagedWorktrees(in: repoPath)
+
+        XCTAssertEqual(calls, [
+            CommandCall(args: ["worktree", "prune"], cwd: repoPath),
+            CommandCall(args: ["worktree", "list", "--porcelain"], cwd: repoPath),
+        ])
+    }
+
     func testCreateManagedWorktreeBuildsExpectedGitCommand() throws {
         let fileManager = FileManager.default
         let repoRoot = fileManager.temporaryDirectory.appendingPathComponent(UUID().uuidString)
@@ -114,9 +150,147 @@ final class WorktreeServiceTests: XCTestCase {
         XCTAssertEqual(receivedCwd, repoPath)
     }
 
+    func testRemoveManagedWorktreePrunesThenChecksDirtyThenRemoves() throws {
+        let repoPath = "/tmp/repo"
+        let worktreePath = PathNormalizer.normalize("/tmp/repo/.capacitor/worktrees/workstream-4")
+        var calls: [CommandCall] = []
+
+        let service = WorktreeService(runGit: { args, cwd in
+            calls.append(CommandCall(args: args, cwd: cwd))
+            switch args {
+            case ["worktree", "prune"]:
+                return .init(exitCode: 0, stdout: "", stderr: "")
+            case ["status", "--porcelain"]:
+                return .init(exitCode: 0, stdout: "", stderr: "")
+            case ["worktree", "remove", ".capacitor/worktrees/workstream-4"]:
+                return .init(exitCode: 0, stdout: "", stderr: "")
+            default:
+                XCTFail("Unexpected command: \(args)")
+                return .init(exitCode: 1, stdout: "", stderr: "")
+            }
+        })
+
+        try service.removeManagedWorktree(in: repoPath, name: "workstream-4")
+
+        XCTAssertEqual(calls, [
+            CommandCall(args: ["worktree", "prune"], cwd: repoPath),
+            CommandCall(args: ["status", "--porcelain"], cwd: worktreePath),
+            CommandCall(args: ["worktree", "remove", ".capacitor/worktrees/workstream-4"], cwd: repoPath),
+        ])
+    }
+
+    func testRemoveManagedWorktreeBlocksWhenDirtyByDefault() throws {
+        let repoPath = "/tmp/repo"
+        let worktreePath = PathNormalizer.normalize("/tmp/repo/.capacitor/worktrees/workstream-4")
+        var removeCalled = false
+
+        let service = WorktreeService(runGit: { args, _ in
+            switch args {
+            case ["worktree", "prune"]:
+                return .init(exitCode: 0, stdout: "", stderr: "")
+            case ["status", "--porcelain"]:
+                return .init(exitCode: 0, stdout: " M edited.swift\n", stderr: "")
+            case ["worktree", "remove", ".capacitor/worktrees/workstream-4"]:
+                removeCalled = true
+                return .init(exitCode: 0, stdout: "", stderr: "")
+            default:
+                XCTFail("Unexpected command: \(args)")
+                return .init(exitCode: 1, stdout: "", stderr: "")
+            }
+        })
+
+        do {
+            try service.removeManagedWorktree(in: repoPath, name: "workstream-4")
+            XCTFail("Expected remove to throw")
+        } catch let error as WorktreeService.Error {
+            switch error {
+            case let .dirtyWorktree(path):
+                XCTAssertEqual(path, worktreePath)
+            default:
+                XCTFail("Unexpected error: \(error)")
+            }
+        } catch {
+            XCTFail("Unexpected error type: \(error)")
+        }
+
+        XCTAssertFalse(removeCalled)
+    }
+
+    func testRemoveManagedWorktreeBlocksWhenActiveSessionExists() throws {
+        let repoPath = "/tmp/repo"
+        let worktreePath = PathNormalizer.normalize("/tmp/repo/.capacitor/worktrees/workstream-4")
+
+        let service = WorktreeService(runGit: { args, _ in
+            XCTFail("Expected no git commands, got: \(args)")
+            return .init(exitCode: 1, stdout: "", stderr: "")
+        })
+
+        do {
+            try service.removeManagedWorktree(
+                in: repoPath,
+                name: "workstream-4",
+                activeWorktreePaths: [worktreePath]
+            )
+            XCTFail("Expected remove to throw")
+        } catch let error as WorktreeService.Error {
+            switch error {
+            case let .activeSessionWorktree(path):
+                XCTAssertEqual(path, worktreePath)
+            default:
+                XCTFail("Unexpected error: \(error)")
+            }
+        } catch {
+            XCTFail("Unexpected error type: \(error)")
+        }
+    }
+
+    func testRemoveManagedWorktreeReturnsLockedErrorWhenGitReportsLocked() throws {
+        let repoPath = "/tmp/repo"
+        let worktreePath = PathNormalizer.normalize("/tmp/repo/.capacitor/worktrees/workstream-4")
+
+        let service = WorktreeService(runGit: { args, _ in
+            switch args {
+            case ["worktree", "prune"]:
+                return .init(exitCode: 0, stdout: "", stderr: "")
+            case ["status", "--porcelain"]:
+                return .init(exitCode: 0, stdout: "", stderr: "")
+            case ["worktree", "remove", ".capacitor/worktrees/workstream-4"]:
+                return .init(exitCode: 128, stdout: "", stderr: "fatal: cannot remove a locked working tree")
+            default:
+                XCTFail("Unexpected command: \(args)")
+                return .init(exitCode: 1, stdout: "", stderr: "")
+            }
+        })
+
+        do {
+            try service.removeManagedWorktree(in: repoPath, name: "workstream-4")
+            XCTFail("Expected remove to throw")
+        } catch let error as WorktreeService.Error {
+            switch error {
+            case let .lockedWorktree(path, message):
+                XCTAssertEqual(path, worktreePath)
+                XCTAssertEqual(message, "fatal: cannot remove a locked working tree")
+            default:
+                XCTFail("Unexpected error: \(error)")
+            }
+        } catch {
+            XCTFail("Unexpected error type: \(error)")
+        }
+    }
+
     func testRemoveManagedWorktreeThrowsGitCommandFailure() throws {
-        let service = WorktreeService(runGit: { _, _ in
-            .init(exitCode: 128, stdout: "", stderr: "fatal: worktree contains modified or untracked files")
+        let service = WorktreeService(runGit: { args, _ in
+            switch args {
+            case ["worktree", "prune"]:
+                return .init(exitCode: 0, stdout: "", stderr: "")
+            case ["status", "--porcelain"]:
+                return .init(exitCode: 0, stdout: "", stderr: "")
+            case ["worktree", "remove", ".capacitor/worktrees/workstream-4"]:
+                return .init(exitCode: 128, stdout: "", stderr: "fatal: unknown remove error")
+            default:
+                XCTFail("Unexpected command: \(args)")
+                return .init(exitCode: 1, stdout: "", stderr: "")
+            }
         })
 
         do {
@@ -127,7 +301,7 @@ final class WorktreeServiceTests: XCTestCase {
             case let .gitCommandFailed(arguments, exitCode, output):
                 XCTAssertEqual(arguments, ["worktree", "remove", ".capacitor/worktrees/workstream-4"])
                 XCTAssertEqual(exitCode, 128)
-                XCTAssertEqual(output, "fatal: worktree contains modified or untracked files")
+                XCTAssertEqual(output, "fatal: unknown remove error")
             default:
                 XCTFail("Unexpected error: \(error)")
             }
