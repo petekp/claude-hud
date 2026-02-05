@@ -158,6 +158,15 @@ final class SessionStateManager {
             return lhs.depth > rhs.depth
         }
 
+        // Index pinned projects by repo so we can handle daemon states that report the repo root
+        // while the user has pinned only a single workspace within that repo.
+        var pinnedProjectsByRepoKey: [String: [ProjectMatchInfo]] = [:]
+        for info in projectInfos {
+            guard let repoInfo = info.repoInfo else { continue }
+            let repoKey = repoInfo.commonDir ?? repoInfo.repoRoot
+            pinnedProjectsByRepoKey[repoKey, default: []].append(info)
+        }
+
         var bestStates: [String: DaemonProjectState] = [:]
         var unmatched: [DaemonProjectState] = []
 
@@ -180,6 +189,23 @@ final class SessionStateManager {
                     homeNormalized: homeNormalized
                 )
             }) else {
+                // If the daemon reports the repo root (relativePath == "") but the UI has exactly one
+                // pinned workspace inside that repo, map the state to that pinned workspace.
+                if let repoInfo = stateInfo.repoInfo, repoInfo.relativePath.isEmpty {
+                    let repoKey = repoInfo.commonDir ?? repoInfo.repoRoot
+                    if let candidates = pinnedProjectsByRepoKey[repoKey], candidates.count == 1 {
+                        let projectPath = candidates[0].project.path
+                        if let existing = bestStates[projectPath] {
+                            if isMoreRecent(state, than: existing) {
+                                bestStates[projectPath] = state
+                            }
+                        } else {
+                            bestStates[projectPath] = state
+                        }
+                        continue
+                    }
+                }
+
                 unmatched.append(state)
                 continue
             }
