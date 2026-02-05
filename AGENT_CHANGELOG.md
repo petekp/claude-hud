@@ -36,6 +36,20 @@ Capacitor is a native macOS SwiftUI app (Apple Silicon, macOS 14+) that acts as 
 - Introduce IDs and mapping logic in daemon + hud-core.
 - Add deterministic mapping tests + focus cache behavior tests.
 
+### 2026-02-05 — Session Staleness + Ghostty Activation (In Progress)
+
+**What changed:**
+- Daemon now downgrades `Working`/`Waiting`/`Compacting` to `Ready` after 8s of inactivity (prevents stuck Working states).
+- Added tests covering the downgrade and recent-activity behavior.
+- Ghostty activation now prefers activating the app when a tmux client is attached (avoid spawning new windows on project click).
+
+**Why:**
+- Users reported projects stuck in Working after no activity; Ghostty clicks occasionally spawned new windows.
+
+**Next steps:**
+- Manual verification: idle project flips to Ready within ~8s after activity stops.
+- Validate Ghostty click path in tmux (no new window; just focus + switch).
+
 ### 2026-02 — Agent Knowledge Optimization + Daemon-Only Doc Sweep
 
 **What changed:**

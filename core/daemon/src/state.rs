@@ -24,6 +24,7 @@ const SESSION_TTL_ACTIVE_SECS: i64 = 20 * 60; // Working/Waiting/Compacting
 const SESSION_TTL_READY_SECS: i64 = 30 * 60; // Ready
 const SESSION_TTL_IDLE_SECS: i64 = 10 * 60; // Idle
                                             // Ready does not auto-idle; it remains until TTL or session end.
+const ACTIVE_TO_READY_SECS: i64 = 8; // Working/Waiting/Compacting -> Ready after inactivity
 
 pub struct SharedState {
     db: Db,
@@ -494,9 +495,21 @@ fn session_state_is_active(state: &crate::reducer::SessionState) -> bool {
 
 fn effective_session_state(
     record: &SessionRecord,
-    _now: DateTime<Utc>,
+    now: DateTime<Utc>,
 ) -> crate::reducer::SessionState {
-    record.state.clone()
+    let state = record.state.clone();
+    if !session_state_is_active(&state) {
+        return state;
+    }
+
+    let last_seen = session_timestamp(record).unwrap_or(now);
+    let inactive_for = now.signed_duration_since(last_seen).num_seconds();
+
+    if inactive_for >= ACTIVE_TO_READY_SECS {
+        crate::reducer::SessionState::Ready
+    } else {
+        state
+    }
 }
 
 fn session_ttl_seconds(state: &crate::reducer::SessionState) -> i64 {
@@ -545,14 +558,30 @@ mod tests {
     }
 
     #[test]
-    fn project_states_preserve_working_state_when_stale() {
+    fn project_states_downgrade_working_after_inactivity() {
         let temp_dir = tempfile::tempdir().expect("temp dir");
         let db_path = temp_dir.path().join("state.db");
         let db = Db::new(db_path).expect("db init");
         let state = SharedState::new(db);
 
-        let stale_time = (Utc::now() - Duration::seconds(60)).to_rfc3339();
+        let stale_time = (Utc::now() - Duration::seconds(ACTIVE_TO_READY_SECS + 2)).to_rfc3339();
         let record = make_record("session-stale", "/repo", SessionState::Working, stale_time);
+        state.db.upsert_session(&record).expect("insert session");
+
+        let aggregates = state.project_states_snapshot().expect("project states");
+        assert_eq!(aggregates.len(), 1);
+        assert_eq!(aggregates[0].state, SessionState::Ready);
+    }
+
+    #[test]
+    fn project_states_keep_working_when_recent() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let db_path = temp_dir.path().join("state.db");
+        let db = Db::new(db_path).expect("db init");
+        let state = SharedState::new(db);
+
+        let fresh_time = (Utc::now() - Duration::seconds(ACTIVE_TO_READY_SECS - 2)).to_rfc3339();
+        let record = make_record("session-fresh", "/repo", SessionState::Working, fresh_time);
         state.db.upsert_session(&record).expect("insert session");
 
         let aggregates = state.project_states_snapshot().expect("project states");

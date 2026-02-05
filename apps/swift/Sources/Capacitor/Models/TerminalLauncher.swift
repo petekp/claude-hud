@@ -302,18 +302,13 @@ final class TerminalLauncher: ActivationActionDependencies {
         return false
     }
 
-    static func ghosttyWindowDecision(windowCount: Int, anyClientAttached: Bool) -> GhosttyWindowDecision {
+    static func ghosttyWindowDecision(windowCount _: Int, anyClientAttached: Bool) -> GhosttyWindowDecision {
         if !anyClientAttached {
             return .launchNew
         }
 
-        // When multiple Ghostty windows exist and we couldn't activate by TTY,
-        // activating the app risks focusing the wrong window. Prefer launching
-        // a new tmux window in that case.
-        if windowCount > 1 {
-            return .launchNew
-        }
-
+        // If a tmux client is attached, prefer activating Ghostty and switching
+        // sessions over spawning new windows. Users can pick the correct window.
         return .activateAndSwitch
     }
 
