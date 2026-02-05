@@ -116,4 +116,17 @@ final class TerminalLauncherTests: XCTestCase {
         XCTAssertTrue(ParentApp.terminal.matchesRunningAppName("Terminal"))
         XCTAssertTrue(ParentApp.terminal.matchesRunningAppName("Terminal.app"))
     }
+
+    func testBestTmuxSessionForPathDoesNotMatchParentRepoForWorktreePath() {
+        let output = "agentic-canvas\t/Users/pete/Code/agentic-canvas\n"
+        let projectPath = "/Users/pete/Code/agentic-canvas/.capacitor/worktrees/workstream-1"
+
+        let session = TerminalLauncher.bestTmuxSessionForPath(
+            output: output,
+            projectPath: projectPath,
+            homeDirectory: "/Users/pete"
+        )
+
+        XCTAssertNil(session)
+    }
 }

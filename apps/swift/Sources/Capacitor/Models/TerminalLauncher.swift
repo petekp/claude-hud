@@ -767,6 +767,14 @@ final class TerminalLauncher: ActivationActionDependencies {
         let result = await runBashScriptWithResultAsync("tmux list-windows -a -F '#{session_name}\t#{pane_current_path}' 2>/dev/null")
         guard result.exitCode == 0, let output = result.output else { return nil }
 
+        return Self.bestTmuxSessionForPath(
+            output: output,
+            projectPath: projectPath,
+            homeDirectory: NSHomeDirectory()
+        )
+    }
+
+    nonisolated static func bestTmuxSessionForPath(output: String, projectPath: String, homeDirectory: String) -> String? {
         func normalizePath(_ path: String) -> String {
             if path == "/" { return "/" }
             var normalized = path
@@ -774,6 +782,24 @@ final class TerminalLauncher: ActivationActionDependencies {
                 normalized.removeLast()
             }
             return normalized.lowercased()
+        }
+
+        func managedWorktreeRoot(_ path: String) -> String? {
+            let marker = "/.capacitor/worktrees/"
+            guard let markerRange = path.range(of: marker) else { return nil }
+            let worktreeNameStart = markerRange.upperBound
+            guard worktreeNameStart < path.endIndex else { return nil }
+
+            let suffix = path[worktreeNameStart...]
+            guard let nextSlash = suffix.firstIndex(of: "/") else {
+                return path
+            }
+
+            return String(path[..<nextSlash])
+        }
+
+        func isWithinPath(_ candidate: String, root: String) -> Bool {
+            candidate == root || candidate.hasPrefix(root + "/")
         }
 
         func matchRank(shellPath: String, projectPath: String, homeDir: String) -> Int? {
@@ -794,7 +820,8 @@ final class TerminalLauncher: ActivationActionDependencies {
         }
 
         let normalizedProjectPath = normalizePath(projectPath)
-        let homeDir = normalizePath(NSHomeDirectory())
+        let homeDir = normalizePath(homeDirectory)
+        let worktreeRoot = managedWorktreeRoot(normalizedProjectPath)
         var bestMatch: (rank: Int, session: String)?
 
         for line in output.split(separator: "\n") {
@@ -802,6 +829,10 @@ final class TerminalLauncher: ActivationActionDependencies {
             guard parts.count == 2 else { continue }
             let sessionName = String(parts[0])
             let panePath = normalizePath(String(parts[1]))
+
+            if let worktreeRoot, !isWithinPath(panePath, root: worktreeRoot) {
+                continue
+            }
 
             guard let rank = matchRank(
                 shellPath: panePath,
