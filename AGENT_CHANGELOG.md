@@ -47,6 +47,7 @@ Capacitor is a native macOS SwiftUI app (Apple Silicon, macOS 14+) that acts as 
 - Fixed Swift `GitRepositoryInfo.findRepoRoot` to stop at filesystem root (`/`) and avoid `URL.deletingLastPathComponent()` producing `"/.."` for `"/"` (prevented infinite loops when resolving non-repo paths). Added `GitRepositoryInfoTests`.
 - Swift session matching now maps daemon activity in a repo to pinned workspaces within that repo (git common dir when available), so monorepo subdirectory pins stay accurate even if the Claude session runs from another worktree or sibling directory.
 - App now attempts silent daemon recovery (re-kickstarts) on IPC connection failures, with a cooldown to avoid restart thrash.
+- Fixed daemon LaunchAgent management to be idempotent (no repeated `bootout` / forced restarts during health checks), which was causing the daemon to be killed every few seconds and leaving the UI stuck in `Idle`.
 
 **Why:**
 - Users reported projects stuck in Working after no activity; Ghostty clicks occasionally spawned new windows.
