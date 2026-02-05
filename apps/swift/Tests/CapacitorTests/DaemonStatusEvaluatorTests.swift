@@ -21,18 +21,26 @@ final class DaemonStatusEvaluatorTests: XCTestCase {
         let now = Date()
         evaluator.noteDaemonStartup(now: now)
 
-        let status = evaluator.statusForHealthResult(
+        let first = evaluator.statusForHealthResult(
             isEnabled: true,
             result: .failure(TestError()),
             now: now.addingTimeInterval(DaemonStatusEvaluator.startupGraceInterval + 0.1)
         )
 
-        XCTAssertEqual(status?.isHealthy, false)
-        XCTAssertEqual(status?.message, "Daemon unavailable")
+        XCTAssertNil(first)
+
+        let second = evaluator.statusForHealthResult(
+            isEnabled: true,
+            result: .failure(TestError()),
+            now: now.addingTimeInterval(DaemonStatusEvaluator.startupGraceInterval + 0.2)
+        )
+
+        XCTAssertEqual(second?.isHealthy, false)
+        XCTAssertEqual(second?.message, "Daemon unavailable")
     }
 
     func testReportsHealthyWhenDaemonResponds() {
-        let evaluator = DaemonStatusEvaluator()
+        var evaluator = DaemonStatusEvaluator()
         let health = DaemonHealth(status: "ok", pid: 42, version: "1.0.0", protocolVersion: 1)
 
         let status = evaluator.statusForHealthResult(
@@ -47,7 +55,7 @@ final class DaemonStatusEvaluatorTests: XCTestCase {
     }
 
     func testReportsDisabledWhenDaemonIsNotEnabled() {
-        let evaluator = DaemonStatusEvaluator()
+        var evaluator = DaemonStatusEvaluator()
 
         let status = evaluator.statusForHealthResult(
             isEnabled: false,
