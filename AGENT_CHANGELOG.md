@@ -42,6 +42,7 @@ Capacitor is a native macOS SwiftUI app (Apple Silicon, macOS 14+) that acts as 
 - Daemon now downgrades `Working`/`Waiting`/`Compacting` to `Ready` after 8s of inactivity (prevents stuck Working states).
 - Added tests covering the downgrade and recent-activity behavior.
 - Ghostty activation now prefers activating the app when a tmux client is attached (avoid spawning new windows on project click).
+- Daemon offline banner moved to debug-only diagnostics (no user-facing daemon status).
 
 **Why:**
 - Users reported projects stuck in Working after no activity; Ghostty clicks occasionally spawned new windows.

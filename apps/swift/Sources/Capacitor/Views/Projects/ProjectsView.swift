@@ -66,17 +66,22 @@ struct ProjectsView: View {
                     }
                 #endif
 
-                if let status = appState.daemonStatus, status.isEnabled, !status.isHealthy {
-                    DaemonStatusCard(
-                        status: status,
-                        onRetry: {
-                            appState.ensureDaemonRunning()
-                            appState.checkDaemonHealth()
-                        }
-                    )
-                    .padding(.bottom, 4)
-                }
                 #if DEBUG
+                    if debugShowProjectListDiagnostics,
+                       let status = appState.daemonStatus,
+                       status.isEnabled,
+                       !status.isHealthy
+                    {
+                        DaemonStatusCard(
+                            status: status,
+                            onRetry: {
+                                appState.ensureDaemonRunning()
+                                appState.checkDaemonHealth()
+                            }
+                        )
+                        .padding(.bottom, 4)
+                    }
+
                     if debugShowProjectListDiagnostics {
                         DebugActiveStateCard()
                             .padding(.bottom, 6)
