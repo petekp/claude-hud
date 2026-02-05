@@ -111,7 +111,7 @@ final class DaemonClient {
         static let socketEnv = "CAPACITOR_DAEMON_SOCKET"
         static let protocolVersion = 1
         static let maxResponseBytes = 1_048_576
-        static let timeoutSeconds: TimeInterval = 0.6
+        static let timeoutSeconds: TimeInterval = 1.5
     }
 
     private let queue = DispatchQueue(label: "com.capacitor.daemon.client")
@@ -187,7 +187,18 @@ final class DaemonClient {
         DebugLog.write("DaemonClient.performRequest send method=\(method) bytes=\(requestData.count)")
         let responseData = try await sendAndReceive(requestData)
 
-        let response = try decoder.decode(DaemonResponse<Payload>.self, from: responseData)
+        guard !responseData.isEmpty else {
+            DebugLog.write("DaemonClient.performRequest recv method=\(method) emptyResponse")
+            throw DaemonClientError.invalidResponse
+        }
+
+        let response: DaemonResponse<Payload>
+        do {
+            response = try decoder.decode(DaemonResponse<Payload>.self, from: responseData)
+        } catch {
+            DebugLog.write("DaemonClient.performRequest recv method=\(method) decodeError=\(error)")
+            throw DaemonClientError.invalidResponse
+        }
         DebugLog.write("DaemonClient.performRequest recv method=\(method) ok=\(response.ok) hasData=\(response.data != nil)")
 
         if response.ok, let data = response.data {

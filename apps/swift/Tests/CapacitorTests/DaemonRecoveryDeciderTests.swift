@@ -20,6 +20,11 @@ final class DaemonRecoveryDeciderTests: XCTestCase {
         XCTAssertTrue(decider.shouldAttemptRecovery(after: DaemonClientError.timeout, now: Date()))
     }
 
+    func testAttemptsRecoveryOnInvalidResponse() {
+        var decider = DaemonRecoveryDecider(cooldownInterval: 10.0, lastAttemptAt: nil)
+        XCTAssertTrue(decider.shouldAttemptRecovery(after: DaemonClientError.invalidResponse, now: Date()))
+    }
+
     func testDoesNotAttemptRecoveryOnDaemonUnavailableErrors() {
         var decider = DaemonRecoveryDecider(cooldownInterval: 10.0, lastAttemptAt: nil)
         XCTAssertFalse(

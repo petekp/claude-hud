@@ -22,6 +22,9 @@ struct DaemonRecoveryDecider {
     }
 
     private func isRecoverableError(_ error: Error) -> Bool {
+        if case DaemonClientError.invalidResponse = error {
+            return true
+        }
         if case DaemonClientError.timeout = error {
             return true
         }

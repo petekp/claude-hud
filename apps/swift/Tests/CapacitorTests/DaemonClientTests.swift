@@ -28,6 +28,34 @@ final class DaemonClientTests: XCTestCase {
         XCTAssertEqual(states.first?.projectPath, "/tmp/project")
     }
 
+    func testEmptyResponseThrowsInvalidResponse() async throws {
+        setenv("CAPACITOR_DAEMON_ENABLED", "1", 1)
+        defer { unsetenv("CAPACITOR_DAEMON_ENABLED") }
+
+        let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+        let socketPath = tempDir.appendingPathComponent("daemon.sock").path
+
+        let server = try UnixSocketServer(path: socketPath)
+        defer { server.stop() }
+        server.start(response: Data())
+
+        setenv("CAPACITOR_DAEMON_SOCKET", socketPath, 1)
+        defer { unsetenv("CAPACITOR_DAEMON_SOCKET") }
+
+        do {
+            _ = try await DaemonClient.shared.fetchProjectStates()
+            XCTFail("Expected error")
+        } catch let error as DaemonClientError {
+            switch error {
+            case .invalidResponse:
+                break
+            default:
+                XCTFail("Unexpected error: \(error)")
+            }
+        }
+    }
+
     private func makeProjectStatesResponse() -> Data {
         let json = """
         {"ok":true,"id":"test","data":[{"project_path":"/tmp/project","state":"working","updated_at":"2026-02-02T19:00:00Z","state_changed_at":"2026-02-02T19:00:00Z","session_id":null,"session_count":1,"active_count":1,"has_session":false}]}
