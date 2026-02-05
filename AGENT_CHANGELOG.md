@@ -1,7 +1,7 @@
 # Agent Changelog
 
 > This file helps coding agents understand project evolution, key decisions,
-> and deprecated patterns. Updated: 2026-02-03 (daemon-first migration completed)
+> and deprecated patterns. Updated: 2026-02-05
 
 ## Current State Summary
 
@@ -45,7 +45,8 @@ Capacitor is a native macOS SwiftUI app (Apple Silicon, macOS 14+) that acts as 
 - Daemon offline banner moved to debug-only diagnostics (no user-facing daemon status).
 - Debug daemon status now avoids transient “offline” states: 20s startup grace + 2 consecutive failures required before showing unavailable.
 - Fixed Swift `GitRepositoryInfo.findRepoRoot` to stop at filesystem root (`/`) and avoid `URL.deletingLastPathComponent()` producing `"/.."` for `"/"` (prevented infinite loops when resolving non-repo paths). Added `GitRepositoryInfoTests`.
-- Swift session matching now maps a **repo-root** daemon state to the **only pinned workspace** inside that repo (fixes monorepo subdirectory pins staying `Idle` when the Claude session runs from repo root).
+- Swift session matching now maps daemon activity in a repo to pinned workspaces within that repo root (fixes monorepo subdirectory pins staying `Idle` when the Claude session runs elsewhere in the repo).
+- App now attempts silent daemon recovery (re-kickstarts) on IPC connection failures, with a cooldown to avoid restart thrash.
 
 **Why:**
 - Users reported projects stuck in Working after no activity; Ghostty clicks occasionally spawned new windows.
