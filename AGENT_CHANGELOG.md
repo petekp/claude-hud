@@ -45,7 +45,7 @@ Capacitor is a native macOS SwiftUI app (Apple Silicon, macOS 14+) that acts as 
 - Daemon offline banner moved to debug-only diagnostics (no user-facing daemon status).
 - Debug daemon status now avoids transient “offline” states: 20s startup grace + 2 consecutive failures required before showing unavailable.
 - Fixed Swift `GitRepositoryInfo.findRepoRoot` to stop at filesystem root (`/`) and avoid `URL.deletingLastPathComponent()` producing `"/.."` for `"/"` (prevented infinite loops when resolving non-repo paths). Added `GitRepositoryInfoTests`.
-- Swift session matching now maps daemon activity in a repo to pinned workspaces within that repo root (fixes monorepo subdirectory pins staying `Idle` when the Claude session runs elsewhere in the repo).
+- Swift session matching now maps daemon activity in a repo to pinned workspaces within that repo (git common dir when available), so monorepo subdirectory pins stay accurate even if the Claude session runs from another worktree or sibling directory.
 - App now attempts silent daemon recovery (re-kickstarts) on IPC connection failures, with a cooldown to avoid restart thrash.
 
 **Why:**

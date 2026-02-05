@@ -158,15 +158,16 @@ final class SessionStateManager {
             return lhs.depth > rhs.depth
         }
 
-        // Index pinned projects by repo root so we can map daemon activity anywhere in the repo
-        // onto pinned workspaces within that same repo root (common monorepo case).
+        // Index pinned projects by repo identity so we can map daemon activity anywhere in a repo
+        // onto pinned workspaces within that repo (common monorepo + worktree case).
         //
-        // Keying by repo root (not git common dir) prevents cross-worktree bleed, since each
-        // worktree has a different repo root but may share a common .git directory.
-        var pinnedProjectsByRepoRoot: [String: [ProjectMatchInfo]] = [:]
+        // We prefer the git common dir when available so that different worktrees of the same repo
+        // are treated as the same logical project (end-user mental model: "this is the same repo").
+        var pinnedProjectsByRepoKey: [String: [ProjectMatchInfo]] = [:]
         for info in projectInfos {
             guard let repoInfo = info.repoInfo else { continue }
-            pinnedProjectsByRepoRoot[repoInfo.repoRoot, default: []].append(info)
+            let repoKey = repoInfo.commonDir ?? repoInfo.repoRoot
+            pinnedProjectsByRepoKey[repoKey, default: []].append(info)
         }
 
         var bestStates: [String: DaemonProjectState] = [:]
@@ -195,7 +196,7 @@ final class SessionStateManager {
                 // apply that state to pinned workspaces in that repo root. This is common when
                 // users pin a subdirectory of a monorepo but agent sessions run elsewhere in it.
                 if let repoInfo = stateInfo.repoInfo,
-                   let candidates = pinnedProjectsByRepoRoot[repoInfo.repoRoot]
+                   let candidates = pinnedProjectsByRepoKey[repoInfo.commonDir ?? repoInfo.repoRoot]
                 {
                     for candidate in candidates {
                         let projectPath = candidate.project.path
