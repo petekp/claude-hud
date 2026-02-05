@@ -39,6 +39,13 @@ struct ProjectDetailView: View {
                     .opacity(appeared ? 1 : 0)
                     .offset(y: appeared ? 0 : 12)
 
+                    WorkstreamsPanel(
+                        project: project,
+                        manager: appState.workstreamsManager
+                    )
+                    .opacity(appeared ? 1 : 0)
+                    .offset(y: appeared ? 0 : 14)
+
                     VStack(alignment: .leading, spacing: 12) {
                         DetailSectionLabel(title: "IDEA QUEUE")
 

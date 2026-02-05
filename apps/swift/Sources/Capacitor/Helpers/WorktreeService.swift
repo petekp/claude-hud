@@ -179,7 +179,9 @@ struct WorktreeService {
 
         if !force {
             let activePaths = Set(activeWorktreePaths.map(PathNormalizer.normalize))
-            if activePaths.contains(worktreePath) {
+            if activePaths.contains(where: { path in
+                path == worktreePath || path.hasPrefix(worktreePath + "/")
+            }) {
                 throw Error.activeSessionWorktree(path: worktreePath)
             }
         }

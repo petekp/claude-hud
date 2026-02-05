@@ -93,6 +93,14 @@ class AppState: ObservableObject {
     let sessionStateManager = SessionStateManager()
     let projectDetailsManager = ProjectDetailsManager()
     private let projectIngestionWorker = ProjectIngestionWorker()
+    lazy var workstreamsManager: WorkstreamsManager = .init(
+        openWorktree: { [weak self] worktreeProject in
+            self?.launchTerminal(for: worktreeProject)
+        },
+        activeWorktreePathsProvider: { [weak self] in
+            self?.activeWorktreePathsForGuardrails() ?? []
+        }
+    )
 
     private(set) var activeProjectResolver: ActiveProjectResolver!
 
@@ -569,6 +577,24 @@ class AppState: ObservableObject {
         activeProjectResolver.resolve()
         terminalLauncher.launchTerminal(for: project, shellState: shellStateStore.state)
         objectWillChange.send()
+    }
+
+    private func activeWorktreePathsForGuardrails() -> Set<String> {
+        var paths: Set<String> = []
+
+        if let shellPath = shellStateStore.mostRecentShell?.entry.cwd {
+            paths.insert(PathNormalizer.normalize(shellPath))
+        }
+
+        for (projectPath, state) in sessionStateManager.sessionStates where state.state == .working {
+            paths.insert(PathNormalizer.normalize(projectPath))
+        }
+
+        if let activePath = activeProjectPath {
+            paths.insert(PathNormalizer.normalize(activePath))
+        }
+
+        return paths
     }
 
     // MARK: - Navigation

@@ -1,7 +1,7 @@
 # Parallel Workstreams
 
 **Date:** 2026-01-25
-**Status:** Brainstorm complete; identity/mapping foundation implemented on 2026-02-05, lifecycle UX still pending
+**Status:** Brainstorm complete; lifecycle shipped on 2026-02-05 (create/list/open/destroy managed worktrees + guardrails)
 
 ## Implementation Status (2026-02-05)
 
@@ -11,12 +11,15 @@
 - Worktree and main-repo paths now converge to stable workspace identity on macOS (case-normalized hash source).
 - Shell-based active project resolution can map across sibling worktrees using git common-dir identity.
 - Deterministic tests cover worktree identity stability and shell fallback mapping.
+- Worktree lifecycle service and guardrails are implemented (`WorktreeService`).
+- Project detail now includes a Workstreams panel for create/list/open/destroy.
+- Integration test coverage validates create -> attribution -> active destroy-block flow.
 
 ### Not implemented yet
 
-- Capacitor UI for one-click create/list/destroy worktrees.
-- Worktree lifecycle guardrails (dirty checks, lock handling, force/unlock UX).
-- Dedicated workstreams view and display-name persistence.
+- Dedicated global workstreams view outside project detail.
+- Workstream display-name persistence (path -> display-name mapping).
+- Branch/PR automation on completion.
 
 ## What We're Building
 

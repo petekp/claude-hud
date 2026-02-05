@@ -244,6 +244,35 @@ final class WorktreeServiceTests: XCTestCase {
         }
     }
 
+    func testRemoveManagedWorktreeBlocksWhenActivePathIsInsideWorktree() throws {
+        let repoPath = "/tmp/repo"
+        let worktreePath = PathNormalizer.normalize("/tmp/repo/.capacitor/worktrees/workstream-4")
+        let activeChildPath = PathNormalizer.normalize("/tmp/repo/.capacitor/worktrees/workstream-4/apps/web")
+
+        let service = WorktreeService(runGit: { args, _ in
+            XCTFail("Expected no git commands, got: \(args)")
+            return .init(exitCode: 1, stdout: "", stderr: "")
+        })
+
+        do {
+            try service.removeManagedWorktree(
+                in: repoPath,
+                name: "workstream-4",
+                activeWorktreePaths: [activeChildPath]
+            )
+            XCTFail("Expected remove to throw")
+        } catch let error as WorktreeService.Error {
+            switch error {
+            case let .activeSessionWorktree(path):
+                XCTAssertEqual(path, worktreePath)
+            default:
+                XCTFail("Unexpected error: \(error)")
+            }
+        } catch {
+            XCTFail("Unexpected error type: \(error)")
+        }
+    }
+
     func testRemoveManagedWorktreeReturnsLockedErrorWhenGitReportsLocked() throws {
         let repoPath = "/tmp/repo"
         let worktreePath = PathNormalizer.normalize("/tmp/repo/.capacitor/worktrees/workstream-4")

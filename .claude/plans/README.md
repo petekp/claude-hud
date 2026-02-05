@@ -15,7 +15,7 @@ Implementation plans for Capacitor. Files are prefixed by status.
 
 | Plan | Summary |
 |------|---------|
-| `ACTIVE-workstreams-lifecycle.md` | Workstreams lifecycle delivery plan (create/list/open/destroy + guardrails), building on completed identity foundation. |
+| _None currently_ | — |
 
 ## Done
 
@@ -28,6 +28,7 @@ Implementation plans for Capacitor. Files are prefixed by status.
 | `DONE-multi-agent-cli-support.md` | Starship-style adapter pattern for Claude, Codex, Aider, Amp, etc. |
 | `DONE-shell-integration-engineering.md` | Shell precmd hooks push CWD for ambient project awareness. |
 | `DONE-shell-integration-prd.md` | Product requirements for shell integration. |
+| `DONE-workstreams-lifecycle.md` | Managed worktree lifecycle shipped (create/list/open/destroy) with safety guardrails and integration tests. |
 | `DONE-ui-tuning-panel-rework.md` | Consolidated debug panels into unified UITuningPanel with sidebar. |
 
 ## Reference Documents

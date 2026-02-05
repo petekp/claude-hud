@@ -17,6 +17,33 @@ Capacitor is a native macOS SwiftUI app (Apple Silicon, macOS 14+) that acts as 
 
 ## Timeline
 
+### 2026-02-05 — Workstreams Lifecycle UX (Completed)
+
+**What changed:**
+- Added `WorktreeService` with deterministic command-driven tests for:
+  - porcelain parsing (`git worktree list --porcelain`)
+  - managed-root filtering (`{repo}/.capacitor/worktrees/`)
+  - create/remove command construction
+- Added destroy safety guardrails in `WorktreeService`:
+  - stale metadata prune (`git worktree prune`) before list/remove
+  - dirty-worktree block (`git status --porcelain`)
+  - active-session guard (blocks if active path is at/under target worktree)
+  - explicit locked-worktree error mapping for UI-safe messaging
+- Added `WorkstreamsManager` state model and unit tests for:
+  - loading/error states
+  - create/open/destroy action transitions
+  - next available workstream naming (`workstream-N`)
+- Added `WorkstreamsPanel` and wired it into `ProjectDetailView` for create/list/open/destroy lifecycle actions.
+- Added integration coverage for lifecycle flow (`create -> shell attribution -> destroy guardrail`) in `WorkstreamsLifecycleIntegrationTests`.
+
+**Why:**
+- Ship the user-visible workstreams lifecycle on top of the already-completed identity/mapping foundation.
+
+**Agent impact:**
+- Managed worktrees now have a canonical Swift service (`WorktreeService`) and UI-facing state model (`WorkstreamsManager`).
+- Destroy UX should use service errors directly; avoid ad-hoc string parsing in UI.
+- Treat `.capacitor/worktrees/` under repo root as the managed namespace.
+
 ### 2026-02-04 — Worktrees + Workspace Mapping (Foundation Completed)
 
 **What changed:**
