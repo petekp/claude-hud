@@ -104,6 +104,7 @@ class AppState: ObservableObject {
     private var engine: HudEngine?
     private var stalenessTimer: Timer?
     private var daemonStatusEvaluator = DaemonStatusEvaluator()
+    private var daemonRecoveryDecider = DaemonRecoveryDecider()
 
     /// Debounce work item for coalescing rapid state updates.
     /// Prevents recursive layout crashes when multiple sessions change simultaneously.
@@ -328,6 +329,7 @@ class AppState: ObservableObject {
                 let health = try await DaemonClient.shared.fetchHealth()
                 await MainActor.run {
                     guard let self else { return }
+                    self.daemonRecoveryDecider.noteSuccess()
                     if let status = self.daemonStatusEvaluator.statusForHealthResult(
                         isEnabled: true,
                         result: .success(health)
@@ -338,6 +340,10 @@ class AppState: ObservableObject {
             } catch {
                 await MainActor.run {
                     guard let self else { return }
+                    if self.daemonRecoveryDecider.shouldAttemptRecovery(after: error) {
+                        DebugLog.write("AppState.checkDaemonHealth triggering recovery error=\(error)")
+                        self.ensureDaemonRunning()
+                    }
                     if let status = self.daemonStatusEvaluator.statusForHealthResult(
                         isEnabled: true,
                         result: .failure(error)
