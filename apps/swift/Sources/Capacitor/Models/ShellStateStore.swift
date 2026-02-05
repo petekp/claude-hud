@@ -122,4 +122,11 @@ final class ShellStateStore {
         let threshold = Date().addingTimeInterval(-Constants.shellStalenessThresholdSeconds)
         return shells.values.contains { $0.updatedAt > threshold }
     }
+
+    #if DEBUG
+        // Test-only helper for deterministic resolution.
+        func setStateForTesting(_ state: ShellCwdState?) {
+            self.state = state
+        }
+    #endif
 }

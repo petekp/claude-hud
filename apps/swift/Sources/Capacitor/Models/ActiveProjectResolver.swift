@@ -252,6 +252,62 @@ final class ActiveProjectResolver {
                 return project
             }
         }
-        return nil
+
+        // If the shell is in a different git worktree than the pinned workspace, the paths won't share
+        // a common prefix. Fall back to matching by repo identity (git common dir) so any worktree
+        // in the same repo can still map onto a pinned project.
+        guard let cwdRepoInfo = GitRepositoryInfo.resolve(for: path) else {
+            return nil
+        }
+
+        let cwdRepoKey = cwdRepoInfo.commonDir ?? cwdRepoInfo.repoRoot
+        var candidates: [(Project, GitRepositoryInfo)] = []
+        for project in projects {
+            guard let projectRepoInfo = GitRepositoryInfo.resolve(for: project.path) else {
+                continue
+            }
+            let projectRepoKey = projectRepoInfo.commonDir ?? projectRepoInfo.repoRoot
+            if projectRepoKey == cwdRepoKey {
+                candidates.append((project, projectRepoInfo))
+            }
+        }
+
+        guard !candidates.isEmpty else {
+            return nil
+        }
+
+        // If there's only one pinned workspace in this repo, treat it as representing the whole repo.
+        if candidates.count == 1 {
+            return candidates[0].0
+        }
+
+        // If multiple pinned workspaces share the same repo, disambiguate by repo-relative path.
+        // (This supports mapping across worktrees when the relative directory matches.)
+        let cwdRel = cwdRepoInfo.relativePath
+        let matching: [(Project, GitRepositoryInfo)] = candidates.filter { _, info in
+            let rel = info.relativePath
+            if rel.isEmpty {
+                return true
+            }
+            if cwdRel == rel {
+                return true
+            }
+            return cwdRel.hasPrefix(rel + "/")
+        }
+
+        if matching.isEmpty {
+            return nil
+        }
+        if matching.count == 1 {
+            return matching[0].0
+        }
+
+        // Choose the most specific (deepest) pinned workspace.
+        let bestDepth = matching.map(\.1.relativePath.count).max() ?? 0
+        let tied = matching.filter { $0.1.relativePath.count == bestDepth }
+        if tied.count == 1 {
+            return tied[0].0
+        }
+        return tied.sorted { $0.0.path < $1.0.path }.first?.0
     }
 }

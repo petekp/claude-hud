@@ -1,7 +1,22 @@
 # Parallel Workstreams
 
 **Date:** 2026-01-25
-**Status:** Brainstorm complete, ready for planning
+**Status:** Brainstorm complete; identity/mapping foundation implemented on 2026-02-05, lifecycle UX still pending
+
+## Implementation Status (2026-02-05)
+
+### Implemented
+
+- Daemon emits stable `project_id` + `workspace_id` for repo/worktree attribution.
+- Worktree and main-repo paths now converge to stable workspace identity on macOS (case-normalized hash source).
+- Shell-based active project resolution can map across sibling worktrees using git common-dir identity.
+- Deterministic tests cover worktree identity stability and shell fallback mapping.
+
+### Not implemented yet
+
+- Capacitor UI for one-click create/list/destroy worktrees.
+- Worktree lifecycle guardrails (dirty checks, lock handling, force/unlock UX).
+- Dedicated workstreams view and display-name persistence.
 
 ## What We're Building
 
@@ -63,7 +78,7 @@ Each workstream shows in the dedicated panel:
 - Branch name
 - Quick actions: Open terminal, Destroy
 
-When Claude runs in a worktree at `.capacitor/worktrees/workstream-1/`, `ActiveProjectResolver`'s prefix matching automatically associates it with the parent project. No mapping layer needed.
+When Claude runs in a worktree at `.capacitor/worktrees/workstream-1/`, `ActiveProjectResolver` associates it with the parent project via path-prefix matching first, then falls back to git repo identity (common-dir) when paths do not share a prefix.
 
 Important nuance:
 
@@ -94,6 +109,8 @@ A worktree at `~/.capacitor/workstreams/capacitor/workstream-1/` will **never** 
 ### Decision: Worktrees Under Repo (`.capacitor/worktrees/`)
 
 **Chosen approach:** Place worktrees at `{repo}/.capacitor/worktrees/{name}/`
+
+**Implementation update (2026-02-05):** Resolver logic now also supports non-prefix layouts using git common-dir matching. Keeping worktrees under `.capacitor/worktrees/` is still preferred for discoverability and simpler local cleanup.
 
 | Benefit               | Why It Matters                                                                  |
 | --------------------- | ------------------------------------------------------------------------------- |
@@ -169,7 +186,7 @@ Benefits:
 
 - Create worktree with one click (at `.capacitor/worktrees/{name}/`)
 - Ensure `.capacitor/worktrees/` is excluded from git status (default: `.git/info/exclude`)
-- Track worktree session state (existing path-based detection works)
+- Track worktree session state (path-prefix and repo-identity fallback both supported)
 - Dedicated workstreams view for the active project
 - Destroy worktree with explicit action (with dirty state guardrails)
 - Auto-generated naming with optional rename

@@ -17,7 +17,7 @@ Capacitor is a native macOS SwiftUI app (Apple Silicon, macOS 14+) that acts as 
 
 ## Timeline
 
-### 2026-02-04 — Worktrees + Workspace Mapping (In Progress)
+### 2026-02-04 — Worktrees + Workspace Mapping (Foundation Completed)
 
 **What changed:**
 - Started branch `codex/worktrees-model` to explore multi-workspace support across git worktrees.
@@ -28,13 +28,21 @@ Capacitor is a native macOS SwiftUI app (Apple Silicon, macOS 14+) that acts as 
 - Swift client now computes workspace identities (MD5 over project_id + relative path) and prefers workspace_id matching when merging daemon project states.
 - Session snapshots now include `workspace_id` alongside `project_id`.
 - Fixed daemon reducer to preserve the last package-level project_path on events without file_path (e.g., PreCompact) to avoid sticky Working/Compacting on monorepos.
+- Aligned daemon and Swift workspace ID hashing on macOS by lowercasing the daemon hash source before MD5 (matches Swift path normalization behavior).
+- Hardened daemon `.git` file handling: only treat `.git` files as worktrees when `commondir` exists; submodule-style gitdir files no longer get miscanonicalized as worktrees.
+- Added shell fallback matching by repository identity in Swift active-project resolution, so shell CWDs in sibling worktrees still map to the pinned workspace.
+- Added deterministic tests for the above cases in daemon and Swift test suites.
 
 **Why:**
 - Users want parallel tasks within a project without caring about worktrees or monorepo layout.
 
-**Next steps:**
-- Introduce IDs and mapping logic in daemon + hud-core.
-- Add deterministic mapping tests + focus cache behavior tests.
+**Agent impact:**
+- Treat `project_id` + `workspace_id` as the canonical identity path for worktree-safe attribution.
+- Do not rely on path-prefix matching as the only resolver path; use git common-dir identity when worktree paths diverge.
+- Keep macOS workspace hashing behavior aligned across Rust and Swift, or cross-process workspace matching will break.
+
+**Remaining feature work:**
+- Worktree lifecycle UX is still pending (create/list/remove worktrees from Capacitor UI and related safety guardrails).
 
 ### 2026-02-05 — Session Staleness + Ghostty Activation (In Progress)
 

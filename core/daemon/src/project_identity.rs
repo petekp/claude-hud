@@ -41,10 +41,10 @@ pub fn workspace_id(project_id: &str, project_path: &str) -> String {
     let project_id = canonicalize_path(Path::new(project_id));
     let project_path = canonicalize_path(Path::new(project_path));
     let relative = workspace_relative_path(&project_id, &project_path);
-    format!(
-        "{:x}",
-        md5::compute(format!("{}|{}", project_id.to_string_lossy(), relative))
-    )
+    let source = format!("{}|{}", project_id.to_string_lossy(), relative);
+    #[cfg(target_os = "macos")]
+    let source = source.to_lowercase();
+    format!("{:x}", md5::compute(source))
 }
 
 fn workspace_relative_path(project_id: &Path, project_path: &Path) -> String {
@@ -87,13 +87,21 @@ fn resolve_git_info(path: &Path) -> Option<GitInfo> {
             }
 
             let git_dir = parse_gitdir(&git_entry, &dir)?;
-            let common_dir = parse_commondir(&git_dir).unwrap_or_else(|| git_dir.clone());
-            let repo_root = common_dir.parent().unwrap_or(&dir).to_path_buf();
+            if let Some(common_dir) = parse_commondir(&git_dir) {
+                let repo_root = common_dir.parent().unwrap_or(&dir).to_path_buf();
+                return Some(GitInfo {
+                    worktree_root: canonicalize_path(&dir),
+                    repo_root: canonicalize_path(&repo_root),
+                    common_dir: canonicalize_path(&common_dir),
+                    is_worktree: true,
+                });
+            }
+
             return Some(GitInfo {
                 worktree_root: canonicalize_path(&dir),
-                repo_root: canonicalize_path(&repo_root),
-                common_dir: canonicalize_path(&common_dir),
-                is_worktree: true,
+                repo_root: canonicalize_path(&dir),
+                common_dir: canonicalize_path(&git_dir),
+                is_worktree: false,
             });
         }
 
@@ -168,6 +176,28 @@ mod tests {
     use super::*;
 
     #[test]
+    #[cfg(target_os = "macos")]
+    fn workspace_id_hashes_lowercased_paths_on_macos() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let repo_root = temp_dir.path().join("RepoRoot");
+        let repo_git = repo_root.join(".git");
+
+        std::fs::create_dir_all(&repo_git).expect("create git dir");
+        std::fs::write(repo_root.join("package.json"), "{}").expect("package marker");
+
+        let identity =
+            resolve_project_identity(repo_root.to_string_lossy().as_ref()).expect("repo identity");
+
+        let workspace = workspace_id(&identity.project_id, &identity.project_path);
+
+        let canonical_id = canonicalize_path(&repo_git).to_string_lossy().to_string();
+        let source = format!("{}|", canonical_id);
+        let expected = format!("{:x}", md5::compute(source.to_lowercase()));
+
+        assert_eq!(workspace, expected);
+    }
+
+    #[test]
     fn workspace_id_is_stable_across_worktrees() {
         let temp_dir = tempfile::tempdir().expect("temp dir");
         let repo_root = temp_dir.path().join("assistant-ui");
@@ -217,5 +247,33 @@ mod tests {
         );
 
         assert_eq!(repo_workspace, worktree_workspace);
+    }
+
+    #[test]
+    fn gitfile_without_commondir_is_not_treated_as_worktree() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let repo_root = temp_dir.path().join("super-repo");
+        let repo_gitdir = repo_root.join(".git").join("modules").join("submodule");
+        let submodule_root = repo_root.join("submodule");
+        let src_dir = submodule_root.join("src");
+
+        std::fs::create_dir_all(&repo_gitdir).expect("create gitdir");
+        std::fs::create_dir_all(&src_dir).expect("create submodule src dir");
+        std::fs::write(submodule_root.join("package.json"), "{}").expect("package marker");
+        std::fs::write(src_dir.join("index.ts"), "export {}").expect("file");
+        std::fs::write(
+            submodule_root.join(".git"),
+            format!("gitdir: {}\n", repo_gitdir.to_string_lossy()),
+        )
+        .expect("git file");
+
+        let identity =
+            resolve_project_identity(src_dir.join("index.ts").to_string_lossy().as_ref())
+                .expect("identity");
+
+        let expected_root = canonicalize_path(&submodule_root)
+            .to_string_lossy()
+            .to_string();
+        assert_eq!(identity.project_path, expected_root);
     }
 }
