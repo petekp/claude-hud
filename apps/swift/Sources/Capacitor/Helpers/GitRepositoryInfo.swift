@@ -34,20 +34,23 @@ struct GitRepositoryInfo {
         }
 
         while true {
-            let gitEntry = current.appendingPathComponent(".git")
+            // Avoid URL.appendingPathComponent(_:) which can hit the filesystem
+            // to infer directory-ness and can become extremely slow for non-existent paths.
+            let gitEntry = current.appendingPathComponent(".git", isDirectory: false)
             if FileManager.default.fileExists(atPath: gitEntry.path) {
                 return current
             }
-            let parent = current.deletingLastPathComponent()
-            if parent.path == current.path {
+            // URL.deletingLastPathComponent() returns "/.." for "/", so we must explicitly stop at root.
+            // (See: URL(fileURLWithPath: "/").deletingLastPathComponent().path)
+            if current.path == "/" {
                 return nil
             }
-            current = parent
+            current.deleteLastPathComponent()
         }
     }
 
     private static func resolveCommonDir(repoRootUrl: URL) -> URL? {
-        let gitEntry = repoRootUrl.appendingPathComponent(".git")
+        let gitEntry = repoRootUrl.appendingPathComponent(".git", isDirectory: false)
         var isDir: ObjCBool = false
         guard FileManager.default.fileExists(atPath: gitEntry.path, isDirectory: &isDir) else {
             return nil

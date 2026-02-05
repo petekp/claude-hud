@@ -320,8 +320,8 @@ final class ActivationActionExecutorTests: XCTestCase {
         )
 
         XCTAssertTrue(result)
-        XCTAssertNil(terminalDiscovery.lastActivatedApp)
-        XCTAssertEqual(launcher.launchedSession, "cap")
+        XCTAssertEqual(terminalDiscovery.lastActivatedApp, "Ghostty")
+        XCTAssertNil(launcher.launchedSession)
     }
 
     func testActivateHostThenSwitchTmuxReturnsFalseWhenNoTtyAndNoGhostty() async {

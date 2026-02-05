@@ -44,6 +44,7 @@ Capacitor is a native macOS SwiftUI app (Apple Silicon, macOS 14+) that acts as 
 - Ghostty activation now prefers activating the app when a tmux client is attached (avoid spawning new windows on project click).
 - Daemon offline banner moved to debug-only diagnostics (no user-facing daemon status).
 - Debug daemon status now avoids transient “offline” states: 20s startup grace + 2 consecutive failures required before showing unavailable.
+- Fixed Swift `GitRepositoryInfo.findRepoRoot` to stop at filesystem root (`/`) and avoid `URL.deletingLastPathComponent()` producing `"/.."` for `"/"` (prevented infinite loops when resolving non-repo paths). Added `GitRepositoryInfoTests`.
 
 **Why:**
 - Users reported projects stuck in Working after no activity; Ghostty clicks occasionally spawned new windows.
