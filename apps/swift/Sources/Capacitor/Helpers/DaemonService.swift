@@ -90,35 +90,71 @@ enum DaemonService {
         }
     }
 
-    private enum LaunchAgentManager {
-        static func installAndKickstart(binaryPath: String) -> String? {
+    enum LaunchAgentManager {
+        static func installAndKickstart(
+            binaryPath: String,
+            homeDir: URL = FileManager.default.homeDirectoryForCurrentUser,
+            uid: uid_t = getuid(),
+            runLaunchctl: ([String]) -> (exitCode: Int32, output: String) = systemLaunchctl
+        ) -> String? {
             let plistURL: URL
+            let didChange: Bool
             do {
-                plistURL = try writeLaunchAgentPlist(binaryPath: binaryPath)
+                (plistURL, didChange) = try writeLaunchAgentPlist(binaryPath: binaryPath, homeDir: homeDir)
             } catch {
                 DebugLog.write("DaemonService.installAndKickstart plist error=\(error.localizedDescription)")
                 return "Failed to write LaunchAgent plist: \(error.localizedDescription)"
             }
 
-            let domain = "gui/\(getuid())"
+            let domain = "gui/\(uid)"
+            let serviceTarget = "\(domain)/\(Constants.label)"
 
-            _ = runLaunchctl(["bootout", domain, plistURL.path])
-            _ = runLaunchctl(["bootstrap", domain, plistURL.path])
+            // launchctl semantics matter here:
+            // - `bootout` removes the job (and will SIGTERM it if running)
+            // - `bootstrap` loads the plist into launchd
+            // - `kickstart` starts the job; adding `-k` *restarts* it
+            //
+            // We do NOT want to repeatedly `bootout`/`kickstart -k` on a health-check loop,
+            // since that causes thrash and leaves stale unix sockets behind.
 
-            let kickstart = runLaunchctl(["kickstart", "-k", "\(domain)/\(Constants.label)"])
-            if kickstart.exitCode != 0 {
-                DebugLog.write("DaemonService.kickstart failed output=\(kickstart.output)")
-                return "Failed to start daemon: \(kickstart.output.trimmingCharacters(in: .whitespacesAndNewlines))"
+            let printResult = runLaunchctl(["print", serviceTarget])
+            let jobLoaded = printResult.exitCode == 0
+            let jobRunning = jobLoaded && printResult.output.contains("state = running")
+
+            if !jobLoaded {
+                _ = runLaunchctl(["bootstrap", domain, plistURL.path])
+            } else if didChange, !jobRunning {
+                // Only reload the job if it isn't running, to avoid disrupting a healthy daemon.
+                _ = runLaunchctl(["bootout", domain, plistURL.path])
+                _ = runLaunchctl(["bootstrap", domain, plistURL.path])
             }
-            DebugLog.write("DaemonService.kickstart ok")
 
+            if jobRunning {
+                DebugLog.write("DaemonService.installAndKickstart alreadyRunning=1")
+                return nil
+            }
+
+            // Prefer a non-disruptive kickstart. Only restart (-k) as a last resort.
+            let kickstart = runLaunchctl(["kickstart", serviceTarget])
+            if kickstart.exitCode == 0 {
+                DebugLog.write("DaemonService.kickstart ok")
+                return nil
+            }
+
+            DebugLog.write("DaemonService.kickstart failed output=\(kickstart.output)")
+
+            let retryKickstart = runLaunchctl(["kickstart", "-k", serviceTarget])
+            if retryKickstart.exitCode != 0 {
+                DebugLog.write("DaemonService.kickstart -k failed output=\(retryKickstart.output)")
+                return "Failed to start daemon: \(retryKickstart.output.trimmingCharacters(in: .whitespacesAndNewlines))"
+            }
+            DebugLog.write("DaemonService.kickstart -k ok")
             return nil
         }
 
-        private static func writeLaunchAgentPlist(binaryPath: String) throws -> URL {
-            let home = FileManager.default.homeDirectoryForCurrentUser
-            let launchAgentsDir = home.appendingPathComponent("Library/LaunchAgents")
-            let logsDir = home.appendingPathComponent(".capacitor/daemon")
+        static func writeLaunchAgentPlist(binaryPath: String, homeDir: URL) throws -> (URL, Bool) {
+            let launchAgentsDir = homeDir.appendingPathComponent("Library/LaunchAgents")
+            let logsDir = homeDir.appendingPathComponent(".capacitor/daemon")
 
             try FileManager.default.createDirectory(at: launchAgentsDir, withIntermediateDirectories: true, attributes: nil)
             try FileManager.default.createDirectory(at: logsDir, withIntermediateDirectories: true, attributes: nil)
@@ -141,7 +177,7 @@ enum DaemonService {
                 "KeepAlive": true,
                 "ThrottleInterval": Constants.throttleInterval,
                 "ProcessType": "Background",
-                "WorkingDirectory": home.appendingPathComponent(".capacitor").path,
+                "WorkingDirectory": homeDir.appendingPathComponent(".capacitor").path,
                 "StandardOutPath": logsDir.appendingPathComponent("daemon.stdout.log").path,
                 "StandardErrorPath": logsDir.appendingPathComponent("daemon.stderr.log").path,
             ]
@@ -152,11 +188,15 @@ enum DaemonService {
 
             let data = try PropertyListSerialization.data(fromPropertyList: plist, format: .xml, options: 0)
             let plistURL = launchAgentsDir.appendingPathComponent("\(Constants.label).plist")
-            try data.write(to: plistURL, options: .atomic)
-            return plistURL
+            let existing = try? Data(contentsOf: plistURL)
+            let didChange = existing != data
+            if didChange {
+                try data.write(to: plistURL, options: .atomic)
+            }
+            return (plistURL, didChange)
         }
 
-        private static func runLaunchctl(_ arguments: [String]) -> (exitCode: Int32, output: String) {
+        private static func systemLaunchctl(_ arguments: [String]) -> (exitCode: Int32, output: String) {
             let process = Process()
             process.executableURL = URL(fileURLWithPath: "/bin/launchctl")
             process.arguments = arguments
