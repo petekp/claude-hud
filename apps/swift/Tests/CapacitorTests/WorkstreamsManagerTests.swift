@@ -81,6 +81,43 @@ final class WorkstreamsManagerTests: XCTestCase {
         XCTAssertNil(state.errorMessage)
     }
 
+    func testCreateRetriesWithNextNameWhenBranchAlreadyExists() {
+        let project = makeProject(path: "/tmp/repo")
+        let refreshed = [
+            makeWorktree(path: "/tmp/repo/.capacitor/worktrees/workstream-2"),
+        ]
+
+        var attemptedNames: [String] = []
+        var listCallCount = 0
+
+        let manager = WorkstreamsManager(
+            listManagedWorktrees: { _ in
+                defer { listCallCount += 1 }
+                return listCallCount == 0 ? [] : refreshed
+            },
+            createManagedWorktree: { _, name in
+                attemptedNames.append(name)
+                if name == "workstream-1" {
+                    throw WorktreeService.Error.gitCommandFailed(
+                        arguments: ["worktree", "add", ".capacitor/worktrees/workstream-1", "-b", "workstream-1"],
+                        exitCode: 255,
+                        output: "fatal: a branch named 'workstream-1' already exists"
+                    )
+                }
+                return Self.makeWorktree(path: "/tmp/repo/.capacitor/worktrees/\(name)")
+            }
+        )
+
+        manager.load(for: project)
+        manager.create(for: project)
+        let state = manager.state(for: project)
+
+        XCTAssertEqual(attemptedNames, ["workstream-1", "workstream-2"])
+        XCTAssertEqual(state.worktrees.map(\.name), ["workstream-2"])
+        XCTAssertFalse(state.isCreating)
+        XCTAssertNil(state.errorMessage)
+    }
+
     func testDestroyPassesActivePathsAndSurfacesActiveSessionError() {
         let project = makeProject(path: "/tmp/repo")
         let worktree = makeWorktree(path: "/tmp/repo/.capacitor/worktrees/workstream-1")

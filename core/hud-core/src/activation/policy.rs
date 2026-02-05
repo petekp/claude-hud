@@ -174,6 +174,13 @@ pub(crate) fn match_type_excluding_home(
         return Some(PathMatch::Exact);
     }
 
+    // Keep managed worktrees isolated: parent repo shells should not match
+    // into /.capacitor/worktrees/<name>, and different managed worktrees should
+    // not match each other.
+    if !paths_share_managed_worktree(shell_path, project_path) {
+        return None;
+    }
+
     let (shorter, longer) = if shell_path.len() < project_path.len() {
         (shell_path, project_path)
     } else {
@@ -195,4 +202,27 @@ pub(crate) fn match_type_excluding_home(
                 PathMatch::Parent
             }
         })
+}
+
+const MANAGED_WORKTREES_MARKER: &str = "/.capacitor/worktrees/";
+
+fn paths_share_managed_worktree(a: &str, b: &str) -> bool {
+    match (managed_worktree_root(a), managed_worktree_root(b)) {
+        (None, None) => true,
+        (Some(a_root), Some(b_root)) => a_root == b_root,
+        _ => false,
+    }
+}
+
+fn managed_worktree_root(path: &str) -> Option<&str> {
+    let marker_index = path.find(MANAGED_WORKTREES_MARKER)?;
+    let root_start = marker_index + MANAGED_WORKTREES_MARKER.len();
+    let remainder = &path[root_start..];
+    let worktree_name_end = remainder.find('/').unwrap_or(remainder.len());
+    if worktree_name_end == 0 {
+        return None;
+    }
+
+    let root_end = root_start + worktree_name_end;
+    Some(&path[..root_end])
 }

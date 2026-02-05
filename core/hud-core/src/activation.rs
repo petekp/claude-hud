@@ -2210,6 +2210,52 @@ mod tests {
         ));
     }
 
+    #[test]
+    fn test_parent_tmux_shell_does_not_match_managed_worktree() {
+        let parent_tmux_shell = make_shell_entry_with_time(
+            "/Users/pete/Code/agentic-canvas",
+            "/dev/pts/0",
+            ParentApp::Tmux,
+            Some("agentic-canvas"),
+            "2026-01-27T10:00:00Z",
+        );
+
+        let state = make_shell_state(vec![("11111", parent_tmux_shell)]);
+        let worktree_path = "/Users/pete/Code/agentic-canvas/.capacitor/worktrees/workstream-1";
+        let decision = resolve_activation(
+            worktree_path,
+            Some(&state),
+            &tmux_context_attached_no_session(),
+        );
+
+        assert!(
+            matches!(decision.primary, ActivationAction::EnsureTmuxSession { ref session_name, .. } if session_name == "workstream-1"),
+            "Expected EnsureTmuxSession for managed worktree path, got {:?}",
+            decision.primary
+        );
+    }
+
+    #[test]
+    fn test_managed_worktree_shell_still_matches_same_worktree() {
+        let worktree_shell = make_shell_entry_with_time(
+            "/Users/pete/Code/agentic-canvas/.capacitor/worktrees/workstream-1/apps/web",
+            "/dev/ttys007",
+            ParentApp::Ghostty,
+            None,
+            "2026-01-27T10:00:00Z",
+        );
+
+        let state = make_shell_state(vec![("11111", worktree_shell)]);
+        let worktree_path = "/Users/pete/Code/agentic-canvas/.capacitor/worktrees/workstream-1";
+        let decision = resolve_activation(worktree_path, Some(&state), &tmux_context_none());
+
+        assert!(
+            matches!(decision.primary, ActivationAction::ActivateApp { ref app_name } if app_name == "Ghostty"),
+            "Expected shell inside managed worktree to match same worktree, got {:?}",
+            decision.primary
+        );
+    }
+
     // ─────────────────────────────────────────────────────────────────────────────
     // Normalize path tests
     // ─────────────────────────────────────────────────────────────────────────────

@@ -77,7 +77,8 @@ final class WorkstreamsManager: ObservableObject {
 
     func create(for project: Project) {
         let current = state(for: project)
-        let nextName = Self.nextWorktreeName(from: current.worktrees)
+        var usedNames = Set(current.worktrees.map(\.name))
+        var branchAlreadyExistsRetries = 0
 
         mutateState(for: project.path) {
             $0.isCreating = true
@@ -85,12 +86,28 @@ final class WorkstreamsManager: ObservableObject {
         }
 
         do {
-            _ = try createManagedWorktree(project.path, nextName)
-            let refreshed = try listManagedWorktrees(project.path)
-            mutateState(for: project.path) {
-                $0.worktrees = refreshed
-                $0.isCreating = false
-                $0.errorMessage = nil
+            while true {
+                let nextName = Self.nextWorktreeName(from: usedNames)
+
+                do {
+                    _ = try createManagedWorktree(project.path, nextName)
+                    let refreshed = try listManagedWorktrees(project.path)
+                    mutateState(for: project.path) {
+                        $0.worktrees = refreshed
+                        $0.isCreating = false
+                        $0.errorMessage = nil
+                    }
+                    return
+                } catch {
+                    guard Self.isBranchAlreadyExistsCreateError(error),
+                          branchAlreadyExistsRetries < Self.maxCreateBranchAlreadyExistsRetries
+                    else {
+                        throw error
+                    }
+
+                    usedNames.insert(nextName)
+                    branchAlreadyExistsRetries += 1
+                }
             }
         } catch {
             mutateState(for: project.path) {
@@ -139,11 +156,17 @@ final class WorkstreamsManager: ObservableObject {
         states[projectPath] = current
     }
 
+    private static let maxCreateBranchAlreadyExistsRetries = 100
+
     private static func nextWorktreeName(from worktrees: [WorktreeService.Worktree]) -> String {
+        nextWorktreeName(from: Set(worktrees.map(\.name)))
+    }
+
+    private static func nextWorktreeName(from names: Set<String>) -> String {
         let prefix = "workstream-"
-        let used = Set(worktrees.compactMap { worktree -> Int? in
-            guard worktree.name.hasPrefix(prefix) else { return nil }
-            let raw = worktree.name.dropFirst(prefix.count)
+        let used = Set(names.compactMap { name -> Int? in
+            guard name.hasPrefix(prefix) else { return nil }
+            let raw = name.dropFirst(prefix.count)
             return Int(raw)
         })
 
@@ -153,6 +176,19 @@ final class WorkstreamsManager: ObservableObject {
         }
 
         return "\(prefix)\(candidate)"
+    }
+
+    private static func isBranchAlreadyExistsCreateError(_ error: Swift.Error) -> Bool {
+        guard case let WorktreeService.Error.gitCommandFailed(arguments, _, output) = error else {
+            return false
+        }
+
+        guard arguments.starts(with: ["worktree", "add"]) else {
+            return false
+        }
+
+        let normalizedOutput = output.lowercased()
+        return normalizedOutput.contains("branch") && normalizedOutput.contains("already exists")
     }
 
     private static func makeWorktreeProject(_ worktree: WorktreeService.Worktree) -> Project {
