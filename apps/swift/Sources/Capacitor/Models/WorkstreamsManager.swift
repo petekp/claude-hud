@@ -87,7 +87,7 @@ final class WorkstreamsManager: ObservableObject {
 
         do {
             while true {
-                let nextName = Self.nextWorktreeName(from: usedNames)
+                let nextName = Self.nextWorktreeName(for: project, from: usedNames)
 
                 do {
                     _ = try createManagedWorktree(project.path, nextName)
@@ -158,12 +158,8 @@ final class WorkstreamsManager: ObservableObject {
 
     private static let maxCreateBranchAlreadyExistsRetries = 100
 
-    private static func nextWorktreeName(from worktrees: [WorktreeService.Worktree]) -> String {
-        nextWorktreeName(from: Set(worktrees.map(\.name)))
-    }
-
-    private static func nextWorktreeName(from names: Set<String>) -> String {
-        let prefix = "workstream-"
+    private static func nextWorktreeName(for project: Project, from names: Set<String>) -> String {
+        let prefix = worktreePrefix(for: project)
         let used = Set(names.compactMap { name -> Int? in
             guard name.hasPrefix(prefix) else { return nil }
             let raw = name.dropFirst(prefix.count)
@@ -176,6 +172,33 @@ final class WorkstreamsManager: ObservableObject {
         }
 
         return "\(prefix)\(candidate)"
+    }
+
+    private static func worktreePrefix(for project: Project) -> String {
+        let rawName = project.name.trimmingCharacters(in: .whitespacesAndNewlines)
+        let source = rawName.isEmpty ? URL(fileURLWithPath: project.path).lastPathComponent : rawName
+        let slug = slugify(source)
+        return "\(slug)-workstream-"
+    }
+
+    private static func slugify(_ value: String) -> String {
+        let transformed = value.lowercased().map { char -> Character in
+            if char.isLetter || char.isNumber {
+                return char
+            }
+            return "-"
+        }
+
+        var collapsed: [Character] = []
+        for char in transformed {
+            if char == "-", collapsed.last == "-" {
+                continue
+            }
+            collapsed.append(char)
+        }
+
+        let slug = String(collapsed).trimmingCharacters(in: CharacterSet(charactersIn: "-"))
+        return slug.isEmpty ? "project" : slug
     }
 
     private static func isBranchAlreadyExistsCreateError(_ error: Swift.Error) -> Bool {

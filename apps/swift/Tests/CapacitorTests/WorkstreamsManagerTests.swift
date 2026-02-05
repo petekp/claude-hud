@@ -48,13 +48,13 @@ final class WorkstreamsManagerTests: XCTestCase {
     func testCreateUsesNextAvailableNameAndRefreshesList() {
         let project = makeProject(path: "/tmp/repo")
         let initial = [
-            makeWorktree(path: "/tmp/repo/.capacitor/worktrees/workstream-1"),
-            makeWorktree(path: "/tmp/repo/.capacitor/worktrees/workstream-3"),
+            makeWorktree(path: "/tmp/repo/.capacitor/worktrees/repo-workstream-1"),
+            makeWorktree(path: "/tmp/repo/.capacitor/worktrees/repo-workstream-3"),
         ]
         let refreshed = [
-            makeWorktree(path: "/tmp/repo/.capacitor/worktrees/workstream-1"),
-            makeWorktree(path: "/tmp/repo/.capacitor/worktrees/workstream-2"),
-            makeWorktree(path: "/tmp/repo/.capacitor/worktrees/workstream-3"),
+            makeWorktree(path: "/tmp/repo/.capacitor/worktrees/repo-workstream-1"),
+            makeWorktree(path: "/tmp/repo/.capacitor/worktrees/repo-workstream-2"),
+            makeWorktree(path: "/tmp/repo/.capacitor/worktrees/repo-workstream-3"),
         ]
 
         var listCallCount = 0
@@ -75,8 +75,11 @@ final class WorkstreamsManagerTests: XCTestCase {
         manager.create(for: project)
         let state = manager.state(for: project)
 
-        XCTAssertEqual(createdName, "workstream-2")
-        XCTAssertEqual(state.worktrees.map(\.name), ["workstream-1", "workstream-2", "workstream-3"])
+        XCTAssertEqual(createdName, "repo-workstream-2")
+        XCTAssertEqual(
+            state.worktrees.map(\.name),
+            ["repo-workstream-1", "repo-workstream-2", "repo-workstream-3"]
+        )
         XCTAssertFalse(state.isCreating)
         XCTAssertNil(state.errorMessage)
     }
@@ -84,7 +87,7 @@ final class WorkstreamsManagerTests: XCTestCase {
     func testCreateRetriesWithNextNameWhenBranchAlreadyExists() {
         let project = makeProject(path: "/tmp/repo")
         let refreshed = [
-            makeWorktree(path: "/tmp/repo/.capacitor/worktrees/workstream-2"),
+            makeWorktree(path: "/tmp/repo/.capacitor/worktrees/repo-workstream-2"),
         ]
 
         var attemptedNames: [String] = []
@@ -97,11 +100,17 @@ final class WorkstreamsManagerTests: XCTestCase {
             },
             createManagedWorktree: { _, name in
                 attemptedNames.append(name)
-                if name == "workstream-1" {
+                if name == "repo-workstream-1" {
                     throw WorktreeService.Error.gitCommandFailed(
-                        arguments: ["worktree", "add", ".capacitor/worktrees/workstream-1", "-b", "workstream-1"],
+                        arguments: [
+                            "worktree",
+                            "add",
+                            ".capacitor/worktrees/repo-workstream-1",
+                            "-b",
+                            "repo-workstream-1",
+                        ],
                         exitCode: 255,
-                        output: "fatal: a branch named 'workstream-1' already exists"
+                        output: "fatal: a branch named 'repo-workstream-1' already exists"
                     )
                 }
                 return Self.makeWorktree(path: "/tmp/repo/.capacitor/worktrees/\(name)")
@@ -112,10 +121,39 @@ final class WorkstreamsManagerTests: XCTestCase {
         manager.create(for: project)
         let state = manager.state(for: project)
 
-        XCTAssertEqual(attemptedNames, ["workstream-1", "workstream-2"])
-        XCTAssertEqual(state.worktrees.map(\.name), ["workstream-2"])
+        XCTAssertEqual(attemptedNames, ["repo-workstream-1", "repo-workstream-2"])
+        XCTAssertEqual(state.worktrees.map(\.name), ["repo-workstream-2"])
         XCTAssertFalse(state.isCreating)
         XCTAssertNil(state.errorMessage)
+    }
+
+    func testCreateSanitizesProjectNameIntoPrefix() {
+        let project = Project(
+            name: "Agentic Canvas!",
+            path: "/tmp/agentic-canvas",
+            displayPath: "/tmp/agentic-canvas",
+            lastActive: nil,
+            claudeMdPath: nil,
+            claudeMdPreview: nil,
+            hasLocalSettings: false,
+            taskCount: 0,
+            stats: nil,
+            isMissing: false
+        )
+        var createdName: String?
+
+        let manager = WorkstreamsManager(
+            listManagedWorktrees: { _ in [] },
+            createManagedWorktree: { _, name in
+                createdName = name
+                return Self.makeWorktree(path: "/tmp/agentic-canvas/.capacitor/worktrees/\(name)")
+            }
+        )
+
+        manager.load(for: project)
+        manager.create(for: project)
+
+        XCTAssertEqual(createdName, "agentic-canvas-workstream-1")
     }
 
     func testDestroyPassesActivePathsAndSurfacesActiveSessionError() {
