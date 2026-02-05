@@ -37,7 +37,7 @@ Identity and mapping foundations are already complete (project/workspace IDs, wo
 
 | Phase | Status | Owner | Notes |
 |------|--------|-------|-------|
-| Phase 1: Worktree Service Core | Not Started | Codex | Git operations + parsing + unit tests |
+| Phase 1: Worktree Service Core | Done (2026-02-05) | Codex | `WorktreeService` + deterministic tests for parse/list/create/remove |
 | Phase 2: Safety Guardrails | Not Started | Codex | Dirty/active/locked protections |
 | Phase 3: Workstreams UI | Not Started | Codex | Panel + actions + state wiring |
 | Phase 4: Integration + Docs | Not Started | Codex | End-to-end tests + doc completion |
@@ -67,17 +67,17 @@ For every scoped change:
 
 ### Tasks
 
-- [ ] Add failing tests for porcelain parsing into a typed model.
-- [ ] Add failing tests for list behavior (managed-only filtering).
-- [ ] Add failing tests for create behavior (`git worktree add ...` command construction).
-- [ ] Implement list/create primitives to satisfy tests.
-- [ ] Add failing tests for remove behavior command construction and error handling.
-- [ ] Implement remove primitive to satisfy tests.
+- [x] Add failing tests for porcelain parsing into a typed model.
+- [x] Add failing tests for list behavior (managed-only filtering).
+- [x] Add failing tests for create behavior (`git worktree add ...` command construction).
+- [x] Implement list/create primitives to satisfy tests.
+- [x] Add failing tests for remove behavior command construction and error handling.
+- [x] Implement remove primitive to satisfy tests.
 
 ### Acceptance Criteria
 
-- [ ] Service can list/create/remove managed worktrees in deterministic unit tests.
-- [ ] Non-managed worktrees are excluded from managed list views.
+- [x] Service can list/create/remove managed worktrees in deterministic unit tests.
+- [x] Non-managed worktrees are excluded from managed list views.
 
 ## Phase 2: Safety Guardrails
 
