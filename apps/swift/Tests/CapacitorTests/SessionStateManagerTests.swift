@@ -261,6 +261,51 @@ final class SessionStateManagerTests: XCTestCase {
         XCTAssertEqual(state?.state, .ready)
     }
 
+    func testSessionStateMatchesOtherPathInSameRepoToPinnedWorkspace() async throws {
+        setenv("CAPACITOR_DAEMON_ENABLED", "1", 1)
+        defer { unsetenv("CAPACITOR_DAEMON_ENABLED") }
+
+        let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+
+        let repoRoot = tempDir.appendingPathComponent("assistant-ui")
+        let repoGit = repoRoot.appendingPathComponent(".git")
+        let pinnedPath = repoRoot.appendingPathComponent("apps/docs")
+        let otherPath = repoRoot.appendingPathComponent("packages/mcp-app-studio")
+
+        try FileManager.default.createDirectory(at: repoGit, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: pinnedPath, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: otherPath, withIntermediateDirectories: true)
+
+        let socketPath = tempDir.appendingPathComponent("daemon.sock").path
+        let server = try UnixSocketServer(path: socketPath)
+        defer { server.stop() }
+        server.start(response: makeProjectStatesResponse([
+            .init(
+                projectPath: otherPath.path,
+                state: "working",
+                updatedAt: "2026-02-02T19:00:00Z",
+                stateChangedAt: "2026-02-02T19:00:00Z",
+                sessionId: "session-1"
+            ),
+        ]))
+
+        setenv("CAPACITOR_DAEMON_SOCKET", socketPath, 1)
+        defer { unsetenv("CAPACITOR_DAEMON_SOCKET") }
+
+        let manager = SessionStateManager()
+        let project = makeProject(
+            "assistant-ui-docs",
+            path: pinnedPath.path
+        )
+
+        manager.refreshSessionStates(for: [project])
+        let state = await waitForSessionState(manager, project: project)
+
+        XCTAssertNotNil(state)
+        XCTAssertEqual(state?.state, .working)
+    }
+
     private func waitForSessionState(
         _ manager: SessionStateManager,
         project: Project,

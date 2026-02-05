@@ -158,13 +158,15 @@ final class SessionStateManager {
             return lhs.depth > rhs.depth
         }
 
-        // Index pinned projects by repo so we can handle daemon states that report the repo root
-        // while the user has pinned only a single workspace within that repo.
-        var pinnedProjectsByRepoKey: [String: [ProjectMatchInfo]] = [:]
+        // Index pinned projects by repo root so we can map daemon activity anywhere in the repo
+        // onto pinned workspaces within that same repo root (common monorepo case).
+        //
+        // Keying by repo root (not git common dir) prevents cross-worktree bleed, since each
+        // worktree has a different repo root but may share a common .git directory.
+        var pinnedProjectsByRepoRoot: [String: [ProjectMatchInfo]] = [:]
         for info in projectInfos {
             guard let repoInfo = info.repoInfo else { continue }
-            let repoKey = repoInfo.commonDir ?? repoInfo.repoRoot
-            pinnedProjectsByRepoKey[repoKey, default: []].append(info)
+            pinnedProjectsByRepoRoot[repoInfo.repoRoot, default: []].append(info)
         }
 
         var bestStates: [String: DaemonProjectState] = [:]
@@ -189,12 +191,14 @@ final class SessionStateManager {
                     homeNormalized: homeNormalized
                 )
             }) else {
-                // If the daemon reports the repo root (relativePath == "") but the UI has exactly one
-                // pinned workspace inside that repo, map the state to that pinned workspace.
-                if let repoInfo = stateInfo.repoInfo, repoInfo.relativePath.isEmpty {
-                    let repoKey = repoInfo.commonDir ?? repoInfo.repoRoot
-                    if let candidates = pinnedProjectsByRepoKey[repoKey], candidates.count == 1 {
-                        let projectPath = candidates[0].project.path
+                // If the daemon reports activity for a different workspace within the same repo,
+                // apply that state to pinned workspaces in that repo root. This is common when
+                // users pin a subdirectory of a monorepo but agent sessions run elsewhere in it.
+                if let repoInfo = stateInfo.repoInfo,
+                   let candidates = pinnedProjectsByRepoRoot[repoInfo.repoRoot]
+                {
+                    for candidate in candidates {
+                        let projectPath = candidate.project.path
                         if let existing = bestStates[projectPath] {
                             if isMoreRecent(state, than: existing) {
                                 bestStates[projectPath] = state
@@ -202,8 +206,8 @@ final class SessionStateManager {
                         } else {
                             bestStates[projectPath] = state
                         }
-                        continue
                     }
+                    continue
                 }
 
                 unmatched.append(state)
