@@ -7,6 +7,7 @@ final class WorkstreamsManager: ObservableObject {
         var isLoading = false
         var isCreating = false
         var destroyingNames: Set<String> = []
+        var forceDestroyableNames: Set<String> = []
         var errorMessage: String?
     }
 
@@ -136,14 +137,26 @@ final class WorkstreamsManager: ObservableObject {
             mutateState(for: project.path) {
                 $0.worktrees = refreshed
                 $0.destroyingNames.remove(worktreeName)
+                $0.forceDestroyableNames.remove(worktreeName)
                 $0.errorMessage = nil
             }
         } catch {
+            let isActiveSession = Self.isActiveSessionError(error)
             mutateState(for: project.path) {
                 $0.destroyingNames.remove(worktreeName)
+                if isActiveSession {
+                    $0.forceDestroyableNames.insert(worktreeName)
+                }
                 $0.errorMessage = Self.describe(error)
             }
         }
+    }
+
+    private static func isActiveSessionError(_ error: Swift.Error) -> Bool {
+        if case WorktreeService.Error.activeSessionWorktree = error {
+            return true
+        }
+        return false
     }
 
     func open(_ worktree: WorktreeService.Worktree) {

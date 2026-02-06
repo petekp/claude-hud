@@ -202,6 +202,102 @@ final class WorkstreamsManagerTests: XCTestCase {
         XCTAssertFalse(state.destroyingNames.contains(worktree.name))
     }
 
+    func testDestroyTracksForceDestroyableWhenBlockedByActiveSession() {
+        let project = makeProject(path: "/tmp/repo")
+        let worktree = makeWorktree(path: "/tmp/repo/.capacitor/worktrees/workstream-1")
+
+        let manager = WorkstreamsManager(
+            listManagedWorktrees: { _ in [worktree] },
+            removeManagedWorktree: { _, _, force, _ in
+                if !force {
+                    throw WorktreeService.Error.activeSessionWorktree(path: worktree.path)
+                }
+            },
+            activeWorktreePathsProvider: { [worktree.path] }
+        )
+
+        manager.load(for: project)
+        manager.destroy(worktreeName: worktree.name, for: project)
+        let state = manager.state(for: project)
+
+        // The name should be tracked as force-destroyable
+        XCTAssertTrue(state.forceDestroyableNames.contains(worktree.name))
+        // Generic error message should still be shown
+        XCTAssertNotNil(state.errorMessage)
+    }
+
+    func testForceDestroySucceedsAndClearsForceDestroyableState() {
+        let project = makeProject(path: "/tmp/repo")
+        let worktree = makeWorktree(path: "/tmp/repo/.capacitor/worktrees/workstream-1")
+        var removeCalls: [(name: String, force: Bool)] = []
+
+        var listCallCount = 0
+        let manager = WorkstreamsManager(
+            listManagedWorktrees: { _ in
+                defer { listCallCount += 1 }
+                return listCallCount == 0 ? [worktree] : []
+            },
+            removeManagedWorktree: { _, name, force, _ in
+                removeCalls.append((name: name, force: force))
+                if !force {
+                    throw WorktreeService.Error.activeSessionWorktree(path: worktree.path)
+                }
+            },
+            activeWorktreePathsProvider: { [worktree.path] }
+        )
+
+        manager.load(for: project)
+
+        // First attempt: blocked
+        manager.destroy(worktreeName: worktree.name, for: project)
+        XCTAssertTrue(manager.state(for: project).forceDestroyableNames.contains(worktree.name))
+
+        // Second attempt: force destroy
+        manager.destroy(worktreeName: worktree.name, for: project, force: true)
+        let state = manager.state(for: project)
+
+        XCTAssertEqual(removeCalls.count, 2)
+        XCTAssertTrue(removeCalls[1].force)
+        XCTAssertTrue(state.worktrees.isEmpty)
+        XCTAssertTrue(state.forceDestroyableNames.isEmpty)
+        XCTAssertNil(state.errorMessage)
+    }
+
+    func testForceDestroyableIsClearedOnSuccessfulNonForceDestroy() {
+        let project = makeProject(path: "/tmp/repo")
+        let worktree1 = makeWorktree(path: "/tmp/repo/.capacitor/worktrees/workstream-1")
+        let worktree2 = makeWorktree(path: "/tmp/repo/.capacitor/worktrees/workstream-2")
+        var shouldBlockWorktree1 = true
+
+        var listCallCount = 0
+        let manager = WorkstreamsManager(
+            listManagedWorktrees: { _ in
+                defer { listCallCount += 1 }
+                return listCallCount <= 1 ? [worktree1, worktree2] : [worktree1]
+            },
+            removeManagedWorktree: { _, name, force, _ in
+                if name == worktree1.name, !force, shouldBlockWorktree1 {
+                    throw WorktreeService.Error.activeSessionWorktree(path: worktree1.path)
+                }
+            },
+            activeWorktreePathsProvider: { [worktree1.path] }
+        )
+
+        manager.load(for: project)
+
+        // Block worktree-1
+        manager.destroy(worktreeName: worktree1.name, for: project)
+        XCTAssertTrue(manager.state(for: project).forceDestroyableNames.contains(worktree1.name))
+
+        // Successfully destroy worktree-2 (not blocked)
+        _ = shouldBlockWorktree1 // suppress unused warning
+        manager.destroy(worktreeName: worktree2.name, for: project)
+        let state = manager.state(for: project)
+
+        // worktree-1 should still be force-destroyable (its blocker wasn't resolved)
+        XCTAssertTrue(state.forceDestroyableNames.contains(worktree1.name))
+    }
+
     func testOpenSendsWorktreeShapedProjectToTerminalLauncher() {
         var openedProject: Project?
         let manager = WorkstreamsManager(
