@@ -5,7 +5,7 @@
 
 ## Current State Summary
 
-Capacitor is a native macOS SwiftUI app (Apple Silicon, macOS 14+) that acts as a sidecar dashboard for Claude Code. The architecture uses a Rust core (`hud-core`) with UniFFI bindings to Swift plus a **Rust daemon (`capacitor-daemon`) that is the canonical source of truth** for session, shell, activity, and process-liveness state. Hooks emit events to the daemon over a Unix socket (`~/.capacitor/daemon.sock`), and Swift reads daemon snapshots (shell state + project aggregation); file-based JSON fallbacks are removed in daemon-only mode. Workstreams (managed git worktrees) are now first-class with create/open/destroy UX and slug-prefixed naming; activation matching avoids crossing repo cards with managed worktree tmux panes. The Transparent UI tooling (`docs/transparent-ui/` + `scripts/transparent-ui-server.mjs`) is the debug hub with live activation traces, daemon snapshots, and structured telemetry/agent briefing endpoints. Terminal activation uses a Rust-only decision path (Swift executes macOS APIs). Build channel + alpha gating are now runtime via `AppConfig` (env/Info.plist/config file), not compile-time flags.
+Capacitor is a native macOS SwiftUI app (Apple Silicon, macOS 14+) that acts as a sidecar dashboard for Claude Code. The architecture uses a Rust core (`hud-core`) with UniFFI bindings to Swift plus a **Rust daemon (`capacitor-daemon`) that is the canonical source of truth** for session, shell, activity, and process-liveness state. Hooks emit events to the daemon over a Unix socket (`~/.capacitor/daemon.sock`), and Swift reads daemon snapshots (shell state + project aggregation); file-based JSON fallbacks are removed in daemon-only mode. Workstreams (managed git worktrees) are now first-class with create/open/destroy UX and slug-prefixed naming; activation matching avoids crossing repo cards with managed worktree tmux panes. The Transparent UI tooling (`docs/transparent-ui/` + `scripts/transparent-ui-server.mjs`) is the debug hub with live activation traces, daemon snapshots, and structured telemetry/agent briefing endpoints. Terminal activation uses a Rust-only decision path (Swift executes macOS APIs) and is intentionally limited to Ghostty, iTerm2, and Terminal.app for the public alpha. Build channel + alpha gating are runtime via `AppConfig` (env/Info.plist/config file), not compile-time flags; release versioning is centralized in `VERSION` (current alpha: `0.2.0-alpha.1`).
 
 > **Historical note:** Timeline entries below may reference pre-daemon artifacts (locks, `sessions.json`, `shell-cwd.json`). Treat them as historical context only; they are not current behavior.
 
@@ -16,6 +16,38 @@ Capacitor is a native macOS SwiftUI app (Apple Silicon, macOS 14+) that acts as 
 | docs/architecture-decisions/003-sidecar-architecture-pattern.md | “Hooks write `~/.capacitor/sessions.json` and HUD reads files.” | Daemon is the single writer; hooks/app are IPC clients; JSON is legacy/fallback only. | 2026-01 |
 
 ## Timeline
+
+### 2026-02-08 — Public Alpha Hardening + Terminal Support Narrowing (Completed)
+
+**What changed:**
+- Alpha scope hardened in UI + docs: README rewritten for public alpha, help menu includes “Report a Bug”, and alpha checklist consolidated.
+- Terminal activation narrowed to supported apps only (Ghostty, iTerm2, Terminal.app); unsupported launch branches removed and activation now fails gracefully when no supported terminal is installed.
+- Project list UX tightened: drag-reorder preview + persistence helpers, missing project paths now surface as missing (tests added), and dormant override handling stabilized.
+- Startup warnings/logging routed through `DebugLog` rather than `print()` for release hygiene.
+
+**Why:**
+- Reduce alpha surface area to the reliable core while removing confusing or unsupported terminal flows.
+
+**Agent impact:**
+- Treat any non-supported terminal paths as out-of-scope for alpha; use `TerminalLauncher`’s supported set only.
+- When diagnosing activation issues, first confirm supported terminal presence + running state.
+- Prefer `DebugLog` over `print()` for release-facing diagnostics.
+
+---
+
+### 2026-02-08 — Alpha Pre-release Versioning (0.2.0-alpha.1)
+
+**What changed:**
+- Central version bumped to `0.2.0-alpha.1` (`VERSION`, `Cargo.toml`, App.swift fallback) and lockfile updated.
+- `scripts/release/bump-version.sh` now accepts prerelease/build suffixes (e.g., `0.2.0-alpha.1`).
+
+**Why:**
+- Align release tooling with public alpha distribution and enable SemVer prerelease tags.
+
+**Agent impact:**
+- Use `VERSION` as the source of truth; prerelease tags are now valid inputs to `bump-version.sh`.
+
+---
 
 ### 2026-02-08 — Runtime Channel Feature Flags for Alpha Gating (Unreleased)
 
@@ -1203,6 +1235,7 @@ Fixed terminal activation to check the daemon shell snapshot BEFORE tmux session
 
 | Don't | Do Instead | Deprecated Since |
 |-------|------------|------------------|
+| Use `#if ALPHA` compile-time feature gating | Use runtime `AppConfig` + `FeatureFlags` (env/Info.plist/config) | 2026-02-08 |
 | Read or write `~/.capacitor/sessions.json` as primary state | Use daemon IPC (`get_sessions`, `get_project_states`) | 2026-02 |
 | Write lock directories as a liveness source | Use daemon `get_process_liveness` | 2026-02 |
 | Add new file-based fallbacks when daemon is down | Surface daemon-down errors and recover via LaunchAgent | 2026-02 |
