@@ -1,0 +1,3463 @@
+<!--
+TRANSPARENT-UI DEBUG TOOL
+
+Temporary debugging visualization for explaining Capacitor architecture and interface boundaries.
+Remove when no longer needed:
+1. Delete this file: /Users/petepetrash/Code/capacitor/docs/transparent-ui/capacitor-interfaces-explorer.html
+
+Created for:
+- Make Rust/Swift/daemon/hook communication visible
+- Explain interface contracts and message flow
+-->
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Capacitor Interface Explorer</title>
+  <style>
+    :root {
+      /* Surfaces */
+      --bg: #0a0800;
+      --surface: #110e04;
+      --surface-2: #1a1508;
+
+      /* Text */
+      --text: #e8b44a;
+      --text-secondary: #d4a030;
+      --muted: #8a7040;
+      --text-disabled: #5a4520;
+
+      /* Accent */
+      --accent: #ffb000;
+      --accent-2: #ff8c00;
+      --complement: #00c8ff;
+
+      /* Status (ISA-101 / NFPA 79) */
+      --ok: #00ff66;
+      --warn: #ffdd00;
+      --danger: #ff2050;
+
+      /* Borders */
+      --border: #2a2010;
+      --border-active: #3a2a10;
+
+      /* Graph */
+      --line: #2a2010;
+      --line-active: #00c8ff;
+      --line-future: #1e1808;
+      --node-w: 180px;
+      --node-h: 78px;
+
+      /* Glow / Shadows */
+      --glow: 0 0 8px rgba(255, 176, 0, 0.3);
+      --glow-strong: 0 0 12px rgba(255, 176, 0, 0.5);
+      --glow-cyan: 0 0 8px rgba(0, 200, 255, 0.3);
+      --glow-ok: 0 0 8px rgba(0, 255, 102, 0.2);
+      --glow-warn: 0 0 8px rgba(255, 221, 0, 0.2);
+      --glow-danger: 0 0 8px rgba(255, 32, 80, 0.2);
+
+      /* Text glow (phosphor) */
+      --text-glow: 0 0 3px rgba(255, 176, 0, 0.15);
+      --text-glow-strong: 0 0 6px rgba(255, 176, 0, 0.4);
+
+      /* Animation */
+      --duration-fast: 80ms;
+      --duration-normal: 150ms;
+
+      /* Spacing */
+      --space-xs: 4px;
+      --space-sm: 6px;
+      --space-md: 8px;
+      --space-lg: 12px;
+      --space-xl: 16px;
+    }
+
+    * {
+      box-sizing: border-box;
+      scrollbar-width: thin;
+      scrollbar-color: var(--border-active) transparent;
+    }
+
+    body {
+      margin: 0;
+      font-family: "IBM Plex Mono", "JetBrains Mono", "SF Mono", "Menlo", "Monaco", "Consolas", monospace;
+      font-feature-settings: 'tnum' 1, 'zero' 1;
+      background:
+        radial-gradient(1200px 800px at 10% 0%, rgba(255, 176, 0, 0.04), transparent 60%),
+        var(--bg);
+      color: var(--text);
+      height: 100vh;
+      overflow: hidden;
+      text-shadow: var(--text-glow);
+    }
+
+    /* CRT vignette — edges darken like a phosphor tube */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background: radial-gradient(ellipse at center, transparent 55%, rgba(0, 0, 0, 0.35) 100%);
+      pointer-events: none;
+      z-index: 9998;
+    }
+
+    /* Scanline overlay — 3px repeating horizontal lines */
+    body::after {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background: repeating-linear-gradient(
+        0deg,
+        rgba(0, 0, 0, 0.03) 0px,
+        rgba(0, 0, 0, 0.03) 1px,
+        transparent 1px,
+        transparent 3px
+      );
+      pointer-events: none;
+      z-index: 9999;
+    }
+
+    /* Scrollbar — narrow, warm brown thumb on transparent track */
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: transparent;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: var(--border-active);
+      border-radius: 0;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: #5a4020;
+    }
+
+
+
+    .app {
+      max-width: 1540px;
+      margin: 0 auto;
+      padding: 12px 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      height: 100vh;
+      box-sizing: border-box;
+    }
+
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 0;
+      padding: 12px;
+    }
+
+    .header h1 {
+      margin: 0;
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      text-shadow: 0 0 4px rgba(255, 176, 0, 0.2);
+    }
+
+    .controls {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .control-group {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .mode-btn {
+      border: 1px solid var(--border-active);
+      background: var(--surface);
+      color: var(--text);
+      border-radius: 0;
+      padding: 7px 14px;
+      font-size: 12px;
+      font-family: inherit;
+      font-feature-settings: inherit;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      cursor: pointer;
+      transition: border-color var(--duration-fast) ease-out,
+                  text-shadow var(--duration-fast) ease-out,
+                  box-shadow var(--duration-fast) ease-out;
+    }
+
+    .mode-btn:hover {
+      border-color: var(--accent-2);
+      text-shadow: var(--text-glow-strong);
+    }
+
+    .mode-btn.active {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: var(--bg);
+      box-shadow: var(--glow);
+      text-shadow: none;
+    }
+
+    .flow-btn {
+      border: 1px solid var(--border-active);
+      background: var(--surface);
+      color: var(--text-secondary);
+      border-radius: 0;
+      padding: 8px 12px;
+      font-size: 12px;
+      font-family: inherit;
+      font-feature-settings: inherit;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      cursor: pointer;
+      transition: border-color var(--duration-fast) ease-out,
+                  text-shadow var(--duration-fast) ease-out;
+    }
+
+    .flow-btn:hover {
+      border-color: var(--accent);
+      text-shadow: var(--text-glow-strong);
+    }
+
+    .flow-btn.active {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: var(--bg);
+      box-shadow: var(--glow);
+      text-shadow: none;
+    }
+
+    .controls .spacer {
+      flex: 1 1 auto;
+    }
+
+    .ctrl {
+      border: 1px solid var(--border-active);
+      background: var(--surface);
+      color: var(--text-secondary);
+      border-radius: 0;
+      padding: 8px 11px;
+      font-size: 12px;
+      font-family: inherit;
+      font-feature-settings: inherit;
+      cursor: pointer;
+      transition: border-color var(--duration-fast) ease-out,
+                  text-shadow var(--duration-fast) ease-out;
+    }
+
+    .ctrl:hover {
+      border-color: var(--accent-2);
+      text-shadow: var(--text-glow-strong);
+    }
+
+    .ctrl:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
+      text-shadow: none;
+    }
+
+    .flow-btn:focus-visible,
+    .ctrl:focus-visible,
+    .mode-btn:focus-visible,
+    .step-item:focus-visible {
+      outline: 2px solid var(--accent);
+      outline-offset: 2px;
+    }
+
+    .scrubber-wrap {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      width: 100%;
+    }
+
+    .scrubber-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 11px;
+      color: var(--muted);
+    }
+
+    .scrubber {
+      width: 100%;
+      accent-color: var(--accent);
+    }
+
+    .scrubber-markers {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 6px;
+      font-size: 11px;
+      color: var(--text-disabled);
+    }
+
+    .timeline-marker {
+      display: inline-flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 2px;
+      min-width: 14px;
+    }
+
+    .timeline-marker span {
+      display: block;
+      width: 7px;
+      height: 7px;
+      background: #302010;
+      border-radius: 0;
+    }
+
+    .timeline-marker.active span {
+      background: var(--accent) !important;
+      box-shadow: 0 0 0 2px rgba(255, 176, 0, 0.45), 0 0 8px rgba(255, 176, 0, 0.5);
+    }
+
+    .timeline-marker.deterministic span {
+      background: var(--ok);
+    }
+
+    .timeline-marker.heuristic span {
+      background: var(--warn);
+    }
+
+    .timeline-marker.best-effort span {
+      background: var(--danger);
+    }
+
+    .main {
+      display: grid;
+      grid-template-columns: 280px 1fr 360px;
+      gap: 12px;
+      flex: 1 1 0;
+      min-height: 0;
+      overflow: hidden;
+    }
+
+    .panel {
+      padding: 0 12px 0 0;
+      border-right: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+    }
+
+    .panel h2 {
+      margin: 0 0 8px;
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+
+    .step-list {
+      list-style: none;
+      padding: 0;
+      margin: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      flex: 1 1 0;
+      min-height: 0;
+      overflow-y: auto;
+    }
+
+    .step-item {
+      border: 1px solid var(--border);
+      border-radius: 0;
+      padding: 8px;
+      background: rgba(16, 12, 4, 0.85);
+      cursor: pointer;
+      font-size: 12px;
+      line-height: 1.4;
+      text-align: left;
+      width: 100%;
+      color: var(--text);
+      font-family: inherit;
+      font-feature-settings: inherit;
+      transition: border-color var(--duration-fast) ease-out,
+                  text-shadow var(--duration-fast) ease-out;
+    }
+
+    .step-item:hover {
+      border-color: var(--accent);
+      text-shadow: var(--text-glow-strong);
+    }
+
+    .step-item small {
+      display: block;
+      color: var(--muted);
+      margin-top: 3px;
+    }
+
+    .step-item.done {
+      border-color: #302808;
+      background: rgba(16, 14, 6, 0.5);
+    }
+
+    .step-item.active {
+      border-color: var(--accent);
+      background: var(--accent);
+      color: var(--bg);
+      box-shadow: var(--glow);
+      text-shadow: none;
+    }
+
+    .step-item.active strong {
+      color: var(--bg);
+    }
+
+    .step-item.future {
+      opacity: 0.75;
+    }
+
+    .step-list li {
+      list-style: none;
+    }
+
+    .graph-wrap {
+      overflow: auto;
+      border-radius: 0;
+      border: 1px solid var(--border);
+      background: #0e0b02;
+      min-height: 0;
+      min-width: 0;
+      height: 100%;
+      position: relative;
+      scrollbar-width: none;               /* Firefox */
+      -ms-overflow-style: none;            /* IE/Edge */
+    }
+    .graph-wrap::-webkit-scrollbar {
+      display: none;                       /* Chrome/Safari */
+    }
+
+    .graph {
+      position: relative;
+      width: 1320px;
+      height: 760px;
+      margin: 0;
+      background:
+        linear-gradient(90deg, rgba(255, 176, 0, 0.03) 1px, transparent 1px) 0 0 / 48px 48px,
+        linear-gradient(0deg, rgba(255, 176, 0, 0.03) 1px, transparent 1px) 0 0 / 48px 48px;
+    }
+
+    .edge-layer {
+      position: absolute;
+      inset: 0;
+      z-index: 1;
+      pointer-events: none;
+    }
+
+    .edge-hit {
+      pointer-events: stroke;
+      cursor: pointer;
+    }
+
+    .edge {
+      fill: none;
+      stroke: var(--line-future);
+      stroke-width: 2;
+      stroke-linecap: butt;
+      stroke-linejoin: miter;
+      transition: stroke var(--duration-normal) ease-out,
+                  opacity var(--duration-normal) ease-out,
+                  stroke-width var(--duration-normal) ease-out;
+      opacity: 0.7;
+    }
+
+    .edge.done {
+      stroke: var(--line-active);
+      opacity: 1;
+    }
+
+    .edge.active {
+      stroke: var(--complement);
+      stroke-width: 3;
+      opacity: 1;
+      filter: drop-shadow(0 0 4px rgba(0, 200, 255, 0.4));
+    }
+
+    .edge.selected {
+      stroke: #ffb000;
+      stroke-width: 3;
+      opacity: 1;
+    }
+
+    .edge-label {
+      position: absolute;
+      z-index: 2;
+      transform: translate(-50%, -50%);
+      font-size: 10px;
+      font-feature-settings: 'tnum' 1, 'zero' 1;
+      color: #80d8f0;
+      background: rgba(0, 12, 16, 0.92);
+      border: 1px solid rgba(0, 200, 255, 0.2);
+      border-radius: 0;
+      padding: 2px 8px;
+      white-space: nowrap;
+      pointer-events: none;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      opacity: 0;
+      transition: opacity var(--duration-normal) ease-out;
+    }
+
+    .edge-label.visible {
+      opacity: 1;
+    }
+
+    .node {
+      position: absolute;
+      width: var(--node-w);
+      min-height: var(--node-h);
+      z-index: 3;
+      border: 1px solid #302010;
+      border-radius: 0;
+      padding: 8px;
+      background: rgba(18, 14, 6, 0.95);
+      box-shadow: none;
+      cursor: pointer;
+      transition: border-color var(--duration-fast) ease-out,
+                  box-shadow var(--duration-fast) ease-out;
+    }
+
+    .node:hover {
+      border-color: var(--border-active);
+    }
+
+    .node .title {
+      color: var(--text);
+      font-size: 12px;
+      font-weight: 600;
+      margin: 0 0 4px;
+      line-height: 1.35;
+    }
+
+    .node .meta {
+      color: var(--muted);
+      font-size: 10px;
+      line-height: 1.3;
+    }
+
+    .node.active {
+      border-color: var(--accent);
+      box-shadow: inset 0 0 0 1px rgba(255, 176, 0, 0.25), var(--glow);
+    }
+
+    .node.selected {
+      border-color: var(--accent);
+      box-shadow: inset 0 0 0 1px rgba(255, 176, 0, 0.4), var(--glow-strong);
+    }
+
+    .node:focus-visible {
+      outline: 2px solid var(--accent);
+      outline-offset: 2px;
+    }
+
+    .details {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      min-height: 0;
+      overflow: hidden;
+    }
+
+    .focus-box {
+      border: none;
+      border-radius: 0;
+      padding: 10px;
+      background: rgba(14, 11, 4, 0.5);
+      flex: 1 1 0;
+      min-height: 0;
+      overflow-y: auto;
+    }
+
+    .focus-box h3 {
+      margin: 0 0 8px;
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--text-secondary);
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+
+    .focus-box p {
+      margin: 0 0 7px;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.45;
+    }
+
+    .focus-box code {
+      color: #d4a030;
+      background: rgba(14, 11, 4, 0.85);
+      border: 1px solid #302010;
+      border-radius: 0;
+      padding: 2px 5px;
+    }
+
+    .files {
+      margin-top: 8px;
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+    }
+
+    .files .file {
+      border: none;
+      border-radius: 0;
+      padding: 6px;
+      font-size: 11px;
+      color: #b08030;
+      background: rgba(12, 10, 4, 0.85);
+      line-height: 1.35;
+      word-break: break-all;
+    }
+
+    .file-detail {
+      border: none;
+      border-radius: 0;
+      padding: 4px 8px;
+      background: rgba(12, 10, 4, 0.85);
+    }
+
+    .file-detail summary {
+      cursor: pointer;
+      font-size: 11px;
+      color: #b08030;
+    }
+
+    .file-path {
+      margin-top: 4px;
+      font-size: 10px;
+      color: #8a7040;
+      word-break: break-all;
+    }
+
+    .confidence {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 6px;
+      margin: 6px 0;
+      font-size: 11px;
+      color: #8a7040;
+    }
+
+    .confidence-badge {
+      border-radius: 0;
+      padding: 2px 8px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      font-size: 10px;
+      border: 1px solid transparent;
+    }
+
+    .confidence-note {
+      color: #8a7040;
+    }
+
+    .graph-col {
+      position: relative;
+      min-height: 0;
+      min-width: 0;
+      overflow: hidden;
+    }
+
+    .minimap {
+      position: absolute;
+      right: 12px;
+      bottom: 12px;
+      background: rgba(10, 8, 2, 0.95);
+      border: 1px solid var(--border);
+      border-radius: 0;
+      padding: 8px;
+      width: 220px;
+      z-index: 10;
+      box-shadow: 0 0 16px rgba(0, 0, 0, 0.4);
+    }
+
+    .minimap h4 {
+      margin: 0 0 6px;
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--text-secondary);
+    }
+
+    .minimap canvas {
+      width: 100%;
+      height: auto;
+      display: block;
+      border-radius: 0;
+      background: rgba(8, 6, 2, 0.85);
+      cursor: pointer;
+    }
+
+    .minimap-view {
+      position: absolute;
+      border: 1px solid var(--accent-2);
+      box-shadow: 0 0 8px rgba(255, 176, 0, 0.35);
+      pointer-events: none;
+    }
+
+    .trace-controls {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 8px;
+      flex-wrap: wrap;
+    }
+
+    .trace-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .trace-status {
+      font-size: 11px;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+
+    .trace-input {
+      border: 1px solid #302010;
+      background: var(--bg);
+      color: var(--text);
+      border-radius: 0;
+      padding: 6px 8px;
+      font-size: 11px;
+      font-family: inherit;
+      font-feature-settings: inherit;
+      min-width: 260px;
+      transition: border-color var(--duration-fast) ease-out,
+                  box-shadow var(--duration-fast) ease-out;
+    }
+
+    .trace-input::placeholder {
+      color: var(--text-disabled);
+    }
+
+    .trace-input:hover {
+      border-color: var(--border-active);
+    }
+
+    .trace-input:focus-visible {
+      outline: none;
+      border-color: var(--accent);
+      box-shadow: var(--glow);
+    }
+
+    .timeline {
+      flex: 0 0 auto;
+      background: rgba(12, 10, 4, 0.95);
+      border: 1px solid var(--border);
+      border-radius: 0;
+      padding: 10px 12px;
+    }
+
+    .timeline-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 8px;
+      font-size: 11px;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+
+    .confidence-deterministic {
+      border-color: var(--ok);
+      color: var(--ok);
+      background: rgba(0, 255, 102, 0.08);
+      text-shadow: 0 0 6px rgba(0, 255, 102, 0.5);
+    }
+
+    .confidence-heuristic {
+      border-color: var(--warn);
+      color: var(--warn);
+      background: rgba(255, 221, 0, 0.08);
+      text-shadow: 0 0 6px rgba(255, 221, 0, 0.5);
+    }
+
+    .confidence-best-effort {
+      border-color: var(--danger);
+      color: var(--danger);
+      background: rgba(255, 32, 80, 0.08);
+      text-shadow: 0 0 6px rgba(255, 32, 80, 0.5);
+    }
+
+    .contracts {
+      overflow: auto;
+      max-height: 70vh;
+    }
+
+    .contract {
+      border: 1px solid #2a2010;
+      border-radius: 0;
+      padding: 8px;
+      margin-bottom: 8px;
+      background: rgba(14, 11, 4, 0.85);
+    }
+
+    .contract h4 {
+      margin: 0 0 5px;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text-secondary);
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+
+    .contract p {
+      margin: 0 0 6px;
+      color: var(--muted);
+      font-size: 11px;
+      line-height: 1.4;
+    }
+
+    .contract ul {
+      margin: 0;
+      padding-left: 16px;
+      color: var(--muted);
+      font-size: 11px;
+      line-height: 1.35;
+    }
+
+    .trace {
+      display: none;
+      border: 1px solid var(--border);
+      border-radius: 0;
+      background: rgba(10, 8, 2, 0.92);
+      padding: 10px;
+      flex: 0 0 auto;
+      max-height: 200px;
+      overflow-y: auto;
+    }
+
+    .trace.visible {
+      display: block;
+    }
+
+    .trace h2 {
+      margin: 0 0 8px;
+      font-size: 15px;
+      font-weight: 600;
+      color: var(--text-secondary);
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+
+    .trace-line {
+      border: 1px solid var(--border);
+      border-radius: 0;
+      padding: 6px 8px;
+      margin-bottom: 6px;
+      background: rgba(14, 11, 4, 0.85);
+      font-size: 12px;
+      color: var(--text-secondary);
+      line-height: 1.4;
+    }
+
+    .trace-line small {
+      color: var(--muted);
+      display: block;
+      margin-top: 2px;
+    }
+
+    /* Dim-on-select: unrelated nodes/edges fade when something is selected */
+    .node.dimmed {
+      opacity: 0.4;
+      transition: opacity var(--duration-normal) ease-out;
+    }
+
+    .edge.dimmed {
+      opacity: 0.25;
+    }
+
+    .edge-label.dimmed {
+      opacity: 0.3;
+    }
+
+    /* Edge failure warning icons on graph */
+    .edge-failure-icon {
+      position: absolute;
+      z-index: 4;
+      transform: translate(-50%, -50%);
+      font-size: 12px;
+      width: 20px;
+      height: 20px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(255, 32, 80, 0.15);
+      border: 1px solid rgba(255, 32, 80, 0.4);
+      border-radius: 0;
+      cursor: pointer;
+      pointer-events: auto;
+      transition: opacity var(--duration-normal) ease-out, transform var(--duration-fast) ease-out;
+    }
+
+    .edge-failure-icon:hover {
+      transform: translate(-50%, -50%) scale(1.2);
+      background: rgba(255, 32, 80, 0.3);
+      border-color: rgba(255, 32, 80, 0.7);
+    }
+
+    .edge-failure-icon.dimmed {
+      opacity: 0.2;
+    }
+
+    /* Failure tooltip on hover */
+    .edge-failure-tooltip {
+      display: none;
+      position: absolute;
+      z-index: 10;
+      bottom: 100%;
+      left: 50%;
+      transform: translateX(-50%);
+      margin-bottom: 6px;
+      padding: 8px 10px;
+      background: rgba(18, 14, 6, 0.97);
+      border: 1px solid rgba(255, 32, 80, 0.3);
+      border-radius: 0;
+      font-size: 10px;
+      line-height: 1.4;
+      color: var(--text);
+      white-space: nowrap;
+      pointer-events: none;
+      min-width: 180px;
+      max-width: 280px;
+      white-space: normal;
+    }
+
+    .edge-failure-icon:hover .edge-failure-tooltip {
+      display: block;
+    }
+
+    .edge-failure-tooltip .ft-scenario { color: var(--danger); font-weight: 600; }
+    .edge-failure-tooltip .ft-symptom { color: var(--muted); }
+    .edge-failure-tooltip .ft-recovery { color: var(--ok); }
+    .edge-failure-tooltip .ft-separator {
+      border: none;
+      border-top: 1px solid var(--border);
+      margin: 4px 0;
+    }
+
+    /* Debug mode: highlight edges with failures */
+    .edge.has-failure.debug-highlight {
+      stroke: var(--danger) !important;
+      stroke-dasharray: 6 3;
+      animation: failure-pulse 2s ease-in-out infinite;
+    }
+
+    @keyframes failure-pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.6; }
+    }
+
+    /* Mode-specific banner area */
+    .mode-banner {
+      display: none;
+    }
+
+    .mode-banner.visible {
+      display: block;
+    }
+
+    /* Debug mode: Decision Outcome Banner */
+    .decision-banner {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 10px 14px;
+      border-radius: 0;
+      margin-bottom: 10px;
+      font-size: 12px;
+    }
+
+    .decision-banner.outcome-primary {
+      background: rgba(0, 255, 102, 0.1);
+      border: 1px solid rgba(0, 255, 102, 0.3);
+    }
+
+    .decision-banner.outcome-fallback {
+      background: rgba(255, 221, 0, 0.1);
+      border: 1px solid rgba(255, 221, 0, 0.3);
+    }
+
+    .decision-banner.outcome-failure {
+      background: rgba(255, 32, 80, 0.1);
+      border: 1px solid rgba(255, 32, 80, 0.3);
+    }
+
+    .decision-banner .outcome-icon {
+      font-size: 20px;
+      flex-shrink: 0;
+    }
+
+    .decision-banner .outcome-label {
+      font-weight: 600;
+      font-size: 13px;
+    }
+
+    .decision-banner.outcome-primary .outcome-label { color: var(--ok); }
+    .decision-banner.outcome-fallback .outcome-label { color: var(--warn); }
+    .decision-banner.outcome-failure .outcome-label { color: var(--danger); }
+
+    .decision-banner .outcome-detail {
+      color: var(--muted);
+      font-size: 11px;
+    }
+
+    .decision-banner .outcome-action {
+      margin-left: auto;
+      font-size: 10px;
+      font-family: inherit;
+      font-feature-settings: inherit;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--accent);
+      padding: 4px 10px;
+      border: 1px solid rgba(255, 176, 0, 0.3);
+      border-radius: 0;
+      background: rgba(255, 176, 0, 0.08);
+      cursor: pointer;
+      transition: background var(--duration-fast) ease-out,
+                  text-shadow var(--duration-fast) ease-out,
+                  border-color var(--duration-fast) ease-out;
+    }
+
+    .decision-banner .outcome-action:hover {
+      background: rgba(255, 176, 0, 0.15);
+      border-color: var(--accent);
+      text-shadow: var(--text-glow-strong);
+    }
+
+    /* Debug mode: Candidate Trace Table */
+    .candidate-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 11px;
+      margin-bottom: 8px;
+    }
+
+    .candidate-table th {
+      text-align: left;
+      padding: 6px 8px;
+      color: var(--muted);
+      font-weight: 500;
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      border-bottom: 1px solid var(--border);
+      background: var(--surface);
+    }
+
+    .candidate-table td {
+      padding: 5px 8px;
+      border-bottom: 1px solid rgba(32, 24, 10, 0.5);
+      color: var(--text);
+    }
+
+    .candidate-table tr.selected-candidate {
+      background: rgba(0, 255, 102, 0.1);
+    }
+
+    .candidate-table tr.selected-candidate td:first-child {
+      color: var(--ok);
+      font-weight: 600;
+    }
+
+    .candidate-table tr.eliminated td {
+      color: var(--muted);
+      opacity: 0.7;
+    }
+
+    .candidate-table .rank-key {
+      font-size: 9px;
+      color: var(--muted);
+      font-family: inherit;
+    }
+
+    .candidate-table .match-badge {
+      display: inline-block;
+      padding: 1px 6px;
+      border-radius: 0;
+      font-size: 9px;
+      font-weight: 600;
+    }
+
+    .match-badge.exact { background: rgba(0, 255, 102, 0.2); color: var(--ok); }
+    .match-badge.child { background: rgba(255, 176, 0, 0.2); color: var(--accent); }
+    .match-badge.parent { background: rgba(255, 221, 0, 0.15); color: var(--warn); }
+
+    /* Trace mode: Live Status Banner */
+    .live-status-banner {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 8px 14px;
+      border-radius: 0;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      margin-bottom: 10px;
+      font-size: 12px;
+    }
+
+    .live-status-banner .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 0;
+      flex-shrink: 0;
+    }
+
+    .live-status-banner .status-dot.connected {
+      background: var(--ok);
+      box-shadow: 0 0 8px rgba(0, 255, 102, 0.6), 0 0 16px rgba(0, 255, 102, 0.3);
+      animation: pulse-dot 2s ease-in-out infinite;
+    }
+
+    .live-status-banner .status-dot.disconnected {
+      background: var(--muted);
+    }
+
+    @keyframes pulse-dot {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
+
+    .live-status-banner .event-counter {
+      margin-left: auto;
+      font-size: 11px;
+      color: var(--muted);
+    }
+
+    .live-status-banner .event-counter strong {
+      color: var(--accent);
+    }
+
+    /* Trace mode: Event Stream Timeline (mini horizontal bar) */
+    .event-timeline {
+      display: flex;
+      align-items: center;
+      gap: 2px;
+      padding: 6px 14px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 0;
+      height: 36px;
+      overflow: hidden;
+    }
+
+    .event-timeline .et-bar {
+      flex: 0 0 3px;
+      border-radius: 0;
+      min-height: 6px;
+      transition: height 150ms ease;
+    }
+
+    .event-timeline .et-bar.hook { background: var(--accent); }
+    .event-timeline .et-bar.poll { background: #00c8ff; }
+    .event-timeline .et-bar.activate { background: var(--accent-2); }
+    .event-timeline .et-bar.error { background: var(--danger); }
+
+    /* Tabbed detail panel */
+    .detail-tabs {
+      display: flex;
+      gap: 0;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 10px;
+    }
+
+    .detail-tab {
+      padding: 6px 12px;
+      font-size: 11px;
+      font-family: inherit;
+      font-feature-settings: inherit;
+      color: var(--muted);
+      background: none;
+      border: none;
+      border-bottom: 2px solid transparent;
+      cursor: pointer;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      transition: color var(--duration-fast) ease-out,
+                  text-shadow var(--duration-fast) ease-out;
+    }
+
+    .detail-tab:hover {
+      color: var(--text);
+      text-shadow: var(--text-glow-strong);
+    }
+
+    .detail-tab.active {
+      color: var(--bg);
+      background: var(--accent);
+      border-bottom-color: var(--accent);
+      border-radius: 0;
+      text-shadow: none;
+    }
+
+    .detail-tab-content {
+      display: none;
+    }
+
+    .detail-tab-content.active {
+      display: block;
+    }
+
+    /* Boundary type color-coding on edges */
+    .edge.boundary-process { stroke: #00c8ff; }
+    .edge.boundary-ipc { stroke: #a080ff; }
+    .edge.boundary-ffi { stroke: #ff8c00; }
+    .edge.boundary-system { stroke: #ff2050; }
+    .edge.boundary-in-process { stroke: var(--line-future); }
+
+    /* Failure mode indicator */
+    .failure-indicator {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 11px;
+      color: var(--warn);
+      margin-top: 6px;
+      padding: 4px 8px;
+      background: rgba(255, 221, 0, 0.08);
+      border: 1px solid rgba(255, 221, 0, 0.2);
+      border-radius: 0;
+    }
+
+    .failure-list {
+      margin: 6px 0 0;
+      padding: 0;
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .failure-item {
+      padding: 6px 8px;
+      background: rgba(255, 221, 0, 0.06);
+      border: 1px solid rgba(255, 221, 0, 0.15);
+      border-radius: 0;
+      font-size: 11px;
+      line-height: 1.4;
+    }
+
+    .failure-item .scenario { color: var(--warn); font-weight: 600; }
+    .failure-item .symptom { color: var(--muted); }
+    .failure-item .recovery { color: var(--ok); }
+
+    /* State machine visualization */
+    .state-diagram {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin: 8px 0;
+    }
+
+    .state-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 4px 10px;
+      border-radius: 0;
+      font-size: 11px;
+      border: 1px solid;
+    }
+
+    .state-chip.working { border-color: var(--complement); color: var(--complement); background: rgba(0, 200, 255, 0.08); text-shadow: 0 0 4px rgba(0, 200, 255, 0.5); }
+    .state-chip.ready { border-color: var(--ok); color: var(--ok); background: rgba(0, 255, 102, 0.08); text-shadow: 0 0 4px rgba(0, 255, 102, 0.5); }
+    .state-chip.idle { border-color: var(--muted); color: var(--muted); background: rgba(138, 112, 64, 0.08); }
+    .state-chip.compacting { border-color: var(--warn); color: var(--warn); background: rgba(255, 221, 0, 0.08); text-shadow: 0 0 4px rgba(255, 221, 0, 0.5); }
+    .state-chip.waiting { border-color: var(--warn); color: var(--warn); background: rgba(255, 221, 0, 0.08); text-shadow: 0 0 4px rgba(255, 221, 0, 0.5); }
+
+    .transition-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 11px;
+      margin-top: 8px;
+    }
+
+    .transition-table th {
+      text-align: left;
+      padding: 4px 6px;
+      color: var(--muted);
+      border-bottom: 1px solid var(--border);
+      font-weight: 400;
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+
+    .transition-table td {
+      padding: 4px 6px;
+      color: var(--text);
+      border-bottom: 1px solid rgba(36, 28, 12, 0.4);
+    }
+
+    /* Policy table */
+    .policy-rules {
+      list-style: none;
+      padding: 0;
+      margin: 8px 0;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .policy-rule {
+      display: flex;
+      align-items: baseline;
+      gap: 8px;
+      padding: 5px 8px;
+      border-radius: 0;
+      font-size: 11px;
+      background: rgba(14, 11, 4, 0.6);
+      border: 1px solid rgba(36, 28, 12, 0.4);
+    }
+
+    .policy-rank {
+      color: var(--muted);
+      font-weight: 600;
+      min-width: 18px;
+    }
+
+    .policy-desc {
+      color: var(--text);
+      flex: 1;
+    }
+
+    .policy-status {
+      font-size: 10px;
+    }
+
+    .policy-status.enabled { color: var(--ok); }
+    .policy-status.disabled { color: var(--muted); }
+    .policy-status.conditional { color: var(--warn); }
+
+    /* Boundary type badge in focus panel */
+    .boundary-badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 0;
+      font-size: 10px;
+      border: 1px solid;
+      margin-right: 6px;
+    }
+
+    .boundary-badge.process-boundary { border-color: #00c8ff; color: #00c8ff; background: rgba(0, 200, 255, 0.1); }
+    .boundary-badge.ipc-boundary { border-color: #a080ff; color: #a080ff; background: rgba(160, 128, 255, 0.1); }
+    .boundary-badge.ffi-boundary { border-color: #ff8c00; color: #ff8c00; background: rgba(255, 140, 0, 0.1); }
+    .boundary-badge.system-boundary { border-color: #ff2050; color: #ff2050; background: rgba(255, 32, 80, 0.1); }
+    .boundary-badge.in-process { border-color: var(--muted); color: var(--muted); background: rgba(138, 112, 64, 0.1); }
+
+    .latency-badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 0;
+      font-size: 10px;
+      border: 1px solid var(--border);
+      color: var(--muted);
+    }
+
+    /* Overlay backdrop for contracts (C) and shortcuts (?) */
+    .overlay-backdrop {
+      position: fixed;
+      inset: 0;
+      z-index: 100;
+      background: rgba(0, 0, 0, 0.7);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .overlay-panel {
+      background: var(--surface);
+      border: 1px solid var(--border-active);
+      border-radius: 0;
+      padding: 16px;
+      max-width: 600px;
+      width: 90vw;
+      max-height: 80vh;
+      overflow: auto;
+      box-shadow: 0 0 24px rgba(255, 176, 0, 0.15);
+    }
+
+    .overlay-panel h2 {
+      margin: 0 0 12px;
+      font-size: 16px;
+      font-weight: 600;
+      color: var(--text);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+
+    .overlay-panel kbd {
+      display: inline-block;
+      padding: 2px 6px;
+      border-radius: 0;
+      border: 1px solid #302010;
+      background: rgba(14, 11, 4, 0.9);
+      color: #e8b44a;
+      font-size: 11px;
+      font-family: inherit;
+    }
+
+    .overlay-shortcut {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 6px 0;
+      font-size: 12px;
+      color: var(--muted);
+      border-bottom: 1px solid rgba(36, 28, 12, 0.3);
+    }
+
+    .overlay-shortcut:last-child {
+      border-bottom: none;
+    }
+
+    .overlay-shortcut .key-col {
+      min-width: 80px;
+      text-align: right;
+    }
+
+    .overlay-dismiss {
+      display: block;
+      margin-top: 12px;
+      font-size: 11px;
+      color: var(--muted);
+      text-align: center;
+    }
+
+    /* Compact KPI status bar */
+    .kpi-bar {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      padding: 6px 10px;
+      font-size: 11px;
+      color: var(--muted);
+    }
+
+    .kpi-bar .kpi-item {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .kpi-bar .kpi-label {
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      font-size: 10px;
+    }
+
+    .kpi-bar .kpi-value {
+      color: var(--text);
+      font-size: 12px;
+    }
+
+    /* Mini architecture overview in empty detail panel */
+    .arch-overview {
+      padding: 8px 0;
+      font-size: 12px;
+      color: var(--muted);
+      line-height: 1.6;
+    }
+
+    .arch-overview .arch-flow {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+
+    .arch-overview .arch-node {
+      color: var(--text);
+      font-weight: 500;
+    }
+
+    .arch-overview .arch-arrow {
+      color: var(--accent);
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+      }
+      /* Remove scanline/vignette overlays */
+      body::before,
+      body::after {
+        display: none;
+      }
+    }
+
+    @media (max-width: 1240px) {
+      .main {
+        grid-template-columns: 1fr;
+        overflow-y: auto;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header class="header">
+      <h1>Capacitor Interface Explorer</h1>
+    </header>
+
+    <section class="controls" id="controls"></section>
+
+    <section class="mode-banner" id="mode-banner"></section>
+
+    <section class="main">
+      <aside class="panel">
+        <h2 id="flow-title">Flow</h2>
+        <ol class="step-list" id="step-list"></ol>
+      </aside>
+
+      <div class="graph-col">
+        <section class="graph-wrap">
+          <div class="graph" id="graph" role="region" aria-label="Interface graph">
+            <svg class="edge-layer" id="edge-layer" viewBox="0 0 1320 760" preserveAspectRatio="xMinYMin meet">
+              <defs>
+                <marker id="arrow-future" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
+                  <path d="M0,0 L8,4 L0,8 Z" fill="#302010"></path>
+                </marker>
+                <marker id="arrow-done" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
+                  <path d="M0,0 L8,4 L0,8 Z" fill="#00c8ff"></path>
+                </marker>
+                <marker id="arrow-active" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
+                  <path d="M0,0 L8,4 L0,8 Z" fill="#00c8ff"></path>
+                </marker>
+              </defs>
+            </svg>
+          </div>
+        </section>
+      </div>
+
+      <aside class="details">
+        <section class="kpi-bar" id="kpis"></section>
+        <section class="focus-box" id="focus" role="region" aria-live="polite" aria-atomic="true" aria-label="Interface detail"></section>
+      </aside>
+    </section>
+
+    <section class="trace" id="trace">
+      <h2>Live Message Trace</h2>
+      <div class="trace-controls">
+        <div class="trace-status" id="trace-status">Live mode: off</div>
+        <div class="trace-actions">
+          <input class="trace-input" id="live-url" type="text" aria-label="Live trace URL" placeholder="http://localhost:9133/activation-trace" />
+          <button class="ctrl" id="live-toggle" type="button">Connect Live</button>
+        </div>
+      </div>
+      <div id="trace-lines" role="log" aria-live="polite" aria-relevant="additions"></div>
+    </section>
+
+    <!-- Contracts overlay (toggle with C key) -->
+    <div class="overlay-backdrop" id="contracts-overlay" style="display:none;">
+      <div class="overlay-panel" id="contracts-panel"></div>
+    </div>
+
+    <!-- Shortcuts overlay (toggle with ? key) -->
+    <div class="overlay-backdrop" id="shortcuts-overlay" style="display:none;">
+      <div class="overlay-panel" id="shortcuts-panel"></div>
+    </div>
+
+    <section class="timeline" id="timeline" aria-label="Flow timeline">
+      <div class="timeline-header">
+        <span>Timeline</span>
+      </div>
+      <div class="scrubber-wrap">
+        <div class="scrubber-header">
+          <span id="scrubber-status">Step</span>
+        </div>
+        <input class="scrubber" id="step-scrubber" type="range" min="0" max="0" value="0" aria-label="Timeline scrubber" />
+        <div class="scrubber-markers" id="scrubber-markers"></div>
+      </div>
+    </section>
+  </div>
+
+  <script>
+    const GRAPH_WIDTH = 1320;
+    const GRAPH_HEIGHT = 760;
+    const NODE_W = 180;
+    const NODE_H = 78;
+
+    const nodes = [
+      { id: "claude", title: "Claude Code", subtitle: "hook event source", x: 40, y: 72, tag: "external CLI", layer: "external" },
+      { id: "shell", title: "Shell Prompt Hook", subtitle: "cwd event source", x: 40, y: 260, tag: "zsh/bash/fish", layer: "external" },
+      { id: "hudhook", title: "hud-hook (Rust CLI)", subtitle: "normalizes + forwards events", x: 280, y: 162, tag: "core/hud-hook", layer: "process" },
+      {
+        id: "daemon", title: "capacitor-daemon", subtitle: "single writer + reducer", x: 540, y: 162, tag: "core/daemon", layer: "daemon",
+        stateMachine: {
+          name: "SessionState FSM",
+          states: ["Working", "Ready", "Idle", "Compacting", "Waiting"],
+          transitions: [
+            { from: "*", to: "Ready", trigger: "SessionStart", condition: "session not active" },
+            { from: "Ready", to: "Working", trigger: "UserPromptSubmit" },
+            { from: "Working", to: "Working", trigger: "PreToolUse" },
+            { from: "Working", to: "Working", trigger: "PostToolUse" },
+            { from: "Working", to: "Waiting", trigger: "PermissionRequest" },
+            { from: "Working", to: "Compacting", trigger: "PreCompact" },
+            { from: "Compacting", to: "Working", trigger: "UserPromptSubmit" },
+            { from: "Working", to: "Ready", trigger: "Notification", condition: "idle_prompt" },
+            { from: "Working", to: "Ready", trigger: "Stop", condition: "hook not active" },
+            { from: "*", to: null, trigger: "SessionEnd", condition: "deletes session" }
+          ],
+          currentState: null
+        },
+        failureModes: [
+          { scenario: "Stale event arrives (older timestamp)", symptom: "Session state doesn't update", mitigation: "reduce_session() compares timestamps, skips stale events" },
+          { scenario: "Duplicate SessionStart for active session", symptom: "State resets unexpectedly", mitigation: "Guard: only transitions if session not already active" }
+        ]
+      },
+      { id: "sqlite", title: "state.db (SQLite WAL)", subtitle: "authoritative state", x: 810, y: 112, tag: "~/.capacitor/daemon", layer: "persistence" },
+      { id: "swift", title: "Swift AppState", subtitle: "polling + UI state", x: 260, y: 520, tag: "apps/swift", layer: "ui" },
+      { id: "daemonClient", title: "DaemonClient.swift", subtitle: "IPC transport client", x: 540, y: 430, tag: "JSON request/response", layer: "ui" },
+      { id: "hudEngine", title: "HudEngine (Rust)", subtitle: "UniFFI facade", x: 540, y: 590, tag: "core/hud-core", layer: "logic" },
+      {
+        id: "resolver", title: "resolve_activation()", subtitle: "pure decision logic", x: 810, y: 590, tag: "Rust module", layer: "logic",
+        policyTable: {
+          name: "Activation Selection Policy",
+          rules: [
+            { rank: 0, description: "live shells beat dead shells", enabled: true },
+            { rank: 1, description: "path specificity: exact > child > parent", enabled: true },
+            { rank: 2, description: "tmux preference (only when attached and path ties)", enabled: false, condition: "prefer_tmux && path ranks equal" },
+            { rank: 3, description: "known parent app beats unknown parent app", enabled: true },
+            { rank: 4, description: "most recent timestamp wins (invalid timestamps lose)", enabled: true },
+            { rank: 5, description: "higher PID breaks ties deterministically", enabled: true }
+          ],
+          context: { prefer_tmux: false }
+        },
+        failureModes: [
+          { scenario: "Multiple shells at same path with different recency", symptom: "Wrong shell selected", mitigation: "Policy table ranks by liveness > path > tmux > parent > timestamp > pid" },
+          { scenario: "HOME directory matches all child paths", symptom: "Home shell selected instead of project shell", mitigation: "HOME exclusion logic prevents broad matching" }
+        ]
+      },
+      { id: "launcher", title: "TerminalLauncher", subtitle: "build context + execute", x: 810, y: 430, tag: "Swift model", layer: "executor" },
+      {
+        id: "executor", title: "ActivationActionExecutor", subtitle: "adapter-driven routing", x: 1060, y: 430, tag: "Swift protocol layer", layer: "executor",
+        failureModes: [
+          { scenario: "Primary action fails (app not found, tmux error)", symptom: "Terminal doesn't activate", mitigation: "Executor triggers fallback action from ActivationDecision" },
+          { scenario: "Ghostty window targeting is heuristic", symptom: "Wrong window activated", mitigation: "Falls back to ActivateApp (app-level, not window-level)" }
+        ]
+      },
+      { id: "fallback", title: "Fallback Plan", subtitle: "secondary ActivationAction", x: 1120, y: 580, tag: "launcher fallback", layer: "executor" },
+      { id: "os", title: "tmux + macOS APIs", subtitle: "Process, AppleScript, AppKit", x: 1060, y: 220, tag: "outside world", layer: "external" }
+    ];
+
+    const edges = [
+      {
+        id: "e1",
+        from: "claude",
+        to: "hudhook",
+        label: "hook stdin",
+        name: "Claude hook event -> hud-hook",
+        boundary: "Process boundary",
+        boundaryType: "process-boundary",
+        latencyClass: "instant",
+        directionality: "fire-and-forget",
+        request: "Hook JSON on stdin (SessionStart, PreToolUse, Stop, ...)",
+        response: "Exit status",
+        files: [
+          "/Users/petepetrash/Code/capacitor/core/hud-hook/src/main.rs",
+          "/Users/petepetrash/Code/capacitor/core/hud-hook/src/handle.rs"
+        ],
+        failureModes: [
+          { scenario: "hud-hook binary missing or not executable", symptom: "Hook events silently dropped", recovery: "Claude session continues unaffected; Capacitor loses visibility" }
+        ]
+      },
+      {
+        id: "e2",
+        from: "shell",
+        to: "hudhook",
+        label: "cwd command",
+        name: "Shell cwd hook -> hud-hook cwd",
+        boundary: "Process boundary",
+        boundaryType: "process-boundary",
+        latencyClass: "instant",
+        directionality: "fire-and-forget",
+        request: "hud-hook cwd <path> <pid> <tty>",
+        response: "Exit status",
+        files: [
+          "/Users/petepetrash/Code/capacitor/core/hud-hook/src/cwd.rs"
+        ]
+      },
+      {
+        id: "e3",
+        from: "hudhook",
+        to: "daemon",
+        label: "IPC method=event",
+        name: "hud-hook -> daemon event envelope",
+        boundary: "Unix socket JSON IPC",
+        boundaryType: "ipc-boundary",
+        latencyClass: "fast",
+        directionality: "request-response",
+        request: "Request { protocol_version, method: event, params: EventEnvelope }",
+        response: "Response { ok, data: { accepted: true } }",
+        files: [
+          "/Users/petepetrash/Code/capacitor/core/hud-hook/src/daemon_client.rs",
+          "/Users/petepetrash/Code/capacitor/docs/daemon-ipc.md"
+        ],
+        failureModes: [
+          { scenario: "Daemon socket closed or daemon not running", symptom: "Connection refused; hook exits with error", recovery: "Hook exits with failure code; Claude session continues" },
+          { scenario: "JSON parse error in daemon", symptom: "Error response returned", recovery: "Event dropped; daemon logs error" }
+        ]
+      },
+      {
+        id: "e4",
+        from: "daemon",
+        to: "sqlite",
+        label: "reduce + persist",
+        name: "Daemon reducer updates materialized state",
+        boundary: "In-process DB boundary",
+        boundaryType: "in-process",
+        latencyClass: "instant",
+        directionality: "request-response",
+        request: "Session and activity reductions from event stream",
+        response: "Committed SQLite rows",
+        files: [
+          "/Users/petepetrash/Code/capacitor/core/daemon/src/reducer.rs",
+          "/Users/petepetrash/Code/capacitor/core/daemon/src/db.rs"
+        ],
+        failureModes: [
+          { scenario: "Stale event (older timestamp than current state)", symptom: "Event silently skipped", recovery: "is_event_stale() comparison prevents state regression" }
+        ]
+      },
+      {
+        id: "e5",
+        from: "swift",
+        to: "daemonClient",
+        label: "poll timer",
+        name: "Swift polling tick triggers daemon request",
+        boundary: "In-app API boundary",
+        boundaryType: "in-process",
+        latencyClass: "instant",
+        directionality: "request-response",
+        request: "fetchSessions(), fetchProjectStates(), fetchShellState()",
+        response: "Decoded Swift structs",
+        files: [
+          "/Users/petepetrash/Code/capacitor/apps/swift/Sources/Capacitor/Models/AppState.swift",
+          "/Users/petepetrash/Code/capacitor/apps/swift/Sources/Capacitor/Models/ShellStateStore.swift"
+        ]
+      },
+      {
+        id: "e6",
+        from: "daemonClient",
+        to: "daemon",
+        label: "get_project_states",
+        name: "DaemonClient -> daemon query",
+        boundary: "Unix socket JSON IPC",
+        boundaryType: "ipc-boundary",
+        latencyClass: "fast",
+        directionality: "request-response",
+        request: "method: get_project_states / get_sessions / get_shell_state",
+        response: "JSON response body",
+        files: [
+          "/Users/petepetrash/Code/capacitor/apps/swift/Sources/Capacitor/Models/DaemonClient.swift",
+          "/Users/petepetrash/Code/capacitor/docs/daemon-ipc.md"
+        ],
+        failureModes: [
+          { scenario: "Daemon socket closed", symptom: "Connection refused; loadDashboard() returns empty", recovery: "Swift shows 'daemon unavailable' state" }
+        ]
+      },
+      {
+        id: "e7",
+        from: "daemon",
+        to: "daemonClient",
+        label: "snapshot data",
+        name: "Daemon snapshot -> Swift decode",
+        boundary: "JSON schema boundary",
+        boundaryType: "ipc-boundary",
+        latencyClass: "fast",
+        directionality: "request-response",
+        request: "Response data payload",
+        response: "[DaemonSession], [DaemonProjectState], ShellCwdState",
+        files: [
+          "/Users/petepetrash/Code/capacitor/apps/swift/Sources/Capacitor/Models/DaemonClient.swift"
+        ]
+      },
+      {
+        id: "e8",
+        from: "daemonClient",
+        to: "swift",
+        label: "state update",
+        name: "DaemonClient result -> Swift stores/UI",
+        boundary: "In-app model boundary",
+        boundaryType: "in-process",
+        latencyClass: "instant",
+        directionality: "fire-and-forget",
+        request: "Decoded snapshots",
+        response: "Published state refresh",
+        files: [
+          "/Users/petepetrash/Code/capacitor/apps/swift/Sources/Capacitor/Models/AppState.swift",
+          "/Users/petepetrash/Code/capacitor/apps/swift/Sources/Capacitor/Models/SessionStateManager.swift"
+        ]
+      },
+      {
+        id: "e9",
+        from: "swift",
+        to: "hudEngine",
+        label: "UniFFI call",
+        name: "Swift -> HudEngine facade",
+        boundary: "FFI boundary (Swift <-> Rust)",
+        boundaryType: "ffi-boundary",
+        latencyClass: "fast",
+        directionality: "request-response",
+        request: "loadDashboard(), resolveActivation(...)",
+        response: "Rust records/enums as Swift types",
+        files: [
+          "/Users/petepetrash/Code/capacitor/core/hud-core/src/engine.rs",
+          "/Users/petepetrash/Code/capacitor/apps/swift/Sources/Capacitor/Bridge/hud_core.swift"
+        ],
+        failureModes: [
+          { scenario: "Rust panic across FFI boundary", symptom: "Swift receives nil from UniFFI call", recovery: "Swift catches and falls back to ActivatePriorityFallback" },
+          { scenario: "Invalid UTF-8 in Rust string", symptom: "UniFFI conversion fails", recovery: "Rust sanitizes strings before crossing FFI" }
+        ]
+      },
+      {
+        id: "e10",
+        from: "hudEngine",
+        to: "daemon",
+        label: "state::daemon IPC",
+        name: "HudEngine reads daemon snapshots",
+        boundary: "Rust -> daemon IPC",
+        boundaryType: "ipc-boundary",
+        latencyClass: "fast",
+        directionality: "request-response",
+        request: "get_sessions / health checks",
+        response: "daemon state snapshot",
+        files: [
+          "/Users/petepetrash/Code/capacitor/core/hud-core/src/state/daemon.rs",
+          "/Users/petepetrash/Code/capacitor/core/hud-core/src/sessions.rs"
+        ]
+      },
+      {
+        id: "e11",
+        from: "hudEngine",
+        to: "resolver",
+        label: "resolve_activation",
+        name: "HudEngine delegates activation decision",
+        boundary: "Rust module boundary",
+        boundaryType: "in-process",
+        latencyClass: "instant",
+        directionality: "request-response",
+        request: "project_path + shell_state + tmux_context",
+        response: "ActivationDecision { primary, fallback, reason }",
+        files: [
+          "/Users/petepetrash/Code/capacitor/core/hud-core/src/activation.rs",
+          "/Users/petepetrash/Code/capacitor/core/hud-core/src/engine.rs"
+        ]
+      },
+      {
+        id: "e12",
+        from: "resolver",
+        to: "launcher",
+        label: "decision DTO",
+        name: "Rust decision -> Swift execution plan",
+        boundary: "FFI boundary (DTO transfer)",
+        boundaryType: "ffi-boundary",
+        latencyClass: "fast",
+        directionality: "request-response",
+        request: "ActivationDecision over UniFFI",
+        response: "Swift enum + fallback available",
+        files: [
+          "/Users/petepetrash/Code/capacitor/apps/swift/Sources/Capacitor/Models/TerminalLauncher.swift",
+          "/Users/petepetrash/Code/capacitor/apps/swift/Sources/Capacitor/Bridge/hud_core.swift"
+        ]
+      },
+      {
+        id: "e13",
+        from: "launcher",
+        to: "executor",
+        label: "execute(action)",
+        name: "TerminalLauncher -> ActivationActionExecutor",
+        boundary: "Swift interface boundary",
+        boundaryType: "in-process",
+        latencyClass: "instant",
+        directionality: "request-response",
+        request: "ActivationAction + project metadata",
+        response: "Bool success/failure",
+        files: [
+          "/Users/petepetrash/Code/capacitor/apps/swift/Sources/Capacitor/Models/TerminalLauncher.swift",
+          "/Users/petepetrash/Code/capacitor/apps/swift/Sources/Capacitor/Models/ActivationActionExecutor.swift"
+        ]
+      },
+      {
+        id: "e14",
+        from: "executor",
+        to: "os",
+        label: "adapter calls",
+        name: "Executor routes via adapters/protocols",
+        boundary: "Swift -> system boundary",
+        boundaryType: "system-boundary",
+        latencyClass: "blocking",
+        directionality: "request-response",
+        request: "tmux switch-client, AppleScript, NSWorkspace, kitty remote",
+        response: "Command/app activation result",
+        confidence: "heuristic",
+        confidenceNote: "Ghostty window targeting is heuristic; exact window selection is not deterministic.",
+        files: [
+          "/Users/petepetrash/Code/capacitor/apps/swift/Sources/Capacitor/Models/ActivationAdapters.swift",
+          "/Users/petepetrash/Code/capacitor/apps/swift/Sources/Capacitor/Models/ActivationActionExecutor.swift"
+        ],
+        failureModes: [
+          { scenario: "tmux command failure (no client attached)", symptom: "switch-client returns error", recovery: "Falls back to LaunchTerminalWithTmux or LaunchNewTerminal" },
+          { scenario: "AppleScript blocked by user focus", symptom: "App activation returns false", recovery: "Launcher tries fallback action" },
+          { scenario: "kitty remote control disabled", symptom: "kitty@ command fails", recovery: "Falls back to ActivateApp for kitty" }
+        ]
+      },
+      {
+        id: "e15",
+        from: "os",
+        to: "executor",
+        label: "result",
+        name: "External side effect -> executor outcome",
+        boundary: "system callback boundary",
+        boundaryType: "system-boundary",
+        latencyClass: "blocking",
+        directionality: "request-response",
+        request: "Exit codes, bool checks, accessibility/app state",
+        response: "Bool for fallback orchestration",
+        confidence: "best-effort",
+        confidenceNote: "System callbacks are best-effort; user focus may be blocked or overridden.",
+        files: [
+          "/Users/petepetrash/Code/capacitor/apps/swift/Sources/Capacitor/Models/TerminalLauncher.swift"
+        ],
+        failureModes: [
+          { scenario: "User switches focus during activation", symptom: "Target app loses focus immediately", recovery: "No retry; activation considered best-effort" },
+          { scenario: "Accessibility permissions denied", symptom: "AppleScript cannot control applications", recovery: "User must grant permission in System Preferences" }
+        ]
+      },
+      {
+        id: "e16",
+        from: "executor",
+        to: "fallback",
+        label: "primary failed",
+        name: "Executor flags primary activation failure",
+        boundary: "Swift control-flow boundary",
+        boundaryType: "in-process",
+        latencyClass: "instant",
+        directionality: "fire-and-forget",
+        request: "Bool failure + fallback intent",
+        response: "Fallback action selected",
+        files: [
+          "/Users/petepetrash/Code/capacitor/apps/swift/Sources/Capacitor/Models/ActivationActionExecutor.swift",
+          "/Users/petepetrash/Code/capacitor/apps/swift/Sources/Capacitor/Models/TerminalLauncher.swift"
+        ]
+      },
+      {
+        id: "e17",
+        from: "fallback",
+        to: "os",
+        label: "fallback adapters",
+        name: "Fallback execution routes to adapters",
+        boundary: "Swift -> system boundary",
+        boundaryType: "system-boundary",
+        latencyClass: "blocking",
+        directionality: "request-response",
+        request: "Fallback ActivationAction",
+        response: "Command/app activation result",
+        confidence: "heuristic",
+        confidenceNote: "Fallback uses the same adapter surface; Ghostty targeting remains heuristic.",
+        files: [
+          "/Users/petepetrash/Code/capacitor/apps/swift/Sources/Capacitor/Models/ActivationAdapters.swift",
+          "/Users/petepetrash/Code/capacitor/apps/swift/Sources/Capacitor/Models/ActivationActionExecutor.swift"
+        ]
+      }
+    ];
+
+    const flows = [
+      {
+        id: "realtime",
+        name: "Realtime Session Tracking",
+        description:
+          "How Claude/shell events become authoritative daemon state and then update Swift UI through polling.",
+        steps: [
+          { edgeId: "e1", note: "Claude hook event enters the hook binary." },
+          { edgeId: "e2", note: "Shell cwd hook reports ambient context in parallel." },
+          { edgeId: "e3", note: "hook binary sends validated EventEnvelope over daemon IPC." },
+          { edgeId: "e4", note: "daemon reducer updates SQLite materialized state." },
+          { edgeId: "e5", note: "Swift timer triggers daemon polling requests." },
+          { edgeId: "e6", note: "DaemonClient sends get_project_states/get_sessions." },
+          { edgeId: "e7", note: "daemon replies with typed snapshots." },
+          { edgeId: "e8", note: "Swift stores publish updated project/session state." }
+        ]
+      },
+      {
+        id: "dashboard",
+        name: "Dashboard + Rust Core",
+        description:
+          "How the Swift app crosses the UniFFI boundary into HudEngine, and how Rust reads daemon snapshots for state-aware responses.",
+        steps: [
+          { edgeId: "e9", note: "Swift calls HudEngine (e.g. loadDashboard)." },
+          { edgeId: "e10", note: "HudEngine's state module queries daemon snapshots." },
+          { edgeId: "e7", note: "daemon responds with snapshot payloads." },
+          { edgeId: "e9", note: "Rust DTOs map back into Swift types via UniFFI." },
+          { edgeId: "e8", note: "Swift updates UI from returned data." }
+        ]
+      },
+      {
+        id: "activation",
+        name: "Project Activation Path",
+        description:
+          "How a project click becomes an ActivationDecision in Rust, then executes through Swift adapters to tmux/macOS APIs.",
+        steps: [
+          { edgeId: "e13", note: "Launcher delegates action execution path." },
+          { edgeId: "e9", note: "Launcher calls resolveActivation via HudEngine." },
+          { edgeId: "e11", note: "HudEngine computes decision in activation resolver." },
+          { edgeId: "e12", note: "Swift receives ActivationDecision with primary/fallback." },
+          { edgeId: "e13", note: "Executor routes by ActivationAction variant." },
+          { edgeId: "e14", note: "Adapters call tmux + app focus APIs." },
+          { edgeId: "e15", note: "Executor returns success/failure to launcher." },
+          { edgeId: "e16", note: "If primary fails: executor flags fallback execution." },
+          { edgeId: "e17", note: "Fallback adapters reattempt tmux/app focus APIs." },
+          { edgeId: "e15", note: "Fallback result determines final activation outcome." }
+        ]
+      }
+    ];
+
+    const modes = [
+      {
+        id: "learn",
+        name: "Learn",
+        description: "Start with the canonical architecture path and its key contracts.",
+        flowId: "realtime"
+      },
+      {
+        id: "debug",
+        name: "Debug failure",
+        description: "Jump directly to activation failure + fallback behavior.",
+        flowId: "activation",
+        stepIndex: 7
+      },
+      {
+        id: "trace",
+        name: "Trace live run",
+        description: "Compare simulated flow steps against live activation traces.",
+        flowId: "activation"
+      }
+    ];
+
+    const defaultLiveUrl = new URLSearchParams(window.location.search).get("live")
+      || "http://localhost:9133/activation-trace";
+
+    const contracts = [
+      {
+        title: "Daemon IPC Contract (v1)",
+        summary: "Single JSON request/response per Unix socket connection. daemon is single writer.",
+        bullets: [
+          "Transport: ~/.capacitor/daemon.sock",
+          "Methods: event, get_health, get_shell_state, get_sessions, get_project_states, get_process_liveness",
+          "Envelope: { protocol_version, method, id, params }",
+          "Error model: structured code/message; no silent fallback in daemon-only mode"
+        ]
+      },
+      {
+        title: "Swift <-> Rust (UniFFI)",
+        summary: "HudEngine is the stable facade. Rust returns typed DTOs/enums, Swift executes UI/platform behavior.",
+        bullets: [
+          "Boundary owner: core/hud-core/src/engine.rs",
+          "Bindings: apps/swift/Sources/Capacitor/Bridge/hud_core.swift",
+          "Important call: resolveActivation(projectPath, shellState, tmuxContext)",
+          "Design: Rust decides, Swift executes side effects"
+        ]
+      },
+      {
+        title: "Activation Adapter Layer",
+        summary: "ActivationActionExecutor isolates orchestration from concrete terminal/system calls.",
+        bullets: [
+          "Protocols: ActivationActionDependencies, TmuxClient, TerminalDiscovery, TerminalLauncherClient",
+          "Adapters: ActivationAdapters.swift wraps concrete handlers",
+          "Allows deterministic unit tests with stubs",
+          "Ghostty still uses heuristic activation where exact window targeting is unavailable"
+        ]
+      }
+    ];
+
+    const state = {
+      modeId: modes[0].id,
+      flowId: flows[0].id,
+      stepIndex: 0,
+      playing: false,
+      timer: null,
+      selectedNodeId: null,
+      selectedEdgeId: null,
+      activeTab: "overview",
+      trace: [],
+      liveMode: false,
+      liveConnected: false,
+      liveUrl: defaultLiveUrl,
+      liveError: null,
+      liveSource: null,
+      liveTransport: null
+    };
+
+    const graphEl = document.getElementById("graph");
+    const graphWrapEl = document.querySelector(".graph-wrap");
+    const edgeLayer = document.getElementById("edge-layer");
+    const controlsEl = document.getElementById("controls");
+    const flowTitleEl = document.getElementById("flow-title");
+    // flow description removed (declutter)
+    const stepListEl = document.getElementById("step-list");
+    const kpisEl = document.getElementById("kpis");
+    const focusEl = document.getElementById("focus");
+    // contracts are now rendered in overlay via toggleContractsOverlay()
+    const traceLinesEl = document.getElementById("trace-lines");
+    const traceStatusEl = document.getElementById("trace-status");
+    const liveToggleEl = document.getElementById("live-toggle");
+    const liveUrlEl = document.getElementById("live-url");
+    const controlState = {
+      modeButtons: new Map(),
+      flowButtons: new Map(),
+      stepBack: null,
+      stepForward: null,
+      playPause: null,
+      stepCounter: null,
+      scrubber: null,
+      scrubberMarkers: null,
+      scrubberStatus: null,
+      minimap: null,
+      minimapCanvas: null,
+      minimapView: null,
+      minimapScale: 1
+    };
+
+    function byId(list, id) {
+      return list.find(item => item.id === id);
+    }
+
+    function nodeCenter(node) {
+      return {
+        x: node.x + NODE_W / 2,
+        y: node.y + NODE_H / 2
+      };
+    }
+
+    function createNodeElements() {
+      nodes.forEach(node => {
+        const el = document.createElement("button");
+        el.type = "button";
+        el.className = "node";
+        el.style.left = `${node.x}px`;
+        el.style.top = `${node.y}px`;
+        el.dataset.nodeId = node.id;
+        el.setAttribute("aria-label", node.title);
+        el.innerHTML =
+          '<div class="title">' + node.title + '</div>' +
+          '<div class="meta">' + node.subtitle + '</div>';
+        el.addEventListener("click", () => {
+          state.selectedNodeId = node.id;
+          state.selectedEdgeId = null;
+          state.activeTab = node.stateMachine || node.policyTable ? "state" : "overview";
+          render();
+        });
+        graphEl.appendChild(el);
+      });
+    }
+
+    function edgePath(a, b) {
+      const dx = b.x - a.x;
+      const c1x = a.x + Math.max(60, Math.abs(dx) * 0.35) * Math.sign(dx || 1);
+      const c2x = b.x - Math.max(60, Math.abs(dx) * 0.35) * Math.sign(dx || 1);
+      return `M ${a.x} ${a.y} C ${c1x} ${a.y}, ${c2x} ${b.y}, ${b.x} ${b.y}`;
+    }
+
+    function edgeMidpoint(a, b) {
+      const t = 0.5;
+      const c1x = a.x + Math.max(60, Math.abs(b.x - a.x) * 0.35) * Math.sign((b.x - a.x) || 1);
+      const c2x = b.x - Math.max(60, Math.abs(b.x - a.x) * 0.35) * Math.sign((b.x - a.x) || 1);
+      const x =
+        Math.pow(1 - t, 3) * a.x +
+        3 * Math.pow(1 - t, 2) * t * c1x +
+        3 * (1 - t) * Math.pow(t, 2) * c2x +
+        Math.pow(t, 3) * b.x;
+      const y =
+        Math.pow(1 - t, 3) * a.y +
+        3 * Math.pow(1 - t, 2) * t * a.y +
+        3 * (1 - t) * Math.pow(t, 2) * b.y +
+        Math.pow(t, 3) * b.y;
+      return { x, y };
+    }
+
+    function createEdgeElements() {
+      edges.forEach(edge => {
+        const from = nodeCenter(byId(nodes, edge.from));
+        const to = nodeCenter(byId(nodes, edge.to));
+        const pathData = edgePath(from, to);
+
+        const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+        path.setAttribute("d", pathData);
+        path.setAttribute("class", "edge");
+        path.dataset.edgeId = edge.id;
+        path.setAttribute("marker-end", "url(#arrow-future)");
+        edgeLayer.appendChild(path);
+
+        const hit = document.createElementNS("http://www.w3.org/2000/svg", "path");
+        hit.setAttribute("d", pathData);
+        hit.setAttribute("class", "edge-hit");
+        hit.setAttribute("stroke", "transparent");
+        hit.setAttribute("stroke-width", "14");
+        hit.setAttribute("fill", "none");
+        hit.dataset.edgeId = edge.id;
+        hit.style.pointerEvents = "stroke";
+        hit.addEventListener("click", () => {
+          state.selectedEdgeId = edge.id;
+          state.selectedNodeId = null;
+          state.activeTab = "overview";
+          render();
+        });
+        hit.addEventListener("mouseenter", () => {
+          const label = graphEl.querySelector('.edge-label[data-edge-id="' + edge.id + '"]');
+          if (label) label.classList.add("visible");
+        });
+        hit.addEventListener("mouseleave", () => {
+          const label = graphEl.querySelector('.edge-label[data-edge-id="' + edge.id + '"]');
+          if (label && !label.classList.contains("visible-persistent")) {
+            // Re-run visibility check: only keep visible if it's the active step or related
+            const activeEdgeId = currentFlow().steps[state.stepIndex].edgeId;
+            const hasSelection = state.selectedNodeId || state.selectedEdgeId;
+            let relatedEdges = new Set();
+            if (state.selectedNodeId) {
+              edges.forEach(function(e) {
+                if (e.from === state.selectedNodeId || e.to === state.selectedNodeId) relatedEdges.add(e.id);
+              });
+            } else if (state.selectedEdgeId) {
+              relatedEdges.add(state.selectedEdgeId);
+            }
+            const isActive = edge.id === activeEdgeId;
+            const isRelated = hasSelection && relatedEdges.has(edge.id);
+            const isSelected = edge.id === state.selectedEdgeId;
+            if (!isActive && !isRelated && !isSelected) {
+              label.classList.remove("visible");
+            }
+          }
+        });
+        edgeLayer.appendChild(hit);
+
+        const mid = edgeMidpoint(from, to);
+        const label = document.createElement("div");
+        label.className = "edge-label";
+        label.dataset.edgeId = edge.id;
+        label.style.left = `${mid.x}px`;
+        label.style.top = `${mid.y}px`;
+        label.textContent = edge.label;
+        graphEl.appendChild(label);
+
+        // Add failure warning icon for edges with failureModes
+        if (edge.failureModes && edge.failureModes.length > 0) {
+          path.classList.add("has-failure");
+          const icon = document.createElement("div");
+          icon.className = "edge-failure-icon";
+          icon.dataset.edgeId = edge.id;
+          // Position slightly offset from the midpoint (below-right of label)
+          icon.style.left = `${mid.x + 12}px`;
+          icon.style.top = `${mid.y + 14}px`;
+          icon.textContent = "\u26A0";
+
+          // Build tooltip showing failure scenarios
+          const tooltip = document.createElement("div");
+          tooltip.className = "edge-failure-tooltip";
+          tooltip.innerHTML = edge.failureModes.map((fm, i) =>
+            (i > 0 ? '<hr class="ft-separator">' : '') +
+            '<div class="ft-scenario">' + fm.scenario + '</div>' +
+            '<div class="ft-symptom">' + fm.symptom + '</div>' +
+            '<div class="ft-recovery">' + fm.recovery + '</div>'
+          ).join('');
+          icon.appendChild(tooltip);
+          graphEl.appendChild(icon);
+        }
+      });
+    }
+
+    function currentFlow() {
+      return byId(flows, state.flowId) || flows[0];
+    }
+
+    function flowEdgeState(edgeId) {
+      const flow = currentFlow();
+      const indices = flow.steps.reduce((acc, step, idx) => {
+        if (step.edgeId === edgeId) acc.push(idx);
+        return acc;
+      }, []);
+      if (indices.length === 0) return "neutral";
+      if (indices.includes(state.stepIndex)) return "active";
+      if (Math.max(...indices) < state.stepIndex) return "done";
+      if (Math.min(...indices) > state.stepIndex) return "future";
+      return "done";
+    }
+
+    function clamp(value, min, max) {
+      return Math.min(Math.max(value, min), max);
+    }
+
+    function findStepIndex(flow, edgeId) {
+      return flow.steps.findIndex(step => step.edgeId === edgeId);
+    }
+
+    function centerOnActive() {
+      if (!graphWrapEl) return;
+      const flow = currentFlow();
+      let target = null;
+      if (state.selectedNodeId) {
+        target = nodeCenter(byId(nodes, state.selectedNodeId));
+      } else {
+        const edgeId = state.selectedEdgeId || flow.steps[state.stepIndex].edgeId;
+        const edge = byId(edges, edgeId);
+        const from = nodeCenter(byId(nodes, edge.from));
+        const to = nodeCenter(byId(nodes, edge.to));
+        target = edgeMidpoint(from, to);
+      }
+      if (!target) return;
+      const maxLeft = GRAPH_WIDTH - graphWrapEl.clientWidth;
+      const maxTop = GRAPH_HEIGHT - graphWrapEl.clientHeight;
+      const left = clamp(target.x - graphWrapEl.clientWidth / 2, 0, Math.max(0, maxLeft));
+      const top = clamp(target.y - graphWrapEl.clientHeight / 2, 0, Math.max(0, maxTop));
+      graphWrapEl.scrollTo({ left, top, behavior: "smooth" });
+    }
+
+    function initMinimap() {
+      if (!graphWrapEl) return;
+      const minimap = document.createElement("div");
+      minimap.className = "minimap";
+      const title = document.createElement("h4");
+      title.textContent = "Canvas";
+      minimap.appendChild(title);
+
+      const canvasWrap = document.createElement("div");
+      canvasWrap.style.position = "relative";
+      const canvas = document.createElement("canvas");
+      const canvasWidth = 200;
+      const canvasHeight = Math.round(canvasWidth * (GRAPH_HEIGHT / GRAPH_WIDTH));
+      canvas.width = canvasWidth;
+      canvas.height = canvasHeight;
+      canvasWrap.appendChild(canvas);
+
+      const view = document.createElement("div");
+      view.className = "minimap-view";
+      canvasWrap.appendChild(view);
+
+      minimap.appendChild(canvasWrap);
+      graphWrapEl.parentElement.appendChild(minimap);
+
+      controlState.minimap = minimap;
+      controlState.minimapCanvas = canvas;
+      controlState.minimapView = view;
+      controlState.minimapScale = canvasWidth / GRAPH_WIDTH;
+
+      canvas.addEventListener("click", event => {
+        const rect = canvas.getBoundingClientRect();
+        const x = (event.clientX - rect.left) / controlState.minimapScale;
+        const y = (event.clientY - rect.top) / controlState.minimapScale;
+        const maxLeft = GRAPH_WIDTH - graphWrapEl.clientWidth;
+        const maxTop = GRAPH_HEIGHT - graphWrapEl.clientHeight;
+        const left = clamp(x - graphWrapEl.clientWidth / 2, 0, Math.max(0, maxLeft));
+        const top = clamp(y - graphWrapEl.clientHeight / 2, 0, Math.max(0, maxTop));
+        graphWrapEl.scrollTo({ left, top, behavior: "smooth" });
+      });
+
+      graphWrapEl.addEventListener("scroll", updateMinimapView);
+      window.addEventListener("resize", updateMinimapView);
+    }
+
+    function renderMinimap() {
+      const canvas = controlState.minimapCanvas;
+      if (!canvas) return;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return;
+
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.save();
+      ctx.scale(controlState.minimapScale, controlState.minimapScale);
+
+      edges.forEach(edge => {
+        const from = nodeCenter(byId(nodes, edge.from));
+        const to = nodeCenter(byId(nodes, edge.to));
+        const status = flowEdgeState(edge.id);
+        ctx.strokeStyle = status === "active"
+          ? "#00c8ff"
+          : status === "done"
+            ? "#00c8ff"
+            : "#302010";
+        ctx.lineWidth = status === "active" ? 2 : 1;
+        ctx.beginPath();
+        ctx.moveTo(from.x, from.y);
+        ctx.lineTo(to.x, to.y);
+        ctx.stroke();
+      });
+
+      nodes.forEach(node => {
+        ctx.fillStyle = node.id === state.selectedNodeId ? "#ffb000" : "#140f04";
+        ctx.fillRect(node.x, node.y, NODE_W, NODE_H);
+        ctx.strokeStyle = "#4a3510";
+        ctx.strokeRect(node.x, node.y, NODE_W, NODE_H);
+      });
+
+      ctx.restore();
+      updateMinimapView();
+    }
+
+    function updateMinimapView() {
+      if (!graphWrapEl) return;
+      const view = controlState.minimapView;
+      const canvas = controlState.minimapCanvas;
+      if (!view || !canvas) return;
+      const scale = controlState.minimapScale;
+      const viewWidth = graphWrapEl.clientWidth * scale;
+      const viewHeight = graphWrapEl.clientHeight * scale;
+      const left = canvas.offsetLeft + graphWrapEl.scrollLeft * scale;
+      const top = canvas.offsetTop + graphWrapEl.scrollTop * scale;
+      view.style.width = `${viewWidth}px`;
+      view.style.height = `${viewHeight}px`;
+      view.style.left = `${left}px`;
+      view.style.top = `${top}px`;
+    }
+
+    function initControls() {
+      controlsEl.innerHTML =
+        '<div class="control-group" id="mode-buttons"></div>' +
+        '<div class="control-group" id="flow-buttons"></div>' +
+        '<div class="spacer"></div>' +
+        '<div class="control-group" id="step-controls">' +
+          '<button class="ctrl" id="step-back" type="button" aria-keyshortcuts="ArrowLeft">\u25C2 Back</button>' +
+          '<button class="ctrl" id="step-forward" type="button" aria-keyshortcuts="ArrowRight">Fwd \u25B8</button>' +
+          '<button class="ctrl" id="play-pause" type="button" aria-keyshortcuts="Space">\u25B6 Play</button>' +
+          '<span id="step-counter" style="font-size:11px;color:var(--muted);"></span>' +
+        '</div>';
+
+      const modeButtonsEl = document.getElementById("mode-buttons");
+      modes.forEach(mode => {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "mode-btn";
+        btn.dataset.mode = mode.id;
+        btn.textContent = mode.name;
+        btn.addEventListener("click", () => setMode(mode.id));
+        modeButtonsEl.appendChild(btn);
+        controlState.modeButtons.set(mode.id, btn);
+      });
+
+      const flowButtonsEl = document.getElementById("flow-buttons");
+      flows.forEach((flow, index) => {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "flow-btn";
+        btn.dataset.flow = flow.id;
+        btn.textContent = flow.name;
+        btn.setAttribute("aria-keyshortcuts", String(index + 1));
+        btn.addEventListener("click", () => setFlow(flow.id));
+        flowButtonsEl.appendChild(btn);
+        controlState.flowButtons.set(flow.id, btn);
+      });
+
+      controlState.stepBack = document.getElementById("step-back");
+      controlState.stepForward = document.getElementById("step-forward");
+      controlState.playPause = document.getElementById("play-pause");
+      controlState.stepCounter = document.getElementById("step-counter");
+
+      controlState.stepBack.addEventListener("click", stepBack);
+      controlState.stepForward.addEventListener("click", stepForward);
+      controlState.playPause.addEventListener("click", togglePlay);
+    }
+
+    function renderControls() {
+      controlState.modeButtons.forEach((btn, modeId) => {
+        const isActive = modeId === state.modeId;
+        btn.classList.toggle("active", isActive);
+        btn.setAttribute("aria-pressed", isActive ? "true" : "false");
+      });
+
+      controlState.flowButtons.forEach((btn, flowId) => {
+        const isActive = flowId === state.flowId;
+        btn.classList.toggle("active", isActive);
+        btn.setAttribute("aria-pressed", isActive ? "true" : "false");
+      });
+
+      const flow = currentFlow();
+      const totalSteps = flow.steps.length;
+      controlState.stepBack.disabled = state.stepIndex === 0;
+      controlState.stepForward.disabled = state.stepIndex >= totalSteps - 1;
+      controlState.playPause.textContent = state.playing ? "\u23F8 Pause" : "\u25B6 Play";
+      controlState.playPause.setAttribute("aria-pressed", state.playing ? "true" : "false");
+      if (controlState.stepCounter) {
+        controlState.stepCounter.textContent = (state.stepIndex + 1) + " / " + totalSteps;
+      }
+    }
+
+    function initTimeline() {
+      controlState.scrubber = document.getElementById("step-scrubber");
+      controlState.scrubberMarkers = document.getElementById("scrubber-markers");
+      controlState.scrubberStatus = document.getElementById("scrubber-status");
+
+      if (!controlState.scrubber) return;
+      controlState.scrubber.addEventListener("input", event => {
+        state.stepIndex = Number(event.target.value);
+        state.selectedNodeId = null;
+        state.selectedEdgeId = null;
+        render();
+      });
+
+      controlState.scrubber.addEventListener("change", () => {
+        const edge = byId(edges, currentFlow().steps[state.stepIndex].edgeId);
+        pushTrace("scrub", edge);
+      });
+    }
+
+    function renderTimeline() {
+      if (!controlState.scrubber) return;
+      const flow = currentFlow();
+      const totalSteps = flow.steps.length;
+      controlState.scrubber.max = Math.max(0, totalSteps - 1);
+      controlState.scrubber.value = state.stepIndex;
+      controlState.scrubber.disabled = totalSteps <= 1;
+      controlState.scrubberStatus.textContent = `Step ${state.stepIndex + 1} / ${totalSteps}`;
+      controlState.scrubberMarkers.innerHTML = flow.steps.map((step, idx) => {
+        const edge = byId(edges, step.edgeId);
+        const confidence = edge && edge.confidence ? edge.confidence : "deterministic";
+        return `
+          <div class="timeline-marker ${confidence} ${idx === state.stepIndex ? "active" : ""}" title="Step ${idx + 1} · ${confidence}">
+            <span></span>
+          </div>
+        `;
+      }).join("");
+    }
+
+    function renderFlowPanel() {
+      const flow = currentFlow();
+      const mode = byId(modes, state.modeId);
+      flowTitleEl.textContent = mode ? `${mode.name} Mode` : flow.name;
+
+      stepListEl.innerHTML = flow.steps.map((step, idx) => {
+        const edge = byId(edges, step.edgeId);
+        const cls = idx < state.stepIndex ? "done" : idx === state.stepIndex ? "active" : "future";
+        return `
+          <li>
+            <button class="step-item ${cls}" data-step="${idx}" type="button" ${idx === state.stepIndex ? "aria-current=\"step\"" : ""}>
+              <strong>${idx + 1}. ${edge.name}</strong>
+            </button>
+          </li>
+        `;
+      }).join("");
+
+      stepListEl.querySelectorAll(".step-item").forEach(button => {
+        button.addEventListener("click", () => {
+          state.stepIndex = Number(button.dataset.step);
+          pushTrace("jump", byId(edges, flow.steps[state.stepIndex].edgeId));
+          render();
+        });
+      });
+    }
+
+    function renderGraph() {
+      const activeEdge = byId(edges, currentFlow().steps[state.stepIndex].edgeId);
+      const activeNodes = new Set([activeEdge.from, activeEdge.to]);
+
+      // Compute which nodes/edges are "related" to the selection for dim logic
+      const hasSelection = state.selectedNodeId || state.selectedEdgeId;
+      let relatedNodes = new Set();
+      let relatedEdges = new Set();
+
+      if (state.selectedNodeId) {
+        relatedNodes.add(state.selectedNodeId);
+        edges.forEach(e => {
+          if (e.from === state.selectedNodeId || e.to === state.selectedNodeId) {
+            relatedEdges.add(e.id);
+            relatedNodes.add(e.from);
+            relatedNodes.add(e.to);
+          }
+        });
+      } else if (state.selectedEdgeId) {
+        const selEdge = byId(edges, state.selectedEdgeId);
+        if (selEdge) {
+          relatedEdges.add(selEdge.id);
+          relatedNodes.add(selEdge.from);
+          relatedNodes.add(selEdge.to);
+        }
+      }
+
+      document.querySelectorAll(".edge").forEach(path => {
+        const edgeId = path.dataset.edgeId;
+        const status = flowEdgeState(edgeId);
+        path.classList.remove("done", "active", "selected", "dimmed");
+
+        if (status === "done") {
+          path.classList.add("done");
+          path.setAttribute("marker-end", "url(#arrow-done)");
+        } else if (status === "active") {
+          path.classList.add("active");
+          path.setAttribute("marker-end", "url(#arrow-active)");
+        } else {
+          path.setAttribute("marker-end", "url(#arrow-future)");
+        }
+
+        if (state.selectedEdgeId === edgeId) {
+          path.classList.add("selected");
+        }
+
+        // Dim unrelated edges when something is selected
+        if (hasSelection && !relatedEdges.has(edgeId) && status !== "active") {
+          path.classList.add("dimmed");
+        }
+      });
+
+      // Edge labels: hidden by default, visible on active/hover/related
+      const activeEdgeId = currentFlow().steps[state.stepIndex].edgeId;
+      document.querySelectorAll(".edge-label").forEach(label => {
+        const edgeId = label.dataset.edgeId;
+        const isActive = edgeId === activeEdgeId;
+        const isRelated = hasSelection && relatedEdges.has(edgeId);
+        const isSelected = edgeId === state.selectedEdgeId;
+        label.classList.toggle("visible", isActive || isRelated || isSelected);
+        label.classList.toggle("dimmed", hasSelection && !relatedEdges.has(edgeId) && !isActive);
+      });
+
+      // Failure icons: only visible in debug mode
+      const isDebugMode = state.modeId === "debug";
+      document.querySelectorAll(".edge-failure-icon").forEach(icon => {
+        const edgeId = icon.dataset.edgeId;
+        icon.style.display = isDebugMode ? "flex" : "none";
+        icon.classList.toggle("dimmed", isDebugMode && hasSelection && !relatedEdges.has(edgeId));
+      });
+
+      // In debug mode, highlight edges with failures using dashed red stroke
+      document.querySelectorAll(".edge.has-failure").forEach(path => {
+        path.classList.toggle("debug-highlight", isDebugMode);
+      });
+
+      document.querySelectorAll(".node").forEach(nodeEl => {
+        const nodeId = nodeEl.dataset.nodeId;
+        nodeEl.classList.remove("active", "selected", "dimmed");
+        if (activeNodes.has(nodeId)) nodeEl.classList.add("active");
+        if (state.selectedNodeId === nodeId) nodeEl.classList.add("selected");
+
+        // Dim unrelated nodes when something is selected
+        if (hasSelection && !relatedNodes.has(nodeId) && !activeNodes.has(nodeId)) {
+          nodeEl.classList.add("dimmed");
+        }
+      });
+    }
+
+    function renderKpis() {
+      const flow = currentFlow();
+      const total = flow.steps.length;
+      const focus = state.selectedNodeId
+        ? byId(nodes, state.selectedNodeId).title
+        : state.selectedEdgeId
+          ? byId(edges, state.selectedEdgeId).label
+          : "\u2014";
+      const liveText = state.liveConnected ? "connected" : "off";
+
+      kpisEl.className = "kpi-bar";
+      kpisEl.innerHTML =
+        '<div class="kpi-item"><span class="kpi-label">Step</span> <span class="kpi-value">' +
+        (state.stepIndex + 1) + ' / ' + total +
+        '</span></div>' +
+        '<div class="kpi-item"><span class="kpi-label">Focus</span> <span class="kpi-value">' +
+        focus +
+        '</span></div>' +
+        '<div class="kpi-item"><span class="kpi-label">Live</span> <span class="kpi-value">' +
+        liveText +
+        '</span></div>';
+    }
+
+    function renderModeBanner() {
+      const bannerEl = document.getElementById("mode-banner");
+      if (!bannerEl) return;
+
+      if (state.modeId === "debug") {
+        bannerEl.classList.add("visible");
+        // Sample activation decision for demonstration
+        const decision = {
+          outcome: "fallback",  // primary | fallback | failure
+          primary: { action: "TmuxSwitchClient", target: "iTerm2 (PID 45231)", reason: "exact path match" },
+          fallback: { action: "AppFocusAndNewTab", target: "Ghostty", reason: "tmux client not attached" },
+          candidates: [
+            { pid: 45231, cwd: "/Users/pete/Code/capacitor", match: "exact", live: true, tmux: false, parent: "iTerm2", rank: ["live=1","path=0","tmux=0","known=1"], selected: false },
+            { pid: 52847, cwd: "/Users/pete/Code/capacitor", match: "exact", live: true, tmux: false, parent: "Ghostty", rank: ["live=1","path=0","tmux=0","known=1"], selected: true },
+            { pid: 38102, cwd: "/Users/pete/Code", match: "child", live: true, tmux: false, parent: "Terminal", rank: ["live=1","path=1","tmux=0","known=1"], selected: false },
+          ]
+        };
+
+        const outcomeClass = "outcome-" + decision.outcome;
+        const outcomeIcon = decision.outcome === "primary" ? "\u2705" : decision.outcome === "fallback" ? "\u26A0\uFE0F" : "\u274C";
+        const outcomeLabel = decision.outcome === "primary" ? "Primary Action Succeeded" : decision.outcome === "fallback" ? "Fallback Triggered" : "Activation Failed";
+
+        const candidateRows = decision.candidates.map(c => {
+          const rowClass = c.selected ? "selected-candidate" : "eliminated";
+          const matchClass = c.match;
+          return `<tr class="${rowClass}">
+            <td>${c.selected ? "\u2192" : ""} ${c.pid}</td>
+            <td style="max-width:140px;overflow:hidden;text-overflow:ellipsis">${c.cwd}</td>
+            <td><span class="match-badge ${matchClass}">${c.match}</span></td>
+            <td>${c.live ? "\u2705" : "\u274C"}</td>
+            <td>${c.tmux ? "\u2705" : "\u2014"}</td>
+            <td>${c.parent}</td>
+            <td class="rank-key">${c.rank.join(", ")}</td>
+          </tr>`;
+        }).join("");
+
+        bannerEl.innerHTML = `
+          <div class="card decision-banner ${outcomeClass}">
+            <span class="outcome-icon">${outcomeIcon}</span>
+            <div>
+              <div class="outcome-label">${outcomeLabel}</div>
+              <div class="outcome-detail">
+                Primary: ${decision.primary.action} → ${decision.primary.target}
+                ${decision.outcome !== "primary" ? `<br>Fallback: ${decision.fallback.action} → ${decision.fallback.target} (${decision.fallback.reason})` : ""}
+              </div>
+            </div>
+            <button class="outcome-action" onclick="document.querySelector('[data-node-id=resolver]').click()">View Policy Rules</button>
+          </div>
+          <div class="card" style="padding:8px 12px;">
+            <table class="candidate-table">
+              <thead><tr>
+                <th>PID</th><th>CWD</th><th>Match</th><th>Live</th><th>Tmux</th><th>Parent</th><th>Rank Key</th>
+              </tr></thead>
+              <tbody>${candidateRows}</tbody>
+            </table>
+          </div>
+        `;
+      } else if (state.modeId === "trace") {
+        bannerEl.classList.add("visible");
+        const dotClass = state.liveConnected ? "connected" : "disconnected";
+        const statusText = state.liveConnected ? "Connected" : "Disconnected";
+        const eventCount = state.trace.length;
+
+        // Generate a sample event timeline (60 bars representing last 60 seconds)
+        const bars = Array.from({ length: 60 }, (_, i) => {
+          const types = ["hook", "poll", "activate", "error"];
+          const type = i < eventCount ? types[i % 3] : "";
+          const height = type ? (6 + Math.random() * 18) : 4;
+          return type
+            ? `<div class="et-bar ${type}" style="height:${height}px"></div>`
+            : `<div class="et-bar" style="height:4px;background:var(--border)"></div>`;
+        }).join("");
+
+        bannerEl.innerHTML = `
+          <div class="live-status-banner">
+            <span class="status-dot ${dotClass}"></span>
+            <span style="color:var(--text);font-weight:500">${statusText}</span>
+            <span style="color:var(--muted);font-size:11px">to daemon event stream</span>
+            <div class="event-counter"><strong>${eventCount}</strong> events captured</div>
+          </div>
+          <div class="event-timeline">${bars}</div>
+        `;
+      } else {
+        bannerEl.classList.remove("visible");
+        bannerEl.innerHTML = "";
+      }
+    }
+
+    function renderFileDetails(files) {
+      return files.map(file => {
+        const base = file.split("/").pop();
+        return `
+          <details class="file-detail">
+            <summary>${base}</summary>
+            <div class="file-path">${file}</div>
+          </details>
+        `;
+      }).join("");
+    }
+
+    function renderStateMachine(sm) {
+      if (!sm) return "";
+      const stateColors = { Working: "working", Ready: "ready", Idle: "idle", Compacting: "compacting", Waiting: "waiting" };
+      const chips = sm.states.map(s =>
+        `<span class="state-chip ${stateColors[s] || ""}">${s}</span>`
+      ).join("");
+      const rows = sm.transitions.map(t =>
+        `<tr><td>${t.from}</td><td>${t.trigger}</td><td>${t.to || "delete"}</td><td>${t.condition || ""}</td></tr>`
+      ).join("");
+      return `
+        <div style="margin-bottom:6px;font-size:12px;color:var(--text);font-weight:600;">${sm.name}</div>
+        <div class="state-diagram">${chips}</div>
+        <table class="transition-table">
+          <thead><tr><th>From</th><th>Trigger</th><th>To</th><th>Condition</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      `;
+    }
+
+    function renderPolicyTable(pt) {
+      if (!pt) return "";
+      const rules = pt.rules.map(r => {
+        const statusCls = r.condition ? "conditional" : (r.enabled ? "enabled" : "disabled");
+        const statusText = r.condition ? "conditional" : (r.enabled ? "active" : "off");
+        return `
+          <li class="policy-rule">
+            <span class="policy-rank">#${r.rank + 1}</span>
+            <span class="policy-desc">${r.description}</span>
+            <span class="policy-status ${statusCls}">${statusText}</span>
+          </li>
+        `;
+      }).join("");
+      const ctx = pt.context ? Object.entries(pt.context).map(([k, v]) =>
+        `<span style="font-size:10px;color:var(--muted);">${k}: ${v}</span>`
+      ).join(" ") : "";
+      return `
+        <div style="margin-bottom:6px;font-size:12px;color:var(--text);font-weight:600;">${pt.name}</div>
+        ${ctx ? `<div style="margin-bottom:6px;">${ctx}</div>` : ""}
+        <ol class="policy-rules">${rules}</ol>
+      `;
+    }
+
+    function renderFailureModes(fms) {
+      if (!fms || fms.length === 0) return "";
+      return `
+        <div class="failure-indicator">Known failure modes (${fms.length})</div>
+        <ul class="failure-list">
+          ${fms.map(f => `
+            <li class="failure-item">
+              <div class="scenario">${f.scenario}</div>
+              <div class="symptom">${f.symptom}</div>
+              <div class="recovery">${f.recovery || f.mitigation || ""}</div>
+            </li>
+          `).join("")}
+        </ul>
+      `;
+    }
+
+    function switchTab(tabName) {
+      state.activeTab = tabName;
+      document.querySelectorAll(".detail-tab").forEach(t => t.classList.toggle("active", t.dataset.tab === tabName));
+      document.querySelectorAll(".detail-tab-content").forEach(c => c.classList.toggle("active", c.dataset.tab === tabName));
+    }
+
+    function renderFocusPanel() {
+      if (!state.selectedNodeId && !state.selectedEdgeId) {
+        // Show mini architecture overview when nothing is explicitly selected
+        focusEl.textContent = "";
+        const h3 = document.createElement("h3");
+        h3.textContent = "Architecture";
+        focusEl.appendChild(h3);
+        const overview = document.createElement("div");
+        overview.className = "arch-overview";
+        overview.innerHTML =
+          '<div class="arch-flow">' +
+          '<span class="arch-node">hooks</span><span class="arch-arrow">\u2192</span>' +
+          '<span class="arch-node">daemon</span><span class="arch-arrow">\u2192</span>' +
+          '<span class="arch-node">swift</span><span class="arch-arrow">\u2192</span>' +
+          '<span class="arch-node">rust</span><span class="arch-arrow">\u2192</span>' +
+          '<span class="arch-node">terminal</span>' +
+          '</div>' +
+          '<p style="margin-top:8px;font-size:11px;">Click a node or edge for details. Press <kbd>C</kbd> for contracts.</p>';
+        focusEl.appendChild(overview);
+
+        // Still render the active edge detail below
+        const selectedEdge = byId(edges, currentFlow().steps[state.stepIndex].edgeId);
+        const activeDetail = document.createElement("div");
+        activeDetail.style.cssText = "margin-top:10px;padding-top:10px;border-top:1px solid var(--border);";
+        activeDetail.innerHTML =
+          '<p style="font-size:11px;color:var(--muted);margin:0 0 4px;">Active step:</p>' +
+          '<p style="font-size:12px;color:var(--text);margin:0;"><strong>' + selectedEdge.name + '</strong></p>';
+        focusEl.appendChild(activeDetail);
+        return;
+      }
+
+      if (state.selectedNodeId) {
+        const node = byId(nodes, state.selectedNodeId);
+        const related = edges.filter(e => e.from === node.id || e.to === node.id);
+        const hasState = node.stateMachine || node.policyTable;
+        const hasFailures = node.failureModes && node.failureModes.length > 0;
+        const defaultTab = state.activeTab || "overview";
+
+        const tabsArr = [["overview", "Overview"]];
+        if (hasState) tabsArr.push(["state", "State"]);
+        tabsArr.push(["edges", "Edges"]);
+        if (hasFailures) tabsArr.push(["failures", "Failures"]);
+
+        const tabButtons = tabsArr.map(([id, label]) =>
+          `<button class="detail-tab ${defaultTab === id ? "active" : ""}" data-tab="${id}">${label}</button>`
+        ).join("");
+
+        const overviewContent = `
+          <p><strong>${node.title}</strong></p>
+          <p>${node.subtitle}</p>
+          <p><code>layer</code> ${node.layer || "unknown"}</p>
+          <p><code>tag</code> ${node.tag}</p>
+        `;
+
+        let stateContent = "";
+        if (node.stateMachine) stateContent += renderStateMachine(node.stateMachine);
+        if (node.policyTable) stateContent += renderPolicyTable(node.policyTable);
+
+        const edgesContent = `
+          <p style="color:var(--muted);font-size:11px;margin-bottom:8px;">Connected interfaces: ${related.length}</p>
+          <div class="files">
+            ${related.map(e => {
+              const bt = e.boundaryType || "in-process";
+              const hasFail = e.failureModes && e.failureModes.length > 0;
+              return `<div class="file"><span class="boundary-badge ${bt}">${bt.replace("-", " ")}</span>${e.name}${hasFail ? " ⚠" : ""}</div>`;
+            }).join("")}
+          </div>
+        `;
+
+        const failuresContent = hasFailures ? renderFailureModes(node.failureModes) : "";
+
+        const panels = [
+          `<div class="detail-tab-content ${defaultTab === "overview" ? "active" : ""}" data-tab="overview">${overviewContent}</div>`
+        ];
+        if (hasState) panels.push(`<div class="detail-tab-content ${defaultTab === "state" ? "active" : ""}" data-tab="state">${stateContent}</div>`);
+        panels.push(`<div class="detail-tab-content ${defaultTab === "edges" ? "active" : ""}" data-tab="edges">${edgesContent}</div>`);
+        if (hasFailures) panels.push(`<div class="detail-tab-content ${defaultTab === "failures" ? "active" : ""}" data-tab="failures">${failuresContent}</div>`);
+
+        focusEl.textContent = "";
+        const h3 = document.createElement("h3");
+        h3.textContent = "Node: " + node.title;
+        focusEl.appendChild(h3);
+        const wrapper = document.createElement("div");
+        wrapper.innerHTML = `<div class="detail-tabs">${tabButtons}</div>${panels.join("")}`;
+        focusEl.appendChild(wrapper);
+
+        focusEl.querySelectorAll(".detail-tab").forEach(tab => {
+          tab.addEventListener("click", () => switchTab(tab.dataset.tab));
+        });
+        return;
+      }
+
+      const selectedEdge = state.selectedEdgeId
+        ? byId(edges, state.selectedEdgeId)
+        : byId(edges, currentFlow().steps[state.stepIndex].edgeId);
+
+      const confidence = selectedEdge.confidence || "deterministic";
+      const confidenceLabel = confidence.replace("-", " ");
+      const confidenceNote = selectedEdge.confidenceNote
+        ? `<span class="confidence-note">${selectedEdge.confidenceNote}</span>`
+        : "";
+      const bt = selectedEdge.boundaryType || "in-process";
+      const latency = selectedEdge.latencyClass || "unknown";
+      const direction = selectedEdge.directionality || "request-response";
+      const hasFailures = selectedEdge.failureModes && selectedEdge.failureModes.length > 0;
+      const defaultTab = state.activeTab || "overview";
+
+      const tabsArr = [["overview", "Overview"], ["data", "Data"]];
+      if (hasFailures) tabsArr.push(["failures", "Failures"]);
+      tabsArr.push(["files", "Files"]);
+
+      const tabButtons = tabsArr.map(([id, label]) =>
+        `<button class="detail-tab ${defaultTab === id ? "active" : ""}" data-tab="${id}">${label}</button>`
+      ).join("");
+
+      const overviewContent = `
+        <p><strong>${selectedEdge.name}</strong></p>
+        <div style="display:flex;flex-wrap:wrap;gap:6px;margin:8px 0;">
+          <span class="boundary-badge ${bt}">${bt.replace("-", " ")}</span>
+          <span class="latency-badge">${latency}</span>
+          <span class="latency-badge">${direction.replace("-", " ")}</span>
+        </div>
+        <div class="confidence">
+          <span class="confidence-badge confidence-${confidence}">${confidenceLabel}</span>
+          ${confidenceNote}
+        </div>
+      `;
+
+      const dataContent = `
+        <p><code>boundary</code> ${selectedEdge.boundary}</p>
+        <p><code>request</code> ${selectedEdge.request}</p>
+        <p><code>response</code> ${selectedEdge.response}</p>
+      `;
+
+      const failuresContent = hasFailures ? renderFailureModes(selectedEdge.failureModes) : "";
+      const filesContent = `<div class="files">${renderFileDetails(selectedEdge.files)}</div>`;
+
+      const panels = [
+        `<div class="detail-tab-content ${defaultTab === "overview" ? "active" : ""}" data-tab="overview">${overviewContent}</div>`,
+        `<div class="detail-tab-content ${defaultTab === "data" ? "active" : ""}" data-tab="data">${dataContent}</div>`
+      ];
+      if (hasFailures) panels.push(`<div class="detail-tab-content ${defaultTab === "failures" ? "active" : ""}" data-tab="failures">${failuresContent}</div>`);
+      panels.push(`<div class="detail-tab-content ${defaultTab === "files" ? "active" : ""}" data-tab="files">${filesContent}</div>`);
+
+      focusEl.textContent = "";
+      const h3 = document.createElement("h3");
+      h3.textContent = "Interface Detail";
+      focusEl.appendChild(h3);
+      const wrapper = document.createElement("div");
+      wrapper.innerHTML = `<div class="detail-tabs">${tabButtons}</div>${panels.join("")}`;
+      focusEl.appendChild(wrapper);
+
+      focusEl.querySelectorAll(".detail-tab").forEach(tab => {
+        tab.addEventListener("click", () => switchTab(tab.dataset.tab));
+      });
+    }
+
+    function renderContracts() {
+      // Contracts now render in the overlay only (toggled by C key)
+    }
+
+    function toggleContractsOverlay() {
+      const overlay = document.getElementById("contracts-overlay");
+      if (overlay.style.display === "none") {
+        const panel = document.getElementById("contracts-panel");
+        panel.innerHTML =
+          '<h2>Interface Contracts</h2><div class="contracts">' +
+          contracts.map(function(contract) {
+            return '<article class="contract"><h4>' + contract.title + '</h4>' +
+              '<p>' + contract.summary + '</p><ul>' +
+              contract.bullets.map(function(item) { return '<li>' + item + '</li>'; }).join('') +
+              '</ul></article>';
+          }).join('') +
+          '</div><div class="overlay-dismiss">Press <kbd>C</kbd> or <kbd>Esc</kbd> to close</div>';
+        overlay.style.display = "flex";
+      } else {
+        overlay.style.display = "none";
+      }
+    }
+
+    function toggleShortcutsOverlay() {
+      const overlay = document.getElementById("shortcuts-overlay");
+      if (overlay.style.display === "none") {
+        const panel = document.getElementById("shortcuts-panel");
+        panel.innerHTML =
+          '<h2>Keyboard Shortcuts</h2>' +
+          '<div class="overlay-shortcut"><span class="key-col"><kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd></span> Switch flow</div>' +
+          '<div class="overlay-shortcut"><span class="key-col"><kbd>\u2190</kbd> <kbd>\u2192</kbd></span> Step back / forward</div>' +
+          '<div class="overlay-shortcut"><span class="key-col"><kbd>Space</kbd></span> Play / pause</div>' +
+          '<div class="overlay-shortcut"><span class="key-col"><kbd>R</kbd></span> Reset flow</div>' +
+          '<div class="overlay-shortcut"><span class="key-col"><kbd>C</kbd></span> Contracts overlay</div>' +
+          '<div class="overlay-shortcut"><span class="key-col"><kbd>?</kbd></span> This help</div>' +
+          '<div class="overlay-dismiss">Press <kbd>?</kbd> or <kbd>Esc</kbd> to close</div>';
+        overlay.style.display = "flex";
+      } else {
+        overlay.style.display = "none";
+      }
+    }
+
+    function pushTrace(action, edge) {
+      const now = new Date();
+      const stamp = now.toLocaleTimeString();
+      const flow = currentFlow();
+      const line = {
+        time: stamp,
+        text: `[${flow.id}] ${action}: ${edge.name}`,
+        detail: `${edge.request} -> ${edge.response}`
+      };
+      state.trace.unshift(line);
+      state.trace = state.trace.slice(0, 24);
+    }
+
+    function renderTrace() {
+      traceLinesEl.innerHTML = state.trace.map(line => `
+        <div class="trace-line">
+          ${line.text}
+          <small>${line.time} | ${line.detail}</small>
+        </div>
+      `).join("");
+    }
+
+    function renderLiveStatus() {
+      const traceSection = document.getElementById("trace");
+      const liveReady = state.modeId === "trace";
+      if (traceSection) {
+        traceSection.classList.toggle("visible", liveReady);
+      }
+      if (!liveReady) {
+        traceStatusEl.textContent = "Live mode: off";
+        liveToggleEl.textContent = "Connect Live";
+        liveToggleEl.disabled = true;
+        liveUrlEl.disabled = true;
+        return;
+      }
+      liveUrlEl.disabled = false;
+      if (state.liveError) {
+        traceStatusEl.textContent = `Live mode: error (${state.liveError})`;
+      } else {
+        traceStatusEl.textContent = state.liveConnected
+          ? `Live mode: connected via ${state.liveTransport}`
+          : "Live mode: ready (use window.capacitorExplorer.pushLiveTrace)";
+      }
+      liveToggleEl.textContent = state.liveConnected ? "Disconnect Live" : "Connect Live";
+      liveToggleEl.disabled = false;
+    }
+
+    function toggleLiveConnection() {
+      if (state.modeId !== "trace") return;
+      if (state.liveConnected) {
+        disconnectLive();
+        render();
+        return;
+      }
+      connectLive();
+    }
+
+    function disconnectLive() {
+      if (state.liveSource) {
+        if (state.liveTransport === "sse") {
+          state.liveSource.close();
+        } else if (state.liveTransport === "ws") {
+          state.liveSource.close();
+        }
+      }
+      state.liveSource = null;
+      state.liveTransport = null;
+      state.liveConnected = false;
+      state.liveError = null;
+    }
+
+    function connectLive() {
+      disconnectLive();
+      state.liveError = null;
+      const url = state.liveUrl;
+      if (!url) {
+        state.liveError = "missing URL";
+        render();
+        return;
+      }
+      stopPlay();
+      if (url.startsWith("ws")) {
+        const ws = new WebSocket(url);
+        state.liveTransport = "ws";
+        state.liveSource = ws;
+        ws.onopen = () => {
+          state.liveConnected = true;
+          render();
+        };
+        ws.onmessage = event => handleLivePayload(event.data);
+        ws.onerror = () => {
+          state.liveError = "websocket error";
+          state.liveConnected = false;
+          render();
+        };
+        ws.onclose = () => {
+          state.liveConnected = false;
+          render();
+        };
+        render();
+        return;
+      }
+
+      try {
+        const source = new EventSource(url);
+        state.liveTransport = "sse";
+        state.liveSource = source;
+        source.onopen = () => {
+          state.liveConnected = true;
+          render();
+        };
+        source.onmessage = event => handleLivePayload(event.data);
+        source.onerror = () => {
+          state.liveError = "sse connection lost";
+          state.liveConnected = false;
+          source.close();
+          render();
+        };
+      } catch (error) {
+        state.liveError = "sse failed";
+      }
+      render();
+    }
+
+    function handleLivePayload(payload) {
+      let data = payload;
+      if (typeof payload === "string") {
+        try {
+          data = JSON.parse(payload);
+        } catch (error) {
+          const edgeId = mapTraceToEdgeId(payload);
+          if (!edgeId) {
+            return;
+          }
+          pushLiveTrace({ edgeId, action: "line", detail: payload });
+          return;
+        }
+      }
+      if (data && typeof data === "object") {
+        pushLiveTrace(data);
+      }
+    }
+
+    function mapTraceToEdgeId(text) {
+      const lowered = text.toLowerCase();
+      const match = edges.find(edge =>
+        lowered.includes(edge.label.toLowerCase()) ||
+        lowered.includes(edge.name.toLowerCase())
+      );
+      return match ? match.id : null;
+    }
+
+    function pushLiveTrace(payload) {
+      if (state.modeId !== "trace") {
+        state.modeId = "trace";
+        state.liveMode = true;
+      }
+      state.liveConnected = true;
+      const flowId = payload.flowId || state.flowId;
+      const flow = byId(flows, flowId);
+      if (!flow) return;
+      if (flowId !== state.flowId) {
+        state.flowId = flowId;
+      }
+
+      if (payload.edgeId) {
+        const idx = findStepIndex(flow, payload.edgeId);
+        if (idx >= 0) {
+          state.stepIndex = idx;
+        }
+        state.selectedEdgeId = payload.edgeId;
+        state.selectedNodeId = null;
+      } else {
+        state.stepIndex = clamp(state.stepIndex, 0, flow.steps.length - 1);
+      }
+
+      const time = payload.time || new Date().toLocaleTimeString();
+      const action = payload.action || "live";
+      const edge = payload.edgeId
+        ? byId(edges, payload.edgeId)
+        : byId(edges, currentFlow().steps[state.stepIndex].edgeId);
+      if (!edge) return;
+      state.trace.unshift({
+        time,
+        text: `[live] ${action}: ${edge.name}`,
+        detail: payload.detail || `${edge.request} -> ${edge.response}`
+      });
+      state.trace = state.trace.slice(0, 24);
+      render();
+    }
+
+    function initKeyboardShortcuts() {
+      document.addEventListener("keydown", event => {
+        if (event.defaultPrevented) return;
+        if (event.metaKey || event.ctrlKey || event.altKey) return;
+        const target = event.target;
+        if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.tagName === "SELECT" || target.tagName === "BUTTON" || target.tagName === "A" || target.isContentEditable)) {
+          return;
+        }
+
+        if (event.key === "1" && flows[0]) {
+          event.preventDefault();
+          setFlow(flows[0].id);
+          return;
+        }
+        if (event.key === "2" && flows[1]) {
+          event.preventDefault();
+          setFlow(flows[1].id);
+          return;
+        }
+        if (event.key === "3" && flows[2]) {
+          event.preventDefault();
+          setFlow(flows[2].id);
+          return;
+        }
+
+        // Close any open overlay on Escape
+        if (event.key === "Escape") {
+          event.preventDefault();
+          document.getElementById("contracts-overlay").style.display = "none";
+          document.getElementById("shortcuts-overlay").style.display = "none";
+          return;
+        }
+
+        switch (event.key) {
+          case "ArrowLeft":
+            event.preventDefault();
+            stepBack();
+            break;
+          case "ArrowRight":
+            event.preventDefault();
+            stepForward();
+            break;
+          case " ":
+          case "Spacebar":
+            event.preventDefault();
+            togglePlay();
+            break;
+          case "r":
+          case "R":
+            event.preventDefault();
+            resetFlow();
+            break;
+          case "c":
+          case "C":
+            event.preventDefault();
+            toggleContractsOverlay();
+            break;
+          case "?":
+            event.preventDefault();
+            toggleShortcutsOverlay();
+            break;
+          default:
+            break;
+        }
+      });
+    }
+
+    function setMode(modeId) {
+      const mode = byId(modes, modeId);
+      if (!mode) return;
+      state.modeId = modeId;
+      state.liveMode = modeId === "trace";
+      if (state.liveMode) {
+        stopPlay();
+      }
+      if (!state.liveMode) {
+        disconnectLive();
+      }
+      setFlow(mode.flowId, {
+        stepIndex: mode.stepIndex ?? 0,
+        preserveMode: true
+      });
+    }
+
+    function setFlow(flowId, options = {}) {
+      const {
+        stepIndex = 0,
+        resetTrace = true,
+        clearSelection = true,
+        preserveMode = false
+      } = options;
+      const flow = byId(flows, flowId);
+      if (!flow) return;
+      stopPlay();
+      state.flowId = flowId;
+      state.stepIndex = clamp(stepIndex, 0, flow.steps.length - 1);
+      if (!preserveMode) {
+        state.modeId = null;
+      }
+      if (clearSelection) {
+        state.selectedNodeId = null;
+        state.selectedEdgeId = null;
+      }
+      if (resetTrace) {
+        state.trace = [];
+        pushTrace("start", byId(edges, flow.steps[0].edgeId));
+      }
+      render();
+    }
+
+    function stepForward() {
+      const flow = currentFlow();
+      if (state.stepIndex >= flow.steps.length - 1) {
+        stopPlay();
+        return;
+      }
+      state.stepIndex += 1;
+      const edge = byId(edges, flow.steps[state.stepIndex].edgeId);
+      pushTrace("step", edge);
+      render();
+    }
+
+    function stepBack() {
+      if (state.stepIndex === 0) return;
+      state.stepIndex -= 1;
+      const edge = byId(edges, currentFlow().steps[state.stepIndex].edgeId);
+      pushTrace("back", edge);
+      render();
+    }
+
+    function resetFlow() {
+      stopPlay();
+      state.stepIndex = 0;
+      state.selectedNodeId = null;
+      state.selectedEdgeId = null;
+      state.trace = [];
+      pushTrace("reset", byId(edges, currentFlow().steps[0].edgeId));
+      render();
+    }
+
+    function togglePlay() {
+      if (state.playing) {
+        stopPlay();
+      } else {
+        startPlay();
+      }
+      render();
+    }
+
+    function startPlay() {
+      if (state.playing) return;
+      const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      const interval = prefersReducedMotion ? 2400 : 1400;
+      state.playing = true;
+      state.timer = setInterval(() => {
+        const flow = currentFlow();
+        if (state.stepIndex >= flow.steps.length - 1) {
+          stopPlay();
+          render();
+          return;
+        }
+        stepForward();
+      }, interval);
+    }
+
+    function stopPlay() {
+      state.playing = false;
+      if (state.timer) {
+        clearInterval(state.timer);
+        state.timer = null;
+      }
+    }
+
+    function render() {
+      renderControls();
+      renderTimeline();
+      renderFlowPanel();
+      renderGraph();
+      renderKpis();
+      renderModeBanner();
+      renderFocusPanel();
+      renderTrace();
+      renderLiveStatus();
+      renderMinimap();
+    }
+
+    function init() {
+      createNodeElements();
+      createEdgeElements();
+      initControls();
+      initTimeline();
+      initMinimap();
+      initKeyboardShortcuts();
+      liveToggleEl.addEventListener("click", toggleLiveConnection);
+      liveUrlEl.value = state.liveUrl;
+      liveUrlEl.addEventListener("change", () => {
+        state.liveUrl = liveUrlEl.value.trim();
+      });
+      // Close overlays on backdrop click
+      document.getElementById("contracts-overlay").addEventListener("click", function(e) {
+        if (e.target === this) this.style.display = "none";
+      });
+      document.getElementById("shortcuts-overlay").addEventListener("click", function(e) {
+        if (e.target === this) this.style.display = "none";
+      });
+
+      window.capacitorExplorer = {
+        pushLiveTrace,
+        setMode,
+        setFlow,
+        connectLive,
+        disconnectLive,
+        setLiveUrl: url => {
+          state.liveUrl = url;
+          if (liveUrlEl) liveUrlEl.value = url;
+        }
+      };
+      setMode(modes[0].id);
+    }
+
+    init();
+  </script>
+</body>
+</html>
