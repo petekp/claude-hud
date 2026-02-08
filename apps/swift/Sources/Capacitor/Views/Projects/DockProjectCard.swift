@@ -8,9 +8,13 @@ struct DockProjectCard: View {
     let isStale: Bool
     let isActive: Bool
     let onTap: () -> Void
-    let onInfoTap: () -> Void
+    #if !ALPHA
+        let onInfoTap: () -> Void
+    #endif
     let onMoveToDormant: () -> Void
-    var onCaptureIdea: ((CGRect) -> Void)?
+    #if !ALPHA
+        var onCaptureIdea: ((CGRect) -> Void)?
+    #endif
     let onRemove: () -> Void
     var onDragStarted: (() -> NSItemProvider)?
     var isDragging: Bool = false
@@ -129,14 +133,23 @@ struct DockProjectCard: View {
                 glassConfig: glassConfigForHandlers
             )
             .contextMenu {
-                ProjectContextMenu(
-                    project: project,
-                    onTap: onTap,
-                    onInfoTap: onInfoTap,
-                    onMoveToDormant: onMoveToDormant,
-                    onCaptureIdea: onCaptureIdea.map { action in { action(.zero) } },
-                    onRemove: onRemove
-                )
+                #if ALPHA
+                    ProjectContextMenu(
+                        project: project,
+                        onTap: onTap,
+                        onMoveToDormant: onMoveToDormant,
+                        onRemove: onRemove
+                    )
+                #else
+                    ProjectContextMenu(
+                        project: project,
+                        onTap: onTap,
+                        onInfoTap: onInfoTap,
+                        onMoveToDormant: onMoveToDormant,
+                        onCaptureIdea: onCaptureIdea.map { action in { action(.zero) } },
+                        onRemove: onRemove
+                    )
+                #endif
             }
             .accessibilityElement(children: .combine)
             .accessibilityLabel(project.name)
@@ -147,14 +160,22 @@ struct DockProjectCard: View {
         HStack(spacing: 10) {
             VStack(alignment: .leading, spacing: 0) {
                 HStack(spacing: 6) {
-                    ClickableProjectTitle(
-                        name: project.name,
-                        nameColor: .white.opacity(0.9),
-                        isMissing: project.isMissing,
-                        action: onInfoTap,
-                        font: AppTypography.sectionTitle.monospaced()
-                    )
-                    .lineLimit(1)
+                    #if ALPHA
+                        Text(project.name)
+                            .font(AppTypography.sectionTitle.monospaced())
+                            .foregroundStyle(.white.opacity(0.9))
+                            .strikethrough(project.isMissing, color: .white.opacity(0.3))
+                            .lineLimit(1)
+                    #else
+                        ClickableProjectTitle(
+                            name: project.name,
+                            nameColor: .white.opacity(0.9),
+                            isMissing: project.isMissing,
+                            action: onInfoTap,
+                            font: AppTypography.sectionTitle.monospaced()
+                        )
+                        .lineLimit(1)
+                    #endif
 
                     Spacer(minLength: 0)
                 }
@@ -178,12 +199,19 @@ struct DockProjectCard: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
 
-            CardActionButtons(
-                isCardHovered: isHovered,
-                onCaptureIdea: onCaptureIdea,
-                onDetails: onInfoTap,
-                style: .compact
-            )
+            #if ALPHA
+                CardActionButtons(
+                    isCardHovered: isHovered,
+                    style: .compact
+                )
+            #else
+                CardActionButtons(
+                    isCardHovered: isHovered,
+                    onCaptureIdea: onCaptureIdea,
+                    onDetails: onInfoTap,
+                    style: .compact
+                )
+            #endif
         }
     }
 

@@ -55,155 +55,105 @@ struct ProjectsView: View {
         let scrollbarInset = floatingMode ? WindowCornerRadius.value(floatingMode: floatingMode) : 0
 
         ScrollView {
-            LazyVStack(spacing: cardListSpacing) {
-                #if DEBUG
-                    if debugShowProjectListDiagnostics {
-                        DebugActiveStateCard()
-                            .padding(.bottom, 6)
-                        DebugActivationTraceCard()
-                            .padding(.bottom, 6)
-                    }
-                #endif
-                // Setup status card - show regardless of project state
-                if let diagnostic = appState.hookDiagnostic, diagnostic.shouldShowSetupCard {
-                    SetupStatusCard(
-                        diagnostic: diagnostic,
-                        onFix: { appState.fixHooks() },
-                        onRefresh: {
-                            appState.checkHookDiagnostic()
-                            appState.refreshSessionStates()
-                        },
-                        onTest: { appState.testHooks() }
-                    )
-                    .padding(.bottom, 4)
-                }
-
-                if appState.isLoading {
-                    VStack(spacing: 8) {
-                        SkeletonCard()
-                        SkeletonCard()
-                        SkeletonCard()
-                    }
-                    .padding(.top, 8)
-                } else if appState.projects.isEmpty, appState.activeCreations.isEmpty {
-                    EmptyProjectsView()
-                } else {
-                    ActivityPanel()
-
-                    if !activeProjects.isEmpty {
-                        SectionHeader(
-                            title: "In Progress",
-                            count: activeProjects.count
-                        )
-                        .padding(.top, 4)
-                        .transition(.opacity)
-
-                        ForEach(Array(activeProjects.enumerated()), id: \.element.path) { index, project in
-                            ProjectCardView(
-                                project: project,
-                                sessionState: appState.getSessionState(for: project),
-                                projectStatus: appState.getProjectStatus(for: project),
-                                flashState: appState.isFlashing(project),
-                                isStale: isStale(project),
-                                isActive: appState.activeProjectPath == project.path,
-                                onTap: {
-                                    appState.launchTerminal(for: project)
-                                },
-                                onInfoTap: {
-                                    appState.showProjectDetail(project)
-                                },
-                                onMoveToDormant: {
-                                    withAnimation(.spring(response: 0.25, dampingFraction: 0.75)) {
-                                        appState.moveToDormant(project)
-                                    }
-                                },
-                                onCaptureIdea: { frame in
-                                    appState.showIdeaCaptureModal(for: project, from: frame)
-                                },
-                                onRemove: {
-                                    withAnimation(.spring(response: 0.25, dampingFraction: 0.75)) {
-                                        appState.removeProject(project.path)
-                                    }
-                                },
-                                onDragStarted: {
-                                    draggedProject = project
-                                    return NSItemProvider(object: project.path as NSString)
-                                },
-                                isDragging: draggedProject?.path == project.path
-                            )
-                            .preventWindowDrag()
-                            .zIndex(draggedProject?.path == project.path ? 999 : 0)
-                            .id("active-\(project.path)")
-                            .onDrop(
-                                of: [.text],
-                                delegate: ProjectDropDelegate(
-                                    project: project,
-                                    activeProjects: activeProjects,
-                                    draggedProject: $draggedProject,
-                                    appState: appState
-                                )
-                            )
-                            .transition(.asymmetric(
-                                insertion: .opacity
-                                    .combined(with: .scale(scale: 0.96))
-                                    .combined(with: .offset(y: -8))
-                                    .animation(.spring(response: glassConfig.cardInsertSpringResponse, dampingFraction: glassConfig.cardInsertSpringDamping).delay(Double(index) * glassConfig.cardInsertStagger)),
-                                removal: .opacity
-                                    .combined(with: .scale(scale: 0.94))
-                                    .animation(.easeOut(duration: glassConfig.cardRemovalDuration))
-                            ))
+            ScrollViewReader { scrollProxy in
+                LazyVStack(spacing: cardListSpacing) {
+                    #if DEBUG
+                        if debugShowProjectListDiagnostics {
+                            DebugActiveStateCard()
+                                .padding(.bottom, 6)
+                            DebugActivationTraceCard()
+                                .padding(.bottom, 6)
                         }
+                    #endif
+                    // Setup status card - show regardless of project state
+                    if let diagnostic = appState.hookDiagnostic, diagnostic.shouldShowSetupCard {
+                        SetupStatusCard(
+                            diagnostic: diagnostic,
+                            onFix: { appState.fixHooks() },
+                            onRefresh: {
+                                appState.checkHookDiagnostic()
+                                appState.refreshSessionStates()
+                            },
+                            onTest: { appState.testHooks() }
+                        )
+                        .padding(.bottom, 4)
                     }
 
-                    if !pausedProjects.isEmpty {
-                        PausedSectionHeader(
-                            count: pausedProjects.count,
-                            isCollapsed: $pausedCollapsed
-                        )
-                        .padding(.top, activeProjects.isEmpty ? 4 : 12)
-                        .transition(.opacity)
+                    if appState.isLoading {
+                        VStack(spacing: 8) {
+                            SkeletonCard()
+                            SkeletonCard()
+                            SkeletonCard()
+                        }
+                        .padding(.top, 8)
+                    } else if appState.projects.isEmpty {
+                        EmptyProjectsView()
+                    } else {
+                        #if !ALPHA
+                            ActivityPanel()
+                        #endif
 
-                        if !pausedCollapsed {
-                            VStack(spacing: 0) {
-                                ForEach(Array(pausedProjects.enumerated()), id: \.element.path) { index, project in
-                                    CompactProjectCardView(
-                                        project: project,
-                                        onTap: {
-                                            appState.launchTerminal(for: project)
-                                        },
-                                        onInfoTap: {
-                                            appState.showProjectDetail(project)
-                                        },
-                                        onMoveToRecent: {
-                                            withAnimation(.spring(response: 0.25, dampingFraction: 0.75)) {
-                                                appState.moveToRecent(project)
+                        if !activeProjects.isEmpty {
+                            SectionHeader(
+                                title: "In Progress",
+                                count: activeProjects.count
+                            )
+                            .padding(.top, 4)
+                            .transition(.opacity)
+
+                            ForEach(Array(activeProjects.enumerated()), id: \.element.path) { index, project in
+                                activeProjectCard(project: project, index: index)
+                            }
+                        }
+
+                        if !pausedProjects.isEmpty {
+                            PausedSectionHeader(
+                                count: pausedProjects.count,
+                                isCollapsed: pausedCollapsed,
+                                onToggle: {
+                                    let expanding = pausedCollapsed
+                                    withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                                        pausedCollapsed.toggle()
+                                    }
+                                    if expanding {
+                                        DispatchQueue.main.async {
+                                            withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                                                scrollProxy.scrollTo("hidden-section", anchor: .top)
                                             }
-                                        },
-                                        onRemove: {
-                                            withAnimation(.spring(response: 0.2, dampingFraction: 0.8)) {
-                                                appState.removeProject(project.path)
-                                            }
-                                        },
-                                        showSeparator: index < pausedProjects.count - 1
-                                    )
-                                    .id("paused-\(project.path)")
-                                    .transition(.asymmetric(
-                                        insertion: .opacity
-                                            .combined(with: .scale(scale: 0.97))
-                                            .animation(.spring(response: glassConfig.cardInsertSpringResponse * 0.8, dampingFraction: glassConfig.cardInsertSpringDamping).delay(Double(index) * glassConfig.pausedCardStagger)),
-                                        removal: .opacity
-                                            .combined(with: .scale(scale: 0.95))
-                                            .animation(.easeOut(duration: glassConfig.cardRemovalDuration * 0.8))
-                                    ))
+                                        }
+                                    }
+                                }
+                            )
+                            .id("hidden-section")
+                            .padding(.top, activeProjects.isEmpty ? 4 : 12)
+                            .transition(.opacity)
+
+                            if !pausedCollapsed {
+                                VStack(spacing: 0) {
+                                    ForEach(Array(pausedProjects.enumerated()), id: \.element.path) { index, project in
+                                        pausedProjectCard(project: project, index: index)
+                                    }
                                 }
                             }
                         }
                     }
                 }
+                .padding(.horizontal, listHorizontalPadding)
+                .padding(.top, contentTopPadding)
+                .padding(.bottom, contentBottomPadding)
+                .onChange(of: pausedProjects.count) { oldCount, newCount in
+                    if newCount > oldCount, pausedCollapsed {
+                        withAnimation(.spring(response: glassConfig.sectionToggleSpringResponse, dampingFraction: 0.85)) {
+                            pausedCollapsed = false
+                        }
+                        DispatchQueue.main.async {
+                            withAnimation(.spring(response: glassConfig.sectionToggleSpringResponse, dampingFraction: 0.85)) {
+                                scrollProxy.scrollTo("hidden-section", anchor: .top)
+                            }
+                        }
+                    }
+                }
             }
-            .padding(.horizontal, listHorizontalPadding)
-            .padding(.top, contentTopPadding)
-            .padding(.bottom, contentBottomPadding)
         }
         .mask {
             GeometryReader { proxy in
@@ -233,13 +183,192 @@ struct ProjectsView: View {
             )
         )
         .background(floatingMode ? Color.clear : Color.hudBackground)
-        .onChange(of: pausedProjects.count) { oldCount, newCount in
-            if newCount > oldCount, pausedCollapsed {
-                withAnimation(.spring(response: glassConfig.sectionToggleSpringResponse, dampingFraction: 0.85)) {
-                    pausedCollapsed = false
-                }
-            }
-        }
+    }
+
+    @ViewBuilder
+    private func activeProjectCard(project: Project, index: Int) -> some View {
+        #if ALPHA
+            ProjectCardView(
+                project: project,
+                sessionState: appState.getSessionState(for: project),
+                projectStatus: appState.getProjectStatus(for: project),
+                flashState: appState.isFlashing(project),
+                isStale: isStale(project),
+                isActive: appState.activeProjectPath == project.path,
+                onTap: {
+                    appState.launchTerminal(for: project)
+                },
+                onMoveToDormant: {
+                    withAnimation(.spring(response: 0.25, dampingFraction: 0.75)) {
+                        appState.moveToDormant(project)
+                    }
+                },
+                onRemove: {
+                    withAnimation(.spring(response: 0.25, dampingFraction: 0.75)) {
+                        appState.removeProject(project.path)
+                    }
+                },
+                onDragStarted: {
+                    draggedProject = project
+                    return NSItemProvider(object: project.path as NSString)
+                },
+                isDragging: draggedProject?.path == project.path
+            )
+            .activeProjectCardModifiers(
+                project: project,
+                index: index,
+                activeProjects: activeProjects,
+                draggedProject: $draggedProject,
+                appState: appState,
+                glassConfig: glassConfig
+            )
+        #else
+            ProjectCardView(
+                project: project,
+                sessionState: appState.getSessionState(for: project),
+                projectStatus: appState.getProjectStatus(for: project),
+                flashState: appState.isFlashing(project),
+                isStale: isStale(project),
+                isActive: appState.activeProjectPath == project.path,
+                onTap: {
+                    appState.launchTerminal(for: project)
+                },
+                onInfoTap: {
+                    appState.showProjectDetail(project)
+                },
+                onMoveToDormant: {
+                    withAnimation(.spring(response: 0.25, dampingFraction: 0.75)) {
+                        appState.moveToDormant(project)
+                    }
+                },
+                onCaptureIdea: { frame in
+                    appState.showIdeaCaptureModal(for: project, from: frame)
+                },
+                onRemove: {
+                    withAnimation(.spring(response: 0.25, dampingFraction: 0.75)) {
+                        appState.removeProject(project.path)
+                    }
+                },
+                onDragStarted: {
+                    draggedProject = project
+                    return NSItemProvider(object: project.path as NSString)
+                },
+                isDragging: draggedProject?.path == project.path
+            )
+            .activeProjectCardModifiers(
+                project: project,
+                index: index,
+                activeProjects: activeProjects,
+                draggedProject: $draggedProject,
+                appState: appState,
+                glassConfig: glassConfig
+            )
+        #endif
+    }
+
+    @ViewBuilder
+    private func pausedProjectCard(project: Project, index: Int) -> some View {
+        #if ALPHA
+            CompactProjectCardView(
+                project: project,
+                onTap: {
+                    appState.launchTerminal(for: project)
+                },
+                onMoveToRecent: {
+                    withAnimation(.spring(response: 0.25, dampingFraction: 0.75)) {
+                        appState.moveToRecent(project)
+                    }
+                },
+                onRemove: {
+                    withAnimation(.spring(response: 0.2, dampingFraction: 0.8)) {
+                        appState.removeProject(project.path)
+                    }
+                },
+                showSeparator: index < pausedProjects.count - 1
+            )
+            .pausedProjectCardModifiers(
+                project: project,
+                index: index,
+                glassConfig: glassConfig
+            )
+        #else
+            CompactProjectCardView(
+                project: project,
+                onTap: {
+                    appState.launchTerminal(for: project)
+                },
+                onInfoTap: {
+                    appState.showProjectDetail(project)
+                },
+                onMoveToRecent: {
+                    withAnimation(.spring(response: 0.25, dampingFraction: 0.75)) {
+                        appState.moveToRecent(project)
+                    }
+                },
+                onRemove: {
+                    withAnimation(.spring(response: 0.2, dampingFraction: 0.8)) {
+                        appState.removeProject(project.path)
+                    }
+                },
+                showSeparator: index < pausedProjects.count - 1
+            )
+            .pausedProjectCardModifiers(
+                project: project,
+                index: index,
+                glassConfig: glassConfig
+            )
+        #endif
+    }
+}
+
+// MARK: - Card Modifier Extensions (extracted for type-checker)
+
+private extension View {
+    func activeProjectCardModifiers(
+        project: Project,
+        index: Int,
+        activeProjects: [Project],
+        draggedProject: Binding<Project?>,
+        appState: AppState,
+        glassConfig: GlassConfig
+    ) -> some View {
+        preventWindowDrag()
+            .zIndex(draggedProject.wrappedValue?.path == project.path ? 999 : 0)
+            .id("active-\(project.path)")
+            .onDrop(
+                of: [.text],
+                delegate: ProjectDropDelegate(
+                    project: project,
+                    activeProjects: activeProjects,
+                    draggedProject: draggedProject,
+                    appState: appState
+                )
+            )
+            .transition(.asymmetric(
+                insertion: .opacity
+                    .combined(with: .scale(scale: 0.96))
+                    .combined(with: .offset(y: -8))
+                    .animation(.spring(response: glassConfig.cardInsertSpringResponse, dampingFraction: glassConfig.cardInsertSpringDamping).delay(Double(index) * glassConfig.cardInsertStagger)),
+                removal: .opacity
+                    .combined(with: .scale(scale: 0.94))
+                    .animation(.easeOut(duration: glassConfig.cardRemovalDuration))
+            ))
+    }
+
+    func pausedProjectCardModifiers(
+        project: Project,
+        index: Int,
+        glassConfig: GlassConfig
+    ) -> some View {
+        id("paused-\(project.path)")
+            .transition(.asymmetric(
+                insertion: .opacity
+                    .combined(with: .scale(scale: 0.97))
+                    .animation(.spring(response: glassConfig.cardInsertSpringResponse * 0.8, dampingFraction: glassConfig.cardInsertSpringDamping).delay(Double(index) * glassConfig.pausedCardStagger)),
+                removal: .opacity
+                    .combined(with: .scale(scale: 0.95))
+                    .animation(.easeOut(duration: glassConfig.cardRemovalDuration * 0.8))
+            ))
     }
 }
 
@@ -270,18 +399,15 @@ struct SectionHeader: View {
 
 struct PausedSectionHeader: View {
     let count: Int
-    @Binding var isCollapsed: Bool
+    let isCollapsed: Bool
+    let onToggle: () -> Void
     @State private var isHovered = false
     @Environment(\.prefersReducedMotion) private var reduceMotion
 
     var body: some View {
-        Button(action: {
-            withAnimation(reduceMotion ? AppMotion.reducedMotionFallback : .spring(response: 0.3, dampingFraction: 0.8)) {
-                isCollapsed.toggle()
-            }
-        }) {
+        Button(action: onToggle) {
             HStack(spacing: 6) {
-                Text("PAUSED")
+                Text("HIDDEN")
                     .font(AppTypography.label.weight(.medium))
                     .tracking(0.8)
                     .foregroundColor(.white.opacity(0.45))
@@ -303,7 +429,7 @@ struct PausedSectionHeader: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .accessibilityLabel("Paused projects section, \(count) \(count == 1 ? "project" : "projects")")
+        .accessibilityLabel("Hidden projects section, \(count) \(count == 1 ? "project" : "projects")")
         .accessibilityValue(isCollapsed ? "Collapsed" : "Expanded")
         .accessibilityHint(isCollapsed ? "Double-tap to expand" : "Double-tap to collapse")
         .onHover { hovering in

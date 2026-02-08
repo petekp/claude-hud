@@ -218,9 +218,13 @@ struct CompactingTrackingParameters {
 struct ProjectContextMenu: View {
     let project: Project
     let onTap: () -> Void
-    let onInfoTap: () -> Void
+    #if !ALPHA
+        let onInfoTap: () -> Void
+    #endif
     let onMoveToDormant: () -> Void
-    var onCaptureIdea: (() -> Void)?
+    #if !ALPHA
+        var onCaptureIdea: (() -> Void)?
+    #endif
     let onRemove: () -> Void
 
     var body: some View {
@@ -233,12 +237,14 @@ struct ProjectContextMenu: View {
 
     @ViewBuilder
     private var missingProjectMenu: some View {
-        Button(action: onInfoTap) {
-            Label("View Details", systemImage: "info.circle")
-        }
-        Divider()
+        #if !ALPHA
+            Button(action: onInfoTap) {
+                Label("View Details", systemImage: "info.circle")
+            }
+            Divider()
+        #endif
         Button(role: .destructive, action: onRemove) {
-            Label("Remove from HUD", systemImage: "trash")
+            Label("Disconnect", systemImage: "trash")
         }
     }
 
@@ -247,20 +253,22 @@ struct ProjectContextMenu: View {
         Button(action: onTap) {
             Label("Open in Terminal", systemImage: "terminal")
         }
-        Button(action: onInfoTap) {
-            Label("View Details", systemImage: "info.circle")
-        }
-        if let onCaptureIdea {
-            Button(action: onCaptureIdea) {
-                Label("Capture Idea...", systemImage: "lightbulb")
+        #if !ALPHA
+            Button(action: onInfoTap) {
+                Label("View Details", systemImage: "info.circle")
             }
-        }
+            if let onCaptureIdea {
+                Button(action: onCaptureIdea) {
+                    Label("Capture Idea...", systemImage: "lightbulb")
+                }
+            }
+        #endif
         Divider()
         Button(action: onMoveToDormant) {
-            Label("Move to Paused", systemImage: "moon.zzz")
+            Label("Hide", systemImage: "eye.slash")
         }
         Button(role: .destructive, action: onRemove) {
-            Label("Remove from HUD", systemImage: "trash")
+            Label("Disconnect", systemImage: "trash")
         }
     }
 }
@@ -321,46 +329,49 @@ struct ProjectCardBackground: View {
     }
 }
 
-// MARK: - Clickable Project Title
+#if !ALPHA
 
-struct ClickableProjectTitle: View {
-    let name: String
-    let nameColor: Color
-    var isMissing: Bool = false
-    let action: () -> Void
+    // MARK: - Clickable Project Title
 
-    var font: Font = AppTypography.cardTitle.monospaced()
+    struct ClickableProjectTitle: View {
+        let name: String
+        let nameColor: Color
+        var isMissing: Bool = false
+        let action: () -> Void
 
-    @State private var isHovered = false
-    @Environment(\.prefersReducedMotion) private var reduceMotion
+        var font: Font = AppTypography.cardTitle.monospaced()
 
-    var body: some View {
-        Button(action: action) {
-            HStack(spacing: 4) {
-                Text(name)
-                    .font(font)
-                    .foregroundStyle(isHovered ? nameColor.opacity(1.0) : nameColor)
-                    .strikethrough(isMissing, color: .white.opacity(0.3))
+        @State private var isHovered = false
+        @Environment(\.prefersReducedMotion) private var reduceMotion
 
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 10, weight: .semibold))
-                    .foregroundStyle(.white.opacity(isHovered ? 0.6 : 0.35))
-                    .opacity(isHovered ? 1 : 0)
-                    .offset(x: isHovered ? 0 : -4)
+        var body: some View {
+            Button(action: action) {
+                HStack(spacing: 4) {
+                    Text(name)
+                        .font(font)
+                        .foregroundStyle(isHovered ? nameColor.opacity(1.0) : nameColor)
+                        .strikethrough(isMissing, color: .white.opacity(0.3))
+
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(.white.opacity(isHovered ? 0.6 : 0.35))
+                        .opacity(isHovered ? 1 : 0)
+                        .offset(x: isHovered ? 0 : -4)
+                }
+                .contentShape(.rect)
             }
-            .contentShape(.rect)
-        }
-        .buttonStyle(.plain)
-        .onHover { hovering in
-            withAnimation(reduceMotion ? AppMotion.reducedMotionFallback : .spring(response: 0.25, dampingFraction: 0.8)) {
-                isHovered = hovering
+            .buttonStyle(.plain)
+            .onHover { hovering in
+                withAnimation(reduceMotion ? AppMotion.reducedMotionFallback : .spring(response: 0.25, dampingFraction: 0.8)) {
+                    isHovered = hovering
+                }
             }
+            .help("View project details")
+            .accessibilityLabel("View \(name) details")
+            .accessibilityHint("Shows description, ideas, and other project information")
         }
-        .help("View project details")
-        .accessibilityLabel("View \(name) details")
-        .accessibilityHint("Shows description, ideas, and other project information")
     }
-}
+#endif // !ALPHA
 
 // MARK: - Shared Badges
 

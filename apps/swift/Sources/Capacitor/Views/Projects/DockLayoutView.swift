@@ -96,42 +96,79 @@ struct DockLayoutView: View {
         let isStale = isProjectStale(project)
         let isActive = appState.activeProjectPath == project.path
 
-        DockProjectCard(
-            project: project,
-            sessionState: sessionState,
-            projectStatus: projectStatus,
-            flashState: flashState,
-            isStale: isStale,
-            isActive: isActive,
-            onTap: {
-                appState.launchTerminal(for: project)
-            },
-            onInfoTap: { appState.showProjectDetail(project) },
-            onMoveToDormant: { appState.moveToDormant(project) },
-            onCaptureIdea: { frame in appState.showIdeaCaptureModal(for: project, from: frame) },
-            onRemove: { appState.removeProject(project.path) },
-            onDragStarted: {
-                draggedProject = project
-                return NSItemProvider(object: project.path as NSString)
-            },
-            isDragging: draggedProject?.path == project.path
-        )
-        .preventWindowDrag()
-        .zIndex(draggedProject?.path == project.path ? 999 : 0)
-        .onDrop(
-            of: [.text],
-            delegate: DockDropDelegate(
+        #if ALPHA
+            DockProjectCard(
                 project: project,
-                activeProjects: activeProjects,
-                draggedProject: $draggedProject,
-                appState: appState
+                sessionState: sessionState,
+                projectStatus: projectStatus,
+                flashState: flashState,
+                isStale: isStale,
+                isActive: isActive,
+                onTap: {
+                    appState.launchTerminal(for: project)
+                },
+                onMoveToDormant: { appState.moveToDormant(project) },
+                onRemove: { appState.removeProject(project.path) },
+                onDragStarted: {
+                    draggedProject = project
+                    return NSItemProvider(object: project.path as NSString)
+                },
+                isDragging: draggedProject?.path == project.path
             )
-        )
-        .scrollTransition { content, phase in
-            content
-                .opacity(phase.isIdentity ? 1 : 0.8)
-                .scaleEffect(phase.isIdentity ? 1 : 0.95)
-        }
+            .preventWindowDrag()
+            .zIndex(draggedProject?.path == project.path ? 999 : 0)
+            .onDrop(
+                of: [.text],
+                delegate: DockDropDelegate(
+                    project: project,
+                    activeProjects: activeProjects,
+                    draggedProject: $draggedProject,
+                    appState: appState
+                )
+            )
+            .scrollTransition { content, phase in
+                content
+                    .opacity(phase.isIdentity ? 1 : 0.8)
+                    .scaleEffect(phase.isIdentity ? 1 : 0.95)
+            }
+        #else
+            DockProjectCard(
+                project: project,
+                sessionState: sessionState,
+                projectStatus: projectStatus,
+                flashState: flashState,
+                isStale: isStale,
+                isActive: isActive,
+                onTap: {
+                    appState.launchTerminal(for: project)
+                },
+                onInfoTap: { appState.showProjectDetail(project) },
+                onMoveToDormant: { appState.moveToDormant(project) },
+                onCaptureIdea: { frame in appState.showIdeaCaptureModal(for: project, from: frame) },
+                onRemove: { appState.removeProject(project.path) },
+                onDragStarted: {
+                    draggedProject = project
+                    return NSItemProvider(object: project.path as NSString)
+                },
+                isDragging: draggedProject?.path == project.path
+            )
+            .preventWindowDrag()
+            .zIndex(draggedProject?.path == project.path ? 999 : 0)
+            .onDrop(
+                of: [.text],
+                delegate: DockDropDelegate(
+                    project: project,
+                    activeProjects: activeProjects,
+                    draggedProject: $draggedProject,
+                    appState: appState
+                )
+            )
+            .scrollTransition { content, phase in
+                content
+                    .opacity(phase.isIdentity ? 1 : 0.8)
+                    .scaleEffect(phase.isIdentity ? 1 : 0.95)
+            }
+        #endif
     }
 
     private func calculateCardsPerPage(width: CGFloat, cardSpacing: CGFloat, horizontalPadding: CGFloat) -> Int {

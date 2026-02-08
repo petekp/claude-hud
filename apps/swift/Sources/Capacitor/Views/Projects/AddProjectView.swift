@@ -260,9 +260,9 @@ struct AddProjectView: View {
 
             case "already_tracked":
                 VStack(spacing: 8) {
-                    // If paused, offer to move to In Progress; otherwise go to project
+                    // If hidden, offer to unhide; otherwise go to project
                     if appState.manuallyDormant.contains(result.path) {
-                        Button("Move to In Progress") {
+                        Button("Unhide") {
                             moveToInProgressAndReturn(path: result.path)
                         }
                         .buttonStyle(ValidationPrimaryButtonStyle())
@@ -349,11 +349,15 @@ struct AddProjectView: View {
     }
 
     private func goToExistingProject(path: String) {
-        if let project = appState.projects.first(where: { $0.path == path }) {
-            appState.showProjectDetail(project)
-        } else {
+        #if ALPHA
             appState.showProjectList()
-        }
+        #else
+            if let project = appState.projects.first(where: { $0.path == path }) {
+                appState.showProjectDetail(project)
+            } else {
+                appState.showProjectList()
+            }
+        #endif
     }
 
     private func moveToInProgressAndReturn(path: String) {

@@ -8,6 +8,7 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 # Parse flags
 FORCE_REBUILD=false
 SWIFT_ONLY=false
+ALPHA_BUILD=false
 for arg in "$@"; do
     case $arg in
         --force|-f)
@@ -16,12 +17,16 @@ for arg in "$@"; do
         --swift-only|-s)
             SWIFT_ONLY=true
             ;;
+        --alpha)
+            ALPHA_BUILD=true
+            ;;
         --help|-h)
             echo "Usage: restart-app.sh [OPTIONS]"
             echo ""
             echo "Options:"
             echo "  -f, --force       Force full rebuild (touch source to invalidate cache)"
             echo "  -s, --swift-only  Skip Rust build, only rebuild Swift"
+            echo "      --alpha       Build with ALPHA feature gating"
             echo "  -h, --help        Show this help message"
             exit 0
             ;;
@@ -101,8 +106,15 @@ fi
 
 cd "$PROJECT_ROOT/apps/swift"
 
+# Build extra Swift flags
+SWIFT_FLAGS=""
+if [ "$ALPHA_BUILD" = true ]; then
+    SWIFT_FLAGS="-Xswiftc -DALPHA"
+    echo "Alpha build: feature gating enabled"
+fi
+
 # Get the actual build directory (portable across toolchain/layout changes)
-SWIFT_DEBUG_DIR=$(swift build --show-bin-path)
+SWIFT_DEBUG_DIR=$(swift build --show-bin-path $SWIFT_FLAGS)
 mkdir -p "$SWIFT_DEBUG_DIR"
 
 # Copy dylib (skip if --swift-only, assume it's already there)
@@ -127,7 +139,7 @@ elif [ -f "$HOME/.local/bin/capacitor-daemon" ]; then
     cp "$HOME/.local/bin/capacitor-daemon" "$SWIFT_DEBUG_DIR/" 2>/dev/null || true
 fi
 
-swift build || { echo "Swift build failed"; exit 1; }
+swift build $SWIFT_FLAGS || { echo "Swift build failed"; exit 1; }
 
 # Debug runtime sanity checks to avoid dyld "Library not loaded" crashes.
 DEBUG_BIN="$SWIFT_DEBUG_DIR/Capacitor"

@@ -55,8 +55,22 @@ echo -e "${GREEN}Version: $VERSION (build $BUILD_NUMBER)${NC}"
 
 # Parse arguments
 SKIP_NOTARIZATION=false
-if [ "$1" = "--skip-notarization" ]; then
-    SKIP_NOTARIZATION=true
+ALPHA_BUILD=false
+for arg in "$@"; do
+    case $arg in
+        --skip-notarization)
+            SKIP_NOTARIZATION=true
+            ;;
+        --alpha)
+            ALPHA_BUILD=true
+            ;;
+    esac
+done
+
+SWIFT_FLAGS=""
+if [ "$ALPHA_BUILD" = true ]; then
+    SWIFT_FLAGS="-Xswiftc -DALPHA"
+    echo -e "${YELLOW}Alpha build: feature gating enabled${NC}"
 fi
 
 echo -e "${GREEN}========================================${NC}"
@@ -117,10 +131,10 @@ echo ""
 echo -e "${YELLOW}Step 4/8: Building Swift app...${NC}"
 cd "$SWIFT_DIR"
 rm -rf .build Capacitor.app 2>/dev/null || true
-swift build -c release
+swift build -c release $SWIFT_FLAGS
 
 # Get the actual build directory (portable across toolchain/layout changes)
-SWIFT_BUILD_DIR=$(swift build --show-bin-path -c release)
+SWIFT_BUILD_DIR=$(swift build --show-bin-path -c release $SWIFT_FLAGS)
 echo -e "${GREEN}✓ Swift app built (at $SWIFT_BUILD_DIR)${NC}"
 echo ""
 

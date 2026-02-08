@@ -16,19 +16,29 @@ struct NavigationContainer: View {
     // Position multipliers instead of absolute pixel offsets
     // This ensures offsets scale correctly when window is resized
     @State private var listPosition: SlidePosition = .center
-    @State private var detailPosition: SlidePosition = .right
+    #if !ALPHA
+        @State private var detailPosition: SlidePosition = .right
+    #endif
     @State private var addLinkPosition: SlidePosition = .right
-    @State private var newIdeaPosition: SlidePosition = .right
+    #if !ALPHA
+        @State private var newIdeaPosition: SlidePosition = .right
 
-    @State private var currentDetail: Project?
-    @State private var showDetail = false
+        @State private var currentDetail: Project?
+        @State private var showDetail = false
+    #endif
     @State private var showAddLink = false
-    @State private var showNewIdea = false
+    #if !ALPHA
+        @State private var showNewIdea = false
+    #endif
 
     @State private var listOpacity: Double = 1
-    @State private var detailOpacity: Double = 0
+    #if !ALPHA
+        @State private var detailOpacity: Double = 0
+    #endif
     @State private var addLinkOpacity: Double = 0
-    @State private var newIdeaOpacity: Double = 0
+    #if !ALPHA
+        @State private var newIdeaOpacity: Double = 0
+    #endif
 
     private let animationDuration: Double = 0.35
     private let springResponse: Double = 0.35
@@ -43,20 +53,24 @@ struct NavigationContainer: View {
         return false
     }
 
-    private var isDetailActive: Bool {
-        if case .detail = appState.projectView { return true }
-        return false
-    }
+    #if !ALPHA
+        private var isDetailActive: Bool {
+            if case .detail = appState.projectView { return true }
+            return false
+        }
+    #endif
 
     private var isAddLinkActive: Bool {
         if case .addLink = appState.projectView { return true }
         return false
     }
 
-    private var isNewIdeaActive: Bool {
-        if case .newIdea = appState.projectView { return true }
-        return false
-    }
+    #if !ALPHA
+        private var isNewIdeaActive: Bool {
+            if case .newIdea = appState.projectView { return true }
+            return false
+        }
+    #endif
 
     var body: some View {
         GeometryReader { geometry in
@@ -70,14 +84,16 @@ struct NavigationContainer: View {
                     .zIndex(isListActive ? 1 : 0)
                     .allowsHitTesting(isListActive)
 
-                if showDetail, let project = currentDetail {
-                    ProjectDetailView(project: project)
-                        .frame(width: width)
-                        .offset(x: reduceMotion ? 0 : detailPosition.rawValue * width)
-                        .opacity(reduceMotion ? detailOpacity : 1)
-                        .zIndex(isDetailActive ? 1 : 0)
-                        .allowsHitTesting(isDetailActive)
-                }
+                #if !ALPHA
+                    if showDetail, let project = currentDetail {
+                        ProjectDetailView(project: project)
+                            .frame(width: width)
+                            .offset(x: reduceMotion ? 0 : detailPosition.rawValue * width)
+                            .opacity(reduceMotion ? detailOpacity : 1)
+                            .zIndex(isDetailActive ? 1 : 0)
+                            .allowsHitTesting(isDetailActive)
+                    }
+                #endif
 
                 if showAddLink {
                     AddProjectView()
@@ -88,14 +104,16 @@ struct NavigationContainer: View {
                         .allowsHitTesting(isAddLinkActive)
                 }
 
-                if showNewIdea {
-                    NewIdeaView()
-                        .frame(width: width)
-                        .offset(x: reduceMotion ? 0 : newIdeaPosition.rawValue * width)
-                        .opacity(reduceMotion ? newIdeaOpacity : 1)
-                        .zIndex(isNewIdeaActive ? 1 : 0)
-                        .allowsHitTesting(isNewIdeaActive)
-                }
+                #if !ALPHA
+                    if showNewIdea {
+                        NewIdeaView()
+                            .frame(width: width)
+                            .offset(x: reduceMotion ? 0 : newIdeaPosition.rawValue * width)
+                            .opacity(reduceMotion ? newIdeaOpacity : 1)
+                            .zIndex(isNewIdeaActive ? 1 : 0)
+                            .allowsHitTesting(isNewIdeaActive)
+                    }
+                #endif
             }
             .clipped()
             .focusable()
@@ -113,129 +131,171 @@ struct NavigationContainer: View {
         }
     }
 
-    private func handleNavigation(from _: ProjectView, to newValue: ProjectView) {
-        switch newValue {
-        case .list:
-            withAnimation(navigationAnimation) {
+    #if ALPHA
+        private func handleNavigation(from _: ProjectView, to newValue: ProjectView) {
+            switch newValue {
+            case .list:
+                withAnimation(navigationAnimation) {
+                    if reduceMotion {
+                        listOpacity = 1
+                        addLinkOpacity = 0
+                    } else {
+                        listPosition = .center
+                        addLinkPosition = .right
+                    }
+                }
+                DispatchQueue.main.asyncAfter(deadline: .now() + animationDuration + 0.1) {
+                    if case .list = appState.projectView {
+                        showAddLink = false
+                    }
+                }
+
+            case .addLink:
+                showAddLink = true
                 if reduceMotion {
-                    listOpacity = 1
-                    detailOpacity = 0
                     addLinkOpacity = 0
-                    newIdeaOpacity = 0
                 } else {
-                    listPosition = .center
-                    detailPosition = .right
                     addLinkPosition = .right
-                    newIdeaPosition = .right
                 }
-            }
-            DispatchQueue.main.asyncAfter(deadline: .now() + animationDuration + 0.1) {
-                if case .list = appState.projectView {
-                    showDetail = false
-                    showAddLink = false
-                    showNewIdea = false
-                    currentDetail = nil
-                }
-            }
 
-        case let .detail(project):
-            currentDetail = project
-            showDetail = true
-            if reduceMotion {
-                detailOpacity = 0
-            } else {
-                detailPosition = .right
-            }
-
-            DispatchQueue.main.async {
-                withAnimation(navigationAnimation) {
-                    if reduceMotion {
-                        listOpacity = 0
-                        detailOpacity = 1
-                        addLinkOpacity = 0
-                        newIdeaOpacity = 0
-                    } else {
-                        listPosition = .left
-                        detailPosition = .center
-                        addLinkPosition = .right
-                        newIdeaPosition = .right
+                DispatchQueue.main.async {
+                    withAnimation(navigationAnimation) {
+                        if reduceMotion {
+                            listOpacity = 0
+                            addLinkOpacity = 1
+                        } else {
+                            listPosition = .left
+                            addLinkPosition = .center
+                        }
                     }
-                }
-            }
-
-            // Clean up other views after animation
-            DispatchQueue.main.asyncAfter(deadline: .now() + animationDuration + 0.1) {
-                if case .detail = appState.projectView {
-                    showAddLink = false
-                    showNewIdea = false
-                }
-            }
-
-        case .addLink:
-            showAddLink = true
-            if reduceMotion {
-                addLinkOpacity = 0
-            } else {
-                addLinkPosition = .right
-            }
-
-            DispatchQueue.main.async {
-                withAnimation(navigationAnimation) {
-                    if reduceMotion {
-                        listOpacity = 0
-                        detailOpacity = 0
-                        addLinkOpacity = 1
-                        newIdeaOpacity = 0
-                    } else {
-                        listPosition = .left
-                        detailPosition = .right
-                        addLinkPosition = .center
-                        newIdeaPosition = .right
-                    }
-                }
-            }
-
-            // Clean up other views after animation
-            DispatchQueue.main.asyncAfter(deadline: .now() + animationDuration + 0.1) {
-                if case .addLink = appState.projectView {
-                    showDetail = false
-                    showNewIdea = false
-                    currentDetail = nil
-                }
-            }
-
-        case .newIdea:
-            showNewIdea = true
-            if reduceMotion {
-                newIdeaOpacity = 0
-            } else {
-                newIdeaPosition = .right
-            }
-
-            DispatchQueue.main.async {
-                withAnimation(navigationAnimation) {
-                    if reduceMotion {
-                        listOpacity = 0
-                        detailOpacity = 0
-                        addLinkOpacity = 0
-                        newIdeaOpacity = 1
-                    } else {
-                        listPosition = .left
-                        detailPosition = .right
-                        addLinkPosition = .right
-                        newIdeaPosition = .center
-                    }
-                }
-            }
-
-            // Clean up other views after animation
-            DispatchQueue.main.asyncAfter(deadline: .now() + animationDuration + 0.1) {
-                if case .newIdea = appState.projectView {
-                    showDetail = false
-                    showAddLink = false
-                    currentDetail = nil
                 }
             }
         }
-    }
+    #else
+        private func handleNavigation(from _: ProjectView, to newValue: ProjectView) {
+            switch newValue {
+            case .list:
+                withAnimation(navigationAnimation) {
+                    if reduceMotion {
+                        listOpacity = 1
+                        detailOpacity = 0
+                        addLinkOpacity = 0
+                        newIdeaOpacity = 0
+                    } else {
+                        listPosition = .center
+                        detailPosition = .right
+                        addLinkPosition = .right
+                        newIdeaPosition = .right
+                    }
+                }
+                DispatchQueue.main.asyncAfter(deadline: .now() + animationDuration + 0.1) {
+                    if case .list = appState.projectView {
+                        showDetail = false
+                        showAddLink = false
+                        showNewIdea = false
+                        currentDetail = nil
+                    }
+                }
+
+            case let .detail(project):
+                currentDetail = project
+                showDetail = true
+                if reduceMotion {
+                    detailOpacity = 0
+                } else {
+                    detailPosition = .right
+                }
+
+                DispatchQueue.main.async {
+                    withAnimation(navigationAnimation) {
+                        if reduceMotion {
+                            listOpacity = 0
+                            detailOpacity = 1
+                            addLinkOpacity = 0
+                            newIdeaOpacity = 0
+                        } else {
+                            listPosition = .left
+                            detailPosition = .center
+                            addLinkPosition = .right
+                            newIdeaPosition = .right
+                        }
+                    }
+                }
+
+                // Clean up other views after animation
+                DispatchQueue.main.asyncAfter(deadline: .now() + animationDuration + 0.1) {
+                    if case .detail = appState.projectView {
+                        showAddLink = false
+                        showNewIdea = false
+                    }
+                }
+
+            case .addLink:
+                showAddLink = true
+                if reduceMotion {
+                    addLinkOpacity = 0
+                } else {
+                    addLinkPosition = .right
+                }
+
+                DispatchQueue.main.async {
+                    withAnimation(navigationAnimation) {
+                        if reduceMotion {
+                            listOpacity = 0
+                            detailOpacity = 0
+                            addLinkOpacity = 1
+                            newIdeaOpacity = 0
+                        } else {
+                            listPosition = .left
+                            detailPosition = .right
+                            addLinkPosition = .center
+                            newIdeaPosition = .right
+                        }
+                    }
+                }
+
+                // Clean up other views after animation
+                DispatchQueue.main.asyncAfter(deadline: .now() + animationDuration + 0.1) {
+                    if case .addLink = appState.projectView {
+                        showDetail = false
+                        showNewIdea = false
+                        currentDetail = nil
+                    }
+                }
+
+            case .newIdea:
+                showNewIdea = true
+                if reduceMotion {
+                    newIdeaOpacity = 0
+                } else {
+                    newIdeaPosition = .right
+                }
+
+                DispatchQueue.main.async {
+                    withAnimation(navigationAnimation) {
+                        if reduceMotion {
+                            listOpacity = 0
+                            detailOpacity = 0
+                            addLinkOpacity = 0
+                            newIdeaOpacity = 1
+                        } else {
+                            listPosition = .left
+                            detailPosition = .right
+                            addLinkPosition = .right
+                            newIdeaPosition = .center
+                        }
+                    }
+                }
+
+                // Clean up other views after animation
+                DispatchQueue.main.asyncAfter(deadline: .now() + animationDuration + 0.1) {
+                    if case .newIdea = appState.projectView {
+                        showDetail = false
+                        showAddLink = false
+                        currentDetail = nil
+                    }
+                }
+            }
+        }
+    #endif
 }

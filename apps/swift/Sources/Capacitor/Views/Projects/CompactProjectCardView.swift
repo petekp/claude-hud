@@ -3,7 +3,9 @@ import SwiftUI
 struct CompactProjectCardView: View {
     let project: Project
     let onTap: () -> Void
-    let onInfoTap: () -> Void
+    #if !ALPHA
+        let onInfoTap: () -> Void
+    #endif
     let onMoveToRecent: () -> Void
     let onRemove: () -> Void
     var showSeparator: Bool = true
@@ -24,7 +26,7 @@ struct CompactProjectCardView: View {
                 Spacer()
 
                 Button(action: onMoveToRecent) {
-                    Text("Revive")
+                    Text("Unhide")
                         .font(AppTypography.labelMedium)
                         .foregroundColor(.white.opacity(isReviveHovered ? 0.9 : 0.7))
                         .padding(.horizontal, 8)
@@ -60,15 +62,17 @@ struct CompactProjectCardView: View {
             Button(action: onTap) {
                 Label("Open in Terminal", systemImage: "terminal")
             }
-            Button(action: onInfoTap) {
-                Label("View Details", systemImage: "info.circle")
-            }
+            #if !ALPHA
+                Button(action: onInfoTap) {
+                    Label("View Details", systemImage: "info.circle")
+                }
+            #endif
             Divider()
             Button(action: onMoveToRecent) {
-                Label("Move to In Progress", systemImage: "arrow.up.circle")
+                Label("Unhide", systemImage: "eye")
             }
             Button(role: .destructive, action: onRemove) {
-                Label("Remove from HUD", systemImage: "trash")
+                Label("Disconnect", systemImage: "trash")
             }
         }
     }

@@ -14,38 +14,51 @@ struct ContentView: View {
         @ObservedObject private var glassConfig = GlassConfig.shared
     #endif
 
-    private var isCaptureModalOpen: Bool {
-        appState.showCaptureModal && appState.captureModalProject != nil
-    }
+    #if !ALPHA
+        private var isCaptureModalOpen: Bool {
+            appState.showCaptureModal && appState.captureModalProject != nil
+        }
+    #endif
 
     var body: some View {
         GeometryReader { geometry in
             let containerSize = geometry.size
 
             ZStack {
-                Group {
-                    switch appState.layoutMode {
-                    case .vertical:
-                        verticalLayout
-                    case .dock:
-                        dockLayout
-                    }
-                }
-                .blur(radius: isCaptureModalOpen ? 8 : 0)
-                .saturation(isCaptureModalOpen ? 0.8 : 1)
-                .animation(.easeInOut(duration: 0.25), value: isCaptureModalOpen)
-
-                if let project = appState.captureModalProject {
-                    IdeaCaptureModalOverlay(
-                        isPresented: $appState.showCaptureModal,
-                        projectName: project.name,
-                        originFrame: appState.captureModalOrigin,
-                        containerSize: containerSize,
-                        onCapture: { text in
-                            appState.captureIdea(for: project, text: text)
+                #if ALPHA
+                    Group {
+                        switch appState.layoutMode {
+                        case .vertical:
+                            verticalLayout
+                        case .dock:
+                            dockLayout
                         }
-                    )
-                }
+                    }
+                #else
+                    Group {
+                        switch appState.layoutMode {
+                        case .vertical:
+                            verticalLayout
+                        case .dock:
+                            dockLayout
+                        }
+                    }
+                    .blur(radius: isCaptureModalOpen ? 8 : 0)
+                    .saturation(isCaptureModalOpen ? 0.8 : 1)
+                    .animation(.easeInOut(duration: 0.25), value: isCaptureModalOpen)
+
+                    if let project = appState.captureModalProject {
+                        IdeaCaptureModalOverlay(
+                            isPresented: $appState.showCaptureModal,
+                            projectName: project.name,
+                            originFrame: appState.captureModalOrigin,
+                            containerSize: containerSize,
+                            onCapture: { text in
+                                appState.captureIdea(for: project, text: text)
+                            }
+                        )
+                    }
+                #endif
 
                 ToastContainer(toast: $appState.toast)
 
