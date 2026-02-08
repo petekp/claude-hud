@@ -19,6 +19,7 @@ struct ProjectCardView: View {
 
     @Environment(\.floatingMode) private var floatingMode
     @Environment(\.prefersReducedMotion) private var reduceMotion
+    @AppStorage("playReadyChime") private var playReadyChime = true
     @ObservedObject private var glassConfig = GlassConfig.shared
 
     @State private var isHovered = false
@@ -128,6 +129,7 @@ struct ProjectCardView: View {
                 lastChimeTime: $lastChimeTime,
                 flashOpacity: $flashOpacity,
                 chimeCooldown: chimeCooldown,
+                playReadyChime: playReadyChime,
                 glassConfig: glassConfigForHandlers,
             )
             .contextMenu { cardContextMenu }
@@ -168,6 +170,7 @@ struct ProjectCardView: View {
                 ProjectCardContent(
                     sessionState: sessionState,
                     blocker: projectStatus?.blocker,
+                    isStale: isStale,
                 )
             }
 
@@ -284,10 +287,11 @@ private struct ProjectCardHeader: View {
 private struct ProjectCardContent: View {
     let sessionState: ProjectSessionState?
     let blocker: String?
+    let isStale: Bool
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            StatusChipsRow(sessionState: sessionState)
+            StatusChipsRow(sessionState: sessionState, isStale: isStale)
 
             if let blocker, !blocker.isEmpty {
                 HStack(spacing: 4) {

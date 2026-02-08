@@ -28,14 +28,8 @@ struct ProjectsView: View {
     }
 
     private func isStale(_ project: Project) -> Bool {
-        guard let state = appState.getSessionState(for: project),
-              state.state == .ready,
-              let stateChangedAt = state.stateChangedAt,
-              let date = parseISO8601Date(stateChangedAt)
-        else {
-            return false
-        }
-        return Date().timeIntervalSince(date) > 86400
+        let state = appState.getSessionState(for: project)
+        return SessionStaleness.isReadyStale(state: state?.state, stateChangedAt: state?.stateChangedAt)
     }
 
     var body: some View {
@@ -96,7 +90,7 @@ struct ProjectsView: View {
                     } else if appState.projects.isEmpty {
                         EmptyProjectsView()
                     } else {
-                        if appState.isIdeaCaptureEnabled {
+                        if appState.isProjectCreationEnabled {
                             ActivityPanel()
                         }
 
@@ -442,6 +436,12 @@ struct EmptyProjectsView: View {
             .opacity(appeared || reduceMotion ? 1 : 0)
             .offset(y: appeared || reduceMotion ? 0 : 10)
 
+            if !appState.suggestedProjects.isEmpty {
+                suggestedProjectsSection
+                    .opacity(appeared || reduceMotion ? 1 : 0)
+                    .offset(y: appeared || reduceMotion ? 0 : 12)
+            }
+
             Button(action: { appState.showAddProject() }) {
                 HStack(spacing: 6) {
                     Image(systemName: "link")
@@ -498,6 +498,9 @@ struct EmptyProjectsView: View {
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Drop zone for project folders")
         .onAppear {
+            if appState.suggestedProjects.isEmpty {
+                appState.refreshSuggestedProjects()
+            }
             if !reduceMotion {
                 withAnimation(.spring(response: 0.6, dampingFraction: 0.8).delay(0.1)) {
                     appeared = true
@@ -506,6 +509,107 @@ struct EmptyProjectsView: View {
                 appeared = true
             }
         }
+    }
+
+    private var suggestedProjectsSection: some View {
+        let suggestions = Array(appState.suggestedProjects.prefix(3))
+        return VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text("Suggested from Claude history")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(.white.opacity(0.7))
+
+                Spacer()
+
+                Button("Dismiss") {
+                    withAnimation(.easeOut(duration: 0.2)) {
+                        appState.dismissSuggestedProjects()
+                    }
+                }
+                .font(.system(size: 11, weight: .medium))
+                .foregroundColor(.white.opacity(0.4))
+                .buttonStyle(.plain)
+            }
+
+            VStack(spacing: 8) {
+                ForEach(suggestions, id: \.path) { suggestion in
+                    suggestedProjectRow(suggestion)
+                }
+            }
+
+            if appState.suggestedProjects.count > suggestions.count {
+                Text("+\(appState.suggestedProjects.count - suggestions.count) more in ~/.claude/projects")
+                    .font(.system(size: 11))
+                    .foregroundColor(.white.opacity(0.35))
+            }
+        }
+        .padding(12)
+        .background(
+            RoundedRectangle(cornerRadius: 12)
+                .fill(Color.white.opacity(0.04)),
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 12)
+                .strokeBorder(Color.white.opacity(0.08), lineWidth: 0.5),
+        )
+    }
+
+    private func suggestedProjectRow(_ suggestion: SuggestedProject) -> some View {
+        HStack(spacing: 10) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(suggestion.name)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(.white.opacity(0.85))
+
+                Text(suggestion.displayPath)
+                    .font(.system(size: 10, design: .monospaced))
+                    .foregroundColor(.white.opacity(0.4))
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+
+                HStack(spacing: 6) {
+                    badge(text: "\(suggestion.taskCount) sessions")
+                    badge(text: suggestion.hasClaudeMd ? "CLAUDE.md" : "No CLAUDE.md")
+                }
+            }
+
+            Spacer()
+
+            Button("Add") {
+                appState.addSuggestedProject(suggestion)
+            }
+            .font(.system(size: 11, weight: .semibold))
+            .foregroundColor(.white.opacity(0.9))
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(
+                RoundedRectangle(cornerRadius: 6)
+                    .fill(Color.hudAccent.opacity(0.7)),
+            )
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .background(
+            RoundedRectangle(cornerRadius: 10)
+                .fill(Color.white.opacity(0.02)),
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 10)
+                .strokeBorder(Color.white.opacity(0.06), lineWidth: 0.5),
+        )
+    }
+
+    private func badge(text: String) -> some View {
+        Text(text)
+            .font(.system(size: 9, weight: .semibold))
+            .foregroundColor(.white.opacity(0.6))
+            .padding(.horizontal, 6)
+            .padding(.vertical, 3)
+            .background(
+                RoundedRectangle(cornerRadius: 6)
+                    .fill(Color.white.opacity(0.06)),
+            )
     }
 }
 

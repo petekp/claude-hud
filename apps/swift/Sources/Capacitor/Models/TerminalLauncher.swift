@@ -59,6 +59,14 @@ private struct DefaultAppleScriptClient: AppleScriptClient {
 // MARK: - ParentApp Terminal Extensions
 
 extension ParentApp {
+    static let alphaSupportedTerminals: [ParentApp] = [
+        .ghostty, .iTerm, .terminal,
+    ]
+
+    var isAlphaSupportedTerminal: Bool {
+        Self.alphaSupportedTerminals.contains(self)
+    }
+
     var bundlePath: String? {
         switch self {
         case .ghostty: "/Applications/Ghostty.app"
@@ -71,15 +79,15 @@ extension ParentApp {
     }
 
     var isInstalled: Bool {
-        guard category == .terminal else { return false }
+        guard category == .terminal, isAlphaSupportedTerminal else { return false }
         guard let path = bundlePath else {
-            return self == .kitty || self == .terminal
+            return self == .terminal
         }
         return FileManager.default.fileExists(atPath: path)
     }
 
     static let terminalPriorityOrder: [ParentApp] = [
-        .ghostty, .iTerm, .alacritty, .kitty, .warp, .terminal,
+        .ghostty, .iTerm, .terminal,
     ]
 
     var runningAppMatchNames: [String] {
@@ -157,6 +165,13 @@ private func bashDoubleQuoteEscape(_ s: String) -> String {
 
 // MARK: - Terminal Launcher
 
+struct TerminalActivationResult: Equatable {
+    let projectName: String
+    let projectPath: String
+    let success: Bool
+    let usedFallback: Bool
+}
+
 //
 // Handles "click project → focus terminal" activation. The goal is to bring the user
 // to their existing terminal window for a project, not spawn new windows unnecessarily.
@@ -192,6 +207,7 @@ final class TerminalLauncher: ActivationActionDependencies {
 
     private let appleScript: AppleScriptClient
     var onActivationTrace: ((String) -> Void)?
+    var onActivationResult: ((TerminalActivationResult) -> Void)?
     private lazy var executor: ActivationActionExecutor = {
         let tmuxAdapter = TmuxClientAdapter(
             hasAnyClientAttached: { [weak self] in
@@ -392,15 +408,25 @@ final class TerminalLauncher: ActivationActionDependencies {
             "path": project.path,
         ])
 
+        var fallbackSuccess = false
         if !primarySuccess, let fallback = decision.fallback {
             logger.info("  ▸ Primary failed, executing fallback: \(String(describing: fallback))")
-            let fallbackSuccess = await executeActivationAction(fallback, projectPath: project.path, projectName: project.name)
+            fallbackSuccess = await executeActivationAction(fallback, projectPath: project.path, projectName: project.name)
             logger.info("  Fallback result: \(fallbackSuccess ? "SUCCESS" : "FAILED")")
             Telemetry.emit("activation_fallback_result", fallbackSuccess ? "success" : "failed", payload: [
                 "project": project.name,
                 "path": project.path,
             ])
         }
+        let finalSuccess = primarySuccess || fallbackSuccess
+        let usedFallback = !primarySuccess && decision.fallback != nil
+        let result = TerminalActivationResult(
+            projectName: project.name,
+            projectPath: project.path,
+            success: finalSuccess,
+            usedFallback: usedFallback,
+        )
+        onActivationResult?(result)
         logger.info("━━━ ACTIVATION END ━━━")
     }
 
@@ -411,6 +437,9 @@ final class TerminalLauncher: ActivationActionDependencies {
 
         for (pid, entry) in state.shells {
             let parentApp = ParentApp(fromString: entry.parentApp)
+            let sanitizedParentApp = parentApp.isAlphaSupportedTerminal || parentApp.category == .multiplexer
+                ? parentApp
+                : .unknown
             let formatter = ISO8601DateFormatter()
             formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
 
@@ -420,7 +449,7 @@ final class TerminalLauncher: ActivationActionDependencies {
             ffiShells[pid] = ShellEntryFfi(
                 cwd: entry.cwd,
                 tty: entry.tty,
-                parentApp: parentApp,
+                parentApp: sanitizedParentApp,
                 tmuxSession: entry.tmuxSession,
                 tmuxClientTty: entry.tmuxClientTty,
                 updatedAt: formatter.string(from: entry.updatedAt),

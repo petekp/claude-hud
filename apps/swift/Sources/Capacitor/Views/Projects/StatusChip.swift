@@ -6,6 +6,7 @@ struct StatusChip: View {
     let state: SessionState?
     let stateChangedAt: String?
     var style: ChipStyle = .normal
+    var staleOverride: Bool? = nil
 
     @Environment(\.prefersReducedMotion) private var reduceMotion
 
@@ -19,13 +20,10 @@ struct StatusChip: View {
     }
 
     private var isStale: Bool {
-        guard let timestamp = stateChangedAt,
-              let date = parseISO8601Date(timestamp)
-        else {
-            return true
+        if let staleOverride {
+            return staleOverride
         }
-        let hoursSince = Date().timeIntervalSince(date) / 3600
-        return hoursSince > 24
+        return SessionStaleness.isReadyStale(state: state, stateChangedAt: stateChangedAt)
     }
 
     private var chipOpacity: Double {
@@ -57,6 +55,7 @@ struct StatusChip: View {
 /// A row of status chips for project cards.
 struct StatusChipsRow: View {
     let sessionState: ProjectSessionState?
+    let isStale: Bool
     var style: StatusChip.ChipStyle = .normal
 
     var body: some View {
@@ -65,7 +64,11 @@ struct StatusChipsRow: View {
                 state: sessionState?.state,
                 stateChangedAt: sessionState?.stateChangedAt,
                 style: style,
+                staleOverride: isStale,
             )
+            if isStale {
+                StaleBadge(style: style == .compact ? .compact : .normal)
+            }
         }
     }
 }

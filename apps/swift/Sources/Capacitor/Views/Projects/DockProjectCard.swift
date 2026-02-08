@@ -17,6 +17,7 @@ struct DockProjectCard: View {
 
     @Environment(\.floatingMode) private var floatingMode
     @Environment(\.prefersReducedMotion) private var reduceMotion
+    @AppStorage("playReadyChime") private var playReadyChime = true
     @ObservedObject private var glassConfig = GlassConfig.shared
 
     @State private var isHovered = false
@@ -128,6 +129,7 @@ struct DockProjectCard: View {
                 lastChimeTime: $lastChimeTime,
                 flashOpacity: $flashOpacity,
                 chimeCooldown: chimeCooldown,
+                playReadyChime: playReadyChime,
                 glassConfig: glassConfigForHandlers,
             )
             .contextMenu {
@@ -169,7 +171,7 @@ struct DockProjectCard: View {
                     Spacer(minLength: 0)
                 }
 
-                StatusChipsRow(sessionState: sessionState, style: .compact)
+                StatusChipsRow(sessionState: sessionState, isStale: isStale, style: .compact)
                     .padding(.top, 4)
 
                 Spacer(minLength: 0)

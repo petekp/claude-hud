@@ -2,7 +2,7 @@
 import XCTest
 
 final class AppConfigTests: XCTestCase {
-    func testAlphaChannelDefaultsDisableIdeaAndDetails() {
+    func testAlphaChannelDefaultsDisableOutOfScopeFeatures() {
         let config = AppConfig.resolve(
             environment: ["CAPACITOR_CHANNEL": "alpha"],
             info: [:],
@@ -13,6 +13,9 @@ final class AppConfigTests: XCTestCase {
         XCTAssertEqual(config.channel, .alpha)
         XCTAssertFalse(config.featureFlags.ideaCapture)
         XCTAssertFalse(config.featureFlags.projectDetails)
+        XCTAssertFalse(config.featureFlags.workstreams)
+        XCTAssertFalse(config.featureFlags.projectCreation)
+        XCTAssertFalse(config.featureFlags.llmFeatures)
     }
 
     func testEnvironmentOverridesInfoAndConfigChannel() {
@@ -32,7 +35,7 @@ final class AppConfigTests: XCTestCase {
             environment: [
                 "CAPACITOR_CHANNEL": "alpha",
                 "CAPACITOR_FEATURES_ENABLED": "ideaCapture",
-                "CAPACITOR_FEATURES_DISABLED": "projectDetails",
+                "CAPACITOR_FEATURES_DISABLED": "projectDetails,workstreams",
             ],
             info: [:],
             configFile: nil,
@@ -41,6 +44,7 @@ final class AppConfigTests: XCTestCase {
 
         XCTAssertTrue(config.featureFlags.ideaCapture)
         XCTAssertFalse(config.featureFlags.projectDetails)
+        XCTAssertFalse(config.featureFlags.workstreams)
     }
 
     func testConfigFileFeatureFlagsOverrideDefaults() {
@@ -51,6 +55,8 @@ final class AppConfigTests: XCTestCase {
             featureFlags: [
                 "ideaCapture": true,
                 "projectDetails": false,
+                "projectCreation": false,
+                "llmFeatures": true,
             ],
         )
 
@@ -63,5 +69,7 @@ final class AppConfigTests: XCTestCase {
 
         XCTAssertTrue(config.featureFlags.ideaCapture)
         XCTAssertFalse(config.featureFlags.projectDetails)
+        XCTAssertFalse(config.featureFlags.projectCreation)
+        XCTAssertTrue(config.featureFlags.llmFeatures)
     }
 }

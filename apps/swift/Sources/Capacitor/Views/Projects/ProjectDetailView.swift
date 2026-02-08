@@ -31,43 +31,49 @@ struct ProjectDetailView: View {
                         .opacity(appeared ? 1 : 0)
                         .offset(y: appeared ? 0 : 8)
 
-                    DescriptionSection(
-                        description: appState.getDescription(for: project),
-                        isGenerating: appState.isGeneratingDescription(for: project),
-                        onGenerate: { appState.generateDescription(for: project) },
-                    )
-                    .opacity(appeared ? 1 : 0)
-                    .offset(y: appeared ? 0 : 12)
-
-                    WorkstreamsPanel(
-                        project: project,
-                        manager: appState.workstreamsManager,
-                    )
-                    .opacity(appeared ? 1 : 0)
-                    .offset(y: appeared ? 0 : 14)
-
-                    VStack(alignment: .leading, spacing: 12) {
-                        DetailSectionLabel(title: "IDEA QUEUE")
-
-                        IdeaQueueView(
-                            ideas: appState.getIdeas(for: project),
-                            isGeneratingTitle: { appState.isGeneratingTitle(for: $0) },
-                            onTapIdea: { idea, frame in
-                                selectedIdea = idea
-                                selectedIdeaFrame = frame
-                            },
-                            onReorder: { reorderedIdeas in
-                                appState.reorderIdeas(reorderedIdeas, for: project)
-                            },
-                            onRemove: { idea in
-                                withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
-                                    appState.dismissIdea(idea, for: project)
-                                }
-                            },
+                    if appState.isLlmFeaturesEnabled {
+                        DescriptionSection(
+                            description: appState.getDescription(for: project),
+                            isGenerating: appState.isGeneratingDescription(for: project),
+                            onGenerate: { appState.generateDescription(for: project) },
                         )
+                        .opacity(appeared ? 1 : 0)
+                        .offset(y: appeared ? 0 : 12)
                     }
-                    .opacity(appeared ? 1 : 0)
-                    .offset(y: appeared ? 0 : 16)
+
+                    if appState.isWorkstreamsEnabled {
+                        WorkstreamsPanel(
+                            project: project,
+                            manager: appState.workstreamsManager,
+                        )
+                        .opacity(appeared ? 1 : 0)
+                        .offset(y: appeared ? 0 : 14)
+                    }
+
+                    if appState.isIdeaCaptureEnabled {
+                        VStack(alignment: .leading, spacing: 12) {
+                            DetailSectionLabel(title: "IDEA QUEUE")
+
+                            IdeaQueueView(
+                                ideas: appState.getIdeas(for: project),
+                                isGeneratingTitle: { appState.isGeneratingTitle(for: $0) },
+                                onTapIdea: { idea, frame in
+                                    selectedIdea = idea
+                                    selectedIdeaFrame = frame
+                                },
+                                onReorder: { reorderedIdeas in
+                                    appState.reorderIdeas(reorderedIdeas, for: project)
+                                },
+                                onRemove: { idea in
+                                    withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                                        appState.dismissIdea(idea, for: project)
+                                    }
+                                },
+                            )
+                        }
+                        .opacity(appeared ? 1 : 0)
+                        .offset(y: appeared ? 0 : 16)
+                    }
 
                     Button(action: {
                         appState.removeProject(project.path)
@@ -96,21 +102,23 @@ struct ProjectDetailView: View {
             .animation(.easeInOut(duration: 0.25), value: isModalOpen)
             .background(floatingMode ? Color.clear : Color.hudBackground)
 
-            IdeaDetailModalOverlay(
-                idea: selectedIdea,
-                anchorFrame: selectedIdeaFrame,
-                onDismiss: {
-                    selectedIdea = nil
-                    selectedIdeaFrame = nil
-                },
-                onRemove: { idea in
-                    withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
-                        appState.dismissIdea(idea, for: project)
-                    }
-                    selectedIdea = nil
-                    selectedIdeaFrame = nil
-                },
-            )
+            if appState.isIdeaCaptureEnabled {
+                IdeaDetailModalOverlay(
+                    idea: selectedIdea,
+                    anchorFrame: selectedIdeaFrame,
+                    onDismiss: {
+                        selectedIdea = nil
+                        selectedIdeaFrame = nil
+                    },
+                    onRemove: { idea in
+                        withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                            appState.dismissIdea(idea, for: project)
+                        }
+                        selectedIdea = nil
+                        selectedIdeaFrame = nil
+                    },
+                )
+            }
         }
         .onAppear {
             withAnimation(.spring(response: 0.5, dampingFraction: 0.8).delay(0.1)) {

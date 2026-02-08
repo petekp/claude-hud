@@ -8,11 +8,42 @@ actor ProjectIngestionWorker {
         var failedNames: [String]
     }
 
+    enum IngestionDecision {
+        case add(path: String)
+        case alreadyTracked(path: String)
+        case failed(name: String)
+    }
+
     private let engine: HudEngine
 
     init?() {
         guard let engine = try? HudEngine() else { return nil }
         self.engine = engine
+    }
+
+    static func decision(for path: String, result: ValidationResultFfi) -> IngestionDecision {
+        let name = URL(fileURLWithPath: path).lastPathComponent
+
+        switch result.resultType {
+        case "valid", "missing_claude_md":
+            return .add(path: path)
+        case "suggest_parent":
+            if let suggested = result.suggestedPath {
+                let suggestedName = URL(fileURLWithPath: suggested).lastPathComponent
+                return .failed(name: "\(name) (use \(suggestedName))")
+            }
+            return .failed(name: "\(name) (use project root)")
+        case "not_a_project":
+            return .failed(name: "\(name) (not a project)")
+        case "already_tracked":
+            return .alreadyTracked(path: result.path)
+        case "path_not_found":
+            return .failed(name: "\(name) (not found)")
+        case "dangerous_path":
+            return .failed(name: "\(name) (too broad)")
+        default:
+            return .failed(name: name)
+        }
     }
 
     func addProjects(paths: [String]) async -> AddProjectsOutcome {
@@ -32,8 +63,8 @@ actor ProjectIngestionWorker {
 
             let result = engine.validateProject(path: path)
 
-            switch result.resultType {
-            case "valid", "missing_claude_md", "suggest_parent", "not_a_project":
+            switch Self.decision(for: path, result: result) {
+            case let .add(path):
                 do {
                     try engine.addProject(path: path)
                     addedCount += 1
@@ -41,12 +72,10 @@ actor ProjectIngestionWorker {
                 } catch {
                     failedNames.append(URL(fileURLWithPath: path).lastPathComponent)
                 }
-            case "already_tracked":
-                alreadyTrackedPaths.append(result.path)
-            case "path_not_found", "dangerous_path":
-                failedNames.append(URL(fileURLWithPath: path).lastPathComponent)
-            default:
-                failedNames.append(URL(fileURLWithPath: path).lastPathComponent)
+            case let .alreadyTracked(path):
+                alreadyTrackedPaths.append(path)
+            case let .failed(name):
+                failedNames.append(name)
             }
 
             if index > 0, index % 5 == 0 {

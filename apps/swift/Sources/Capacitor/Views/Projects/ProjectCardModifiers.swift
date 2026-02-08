@@ -7,6 +7,24 @@ enum CardEffectAnimationPolicy {
     }
 }
 
+enum ReadyChimePolicy {
+    static func shouldPlay(
+        playReadyChime: Bool,
+        oldState: SessionState?,
+        newState: SessionState?,
+        lastChimeTime: Date?,
+        now: Date,
+        chimeCooldown: TimeInterval,
+    ) -> Bool {
+        guard playReadyChime else { return false }
+        guard newState == .ready, oldState != .ready, oldState != nil else { return false }
+        if let lastChimeTime {
+            return now.timeIntervalSince(lastChimeTime) >= chimeCooldown
+        }
+        return true
+    }
+}
+
 extension View {
     func cardStyling(
         isHovered: Bool,
@@ -173,6 +191,7 @@ extension View {
         lastChimeTime: Binding<Date?>,
         flashOpacity: Binding<Double>,
         chimeCooldown: TimeInterval,
+        playReadyChime: Bool,
         glassConfig: GlassConfig?,
     ) -> some View {
         animation(.easeOut(duration: GlassConfig.shared.stateTransitionDuration), value: currentState)
@@ -188,18 +207,22 @@ extension View {
             .onChange(of: sessionState?.state) { oldValue, newValue in
                 if let preview = glassConfig?.previewState, preview != .none { return }
 
-                if newValue == .ready, oldValue != .ready, oldValue != nil {
-                    let now = Date()
-                    let shouldPlayChime = lastChimeTime.wrappedValue.map { now.timeIntervalSince($0) >= chimeCooldown } ?? true
-                    if shouldPlayChime {
-                        lastChimeTime.wrappedValue = now
-                        ReadyChime.shared.play()
-                    }
+                let now = Date()
+                if ReadyChimePolicy.shouldPlay(
+                    playReadyChime: playReadyChime,
+                    oldState: oldValue,
+                    newState: newValue,
+                    lastChimeTime: lastChimeTime.wrappedValue,
+                    now: now,
+                    chimeCooldown: chimeCooldown
+                ) {
+                    lastChimeTime.wrappedValue = now
+                    ReadyChime.shared.play()
                 }
                 previousState.wrappedValue = newValue
             }
             .onChange(of: glassConfig?.previewState) { oldValue, newValue in
-                if newValue == .ready, oldValue != .ready {
+                if playReadyChime, newValue == .ready, oldValue != .ready {
                     ReadyChime.shared.play()
                 }
             }

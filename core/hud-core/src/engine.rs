@@ -1043,6 +1043,7 @@ impl HudEngine {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tempfile::tempdir;
 
     #[test]
     fn test_state_file_io_uses_daemon_health() {
@@ -1072,5 +1073,54 @@ mod tests {
             status,
             crate::types::HookHealthStatus::Stale { .. }
         ));
+    }
+
+    #[test]
+    fn projects_persist_across_engine_restarts() {
+        let temp = tempdir().expect("tempdir");
+        let root = temp.path().join("capacitor");
+        let claude_root = temp.path().join("claude");
+        std::fs::create_dir_all(&root).expect("create root");
+        std::fs::create_dir_all(&claude_root).expect("create claude root");
+
+        let project_path = temp.path().join("project");
+        std::fs::create_dir_all(&project_path).expect("create project");
+
+        let storage = StorageConfig::with_roots(root.clone(), claude_root);
+        let engine = HudEngine::with_storage(storage.clone()).expect("engine");
+        engine
+            .add_project(project_path.to_string_lossy().to_string())
+            .expect("add project");
+
+        let engine_after_restart = HudEngine::with_storage(storage).expect("engine restart");
+        let projects = engine_after_restart.list_projects().expect("list projects");
+        let paths: Vec<_> = projects.into_iter().map(|p| p.path).collect();
+
+        assert!(paths.contains(&project_path.to_string_lossy().to_string()));
+    }
+
+    #[test]
+    fn remove_project_persists_across_engine_restarts() {
+        let temp = tempdir().expect("tempdir");
+        let root = temp.path().join("capacitor");
+        let claude_root = temp.path().join("claude");
+        std::fs::create_dir_all(&root).expect("create root");
+        std::fs::create_dir_all(&claude_root).expect("create claude root");
+
+        let project_path = temp.path().join("project");
+        std::fs::create_dir_all(&project_path).expect("create project");
+
+        let storage = StorageConfig::with_roots(root.clone(), claude_root);
+        let engine = HudEngine::with_storage(storage.clone()).expect("engine");
+        let project_string = project_path.to_string_lossy().to_string();
+
+        engine.add_project(project_string.clone()).expect("add project");
+        engine.remove_project(project_string.clone()).expect("remove project");
+
+        let engine_after_restart = HudEngine::with_storage(storage).expect("engine restart");
+        let projects = engine_after_restart.list_projects().expect("list projects");
+        let paths: Vec<_> = projects.into_iter().map(|p| p.path).collect();
+
+        assert!(!paths.contains(&project_string));
     }
 }

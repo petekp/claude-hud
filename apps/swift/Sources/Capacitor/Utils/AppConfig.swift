@@ -35,13 +35,28 @@ enum AppChannel: String, CaseIterable, Codable {
 struct FeatureFlags: Equatable, Codable {
     var ideaCapture: Bool
     var projectDetails: Bool
+    var workstreams: Bool
+    var projectCreation: Bool
+    var llmFeatures: Bool
 
     static func defaults(for channel: AppChannel) -> FeatureFlags {
         switch channel {
         case .alpha:
-            FeatureFlags(ideaCapture: false, projectDetails: false)
+            FeatureFlags(
+                ideaCapture: false,
+                projectDetails: false,
+                workstreams: false,
+                projectCreation: false,
+                llmFeatures: false,
+            )
         case .dev, .beta, .prod:
-            FeatureFlags(ideaCapture: true, projectDetails: true)
+            FeatureFlags(
+                ideaCapture: true,
+                projectDetails: true,
+                workstreams: true,
+                projectCreation: true,
+                llmFeatures: true,
+            )
         }
     }
 
@@ -60,6 +75,12 @@ struct FeatureFlags: Equatable, Codable {
             ideaCapture = enabled
         case .projectDetails:
             projectDetails = enabled
+        case .workstreams:
+            workstreams = enabled
+        case .projectCreation:
+            projectCreation = enabled
+        case .llmFeatures:
+            llmFeatures = enabled
         }
     }
 }
@@ -226,6 +247,9 @@ struct AppConfig: Equatable {
 private enum FeatureKey: String, CaseIterable {
     case ideaCapture = "ideacapture"
     case projectDetails = "projectdetails"
+    case workstreams = "workstreams"
+    case projectCreation = "projectcreation"
+    case llmFeatures = "llmfeatures"
 
     static func parse(_ raw: String?) -> FeatureKey? {
         guard let raw else { return nil }

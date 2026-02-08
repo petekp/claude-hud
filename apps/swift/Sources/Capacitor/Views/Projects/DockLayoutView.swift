@@ -143,25 +143,8 @@ struct DockLayoutView: View {
     }
 
     private func isProjectStale(_ project: Project) -> Bool {
-        guard let sessionState = appState.getSessionState(for: project),
-              sessionState.state == .ready,
-              let stateChangedAtStr = sessionState.stateChangedAt,
-              let date = parseISO8601(stateChangedAtStr)
-        else {
-            return false
-        }
-        let hoursSince = Date().timeIntervalSince(date) / 3600
-        return hoursSince > 24
-    }
-
-    private func parseISO8601(_ string: String) -> Date? {
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        if let date = formatter.date(from: string) {
-            return date
-        }
-        formatter.formatOptions = [.withInternetDateTime]
-        return formatter.date(from: string)
+        let sessionState = appState.getSessionState(for: project)
+        return SessionStaleness.isReadyStale(state: sessionState?.state, stateChangedAt: sessionState?.stateChangedAt)
     }
 }
 

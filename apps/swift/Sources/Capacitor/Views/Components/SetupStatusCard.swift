@@ -216,6 +216,9 @@ struct SetupStatusCard: View {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
                     isFixing = false
                     onRefresh()
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                        runHookTest()
+                    }
                 }
             }) {
                 HStack(spacing: 6) {

@@ -76,7 +76,11 @@ struct SetupStepRow: View {
             }
 
         case .error:
-            if let onRetry {
+            if let onAction {
+                Button(actionLabel, action: onAction)
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+            } else if let onRetry {
                 Button("Retry", action: onRetry)
                     .buttonStyle(.bordered)
                     .controlSize(.small)

@@ -360,6 +360,53 @@ final class SessionStateManagerTests: XCTestCase {
         XCTAssertEqual(state?.state, .working)
     }
 
+    func testSessionStateMapsDaemonStates() async throws {
+        setenv("CAPACITOR_DAEMON_ENABLED", "1", 1)
+        defer { unsetenv("CAPACITOR_DAEMON_ENABLED") }
+
+        let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+        let socketPath = tempDir.appendingPathComponent("daemon.sock").path
+
+        let fixtures: [(String, String, SessionState)] = [
+            ("/Users/pete/Code/state-working", "working", .working),
+            ("/Users/pete/Code/state-ready", "ready", .ready),
+            ("/Users/pete/Code/state-waiting", "waiting", .waiting),
+            ("/Users/pete/Code/state-compacting", "compacting", .compacting),
+            ("/Users/pete/Code/state-idle", "idle", .idle),
+            ("/Users/pete/Code/state-unknown", "mystery", .idle),
+        ]
+
+        let server = try UnixSocketServer(path: socketPath)
+        defer { server.stop() }
+        server.start(response: makeProjectStatesResponse(
+            fixtures.map {
+                .init(
+                    projectPath: $0.0,
+                    state: $0.1,
+                    updatedAt: "2026-02-02T19:00:00Z",
+                    stateChangedAt: "2026-02-02T19:00:00Z",
+                    sessionId: "session-\($0.1)",
+                )
+            },
+        ))
+
+        setenv("CAPACITOR_DAEMON_SOCKET", socketPath, 1)
+        defer { unsetenv("CAPACITOR_DAEMON_SOCKET") }
+
+        let manager = SessionStateManager()
+        let projects = fixtures.map { makeProject($0.1, path: $0.0) }
+
+        manager.refreshSessionStates(for: projects)
+
+        for (index, fixture) in fixtures.enumerated() {
+            let project = projects[index]
+            let state = await waitForSessionState(manager, project: project)
+            XCTAssertNotNil(state)
+            XCTAssertEqual(state?.state, fixture.2)
+        }
+    }
+
     private func waitForSessionState(
         _ manager: SessionStateManager,
         project: Project,

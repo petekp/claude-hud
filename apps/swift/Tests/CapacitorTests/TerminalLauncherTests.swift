@@ -119,6 +119,16 @@ final class TerminalLauncherTests: XCTestCase {
         XCTAssertTrue(ParentApp.terminal.matchesRunningAppName("Terminal.app"))
     }
 
+    func testAlphaSupportedTerminalPriorityOrder() {
+        XCTAssertEqual(ParentApp.terminalPriorityOrder, [.ghostty, .iTerm, .terminal])
+    }
+
+    func testUnsupportedTerminalsAreNotInstalledForAlpha() {
+        XCTAssertFalse(ParentApp.alacritty.isInstalled)
+        XCTAssertFalse(ParentApp.kitty.isInstalled)
+        XCTAssertFalse(ParentApp.warp.isInstalled)
+    }
+
     func testBestTmuxSessionForPathDoesNotMatchParentRepoForWorktreePath() {
         let output = "agentic-canvas\t/Users/pete/Code/agentic-canvas\n"
         let projectPath = "/Users/pete/Code/agentic-canvas/.capacitor/worktrees/workstream-1"

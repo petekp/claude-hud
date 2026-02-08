@@ -84,13 +84,13 @@ final class SetupRequirementsManager {
             SetupStep(
                 id: "hooks",
                 title: "Session hooks",
-                description: "Required for live state tracking",
+                description: "Installs hud-hook + registers hooks in ~/.claude/settings.json",
                 status: .pending,
             ),
             SetupStep(
                 id: "shell",
                 title: "Shell integration",
-                description: "Track active project across terminals",
+                description: "Optional: report your current directory to Capacitor",
                 status: .pending,
                 isOptional: true,
             ),
@@ -164,7 +164,7 @@ final class SetupRequirementsManager {
             updateStep("hooks", status: .completed(detail: "v\(version) installed"))
 
         case .notInstalled:
-            updateStep("hooks", status: .actionNeeded(message: "Not installed yet"))
+            updateStep("hooks", status: .actionNeeded(message: "Install hooks to enable session tracking"))
 
         case let .policyBlocked(reason):
             updateStep("hooks", status: .error(message: reason))

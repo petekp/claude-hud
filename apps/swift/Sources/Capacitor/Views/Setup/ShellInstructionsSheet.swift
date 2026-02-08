@@ -24,6 +24,8 @@ struct ShellInstructionsSheet: View {
 
             snippetSection
 
+            transparencySection
+
             instructionsSection
 
             buttonSection
@@ -81,6 +83,22 @@ struct ShellInstructionsSheet: View {
         .clipShape(RoundedRectangle(cornerRadius: 8))
     }
 
+    private var transparencySection: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("What this snippet does")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.primary)
+
+            VStack(alignment: .leading, spacing: 4) {
+                bulletRow("Runs hud-hook cwd after each prompt to report your current directory, PID, and TTY.")
+                bulletRow("Sends that metadata to the local daemon so Capacitor can map activity to projects.")
+                bulletRow("Does not change your prompt text. Remove it any time from \(shellType.configFile).")
+            }
+            .font(.caption)
+            .foregroundStyle(.secondary)
+        }
+    }
+
     @ViewBuilder
     private var instructionsSection: some View {
         switch installState {
@@ -118,6 +136,15 @@ struct ShellInstructionsSheet: View {
         HStack(alignment: .top, spacing: 8) {
             Text("\(number).")
                 .frame(width: 16, alignment: .trailing)
+            Text(text)
+        }
+    }
+
+    private func bulletRow(_ text: String) -> some View {
+        HStack(alignment: .top, spacing: 6) {
+            Image(systemName: "circle.fill")
+                .font(.system(size: 4))
+                .padding(.top, 6)
             Text(text)
         }
     }
@@ -174,7 +201,11 @@ struct ShellInstructionsSheet: View {
             case .success:
                 installState = .success
             case let .failure(error):
-                installState = .error(error.localizedDescription)
+                if case .alreadyInstalled = error {
+                    installState = .success
+                } else {
+                    installState = .error(error.localizedDescription)
+                }
             }
         }
     }

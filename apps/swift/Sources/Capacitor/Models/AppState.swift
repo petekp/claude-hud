@@ -28,6 +28,7 @@ enum ProjectView: Equatable {
 enum AppFeatureError: LocalizedError {
     case ideaCaptureDisabled
     case projectDetailsDisabled
+    case projectCreationDisabled
 
     var errorDescription: String? {
         switch self {
@@ -35,6 +36,8 @@ enum AppFeatureError: LocalizedError {
             "Idea capture is disabled for this build."
         case .projectDetailsDisabled:
             "Project details are disabled for this build."
+        case .projectCreationDisabled:
+            "Project creation is disabled for this build."
         }
     }
 }
@@ -60,6 +63,18 @@ class AppState: ObservableObject {
         featureFlags.projectDetails
     }
 
+    var isWorkstreamsEnabled: Bool {
+        featureFlags.workstreams && isProjectDetailsEnabled
+    }
+
+    var isProjectCreationEnabled: Bool {
+        featureFlags.projectCreation
+    }
+
+    var isLlmFeaturesEnabled: Bool {
+        featureFlags.llmFeatures && isProjectDetailsEnabled
+    }
+
     // MARK: - Navigation
 
     @Published var projectView: ProjectView = .list
@@ -72,6 +87,7 @@ class AppState: ObservableObject {
 
     @Published var dashboard: DashboardData?
     @Published var projects: [Project] = []
+    @Published var suggestedProjects: [SuggestedProject] = []
 
     // MARK: - Active project creations (Idea → V1)
 
@@ -188,6 +204,16 @@ class AppState: ObservableObject {
             }
         }
 
+        terminalLauncher.onActivationResult = { [weak self] result in
+            guard let self else { return }
+            if !result.success {
+                toast = ToastMessage(
+                    "Couldn’t activate a terminal. Open Ghostty, iTerm2, or Terminal.app.",
+                    isError: true,
+                )
+            }
+        }
+
         do {
             engine = try HudEngine()
 
@@ -262,6 +288,11 @@ class AppState: ObservableObject {
         do {
             dashboard = try engine.loadDashboard()
             projects = dashboard?.projects ?? []
+            if projects.isEmpty {
+                refreshSuggestedProjects()
+            } else {
+                suggestedProjects = []
+            }
             activeProjectResolver.updateProjects(projects)
             refreshSessionStates()
             refreshProjectStatuses()
@@ -326,7 +357,7 @@ class AppState: ObservableObject {
 
         // First, install the bundled hook binary using the shared helper
         if let installError = HookInstaller.installBundledBinary(using: engine) {
-            error = installError
+            toast = ToastMessage(installError, isError: true)
             return
         }
 
@@ -334,11 +365,14 @@ class AppState: ObservableObject {
             let result = try engine.installHooks()
             if result.success {
                 checkHookDiagnostic()
+                if hookDiagnostic?.isHealthy == true {
+                    toast = ToastMessage("Hooks repaired")
+                }
             } else {
-                error = result.message
+                toast = ToastMessage(result.message, isError: true)
             }
         } catch {
-            self.error = error.localizedDescription
+            toast = ToastMessage(error.localizedDescription, isError: true)
         }
     }
 
@@ -435,6 +469,33 @@ class AppState: ObservableObject {
 
     // MARK: - Project Management
 
+    func refreshSuggestedProjects() {
+        guard let engine else { return }
+        do {
+            suggestedProjects = try engine.getSuggestedProjects()
+        } catch {
+            DebugLog.write("AppState.refreshSuggestedProjects error=\(error.localizedDescription)")
+            suggestedProjects = []
+        }
+    }
+
+    func dismissSuggestedProjects() {
+        suggestedProjects = []
+    }
+
+    func addSuggestedProject(_ suggestion: SuggestedProject) {
+        guard let engine else { return }
+        do {
+            try engine.addProject(path: suggestion.path)
+            prependToProjectOrder(suggestion.path)
+            suggestedProjects.removeAll { $0.path == suggestion.path }
+            loadDashboard()
+            toast = ToastMessage("Connected \(suggestion.name)")
+        } catch {
+            toast = ToastMessage(error.localizedDescription, isError: true)
+        }
+    }
+
     func addProject(_ path: String) {
         guard let engine else { return }
         do {
@@ -462,39 +523,7 @@ class AppState: ObservableObject {
 
         guard panel.runModal() == .OK, let url = panel.url else { return }
 
-        // Navigate to list view first if not already there
-        let wasOnListView = projectView == .list
-        if !wasOnListView {
-            showProjectList()
-        }
-
-        guard let result = validateProject(url.path) else {
-            toast = ToastMessage("Could not validate project", isError: true)
-            return
-        }
-
-        switch result.resultType {
-        case "valid", "missing_claude_md", "suggest_parent", "not_a_project":
-            addProject(url.path)
-            pendingDragDropTip = true
-            toast = ToastMessage("Connected \(url.lastPathComponent)")
-        case "already_tracked":
-            // If paused, move to In Progress; otherwise just acknowledge
-            if manuallyDormant.contains(result.path) {
-                _ = withAnimation(.spring(response: 0.4, dampingFraction: 0.75)) {
-                    manuallyDormant.remove(result.path)
-                }
-                toast = ToastMessage("Moved \(url.lastPathComponent) to In Progress")
-            } else {
-                toast = ToastMessage("\(url.lastPathComponent) already in progress", isError: false)
-            }
-        case "dangerous_path":
-            toast = ToastMessage("Path too broad to track", isError: true)
-        case "path_not_found":
-            toast = ToastMessage("Path not found", isError: true)
-        default:
-            toast = ToastMessage("Could not connect project", isError: true)
-        }
+        showAddProject(withPath: url.path)
     }
 
     /// Connects multiple projects from a drag-and-drop operation.
@@ -686,7 +715,7 @@ class AppState: ObservableObject {
     }
 
     func showNewIdea() {
-        guard isIdeaCaptureEnabled else { return }
+        guard isProjectCreationEnabled else { return }
         projectView = .newIdea
     }
 
@@ -721,34 +750,19 @@ class AppState: ObservableObject {
     }
 
     private func loadProjectOrder() {
-        if let order = UserDefaults.standard.array(forKey: projectOrderKey) as? [String] {
-            customProjectOrder = order
-        }
+        customProjectOrder = ProjectOrderStore.load()
     }
 
     private func saveProjectOrder() {
-        UserDefaults.standard.set(customProjectOrder, forKey: projectOrderKey)
+        ProjectOrderStore.save(customProjectOrder)
     }
 
     func orderedProjects(_ projects: [Project]) -> [Project] {
-        guard !customProjectOrder.isEmpty else { return projects }
-
-        var result: [Project] = []
-        var remaining = projects
-
-        for path in customProjectOrder {
-            if let index = remaining.firstIndex(where: { $0.path == path }) {
-                result.append(remaining.remove(at: index))
-            }
-        }
-        result.append(contentsOf: remaining)
-        return result
+        ProjectOrdering.orderedProjects(projects, customOrder: customProjectOrder)
     }
 
     func moveProject(from source: IndexSet, to destination: Int, in projectList: [Project]) {
-        var paths = projectList.map(\.path)
-        paths.move(fromOffsets: source, toOffset: destination)
-        customProjectOrder = paths
+        customProjectOrder = ProjectOrdering.movedOrder(from: source, to: destination, in: projectList)
     }
 
     func moveToDormant(_ project: Project) {
@@ -815,17 +829,17 @@ class AppState: ObservableObject {
     // MARK: - Project Descriptions (delegating to ProjectDetailsManager)
 
     func getDescription(for project: Project) -> String? {
-        guard isProjectDetailsEnabled else { return nil }
+        guard isLlmFeaturesEnabled else { return nil }
         return projectDetailsManager.getDescription(for: project)
     }
 
     func isGeneratingDescription(for project: Project) -> Bool {
-        guard isProjectDetailsEnabled else { return false }
+        guard isLlmFeaturesEnabled else { return false }
         return projectDetailsManager.isGeneratingDescription(for: project)
     }
 
     func generateDescription(for project: Project) {
-        guard isProjectDetailsEnabled else { return }
+        guard isLlmFeaturesEnabled else { return }
         projectDetailsManager.generateDescription(for: project)
     }
 
@@ -956,12 +970,12 @@ class AppState: ObservableObject {
     }
 
     func createProjectFromIdea(_ request: NewProjectRequest, completion: @escaping (CreateProjectResult) -> Void) {
-        guard isIdeaCaptureEnabled else {
+        guard isProjectCreationEnabled else {
             completion(CreateProjectResult(
                 success: false,
                 projectPath: "",
                 sessionId: nil,
-                error: AppFeatureError.ideaCaptureDisabled.errorDescription ?? "Idea capture is disabled.",
+                error: AppFeatureError.projectCreationDisabled.errorDescription ?? "Project creation is disabled.",
             ))
             return
         }

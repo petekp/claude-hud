@@ -88,7 +88,7 @@ struct NavigationContainer: View {
                         .allowsHitTesting(isAddLinkActive)
                 }
 
-                if appState.isIdeaCaptureEnabled, showNewIdea {
+                if appState.isProjectCreationEnabled, showNewIdea {
                     NewIdeaView()
                         .frame(width: width)
                         .offset(x: reduceMotion ? 0 : newIdeaPosition.rawValue * width)
@@ -209,7 +209,7 @@ struct NavigationContainer: View {
             }
 
         case .newIdea:
-            guard appState.isIdeaCaptureEnabled else {
+            guard appState.isProjectCreationEnabled else {
                 appState.showProjectList()
                 return
             }
