@@ -555,6 +555,38 @@ impl Db {
         })
     }
 
+    pub fn prune_stale_shells(&self, max_age_hours: i64) -> Result<u64, String> {
+        let cutoff = (Utc::now() - Duration::hours(max_age_hours)).to_rfc3339();
+        self.with_connection(|conn| {
+            conn.execute(
+                "DELETE FROM shell_state WHERE updated_at < ?1",
+                params![cutoff],
+            )
+            .map(|count| count as u64)
+            .map_err(|err| format!("Failed to prune stale shells: {}", err))
+        })
+    }
+
+    pub fn delete_shells(&self, pids: &[String]) -> Result<u64, String> {
+        if pids.is_empty() {
+            return Ok(0);
+        }
+        self.with_connection(|conn| {
+            let placeholders: Vec<String> = (1..=pids.len()).map(|i| format!("?{}", i)).collect();
+            let sql = format!(
+                "DELETE FROM shell_state WHERE pid IN ({})",
+                placeholders.join(", ")
+            );
+            let params: Vec<&dyn rusqlite::types::ToSql> = pids
+                .iter()
+                .map(|p| p as &dyn rusqlite::types::ToSql)
+                .collect();
+            conn.execute(&sql, params.as_slice())
+                .map(|count| count as u64)
+                .map_err(|err| format!("Failed to delete shells: {}", err))
+        })
+    }
+
     pub fn rebuild_process_liveness_from_events(&self) -> Result<(), String> {
         self.with_connection(|conn| {
             let entries: Vec<(i64, Option<i64>, String)> = {
@@ -1184,5 +1216,65 @@ mod tests {
         let entries = db.list_activity("session-1", 10).expect("list activity");
         assert_eq!(entries.len(), 1);
         assert_eq!(entries[0], entry);
+    }
+
+    #[test]
+    fn prunes_stale_shells() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let db = Db::new(temp_dir.path().join("state.db")).expect("db init");
+
+        // Insert a recent shell (1 hour ago) and a stale shell (48 hours ago)
+        let recent = shell_event(
+            "evt-r",
+            100,
+            "/recent",
+            "/dev/ttys001",
+            &(Utc::now() - Duration::hours(1)).to_rfc3339(),
+        );
+        let stale = shell_event(
+            "evt-s",
+            200,
+            "/stale",
+            "/dev/ttys002",
+            &(Utc::now() - Duration::hours(48)).to_rfc3339(),
+        );
+
+        db.insert_event(&recent).unwrap();
+        db.upsert_shell_state(&recent).unwrap();
+        db.insert_event(&stale).unwrap();
+        db.upsert_shell_state(&stale).unwrap();
+
+        assert_eq!(db.load_shell_state().unwrap().shells.len(), 2);
+
+        let pruned = db.prune_stale_shells(24).unwrap();
+        assert_eq!(pruned, 1); // Only the 48h-old shell
+
+        let remaining = db.load_shell_state().unwrap();
+        assert_eq!(remaining.shells.len(), 1);
+        assert!(remaining.shells.contains_key("100")); // Recent kept
+        assert!(!remaining.shells.contains_key("200")); // Stale removed
+    }
+
+    #[test]
+    fn deletes_specific_shells() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let db = Db::new(temp_dir.path().join("state.db")).expect("db init");
+
+        for (id, pid) in [("e1", 100), ("e2", 200), ("e3", 300)] {
+            let ev = shell_event(id, pid, "/dir", "/dev/ttys001", "2026-02-08T00:00:00Z");
+            db.insert_event(&ev).unwrap();
+            db.upsert_shell_state(&ev).unwrap();
+        }
+
+        assert_eq!(db.load_shell_state().unwrap().shells.len(), 3);
+
+        let deleted = db
+            .delete_shells(&["100".to_string(), "300".to_string()])
+            .unwrap();
+        assert_eq!(deleted, 2);
+
+        let remaining = db.load_shell_state().unwrap();
+        assert_eq!(remaining.shells.len(), 1);
+        assert!(remaining.shells.contains_key("200"));
     }
 }

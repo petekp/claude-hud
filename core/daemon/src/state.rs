@@ -18,6 +18,9 @@ use crate::replay::rebuild_from_events;
 use crate::session_store::handle_session_event;
 
 const PROCESS_LIVENESS_MAX_AGE_HOURS: i64 = 24;
+const SHELL_MAX_AGE_HOURS: i64 = 24;
+const SHELL_RECENT_THRESHOLD_SECS: i64 = 5 * 60; // 5 minutes
+
 // Session TTL policies (seconds).
 // These intentionally err on the side of clearing stale states.
 const SESSION_TTL_ACTIVE_SECS: i64 = 20 * 60; // Working/Waiting/Compacting
@@ -67,7 +70,7 @@ impl SharedState {
             }
         }
 
-        let shell_state = match db.load_shell_state() {
+        let mut shell_state = match db.load_shell_state() {
             Ok(state) if !state.shells.is_empty() => state,
             Ok(state) => match db.rebuild_shell_state_from_events() {
                 Ok(rebuilt) if !rebuilt.shells.is_empty() => rebuilt,
@@ -88,6 +91,37 @@ impl SharedState {
         if let Err(err) = db.prune_process_liveness(PROCESS_LIVENESS_MAX_AGE_HOURS) {
             tracing::warn!(error = %err, "Failed to prune process liveness table");
         }
+
+        // Prune stale shells (TTL)
+        let pruned_ttl = db.prune_stale_shells(SHELL_MAX_AGE_HOURS).unwrap_or(0);
+        if pruned_ttl > 0 {
+            tracing::info!(count = pruned_ttl, "Pruned stale shells (>24h)");
+        }
+
+        // Liveness sweep on remaining shells
+        let dead_pids: Vec<String> = shell_state
+            .shells
+            .keys()
+            .filter(|pid_str| {
+                pid_str
+                    .parse::<u32>()
+                    .ok()
+                    .is_some_and(|pid| get_process_start_time(pid).is_none())
+            })
+            .cloned()
+            .collect();
+
+        if !dead_pids.is_empty() {
+            let count = dead_pids.len();
+            for pid in &dead_pids {
+                shell_state.shells.remove(pid);
+            }
+            if let Err(err) = db.delete_shells(&dead_pids) {
+                tracing::warn!(error = %err, "Failed to delete dead shells from DB");
+            }
+            tracing::info!(count, "Pruned dead shells at startup (process not running)");
+        }
+
         Self {
             db,
             shell_state: Mutex::new(shell_state),
@@ -155,10 +189,61 @@ impl SharedState {
     }
 
     pub fn shell_state_snapshot(&self) -> ShellState {
-        self.shell_state
+        let now = Utc::now();
+        let threshold = now - Duration::seconds(SHELL_RECENT_THRESHOLD_SECS);
+
+        // Clone cache for inspection (release lock quickly)
+        let snapshot = self
+            .shell_state
             .lock()
             .map(|state| state.clone())
-            .unwrap_or_default()
+            .unwrap_or_default();
+
+        // Find dead shells among stale entries
+        let dead_pids: Vec<String> = snapshot
+            .shells
+            .iter()
+            .filter(|(_, entry)| {
+                // Recently updated shells are almost certainly alive — skip them
+                DateTime::parse_from_rfc3339(&entry.updated_at)
+                    .map(|dt| dt < threshold)
+                    .unwrap_or(true) // Unparseable timestamp → check liveness
+            })
+            .filter(|(pid_str, _)| {
+                pid_str
+                    .parse::<u32>()
+                    .ok()
+                    .is_some_and(|pid| self.session_is_alive(pid) == Some(false))
+            })
+            .map(|(pid_str, _)| pid_str.clone())
+            .collect();
+
+        if dead_pids.is_empty() {
+            return snapshot;
+        }
+
+        // Remove dead shells from cache
+        if let Ok(mut cache) = self.shell_state.lock() {
+            for pid in &dead_pids {
+                cache.shells.remove(pid);
+            }
+        }
+
+        // Remove from DB (best-effort, don't fail the snapshot)
+        if let Err(err) = self.db.delete_shells(&dead_pids) {
+            tracing::warn!(error = %err, "Failed to delete dead shells from DB");
+        }
+        tracing::debug!(
+            count = dead_pids.len(),
+            "Pruned dead shells during snapshot"
+        );
+
+        // Return filtered snapshot
+        let mut filtered = snapshot;
+        for pid in &dead_pids {
+            filtered.shells.remove(pid);
+        }
+        filtered
     }
 
     pub fn process_liveness_snapshot(&self, pid: u32) -> Result<Option<ProcessLiveness>, String> {
