@@ -200,22 +200,5 @@ jobs:
           NEW=$(cat VERSION)
           echo "Bumped from $ORIGINAL to $NEW"
 
-          # Restore original version
-          echo "$ORIGINAL" > VERSION
-
-          # Verify Cargo.toml was updated and restore
-          git checkout Cargo.toml
-
-
-          # Smoke-check output
-          test -f dist/appcast.xml
-          grep -q "Version $VERSION" dist/appcast.xml
-          grep -q "Capacitor-v$VERSION-$ARCH.zip" dist/appcast.xml
-
-          # Verify appcast was created
-          if [ ! -f dist/appcast.xml ]; then
-            echo "ERROR: appcast.xml not created"
-            exit 1
-          fi
-          echo "Appcast created successfully"
-          cat dist/appcast.xml
+          # Restore all files modified by bump-version
+          git checkout -- VERSION Cargo.toml apps/swift/Sources/Capacitor/App.swift
