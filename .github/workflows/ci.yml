@@ -88,7 +88,7 @@ jobs:
 
   test-swift:
     name: Test Swift
-    runs-on: macos-14
+    runs-on: macos-15
     needs: test-rust
     steps:
       - uses: actions/checkout@v4
@@ -139,7 +139,7 @@ jobs:
 
   build-smoke-test:
     name: Build Smoke Test
-    runs-on: macos-14
+    runs-on: macos-15
     needs: [test-rust, test-swift]
     steps:
       - uses: actions/checkout@v4
