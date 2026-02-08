@@ -140,6 +140,8 @@ extension View {
     ) -> some View {
         contentShape(Rectangle())
             .onTapGesture(perform: onTap)
+            .accessibilityAddTraits(.isButton)
+            .accessibilityAction { onTap() }
             .focusable()
             .focusEffectDisabled()
             .onKeyPress(.return) {
@@ -184,7 +186,7 @@ extension View {
                 }
             }
             .onChange(of: sessionState?.state) { oldValue, newValue in
-                if glassConfig?.previewState != PreviewState?.none { return }
+                if let preview = glassConfig?.previewState, preview != .none { return }
 
                 if newValue == .ready, oldValue != .ready, oldValue != nil {
                     let now = Date()
