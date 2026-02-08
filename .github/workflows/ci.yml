@@ -133,6 +133,12 @@ jobs:
       - name: Fix dylib install_name
         run: install_name_tool -id "@rpath/libhud_core.dylib" target/release/libhud_core.dylib
 
+      - name: Build Swift and copy dylib
+        working-directory: apps/swift
+        run: |
+          swift build
+          cp ../../target/release/libhud_core.dylib "$(swift build --show-bin-path)/"
+
       - name: Run Swift tests
         working-directory: apps/swift
         run: swift test
