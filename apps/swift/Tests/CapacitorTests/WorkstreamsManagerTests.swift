@@ -267,7 +267,7 @@ final class WorkstreamsManagerTests: XCTestCase {
         let project = makeProject(path: "/tmp/repo")
         let worktree1 = makeWorktree(path: "/tmp/repo/.capacitor/worktrees/workstream-1")
         let worktree2 = makeWorktree(path: "/tmp/repo/.capacitor/worktrees/workstream-2")
-        var shouldBlockWorktree1 = true
+        let shouldBlockWorktree1 = true
 
         var listCallCount = 0
         let manager = WorkstreamsManager(

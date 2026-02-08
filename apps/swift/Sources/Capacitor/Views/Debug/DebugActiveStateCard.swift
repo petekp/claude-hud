@@ -34,8 +34,7 @@ import SwiftUI
                     .foregroundColor(.white.opacity(0.9))
             }
             .padding(10)
-            .background(Color.black.opacity(0.35))
-            .cornerRadius(10)
+            .background(Color.black.opacity(0.35), in: .rect(cornerRadius: 10))
             .overlay(
                 RoundedRectangle(cornerRadius: 10)
                     .stroke(Color.white.opacity(0.15), lineWidth: 1)

@@ -2,6 +2,10 @@
 
 This directory contains the standalone debug UI and a local telemetry server that streams live app state.
 
+The UI has two tabs:
+- **Learn** — Architecture graph walkthrough with flow walkthroughs (Realtime, Dashboard, Activation)
+- **Live** — Real-time debugging with daemon snapshot, unified event timeline, and activation trace scoring
+
 ## Quick Start
 
 ```bash
@@ -39,8 +43,8 @@ curl -X POST http://localhost:9133/telemetry \
 ### `GET /telemetry-stream` (SSE)
 Streams telemetry events as they are received.
 
-### `GET /agent-briefing?limit=200&shells=recent&shell_limit=25`
-Returns a single JSON payload with:
+### `GET /agent-briefing?limit=200&shells=recent&shell_limit=25` (API-only)
+Returns a single JSON payload with (no UI panel — agents consume this endpoint directly):
 - summary counts for sessions/projects/shells/telemetry
 - latest daemon snapshot (shells trimmed by default)
 - last N telemetry events
