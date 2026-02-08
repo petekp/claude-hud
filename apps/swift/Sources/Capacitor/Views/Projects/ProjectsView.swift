@@ -49,9 +49,16 @@ struct ProjectsView: View {
         let topFade = contentTopPadding + edgeFadeHeight
         let bottomFade = contentBottomPadding + edgeFadeHeight
 
-        let scrollbarWidth = NSScroller.scrollerWidth(for: .regular, scrollerStyle: NSScroller.preferredScrollerStyle)
-        let maskScrollbarInset: CGFloat = 8
-        let maskScrollbarWidth = max(scrollbarWidth - maskScrollbarInset, 0)
+        let preferredScrollbarWidth = NSScroller.scrollerWidth(for: .regular, scrollerStyle: NSScroller.preferredScrollerStyle)
+        let expandedScrollbarWidth = NSScroller.scrollerWidth(for: .regular, scrollerStyle: .legacy)
+        let maskScrollbarWidth = ScrollMaskLayout.scrollbarMaskWidth(
+            preferredWidth: preferredScrollbarWidth,
+            expandedWidth: expandedScrollbarWidth
+        )
+        let contentTrailingPadding = ScrollMaskLayout.contentTrailingPadding(
+            basePadding: listHorizontalPadding,
+            scrollbarMaskWidth: maskScrollbarWidth
+        )
         let scrollbarInset = floatingMode ? WindowCornerRadius.value(floatingMode: floatingMode) : 0
 
         ScrollView {
@@ -140,7 +147,8 @@ struct ProjectsView: View {
                         }
                     }
                 }
-                .padding(.horizontal, listHorizontalPadding)
+                .padding(.leading, listHorizontalPadding)
+                .padding(.trailing, contentTrailingPadding)
                 .padding(.top, contentTopPadding)
                 .padding(.bottom, contentBottomPadding)
                 .onChange(of: pausedProjects.count) { oldCount, newCount in

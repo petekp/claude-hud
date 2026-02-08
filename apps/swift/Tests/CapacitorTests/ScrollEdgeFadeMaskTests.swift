@@ -60,4 +60,16 @@ final class ScrollEdgeFadeMaskTests: XCTestCase {
         XCTAssertEqual(sizes.content, 0, accuracy: 0.001)
         XCTAssertEqual(sizes.scrollbar, 10, accuracy: 0.001)
     }
+
+    func testScrollbarMaskWidthUsesExpandedWidth() {
+        let width = ScrollMaskLayout.scrollbarMaskWidth(preferredWidth: 6, expandedWidth: 14)
+
+        XCTAssertEqual(width, 14, accuracy: 0.001)
+    }
+
+    func testContentTrailingPaddingReservesScrollbarLane() {
+        let padding = ScrollMaskLayout.contentTrailingPadding(basePadding: 8, scrollbarMaskWidth: 14)
+
+        XCTAssertEqual(padding, 14, accuracy: 0.001)
+    }
 }

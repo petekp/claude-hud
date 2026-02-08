@@ -40,6 +40,14 @@ struct ScrollEdgeFadeStops {
 }
 
 struct ScrollMaskLayout {
+    static func scrollbarMaskWidth(preferredWidth: CGFloat, expandedWidth: CGFloat) -> CGFloat {
+        max(0, max(preferredWidth, expandedWidth))
+    }
+
+    static func contentTrailingPadding(basePadding: CGFloat, scrollbarMaskWidth: CGFloat) -> CGFloat {
+        max(basePadding, scrollbarMaskWidth)
+    }
+
     static func sizes(totalWidth: CGFloat, scrollbarWidth: CGFloat) -> (content: CGFloat, scrollbar: CGFloat) {
         let clampedScrollbar = max(0, min(scrollbarWidth, totalWidth))
         let contentWidth = max(totalWidth - clampedScrollbar, 0)
