@@ -4,15 +4,8 @@ struct AppMotion {
     static let reducedMotionFallback = Animation.easeInOut(duration: 0.15)
 }
 
-struct ReduceMotionKey: EnvironmentKey {
-    static let defaultValue = false
-}
-
 extension EnvironmentValues {
-    var prefersReducedMotion: Bool {
-        get { self[ReduceMotionKey.self] }
-        set { self[ReduceMotionKey.self] = newValue }
-    }
+    @Entry var prefersReducedMotion: Bool = false
 }
 
 struct ReduceMotionReader: ViewModifier {

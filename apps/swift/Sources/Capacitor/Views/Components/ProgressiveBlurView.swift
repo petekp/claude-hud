@@ -62,7 +62,7 @@ struct ProgressiveBlurView: View {
         direction: BlurDirection = .up,
         height: CGFloat = 60,
         material: NSVisualEffectView.Material = .hudWindow,
-        blendingMode: NSVisualEffectView.BlendingMode = .behindWindow
+        blendingMode: NSVisualEffectView.BlendingMode = .behindWindow,
     ) {
         self.direction = direction
         blurHeight = height
@@ -75,14 +75,14 @@ struct ProgressiveBlurView: View {
             material: material,
             blendingMode: blendingMode,
             isEmphasized: false,
-            forceDarkAppearance: true
+            forceDarkAppearance: true,
         )
         .mask(
             LinearGradient(
                 colors: [.clear, .white],
                 startPoint: direction.clearPoint,
-                endPoint: direction.opaquePoint
-            )
+                endPoint: direction.opaquePoint,
+            ),
         )
         .frame(height: direction == .up || direction == .down ? blurHeight : nil)
         .frame(width: direction == .left || direction == .right ? blurHeight : nil)
@@ -97,13 +97,13 @@ extension View {
     func progressiveBlur(
         edge: Edge,
         height: CGFloat = 60,
-        material: NSVisualEffectView.Material = .hudWindow
+        material: NSVisualEffectView.Material = .hudWindow,
     ) -> some View {
         overlay(alignment: edge.alignment) {
             ProgressiveBlurView(
                 direction: edge.blurDirection,
                 height: height,
-                material: material
+                material: material,
             )
             .allowsHitTesting(false)
         }

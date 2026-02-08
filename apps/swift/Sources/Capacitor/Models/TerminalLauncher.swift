@@ -202,7 +202,7 @@ final class TerminalLauncher: ActivationActionDependencies {
             },
             switchClient: { [weak self] sessionName, clientTty in
                 await self?.switchClientInternal(to: sessionName, clientTty: clientTty) ?? false
-            }
+            },
         )
 
         let terminalDiscovery = TerminalDiscoveryAdapter(
@@ -217,20 +217,20 @@ final class TerminalLauncher: ActivationActionDependencies {
             },
             countGhosttyWindows: { [weak self] in
                 self?.countGhosttyWindowsInternal() ?? 0
-            }
+            },
         )
 
         let terminalLauncher = TerminalLauncherAdapter(
             launchTerminalWithTmux: { [weak self] sessionName in
                 self?.launchTerminalWithTmuxSession(sessionName)
-            }
+            },
         )
 
         return ActivationActionExecutor(
             dependencies: self,
             tmuxClient: tmuxAdapter,
             terminalDiscovery: terminalDiscovery,
-            terminalLauncher: terminalLauncher
+            terminalLauncher: terminalLauncher,
         )
     }()
 
@@ -262,7 +262,7 @@ final class TerminalLauncher: ActivationActionDependencies {
         sessionName: String,
         projectPath _: String,
         runScript: (String) async -> (exitCode: Int32, output: String?),
-        activateTerminal: () -> Void
+        activateTerminal: () -> Void,
     ) async -> Bool {
         let escapedSession = shellEscape(sessionName)
         let switchResult = await runScript("tmux switch-client -t \(escapedSession) 2>&1")
@@ -277,7 +277,7 @@ final class TerminalLauncher: ActivationActionDependencies {
         sessionName: String,
         projectPath: String,
         runScript: (String) async -> (exitCode: Int32, output: String?),
-        activateTerminal: () -> Void
+        activateTerminal: () -> Void,
     ) async -> Bool {
         let escapedSession = shellEscape(sessionName)
         let switchResult = await runScript("tmux switch-client -t \(escapedSession) 2>&1")
@@ -288,7 +288,7 @@ final class TerminalLauncher: ActivationActionDependencies {
 
         let escapedPath = shellEscape(projectPath)
         let createResult = await runScript(
-            "tmux new-session -d -s \(escapedSession) -c \(escapedPath) 2>&1"
+            "tmux new-session -d -s \(escapedSession) -c \(escapedPath) 2>&1",
         )
         if createResult.exitCode != 0 {
             return false
@@ -354,12 +354,12 @@ final class TerminalLauncher: ActivationActionDependencies {
                 projectPath: project.path,
                 shellState: ffiShellState,
                 tmuxContext: tmuxContext,
-                includeTrace: true
+                includeTrace: true,
             )
             : engine.resolveActivation(
                 projectPath: project.path,
                 shellState: ffiShellState,
-                tmuxContext: tmuxContext
+                tmuxContext: tmuxContext,
             )
 
         logger.info("  Decision: \(decision.reason)")
@@ -424,7 +424,7 @@ final class TerminalLauncher: ActivationActionDependencies {
                 tmuxSession: entry.tmuxSession,
                 tmuxClientTty: entry.tmuxClientTty,
                 updatedAt: formatter.string(from: entry.updatedAt),
-                isLive: isLive
+                isLive: isLive,
             )
         }
 
@@ -445,7 +445,7 @@ final class TerminalLauncher: ActivationActionDependencies {
         return TmuxContextFfi(
             sessionAtPath: sessionAtPath,
             hasAttachedClient: hasAttached,
-            homeDir: NSHomeDirectory()
+            homeDir: NSHomeDirectory(),
         )
     }
 
@@ -495,7 +495,7 @@ final class TerminalLauncher: ActivationActionDependencies {
             sessionName: sessionName,
             projectPath: projectPath,
             runScript: { await runBashScriptWithResultAsync($0) },
-            activateTerminal: { self.activateTerminalApp() }
+            activateTerminal: { self.activateTerminalApp() },
         )
         if !succeeded {
             logger.warning("  ▸ tmux switch failed for session '\(sessionName)'")
@@ -513,7 +513,7 @@ final class TerminalLauncher: ActivationActionDependencies {
             sessionName: sessionName,
             projectPath: projectPath,
             runScript: { await runBashScriptWithResultAsync($0) },
-            activateTerminal: { self.activateTerminalApp() }
+            activateTerminal: { self.activateTerminalApp() },
         )
         if !succeeded {
             logger.warning("  ▸ tmux ensure/create failed for session '\(sessionName)'")
@@ -530,7 +530,7 @@ final class TerminalLauncher: ActivationActionDependencies {
         return await executor.activateHostThenSwitchTmux(
             hostTty: hostTty,
             sessionName: sessionName,
-            projectPath: projectPath
+            projectPath: projectPath,
         )
     }
 
@@ -695,7 +695,7 @@ final class TerminalLauncher: ActivationActionDependencies {
         await activateHostThenSwitchTmuxAction(
             hostTty: hostTty,
             sessionName: sessionName,
-            projectPath: projectPath
+            projectPath: projectPath,
         )
     }
 
@@ -800,7 +800,7 @@ final class TerminalLauncher: ActivationActionDependencies {
         return Self.bestTmuxSessionForPath(
             output: output,
             projectPath: projectPath,
-            homeDirectory: NSHomeDirectory()
+            homeDirectory: NSHomeDirectory(),
         )
     }
 
@@ -872,7 +872,7 @@ final class TerminalLauncher: ActivationActionDependencies {
             guard let rank = matchRank(
                 shellPath: panePath,
                 projectPath: normalizedProjectPath,
-                homeDir: homeDir
+                homeDir: homeDir,
             ) else { continue }
 
             if bestMatch == nil || rank > bestMatch!.rank {
@@ -1167,7 +1167,7 @@ final class TerminalLauncher: ActivationActionDependencies {
         TerminalScripts.launchNoTmux(
             projectPath: projectPath,
             projectName: projectName,
-            claudePath: claudePath
+            claudePath: claudePath,
         )
     }
 
@@ -1178,7 +1178,7 @@ final class TerminalLauncher: ActivationActionDependencies {
             let script = Self.launchNewTerminalScript(
                 projectPath: path,
                 projectName: name,
-                claudePath: claudePath
+                claudePath: claudePath,
             )
             runBashScript(script)
             scheduleTerminalActivation()

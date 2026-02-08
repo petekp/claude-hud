@@ -128,9 +128,9 @@ struct SetupStepRow: View {
                 id: "storage",
                 title: "Storage directory",
                 description: "~/.capacitor/",
-                status: .completed(detail: "~/.capacitor/ ready")
+                status: .completed(detail: "~/.capacitor/ ready"),
             ),
-            isCurrentStep: false
+            isCurrentStep: false,
         )
 
         SetupStepRow(
@@ -138,9 +138,9 @@ struct SetupStepRow: View {
                 id: "tmux",
                 title: "tmux",
                 description: "Required for project tracking",
-                status: .checking
+                status: .checking,
             ),
-            isCurrentStep: true
+            isCurrentStep: true,
         )
 
         SetupStepRow(
@@ -148,10 +148,10 @@ struct SetupStepRow: View {
                 id: "hooks",
                 title: "Session hooks",
                 description: "Required for live state tracking",
-                status: .actionNeeded(message: "Not installed yet")
+                status: .actionNeeded(message: "Not installed yet"),
             ),
             isCurrentStep: true,
-            onAction: { print("Install tapped") }
+            onAction: { print("Install tapped") },
         )
 
         SetupStepRow(
@@ -159,10 +159,10 @@ struct SetupStepRow: View {
                 id: "tmux",
                 title: "tmux",
                 description: "Required for project tracking",
-                status: .error(message: "Not found. Install with: brew install tmux")
+                status: .error(message: "Not found. Install with: brew install tmux"),
             ),
             isCurrentStep: false,
-            onRetry: { print("Retry tapped") }
+            onRetry: { print("Retry tapped") },
         )
 
         SetupStepRow(
@@ -170,9 +170,9 @@ struct SetupStepRow: View {
                 id: "project",
                 title: "Add your first project",
                 description: "Waiting for hooks...",
-                status: .pending
+                status: .pending,
             ),
-            isCurrentStep: false
+            isCurrentStep: false,
         )
     }
     .padding()

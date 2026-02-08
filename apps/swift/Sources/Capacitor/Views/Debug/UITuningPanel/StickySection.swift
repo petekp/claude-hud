@@ -65,10 +65,10 @@ import SwiftUI
                         material: .hudWindow,
                         blendingMode: .behindWindow,
                         isEmphasized: true,
-                        forceDarkAppearance: true
+                        forceDarkAppearance: true,
                     )
                     Color.black.opacity(0.5)
-                }
+                },
             )
         }
     }
@@ -77,7 +77,7 @@ import SwiftUI
         let label: String
         @Binding var value: Double
         let range: ClosedRange<Double>
-        var step: Double? = nil
+        var step: Double?
         var format: String = "%.2f"
 
         var body: some View {
@@ -145,9 +145,17 @@ import SwiftUI
         var thumbSize: CGFloat = 10
         private var isDragging = false
 
-        override var isFlipped: Bool { true }
-        override var acceptsFirstResponder: Bool { true }
-        override var mouseDownCanMoveWindow: Bool { false }
+        override var isFlipped: Bool {
+            true
+        }
+
+        override var acceptsFirstResponder: Bool {
+            true
+        }
+
+        override var mouseDownCanMoveWindow: Bool {
+            false
+        }
 
         override func acceptsFirstMouse(for _: NSEvent?) -> Bool {
             true
@@ -258,7 +266,7 @@ import SwiftUI
                         BlendModeButton(
                             option: option,
                             isSelected: selection == option.mode,
-                            onSelect: { selection = option.mode }
+                            onSelect: { selection = option.mode },
                         )
                     }
                 }
@@ -280,7 +288,7 @@ import SwiftUI
                     .frame(width: 24, height: 18)
                     .background(
                         RoundedRectangle(cornerRadius: 3)
-                            .fill(isSelected ? Color.white.opacity(0.2) : (isHovered ? Color.white.opacity(0.08) : Color.white.opacity(0.04)))
+                            .fill(isSelected ? Color.white.opacity(0.2) : (isHovered ? Color.white.opacity(0.08) : Color.white.opacity(0.04))),
                     )
             }
             .buttonStyle(.plain)
@@ -364,7 +372,7 @@ import SwiftUI
                         .frame(width: 14, height: 14)
                         .overlay(
                             Circle()
-                                .strokeBorder(Color.white.opacity(0.3), lineWidth: 0.5)
+                                .strokeBorder(Color.white.opacity(0.3), lineWidth: 0.5),
                         )
                         .shadow(color: color.opacity(0.5), radius: 3)
                 }

@@ -9,7 +9,9 @@ import SwiftUI
         case logo = "Logo"
         case statusColors = "Status Colors"
 
-        var id: String { rawValue }
+        var id: String {
+            rawValue
+        }
 
         var icon: String {
             switch self {
@@ -46,7 +48,9 @@ import SwiftUI
         case logoAppearance = "Size & Opacity"
         case allStates = "All States"
 
-        var id: String { rawValue }
+        var id: String {
+            rawValue
+        }
 
         var displayName: String {
             switch self {
@@ -117,7 +121,7 @@ import SwiftUI
                             CategoryRow(
                                 category: category,
                                 selectedCategory: $selectedCategory,
-                                selectedSubcategory: $selectedSubcategory
+                                selectedSubcategory: $selectedSubcategory,
                             )
                         }
                     }
@@ -158,7 +162,7 @@ import SwiftUI
                 .clipShape(RoundedRectangle(cornerRadius: 4))
                 .overlay(
                     RoundedRectangle(cornerRadius: 4)
-                        .strokeBorder(Color.white.opacity(0.12), lineWidth: 0.5)
+                        .strokeBorder(Color.white.opacity(0.12), lineWidth: 0.5),
                 )
             }
             .buttonStyle(.plain)
@@ -184,8 +188,8 @@ import SwiftUI
                     topLeadingRadius: 0,
                     bottomLeadingRadius: 0,
                     bottomTrailingRadius: containerCornerRadius,
-                    topTrailingRadius: containerCornerRadius
-                )
+                    topTrailingRadius: containerCornerRadius,
+                ),
             )
         }
 
@@ -308,7 +312,7 @@ import SwiftUI
                                 onSelect: {
                                     selectedCategory = category
                                     selectedSubcategory = sub
-                                }
+                                },
                             )
                         }
                     }
@@ -341,7 +345,7 @@ import SwiftUI
                 .padding(.horizontal, 8)
                 .background(
                     RoundedRectangle(cornerRadius: 5)
-                        .fill(isSelected ? Color.white.opacity(0.12) : (isHovered ? Color.white.opacity(0.06) : Color.clear))
+                        .fill(isSelected ? Color.white.opacity(0.12) : (isHovered ? Color.white.opacity(0.06) : Color.clear)),
                 )
                 .contentShape(Rectangle())
             }

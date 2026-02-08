@@ -25,7 +25,7 @@ struct DaemonStatusEvaluator {
     mutating func statusForHealthResult(
         isEnabled: Bool,
         result: Result<DaemonHealth, Error>,
-        now: Date = Date()
+        now: Date = Date(),
     ) -> DaemonStatus? {
         guard isEnabled else {
             consecutiveFailures = 0
@@ -34,7 +34,7 @@ struct DaemonStatusEvaluator {
                 isHealthy: false,
                 message: "Daemon disabled",
                 pid: nil,
-                version: nil
+                version: nil,
             )
         }
 
@@ -46,7 +46,7 @@ struct DaemonStatusEvaluator {
                 isHealthy: health.status == "ok",
                 message: health.status,
                 pid: health.pid,
-                version: health.version
+                version: health.version,
             )
         case .failure:
             if let deadline = startupDeadline, now < deadline {
@@ -61,7 +61,7 @@ struct DaemonStatusEvaluator {
                 isHealthy: false,
                 message: "Daemon unavailable",
                 pid: nil,
-                version: nil
+                version: nil,
             )
         }
     }

@@ -82,8 +82,8 @@ struct WorktreeService {
                     head: current.head,
                     isDetached: current.isDetached,
                     isLocked: current.isLocked,
-                    isPrunable: current.isPrunable
-                )
+                    isPrunable: current.isPrunable,
+                ),
             )
             current = Builder()
         }
@@ -164,7 +164,7 @@ struct WorktreeService {
             head: nil,
             isDetached: false,
             isLocked: false,
-            isPrunable: false
+            isPrunable: false,
         )
     }
 
@@ -172,7 +172,7 @@ struct WorktreeService {
         in repoPath: String,
         name: String,
         force: Bool = false,
-        activeWorktreePaths: Set<String> = []
+        activeWorktreePaths: Set<String> = [],
     ) throws {
         try validateWorktreeName(name)
         let worktreePath = managedWorktreePath(in: repoPath, name: name)
@@ -274,7 +274,7 @@ struct WorktreeService {
             return GitCommandResult(
                 exitCode: 1,
                 stdout: "",
-                stderr: error.localizedDescription
+                stderr: error.localizedDescription,
             )
         }
 
@@ -284,7 +284,7 @@ struct WorktreeService {
         return GitCommandResult(
             exitCode: process.terminationStatus,
             stdout: String(data: stdoutData, encoding: .utf8) ?? "",
-            stderr: String(data: stderrData, encoding: .utf8) ?? ""
+            stderr: String(data: stderrData, encoding: .utf8) ?? "",
         )
     }
 }

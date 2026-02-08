@@ -75,7 +75,7 @@ final class WindowFrameStore {
                 x: window.frame.origin.x,
                 y: window.frame.origin.y + window.frame.height - compactSize.height,
                 width: compactSize.width,
-                height: compactSize.height
+                height: compactSize.height,
             )
             window.setFrame(newFrame, display: true, animate: true)
             compactState = .compact
@@ -88,7 +88,7 @@ final class WindowFrameStore {
                     x: visibleFrame.origin.x + 20,
                     y: visibleFrame.origin.y + visibleFrame.height - compactSize.height - 20,
                     width: compactSize.width,
-                    height: compactSize.height
+                    height: compactSize.height,
                 )
                 window.setFrame(topLeftFrame, display: true, animate: true)
             }

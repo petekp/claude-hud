@@ -41,7 +41,7 @@ struct ClaudeMdHealthScorer {
                 grade: .none,
                 score: 0,
                 maxScore: 100,
-                details: []
+                details: [],
             )
         }
 
@@ -54,7 +54,7 @@ struct ClaudeMdHealthScorer {
             passed: hasDescription,
             points: hasDescription ? 25 : 0,
             suggestion: hasDescription ? nil : "Add a clear project description at the top",
-            template: "## Overview\n\nBrief description of what this project does and its purpose.\n\n## Key Features\n\n- Feature one\n- Feature two\n"
+            template: "## Overview\n\nBrief description of what this project does and its purpose.\n\n## Key Features\n\n- Feature one\n- Feature two\n",
         ))
 
         let hasWorkflow = checkWorkflow(content: lowercased)
@@ -63,7 +63,7 @@ struct ClaudeMdHealthScorer {
             passed: hasWorkflow,
             points: hasWorkflow ? 20 : 0,
             suggestion: hasWorkflow ? nil : "Add common commands or workflow instructions",
-            template: "## Workflow\n\n### Quick Start\n\n```bash\nnpm install\nnpm run dev\n```\n\n### Common Commands\n\n- `npm test` - Run tests\n- `npm run build` - Build project\n"
+            template: "## Workflow\n\n### Quick Start\n\n```bash\nnpm install\nnpm run dev\n```\n\n### Common Commands\n\n- `npm test` - Run tests\n- `npm run build` - Build project\n",
         ))
 
         let hasArchitecture = checkArchitecture(content: lowercased)
@@ -72,7 +72,7 @@ struct ClaudeMdHealthScorer {
             passed: hasArchitecture,
             points: hasArchitecture ? 20 : 0,
             suggestion: hasArchitecture ? nil : "Document project structure and key files",
-            template: "## Architecture\n\n```\nsrc/\n  components/\n  utils/\n  types/\ntests/\n```\n\n### Key Files\n\n- `src/main.ts` - Entry point\n- `package.json` - Dependencies\n"
+            template: "## Architecture\n\n```\nsrc/\n  components/\n  utils/\n  types/\ntests/\n```\n\n### Key Files\n\n- `src/main.ts` - Entry point\n- `package.json` - Dependencies\n",
         ))
 
         let hasStyleRules = checkStyleRules(content: lowercased)
@@ -81,7 +81,7 @@ struct ClaudeMdHealthScorer {
             passed: hasStyleRules,
             points: hasStyleRules ? 15 : 0,
             suggestion: hasStyleRules ? nil : "Add coding style guidelines or conventions",
-            template: "## Style Guide\n\n- Use 2-space indentation\n- Prefer const over let\n- Always add JSDoc comments for public functions\n- Avoid long lines (max 100 chars)\n"
+            template: "## Style Guide\n\n- Use 2-space indentation\n- Prefer const over let\n- Always add JSDoc comments for public functions\n- Avoid long lines (max 100 chars)\n",
         ))
 
         let hasSubstance = content.count >= 200
@@ -90,7 +90,7 @@ struct ClaudeMdHealthScorer {
             passed: hasSubstance,
             points: hasSubstance ? 20 : 0,
             suggestion: hasSubstance ? nil : "Add more detail (current: \(content.count) chars)",
-            template: nil
+            template: nil,
         ))
 
         let totalScore = checks.reduce(0) { $0 + $1.points }
@@ -100,7 +100,7 @@ struct ClaudeMdHealthScorer {
             grade: grade,
             score: totalScore,
             maxScore: 100,
-            details: checks
+            details: checks,
         )
     }
 

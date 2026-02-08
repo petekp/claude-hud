@@ -8,7 +8,7 @@ final class ScrollEdgeFadeMaskTests: XCTestCase {
             topInset: 56,
             bottomInset: 64,
             topFade: 30,
-            bottomFade: 30
+            bottomFade: 30,
         )
 
         XCTAssertEqual(stops.topClear, 0.28, accuracy: 0.001)
@@ -23,7 +23,7 @@ final class ScrollEdgeFadeMaskTests: XCTestCase {
             topInset: 60,
             bottomInset: 60,
             topFade: 30,
-            bottomFade: 30
+            bottomFade: 30,
         )
 
         XCTAssertEqual(stops.topClear, 0.6, accuracy: 0.001)
@@ -38,7 +38,7 @@ final class ScrollEdgeFadeMaskTests: XCTestCase {
             topInset: 20,
             bottomInset: 20,
             topFade: 20,
-            bottomFade: 20
+            bottomFade: 20,
         )
 
         XCTAssertEqual(stops.topClear, 0, accuracy: 0.001)

@@ -40,7 +40,7 @@ struct CapacitorApp: App {
                         }
                         .transition(.asymmetric(
                             insertion: .move(edge: .trailing).combined(with: .opacity),
-                            removal: .identity
+                            removal: .identity,
                         ))
                 } else {
                     WelcomeView(shellStateStore: appState.shellStateStore, onComplete: {
@@ -60,7 +60,7 @@ struct CapacitorApp: App {
                     .background(FloatingWindowConfigurator(enabled: floatingMode, alwaysOnTop: alwaysOnTop))
                     .transition(.asymmetric(
                         insertion: .identity,
-                        removal: .move(edge: .leading).combined(with: .opacity)
+                        removal: .move(edge: .leading).combined(with: .opacity),
                     ))
                 }
             }
@@ -759,7 +759,7 @@ private class WindowFrameTrackingView: NSView {
         resizeObserver = NotificationCenter.default.addObserver(
             forName: NSWindow.didResizeNotification,
             object: window,
-            queue: .main
+            queue: .main,
         ) { [weak self] notification in
             guard let window = notification.object as? NSWindow else { return }
             self?.coordinator?.updateFrame(window.frame)
@@ -768,7 +768,7 @@ private class WindowFrameTrackingView: NSView {
         moveObserver = NotificationCenter.default.addObserver(
             forName: NSWindow.didMoveNotification,
             object: window,
-            queue: .main
+            queue: .main,
         ) { [weak self] notification in
             guard let window = notification.object as? NSWindow else { return }
             self?.coordinator?.updateFrame(window.frame)
@@ -791,22 +791,8 @@ private class WindowFrameTrackingView: NSView {
     }
 }
 
-private struct FloatingModeKey: EnvironmentKey {
-    static let defaultValue = false
-}
-
-private struct AlwaysOnTopKey: EnvironmentKey {
-    static let defaultValue = false
-}
-
 extension EnvironmentValues {
-    var floatingMode: Bool {
-        get { self[FloatingModeKey.self] }
-        set { self[FloatingModeKey.self] = newValue }
-    }
+    @Entry var floatingMode: Bool = false
 
-    var alwaysOnTop: Bool {
-        get { self[AlwaysOnTopKey.self] }
-        set { self[AlwaysOnTopKey.self] = newValue }
-    }
+    @Entry var alwaysOnTop: Bool = false
 }

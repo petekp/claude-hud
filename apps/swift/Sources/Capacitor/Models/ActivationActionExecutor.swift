@@ -44,7 +44,7 @@ final class ActivationActionExecutor {
         dependencies: ActivationActionDependencies,
         tmuxClient: TmuxClient,
         terminalDiscovery: TerminalDiscovery,
-        terminalLauncher: TerminalLauncherClient
+        terminalLauncher: TerminalLauncherClient,
     ) {
         self.dependencies = dependencies
         self.tmuxClient = tmuxClient
@@ -74,7 +74,7 @@ final class ActivationActionExecutor {
             return await activateHostThenSwitchTmux(
                 hostTty: hostTty,
                 sessionName: sessionName,
-                projectPath: projectPath
+                projectPath: projectPath,
             )
         case let .launchTerminalWithTmux(sessionName, path):
             return deps.launchTerminalWithTmux(sessionName: sessionName, projectPath: path)
@@ -92,7 +92,7 @@ final class ActivationActionExecutor {
     func activateHostThenSwitchTmux(
         hostTty: String,
         sessionName: String,
-        projectPath _: String
+        projectPath _: String,
     ) async -> Bool {
         guard dependencies != nil else {
             return false
@@ -114,7 +114,7 @@ final class ActivationActionExecutor {
             let windowCount = terminalDiscovery.countGhosttyWindows()
             let decision = TerminalLauncher.ghosttyWindowDecision(
                 windowCount: windowCount,
-                anyClientAttached: anyClientAttached
+                anyClientAttached: anyClientAttached,
             )
 
             switch decision {

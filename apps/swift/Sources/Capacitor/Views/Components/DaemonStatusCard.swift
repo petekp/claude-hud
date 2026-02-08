@@ -53,11 +53,11 @@ struct DaemonStatusCard: View {
             .padding(12)
             .background(
                 RoundedRectangle(cornerRadius: 10)
-                    .fill(cardColor.opacity(0.1))
+                    .fill(cardColor.opacity(0.1)),
             )
             .overlay(
                 RoundedRectangle(cornerRadius: 10)
-                    .strokeBorder(cardColor.opacity(0.2), lineWidth: 0.5)
+                    .strokeBorder(cardColor.opacity(0.2), lineWidth: 0.5),
             )
         } else {
             EmptyView()

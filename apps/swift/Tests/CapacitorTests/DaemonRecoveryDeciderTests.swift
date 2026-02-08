@@ -8,10 +8,10 @@ final class DaemonRecoveryDeciderTests: XCTestCase {
 
         XCTAssertTrue(decider.shouldAttemptRecovery(after: POSIXError(.ECONNREFUSED), now: now))
         XCTAssertFalse(
-            decider.shouldAttemptRecovery(after: POSIXError(.ECONNREFUSED), now: now.addingTimeInterval(1.0))
+            decider.shouldAttemptRecovery(after: POSIXError(.ECONNREFUSED), now: now.addingTimeInterval(1.0)),
         )
         XCTAssertTrue(
-            decider.shouldAttemptRecovery(after: POSIXError(.ECONNREFUSED), now: now.addingTimeInterval(10.1))
+            decider.shouldAttemptRecovery(after: POSIXError(.ECONNREFUSED), now: now.addingTimeInterval(10.1)),
         )
     }
 
@@ -28,7 +28,7 @@ final class DaemonRecoveryDeciderTests: XCTestCase {
     func testDoesNotAttemptRecoveryOnDaemonUnavailableErrors() {
         var decider = DaemonRecoveryDecider(cooldownInterval: 10.0, lastAttemptAt: nil)
         XCTAssertFalse(
-            decider.shouldAttemptRecovery(after: DaemonClientError.daemonUnavailable("nope"), now: Date())
+            decider.shouldAttemptRecovery(after: DaemonClientError.daemonUnavailable("nope"), now: Date()),
         )
     }
 

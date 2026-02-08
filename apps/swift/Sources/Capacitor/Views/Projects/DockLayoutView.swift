@@ -116,7 +116,7 @@ struct DockLayoutView: View {
                 draggedProject = project
                 return NSItemProvider(object: project.path as NSString)
             },
-            isDragging: draggedProject?.path == project.path
+            isDragging: draggedProject?.path == project.path,
         )
         .preventWindowDrag()
         .zIndex(draggedProject?.path == project.path ? 999 : 0)
@@ -126,8 +126,8 @@ struct DockLayoutView: View {
                 project: project,
                 activeProjects: activeProjects,
                 draggedProject: $draggedProject,
-                appState: appState
-            )
+                appState: appState,
+            ),
         )
         .scrollTransition { content, phase in
             content
@@ -204,7 +204,7 @@ struct DockDropDelegate: DropDelegate {
             appState.moveProject(
                 from: IndexSet(integer: fromIndex),
                 to: toIndex > fromIndex ? toIndex + 1 : toIndex,
-                in: activeProjects
+                in: activeProjects,
             )
         }
     }

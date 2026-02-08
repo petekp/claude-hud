@@ -1,7 +1,6 @@
+@testable import Capacitor
 import Foundation
 import XCTest
-
-@testable import Capacitor
 
 @MainActor
 final class WorkstreamsManagerTests: XCTestCase {
@@ -13,7 +12,7 @@ final class WorkstreamsManagerTests: XCTestCase {
         ]
 
         let manager = WorkstreamsManager(
-            listManagedWorktrees: { _ in expected }
+            listManagedWorktrees: { _ in expected },
         )
 
         manager.load(for: project)
@@ -31,9 +30,9 @@ final class WorkstreamsManagerTests: XCTestCase {
                 throw WorktreeService.Error.gitCommandFailed(
                     arguments: ["worktree", "list", "--porcelain"],
                     exitCode: 128,
-                    output: "fatal: not a git repository"
+                    output: "fatal: not a git repository",
                 )
-            }
+            },
         )
 
         manager.load(for: project)
@@ -68,7 +67,7 @@ final class WorkstreamsManagerTests: XCTestCase {
             createManagedWorktree: { _, name in
                 createdName = name
                 return Self.makeWorktree(path: "/tmp/repo/.capacitor/worktrees/\(name)")
-            }
+            },
         )
 
         manager.load(for: project)
@@ -78,7 +77,7 @@ final class WorkstreamsManagerTests: XCTestCase {
         XCTAssertEqual(createdName, "repo-workstream-2")
         XCTAssertEqual(
             state.worktrees.map(\.name),
-            ["repo-workstream-1", "repo-workstream-2", "repo-workstream-3"]
+            ["repo-workstream-1", "repo-workstream-2", "repo-workstream-3"],
         )
         XCTAssertFalse(state.isCreating)
         XCTAssertNil(state.errorMessage)
@@ -110,11 +109,11 @@ final class WorkstreamsManagerTests: XCTestCase {
                             "repo-workstream-1",
                         ],
                         exitCode: 255,
-                        output: "fatal: a branch named 'repo-workstream-1' already exists"
+                        output: "fatal: a branch named 'repo-workstream-1' already exists",
                     )
                 }
                 return Self.makeWorktree(path: "/tmp/repo/.capacitor/worktrees/\(name)")
-            }
+            },
         )
 
         manager.load(for: project)
@@ -138,7 +137,7 @@ final class WorkstreamsManagerTests: XCTestCase {
             hasLocalSettings: false,
             taskCount: 0,
             stats: nil,
-            isMissing: false
+            isMissing: false,
         )
         var createdName: String?
 
@@ -147,7 +146,7 @@ final class WorkstreamsManagerTests: XCTestCase {
             createManagedWorktree: { _, name in
                 createdName = name
                 return Self.makeWorktree(path: "/tmp/agentic-canvas/.capacitor/worktrees/\(name)")
-            }
+            },
         )
 
         manager.load(for: project)
@@ -168,7 +167,7 @@ final class WorkstreamsManagerTests: XCTestCase {
                 receivedActivePaths = active
                 throw WorktreeService.Error.activeSessionWorktree(path: worktree.path)
             },
-            activeWorktreePathsProvider: { activePaths }
+            activeWorktreePathsProvider: { activePaths },
         )
 
         manager.load(for: project)
@@ -190,7 +189,7 @@ final class WorkstreamsManagerTests: XCTestCase {
                 defer { listCallCount += 1 }
                 return listCallCount == 0 ? [worktree] : []
             },
-            removeManagedWorktree: { _, _, _, _ in }
+            removeManagedWorktree: { _, _, _, _ in },
         )
 
         manager.load(for: project)
@@ -213,7 +212,7 @@ final class WorkstreamsManagerTests: XCTestCase {
                     throw WorktreeService.Error.activeSessionWorktree(path: worktree.path)
                 }
             },
-            activeWorktreePathsProvider: { [worktree.path] }
+            activeWorktreePathsProvider: { [worktree.path] },
         )
 
         manager.load(for: project)
@@ -243,7 +242,7 @@ final class WorkstreamsManagerTests: XCTestCase {
                     throw WorktreeService.Error.activeSessionWorktree(path: worktree.path)
                 }
             },
-            activeWorktreePathsProvider: { [worktree.path] }
+            activeWorktreePathsProvider: { [worktree.path] },
         )
 
         manager.load(for: project)
@@ -280,7 +279,7 @@ final class WorkstreamsManagerTests: XCTestCase {
                     throw WorktreeService.Error.activeSessionWorktree(path: worktree1.path)
                 }
             },
-            activeWorktreePathsProvider: { [worktree1.path] }
+            activeWorktreePathsProvider: { [worktree1.path] },
         )
 
         manager.load(for: project)
@@ -303,7 +302,7 @@ final class WorkstreamsManagerTests: XCTestCase {
         let manager = WorkstreamsManager(
             openWorktree: { project in
                 openedProject = project
-            }
+            },
         )
 
         let worktree = makeWorktree(path: "/tmp/repo/.capacitor/worktrees/workstream-9")
@@ -325,7 +324,7 @@ final class WorkstreamsManagerTests: XCTestCase {
             hasLocalSettings: false,
             taskCount: 0,
             stats: nil,
-            isMissing: false
+            isMissing: false,
         )
     }
 
@@ -340,7 +339,7 @@ final class WorkstreamsManagerTests: XCTestCase {
             head: nil,
             isDetached: false,
             isLocked: false,
-            isPrunable: false
+            isPrunable: false,
         )
     }
 

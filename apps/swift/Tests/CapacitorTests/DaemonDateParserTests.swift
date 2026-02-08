@@ -1,6 +1,5 @@
-import XCTest
-
 @testable import Capacitor
+import XCTest
 
 final class DaemonDateParserTests: XCTestCase {
     func testParsesDateWithoutFractionalSeconds() {

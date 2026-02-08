@@ -1,7 +1,6 @@
+@testable import Capacitor
 import Foundation
 import XCTest
-
-@testable import Capacitor
 
 final class WorktreeServiceTests: XCTestCase {
     private struct CommandCall: Equatable {
@@ -229,7 +228,7 @@ final class WorktreeServiceTests: XCTestCase {
             try service.removeManagedWorktree(
                 in: repoPath,
                 name: "workstream-4",
-                activeWorktreePaths: [worktreePath]
+                activeWorktreePaths: [worktreePath],
             )
             XCTFail("Expected remove to throw")
         } catch let error as WorktreeService.Error {
@@ -258,7 +257,7 @@ final class WorktreeServiceTests: XCTestCase {
             try service.removeManagedWorktree(
                 in: repoPath,
                 name: "workstream-4",
-                activeWorktreePaths: [activeChildPath]
+                activeWorktreePaths: [activeChildPath],
             )
             XCTFail("Expected remove to throw")
         } catch let error as WorktreeService.Error {

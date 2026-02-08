@@ -53,11 +53,11 @@ struct ProjectsView: View {
         let expandedScrollbarWidth = NSScroller.scrollerWidth(for: .regular, scrollerStyle: .legacy)
         let maskScrollbarWidth = ScrollMaskLayout.scrollbarMaskWidth(
             preferredWidth: preferredScrollbarWidth,
-            expandedWidth: expandedScrollbarWidth
+            expandedWidth: expandedScrollbarWidth,
         )
         let contentTrailingPadding = ScrollMaskLayout.contentTrailingPadding(
             basePadding: listHorizontalPadding,
-            scrollbarMaskWidth: maskScrollbarWidth
+            scrollbarMaskWidth: maskScrollbarWidth,
         )
         let scrollbarInset = floatingMode ? WindowCornerRadius.value(floatingMode: floatingMode) : 0
 
@@ -81,7 +81,7 @@ struct ProjectsView: View {
                                 appState.checkHookDiagnostic()
                                 appState.refreshSessionStates()
                             },
-                            onTest: { appState.testHooks() }
+                            onTest: { appState.testHooks() },
                         )
                         .padding(.bottom, 4)
                     }
@@ -103,7 +103,7 @@ struct ProjectsView: View {
                         if !activeProjects.isEmpty {
                             SectionHeader(
                                 title: "In Progress",
-                                count: activeProjects.count
+                                count: activeProjects.count,
                             )
                             .padding(.top, 4)
                             .transition(.opacity)
@@ -129,7 +129,7 @@ struct ProjectsView: View {
                                             }
                                         }
                                     }
-                                }
+                                },
                             )
                             .padding(.top, activeProjects.isEmpty ? 4 : 12)
                             .transition(.opacity)
@@ -169,7 +169,7 @@ struct ProjectsView: View {
             GeometryReader { proxy in
                 let sizes = ScrollMaskLayout.sizes(
                     totalWidth: proxy.size.width,
-                    scrollbarWidth: maskScrollbarWidth
+                    scrollbarWidth: maskScrollbarWidth,
                 )
 
                 HStack(spacing: 0) {
@@ -177,7 +177,7 @@ struct ProjectsView: View {
                         topInset: 0,
                         bottomInset: 0,
                         topFade: topFade,
-                        bottomFade: bottomFade
+                        bottomFade: bottomFade,
                     )
                     .frame(width: sizes.content, height: proxy.size.height)
 
@@ -189,8 +189,8 @@ struct ProjectsView: View {
         .background(
             ScrollViewScrollerInsetsConfigurator(
                 topInset: scrollbarInset,
-                bottomInset: scrollbarInset
-            )
+                bottomInset: scrollbarInset,
+            ),
         )
         .background(floatingMode ? Color.clear : Color.hudBackground)
     }
@@ -226,7 +226,7 @@ struct ProjectsView: View {
                 draggedProject = project
                 return NSItemProvider(object: project.path as NSString)
             },
-            isDragging: draggedProject?.path == project.path
+            isDragging: draggedProject?.path == project.path,
         )
         .activeProjectCardModifiers(
             project: project,
@@ -234,11 +234,10 @@ struct ProjectsView: View {
             activeProjects: activeProjects,
             draggedProject: $draggedProject,
             appState: appState,
-            glassConfig: glassConfig
+            glassConfig: glassConfig,
         )
     }
 
-    @ViewBuilder
     private func pausedProjectCard(project: Project, index: Int) -> some View {
         CompactProjectCardView(
             project: project,
@@ -256,12 +255,12 @@ struct ProjectsView: View {
                     appState.removeProject(project.path)
                 }
             },
-            showSeparator: index < pausedProjects.count - 1
+            showSeparator: index < pausedProjects.count - 1,
         )
         .pausedProjectCardModifiers(
             project: project,
             index: index,
-            glassConfig: glassConfig
+            glassConfig: glassConfig,
         )
     }
 }
@@ -275,7 +274,7 @@ private extension View {
         activeProjects: [Project],
         draggedProject: Binding<Project?>,
         appState: AppState,
-        glassConfig: GlassConfig
+        glassConfig: GlassConfig,
     ) -> some View {
         preventWindowDrag()
             .zIndex(draggedProject.wrappedValue?.path == project.path ? 999 : 0)
@@ -286,8 +285,8 @@ private extension View {
                     project: project,
                     activeProjects: activeProjects,
                     draggedProject: draggedProject,
-                    appState: appState
-                )
+                    appState: appState,
+                ),
             )
             .transition(.asymmetric(
                 insertion: .opacity
@@ -296,14 +295,14 @@ private extension View {
                     .animation(.spring(response: glassConfig.cardInsertSpringResponse, dampingFraction: glassConfig.cardInsertSpringDamping).delay(Double(index) * glassConfig.cardInsertStagger)),
                 removal: .opacity
                     .combined(with: .scale(scale: 0.94))
-                    .animation(.easeOut(duration: glassConfig.cardRemovalDuration))
+                    .animation(.easeOut(duration: glassConfig.cardRemovalDuration)),
             ))
     }
 
     func pausedProjectCardModifiers(
         project: Project,
         index: Int,
-        glassConfig: GlassConfig
+        glassConfig: GlassConfig,
     ) -> some View {
         id("paused-\(project.path)")
             .transition(.asymmetric(
@@ -312,7 +311,7 @@ private extension View {
                     .animation(.spring(response: glassConfig.cardInsertSpringResponse * 0.8, dampingFraction: glassConfig.cardInsertSpringDamping).delay(Double(index) * glassConfig.pausedCardStagger)),
                 removal: .opacity
                     .combined(with: .scale(scale: 0.95))
-                    .animation(.easeOut(duration: glassConfig.cardRemovalDuration * 0.8))
+                    .animation(.easeOut(duration: glassConfig.cardRemovalDuration * 0.8)),
             ))
     }
 }
@@ -421,8 +420,8 @@ struct EmptyProjectsView: View {
                         LinearGradient(
                             colors: [.white.opacity(0.5), .white.opacity(0.25)],
                             startPoint: .top,
-                            endPoint: .bottom
-                        )
+                            endPoint: .bottom,
+                        ),
                     )
                     .scaleEffect(appeared || reduceMotion ? 1.0 : 0.8)
                     .opacity(appeared || reduceMotion ? 1 : 0)
@@ -460,13 +459,13 @@ struct EmptyProjectsView: View {
                             Color.hudAccentDark.opacity(isButtonHovered ? 0.8 : 0.6),
                         ],
                         startPoint: .top,
-                        endPoint: .bottom
-                    )
+                        endPoint: .bottom,
+                    ),
                 )
                 .clipShape(RoundedRectangle(cornerRadius: 8))
                 .overlay(
                     RoundedRectangle(cornerRadius: 8)
-                        .stroke(Color.white.opacity(isButtonHovered ? 0.2 : 0.1), lineWidth: 0.5)
+                        .stroke(Color.white.opacity(isButtonHovered ? 0.2 : 0.1), lineWidth: 0.5),
                 )
                 .shadow(color: Color.hudAccent.opacity(isButtonHovered ? 0.4 : 0.2), radius: isButtonHovered && !reduceMotion ? 10 : 4, y: 2)
                 .scaleEffect(isButtonHovered && !reduceMotion ? 1.02 : 1.0)
@@ -485,14 +484,14 @@ struct EmptyProjectsView: View {
         .padding(32)
         .background(
             RoundedRectangle(cornerRadius: 16)
-                .fill(Color.hudAccent.opacity(0.03))
+                .fill(Color.hudAccent.opacity(0.03)),
         )
         .overlay(
             RoundedRectangle(cornerRadius: 16)
                 .strokeBorder(
-                    style: StrokeStyle(lineWidth: 2, dash: [8, 6])
+                    style: StrokeStyle(lineWidth: 2, dash: [8, 6]),
                 )
-                .foregroundColor(Color.hudAccent.opacity(0.25))
+                .foregroundColor(Color.hudAccent.opacity(0.25)),
         )
         .padding(.horizontal, 24)
         .padding(.top, 50)
@@ -528,7 +527,7 @@ struct ProjectCardDragPreview: View {
         .clipShape(RoundedRectangle(cornerRadius: 8))
         .overlay(
             RoundedRectangle(cornerRadius: 8)
-                .stroke(Color.hudAccent.opacity(0.5), lineWidth: 1)
+                .stroke(Color.hudAccent.opacity(0.5), lineWidth: 1),
         )
         .shadow(color: .black.opacity(0.3), radius: 8, y: 4)
     }
@@ -551,7 +550,7 @@ struct ProjectDropDelegate: DropDelegate {
             appState.moveProject(
                 from: IndexSet(integer: fromIndex),
                 to: toIndex > fromIndex ? toIndex + 1 : toIndex,
-                in: activeProjects
+                in: activeProjects,
             )
         }
     }

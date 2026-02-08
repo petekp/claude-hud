@@ -66,12 +66,12 @@ struct DockProjectCard: View {
         if isPressed {
             return .spring(
                 response: glassConfig.cardPressedSpringResponse(for: .dock),
-                dampingFraction: glassConfig.cardPressedSpringDamping(for: .dock)
+                dampingFraction: glassConfig.cardPressedSpringDamping(for: .dock),
             )
         }
         return .spring(
             response: glassConfig.cardHoverSpringResponse(for: .dock),
-            dampingFraction: glassConfig.cardHoverSpringDamping(for: .dock)
+            dampingFraction: glassConfig.cardHoverSpringDamping(for: .dock),
         )
     }
 
@@ -97,7 +97,7 @@ struct DockProjectCard: View {
                 solidCardBackground: solidCardBackground,
                 animationSeed: project.path,
                 layoutMode: .dock,
-                isPressed: isPressed
+                isPressed: isPressed,
             )
             .scaleEffect(cardScale)
             .animation(cardAnimation, value: cardScale)
@@ -128,7 +128,7 @@ struct DockProjectCard: View {
                 lastChimeTime: $lastChimeTime,
                 flashOpacity: $flashOpacity,
                 chimeCooldown: chimeCooldown,
-                glassConfig: glassConfigForHandlers
+                glassConfig: glassConfigForHandlers,
             )
             .contextMenu {
                 ProjectContextMenu(
@@ -137,7 +137,7 @@ struct DockProjectCard: View {
                     onInfoTap: onInfoTap,
                     onMoveToDormant: onMoveToDormant,
                     onCaptureIdea: onCaptureIdea.map { action in { action(.zero) } },
-                    onRemove: onRemove
+                    onRemove: onRemove,
                 )
             }
             .accessibilityElement(children: .combine)
@@ -155,7 +155,7 @@ struct DockProjectCard: View {
                             nameColor: .white.opacity(0.9),
                             isMissing: project.isMissing,
                             action: onInfoTap,
-                            font: AppTypography.sectionTitle.monospaced()
+                            font: AppTypography.sectionTitle.monospaced(),
                         )
                         .lineLimit(1)
                     } else {
@@ -192,7 +192,7 @@ struct DockProjectCard: View {
                 isCardHovered: isHovered,
                 onCaptureIdea: onCaptureIdea,
                 onDetails: onInfoTap,
-                style: .compact
+                style: .compact,
             )
         }
     }
@@ -210,7 +210,7 @@ struct DockProjectCard: View {
                 LinearGradient(
                     colors: [.white.opacity(isHovered ? 0.08 : 0.04), .clear],
                     startPoint: .top,
-                    endPoint: .bottom
+                    endPoint: .bottom,
                 )
                 .frame(height: 1)
                 Spacer()

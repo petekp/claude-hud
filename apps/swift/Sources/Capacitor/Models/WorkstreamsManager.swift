@@ -37,11 +37,11 @@ final class WorkstreamsManager: ObservableObject {
                 in: repoPath,
                 name: name,
                 force: force,
-                activeWorktreePaths: activePaths
+                activeWorktreePaths: activePaths,
             )
         },
         openWorktree: @escaping OpenWorktree = { _ in },
-        activeWorktreePathsProvider: @escaping ActiveWorktreePathsProvider = { [] }
+        activeWorktreePathsProvider: @escaping ActiveWorktreePathsProvider = { [] },
     ) {
         self.listManagedWorktrees = listManagedWorktrees
         self.createManagedWorktree = createManagedWorktree
@@ -131,7 +131,7 @@ final class WorkstreamsManager: ObservableObject {
                 force,
                 activeWorktreePathsProvider().map(PathNormalizer.normalize).reduce(into: Set<String>()) { set, path in
                     set.insert(path)
-                }
+                },
             )
             let refreshed = try listManagedWorktrees(project.path)
             mutateState(for: project.path) {
@@ -238,7 +238,7 @@ final class WorkstreamsManager: ObservableObject {
             hasLocalSettings: false,
             taskCount: 0,
             stats: nil,
-            isMissing: false
+            isMissing: false,
         )
     }
 

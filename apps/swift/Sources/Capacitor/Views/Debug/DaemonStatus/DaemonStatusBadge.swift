@@ -33,11 +33,11 @@ import SwiftUI
             .padding(.horizontal, 10)
             .background(
                 RoundedRectangle(cornerRadius: 8)
-                    .fill(Color.white.opacity(0.05))
+                    .fill(Color.white.opacity(0.05)),
             )
             .overlay(
                 RoundedRectangle(cornerRadius: 8)
-                    .strokeBorder(statusColor.opacity(0.2), lineWidth: 0.5)
+                    .strokeBorder(statusColor.opacity(0.2), lineWidth: 0.5),
             )
         }
     }

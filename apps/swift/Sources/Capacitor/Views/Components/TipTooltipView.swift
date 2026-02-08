@@ -33,8 +33,8 @@ struct TipTooltipView: View {
                 .fill(.ultraThinMaterial)
                 .overlay(
                     Capsule()
-                        .strokeBorder(Color.white.opacity(0.1), lineWidth: 0.5)
-                )
+                        .strokeBorder(Color.white.opacity(0.1), lineWidth: 0.5),
+                ),
         )
         .shadow(color: .black.opacity(0.3), radius: 10, y: 5)
         .scaleEffect(appeared ? 1 : 0.8)

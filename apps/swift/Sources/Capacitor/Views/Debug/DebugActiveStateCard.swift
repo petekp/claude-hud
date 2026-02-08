@@ -37,7 +37,7 @@ import SwiftUI
             .background(Color.black.opacity(0.35), in: .rect(cornerRadius: 10))
             .overlay(
                 RoundedRectangle(cornerRadius: 10)
-                    .stroke(Color.white.opacity(0.15), lineWidth: 1)
+                    .stroke(Color.white.opacity(0.15), lineWidth: 1),
             )
         }
     }

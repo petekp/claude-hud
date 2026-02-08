@@ -1,8 +1,7 @@
+@testable import Capacitor
 import Darwin
 import Foundation
 import XCTest
-
-@testable import Capacitor
 
 final class DaemonClientTests: XCTestCase {
     func testUsesPosixUnixSocketTransport() async throws {

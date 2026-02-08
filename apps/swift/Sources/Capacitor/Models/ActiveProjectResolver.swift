@@ -182,7 +182,7 @@ final class ActiveProjectResolver {
             }
 
             sessionSummary.append(
-                "\(project.path) state=\(String(describing: sessionState.state)) updated=\(updatedAt)"
+                "\(project.path) state=\(String(describing: sessionState.state)) updated=\(updatedAt)",
             )
         }
 

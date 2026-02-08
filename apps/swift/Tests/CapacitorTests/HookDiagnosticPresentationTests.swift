@@ -1,6 +1,5 @@
-import XCTest
-
 @testable import Capacitor
+import XCTest
 
 @MainActor
 final class HookDiagnosticPresentationTests: XCTestCase {
@@ -15,7 +14,7 @@ final class HookDiagnosticPresentationTests: XCTestCase {
             firingOk: false,
             symlinkPath: "/tmp/hud-hook",
             symlinkTarget: nil,
-            lastHeartbeatAgeSecs: 120
+            lastHeartbeatAgeSecs: 120,
         )
 
         XCTAssertFalse(diagnostic.shouldShowSetupCard)
@@ -32,7 +31,7 @@ final class HookDiagnosticPresentationTests: XCTestCase {
             firingOk: false,
             symlinkPath: "/tmp/hud-hook",
             symlinkTarget: nil,
-            lastHeartbeatAgeSecs: nil
+            lastHeartbeatAgeSecs: nil,
         )
 
         XCTAssertTrue(diagnostic.shouldShowSetupCard)
@@ -49,7 +48,7 @@ final class HookDiagnosticPresentationTests: XCTestCase {
             firingOk: false,
             symlinkPath: "/tmp/hud-hook",
             symlinkTarget: nil,
-            lastHeartbeatAgeSecs: nil
+            lastHeartbeatAgeSecs: nil,
         )
 
         XCTAssertTrue(diagnostic.shouldShowSetupCard)

@@ -21,7 +21,7 @@ extension View {
         solidCardBackground: some View,
         animationSeed: String,
         layoutMode: LayoutMode = .vertical,
-        isPressed: Bool = false
+        isPressed: Bool = false,
     ) -> some View {
         // Single source of truth for corner radius
         let cornerRadius = GlassConfig.shared.cardCornerRadius(for: layoutMode)
@@ -31,7 +31,7 @@ extension View {
             isActive: isActive,
             isHovered: isHovered,
             isWaiting: isWaiting,
-            isWorking: isWorking
+            isWorking: isWorking,
         )
 
         return background {
@@ -61,15 +61,15 @@ extension View {
                             .white.opacity(borderOpacity * 0.4),
                         ],
                         startPoint: .topLeading,
-                        endPoint: .bottomTrailing
+                        endPoint: .bottomTrailing,
                     ),
-                    lineWidth: 0.5
+                    lineWidth: 0.5,
                 )
         }
         .overlay(
             RoundedRectangle(cornerRadius: cornerRadius)
                 .stroke(flashState.map { Color.flashColor(for: $0) } ?? .clear, lineWidth: 2)
-                .opacity(flashOpacity)
+                .opacity(flashOpacity),
         )
         .overlay {
             ZStack {
@@ -77,14 +77,14 @@ extension View {
                     RoundedRectangle(cornerRadius: cornerRadius)
                         .strokeBorder(
                             Color.white.opacity(0.3),
-                            lineWidth: 3
+                            lineWidth: 3,
                         )
                         .blur(radius: 4)
 
                     RoundedRectangle(cornerRadius: cornerRadius)
                         .strokeBorder(
                             Color.white.opacity(0.8),
-                            lineWidth: 1.5
+                            lineWidth: 1.5,
                         )
                 }
             }
@@ -129,14 +129,14 @@ extension View {
         .shadow(
             color: .black.opacity(shadowOpacity(isHovered: isHovered, isPressed: isPressed, floatingMode: floatingMode, layoutMode: layoutMode)),
             radius: shadowRadius(isHovered: isHovered, isPressed: isPressed, floatingMode: floatingMode, layoutMode: layoutMode),
-            y: shadowY(isHovered: isHovered, isPressed: isPressed, floatingMode: floatingMode, layoutMode: layoutMode)
+            y: shadowY(isHovered: isHovered, isPressed: isPressed, floatingMode: floatingMode, layoutMode: layoutMode),
         )
     }
 
     func cardInteractions(
         isHovered: Binding<Bool>,
         onTap: @escaping () -> Void,
-        onDragStarted: (() -> NSItemProvider)?
+        onDragStarted: (() -> NSItemProvider)?,
     ) -> some View {
         contentShape(Rectangle())
             .onTapGesture(perform: onTap)
@@ -173,7 +173,7 @@ extension View {
         lastChimeTime: Binding<Date?>,
         flashOpacity: Binding<Double>,
         chimeCooldown: TimeInterval,
-        glassConfig: GlassConfig?
+        glassConfig: GlassConfig?,
     ) -> some View {
         animation(.easeOut(duration: GlassConfig.shared.stateTransitionDuration), value: currentState)
             .onChange(of: flashState) { _, newValue in
@@ -255,11 +255,7 @@ private func shadowY(isHovered: Bool, isPressed: Bool, floatingMode: Bool, layou
 // MARK: - Window Drag Handling
 
 struct WindowDragPreventer<Content: View>: NSViewRepresentable {
-    let content: Content
-
-    init(@ViewBuilder content: () -> Content) {
-        self.content = content()
-    }
+    @ViewBuilder let content: Content
 
     func makeNSView(context _: Context) -> NonDraggableHostingView<Content> {
         NonDraggableHostingView(rootView: content)
@@ -271,11 +267,7 @@ struct WindowDragPreventer<Content: View>: NSViewRepresentable {
 }
 
 struct WindowDragHandle<Content: View>: NSViewRepresentable {
-    let content: Content
-
-    init(@ViewBuilder content: () -> Content) {
-        self.content = content()
-    }
+    @ViewBuilder let content: Content
 
     func makeNSView(context _: Context) -> DraggableHostingView<Content> {
         DraggableHostingView(rootView: content)
@@ -287,11 +279,15 @@ struct WindowDragHandle<Content: View>: NSViewRepresentable {
 }
 
 final class NonDraggableHostingView<Content: View>: NSHostingView<Content> {
-    override var mouseDownCanMoveWindow: Bool { false }
+    override var mouseDownCanMoveWindow: Bool {
+        false
+    }
 }
 
 final class DraggableHostingView<Content: View>: NSHostingView<Content> {
-    override var mouseDownCanMoveWindow: Bool { true }
+    override var mouseDownCanMoveWindow: Bool {
+        true
+    }
 
     override func mouseDown(with event: NSEvent) {
         window?.performDrag(with: event)

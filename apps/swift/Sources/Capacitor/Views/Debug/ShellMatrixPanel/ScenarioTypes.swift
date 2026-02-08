@@ -120,7 +120,7 @@ import Foundation
             return ShellScenario(
                 parentApp: parentApp,
                 context: context,
-                multiplicity: multiplicity
+                multiplicity: multiplicity,
             )
         }
     }
@@ -163,7 +163,7 @@ import Foundation
                     scenarios.append(ShellScenario(
                         parentApp: parentApp,
                         context: context,
-                        multiplicity: multiplicity
+                        multiplicity: multiplicity,
                     ))
                 }
             }
@@ -182,7 +182,7 @@ import Foundation
                     scenarios.append(ShellScenario(
                         parentApp: parentApp,
                         context: context,
-                        multiplicity: multiplicity
+                        multiplicity: multiplicity,
                     ))
                 }
             }

@@ -96,8 +96,14 @@ final class ActivationActionExecutorTests: XCTestCase {
         var switchResult = true
         var lastSwitchedClientTty: String?
 
-        func hasAnyClientAttached() async -> Bool { hasClientAttached }
-        func getCurrentClientTty() async -> String? { currentClientTty }
+        func hasAnyClientAttached() async -> Bool {
+            hasClientAttached
+        }
+
+        func getCurrentClientTty() async -> String? {
+            currentClientTty
+        }
+
         func switchClient(to _: String, clientTty: String?) async -> Bool {
             lastSwitchedClientTty = clientTty
             return switchResult
@@ -112,14 +118,22 @@ final class ActivationActionExecutorTests: XCTestCase {
         var ghosttyRunning = false
         var ghosttyWindows = 1
 
-        func activateTerminalByTTY(tty _: String) async -> Bool { activateByTtyResult }
+        func activateTerminalByTTY(tty _: String) async -> Bool {
+            activateByTtyResult
+        }
+
         func activateAppByName(_ appName: String) -> Bool {
             lastActivatedApp = appName
             return activateAppResult
         }
 
-        func isGhosttyRunning() -> Bool { ghosttyRunning }
-        func countGhosttyWindows() -> Int { ghosttyWindows }
+        func isGhosttyRunning() -> Bool {
+            ghosttyRunning
+        }
+
+        func countGhosttyWindows() -> Int {
+            ghosttyWindows
+        }
     }
 
     @MainActor
@@ -137,13 +151,13 @@ final class ActivationActionExecutorTests: XCTestCase {
             dependencies: deps,
             tmuxClient: StubTmuxClient(),
             terminalDiscovery: StubTerminalDiscovery(),
-            terminalLauncher: StubTerminalLauncherClient()
+            terminalLauncher: StubTerminalLauncherClient(),
         )
 
         let result = await executor.execute(
             .activateByTty(tty: "/dev/ttys001", terminalType: .iTerm),
             projectPath: "/Users/pete/Code/project",
-            projectName: "project"
+            projectName: "project",
         )
 
         XCTAssertFalse(result)
@@ -159,13 +173,13 @@ final class ActivationActionExecutorTests: XCTestCase {
             dependencies: deps,
             tmuxClient: StubTmuxClient(),
             terminalDiscovery: StubTerminalDiscovery(),
-            terminalLauncher: StubTerminalLauncherClient()
+            terminalLauncher: StubTerminalLauncherClient(),
         )
 
         let result = await executor.execute(
             .switchTmuxSession(sessionName: "cap"),
             projectPath: "/Users/pete/Code/cap",
-            projectName: "cap"
+            projectName: "cap",
         )
 
         XCTAssertFalse(result)
@@ -181,13 +195,13 @@ final class ActivationActionExecutorTests: XCTestCase {
             dependencies: deps,
             tmuxClient: StubTmuxClient(),
             terminalDiscovery: StubTerminalDiscovery(),
-            terminalLauncher: StubTerminalLauncherClient()
+            terminalLauncher: StubTerminalLauncherClient(),
         )
 
         let result = await executor.execute(
             .ensureTmuxSession(sessionName: "cap", projectPath: "/Users/pete/Code/cap"),
             projectPath: "/Users/pete/Code/other",
-            projectName: "cap"
+            projectName: "cap",
         )
 
         XCTAssertFalse(result)
@@ -202,13 +216,13 @@ final class ActivationActionExecutorTests: XCTestCase {
             dependencies: deps,
             tmuxClient: StubTmuxClient(),
             terminalDiscovery: StubTerminalDiscovery(),
-            terminalLauncher: StubTerminalLauncherClient()
+            terminalLauncher: StubTerminalLauncherClient(),
         )
 
         let result = await executor.execute(
             .launchNewTerminal(projectPath: "/Users/pete/Code/app", projectName: "app"),
             projectPath: "/Users/pete/Code/app",
-            projectName: "app"
+            projectName: "app",
         )
 
         XCTAssertTrue(result)
@@ -228,13 +242,13 @@ final class ActivationActionExecutorTests: XCTestCase {
             dependencies: deps,
             tmuxClient: tmux,
             terminalDiscovery: terminalDiscovery,
-            terminalLauncher: launcher
+            terminalLauncher: launcher,
         )
 
         let result = await executor.activateHostThenSwitchTmux(
             hostTty: "/dev/ttys000",
             sessionName: "cap",
-            projectPath: "/Users/pete/Code/cap"
+            projectPath: "/Users/pete/Code/cap",
         )
 
         XCTAssertTrue(result)
@@ -254,13 +268,13 @@ final class ActivationActionExecutorTests: XCTestCase {
             dependencies: deps,
             tmuxClient: tmux,
             terminalDiscovery: terminalDiscovery,
-            terminalLauncher: launcher
+            terminalLauncher: launcher,
         )
 
         let result = await executor.activateHostThenSwitchTmux(
             hostTty: "/dev/ttys000",
             sessionName: "cap",
-            projectPath: "/Users/pete/Code/cap"
+            projectPath: "/Users/pete/Code/cap",
         )
 
         XCTAssertTrue(result)
@@ -282,13 +296,13 @@ final class ActivationActionExecutorTests: XCTestCase {
             dependencies: deps,
             tmuxClient: tmux,
             terminalDiscovery: terminalDiscovery,
-            terminalLauncher: launcher
+            terminalLauncher: launcher,
         )
 
         let result = await executor.activateHostThenSwitchTmux(
             hostTty: "/dev/ttys000",
             sessionName: "cap",
-            projectPath: "/Users/pete/Code/cap"
+            projectPath: "/Users/pete/Code/cap",
         )
 
         XCTAssertTrue(result)
@@ -310,13 +324,13 @@ final class ActivationActionExecutorTests: XCTestCase {
             dependencies: deps,
             tmuxClient: tmux,
             terminalDiscovery: terminalDiscovery,
-            terminalLauncher: launcher
+            terminalLauncher: launcher,
         )
 
         let result = await executor.activateHostThenSwitchTmux(
             hostTty: "/dev/ttys000",
             sessionName: "cap",
-            projectPath: "/Users/pete/Code/cap"
+            projectPath: "/Users/pete/Code/cap",
         )
 
         XCTAssertTrue(result)
@@ -337,13 +351,13 @@ final class ActivationActionExecutorTests: XCTestCase {
             dependencies: deps,
             tmuxClient: tmux,
             terminalDiscovery: terminalDiscovery,
-            terminalLauncher: launcher
+            terminalLauncher: launcher,
         )
 
         let result = await executor.activateHostThenSwitchTmux(
             hostTty: "/dev/ttys000",
             sessionName: "cap",
-            projectPath: "/Users/pete/Code/cap"
+            projectPath: "/Users/pete/Code/cap",
         )
 
         XCTAssertFalse(result)
@@ -362,13 +376,13 @@ final class ActivationActionExecutorTests: XCTestCase {
             dependencies: deps,
             tmuxClient: tmux,
             terminalDiscovery: terminalDiscovery,
-            terminalLauncher: launcher
+            terminalLauncher: launcher,
         )
 
         let result = await executor.activateHostThenSwitchTmux(
             hostTty: "/dev/ttys000",
             sessionName: "cap",
-            projectPath: "/Users/pete/Code/cap"
+            projectPath: "/Users/pete/Code/cap",
         )
 
         XCTAssertFalse(result)

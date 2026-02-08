@@ -146,7 +146,7 @@ struct IdeaDetailModalOverlay: View {
                 IdeaDetailOverlay(
                     idea: idea,
                     onDismiss: onDismiss,
-                    onRemove: { onRemove(idea) }
+                    onRemove: { onRemove(idea) },
                 )
             }
         }
@@ -171,7 +171,7 @@ struct IdeaDetailModalOverlay: View {
                 material: .fullScreenUI,
                 blendingMode: .behindWindow,
                 isEmphasized: false,
-                forceDarkAppearance: true
+                forceDarkAppearance: true,
             )
             .opacity(0.4)
         }

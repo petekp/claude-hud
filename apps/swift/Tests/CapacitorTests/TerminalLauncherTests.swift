@@ -7,7 +7,9 @@ final class TerminalLauncherTests: XCTestCase {
         let shouldSucceed: Bool
 
         func run(_: String) {}
-        func runChecked(_: String) -> Bool { shouldSucceed }
+        func runChecked(_: String) -> Bool {
+            shouldSucceed
+        }
     }
 
     func testGhosttyWindowCountZeroDoesNotLaunchWhenClientAttached() {
@@ -36,7 +38,7 @@ final class TerminalLauncherTests: XCTestCase {
                 scripts.append(script)
                 return (0, nil)
             },
-            activateTerminal: { activateCalls += 1 }
+            activateTerminal: { activateCalls += 1 },
         )
 
         XCTAssertTrue(result)
@@ -59,7 +61,7 @@ final class TerminalLauncherTests: XCTestCase {
                 default: return (0, "switched")
                 }
             },
-            activateTerminal: { activateCalls += 1 }
+            activateTerminal: { activateCalls += 1 },
         )
 
         XCTAssertTrue(result)
@@ -75,7 +77,7 @@ final class TerminalLauncherTests: XCTestCase {
             runScript: { _ in
                 (1, "switch failed")
             },
-            activateTerminal: { activateCalls += 1 }
+            activateTerminal: { activateCalls += 1 },
         )
 
         XCTAssertFalse(result)
@@ -98,7 +100,7 @@ final class TerminalLauncherTests: XCTestCase {
         let script = TerminalScripts.launchNoTmux(
             projectPath: "/Users/pete/Code/myproject",
             projectName: "myproject",
-            claudePath: "/opt/homebrew/bin/claude"
+            claudePath: "/opt/homebrew/bin/claude",
         )
         XCTAssertFalse(script.lowercased().contains("tmux"))
     }
@@ -107,7 +109,7 @@ final class TerminalLauncherTests: XCTestCase {
         let script = TerminalLauncher.launchNewTerminalScript(
             projectPath: "/Users/pete/Code/myproject",
             projectName: "myproject",
-            claudePath: "/opt/homebrew/bin/claude"
+            claudePath: "/opt/homebrew/bin/claude",
         )
         XCTAssertFalse(script.lowercased().contains("tmux"))
     }
@@ -124,7 +126,7 @@ final class TerminalLauncherTests: XCTestCase {
         let session = TerminalLauncher.bestTmuxSessionForPath(
             output: output,
             projectPath: projectPath,
-            homeDirectory: "/Users/pete"
+            homeDirectory: "/Users/pete",
         )
 
         XCTAssertNil(session)
@@ -139,7 +141,7 @@ final class TerminalLauncherTests: XCTestCase {
         let session = TerminalLauncher.bestTmuxSessionForPath(
             output: output,
             projectPath: projectPath,
-            homeDirectory: "/Users/pete"
+            homeDirectory: "/Users/pete",
         )
 
         XCTAssertNil(session)

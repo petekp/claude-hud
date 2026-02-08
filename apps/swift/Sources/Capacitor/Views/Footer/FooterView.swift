@@ -166,7 +166,7 @@ struct LogoView: View {
                         material: selectedMaterial,
                         blendingMode: selectedBlendingMode,
                         isEmphasized: config.logoEmphasized,
-                        forceDarkAppearance: config.logoForceDarkAppearance
+                        forceDarkAppearance: config.logoForceDarkAppearance,
                     )
 
                     Image(nsImage: nsImage)
@@ -205,14 +205,14 @@ struct PinButton: View {
                 .contentShape(Circle())
                 .background(
                     Circle()
-                        .fill(Color.white.opacity(isHovered ? 0.1 : 0))
+                        .fill(Color.white.opacity(isHovered ? 0.1 : 0)),
                 )
                 .overlay(
                     Circle()
                         .strokeBorder(
                             Color.white.opacity(isHovered ? 0.15 : 0),
-                            lineWidth: 0.5
-                        )
+                            lineWidth: 0.5,
+                        ),
                 )
         }
         .buttonStyle(.plain)
@@ -254,7 +254,7 @@ struct AddProjectButton: View {
                         material: .hudWindow,
                         blendingMode: .behindWindow,
                         isEmphasized: true,
-                        forceDarkAppearance: true
+                        forceDarkAppearance: true,
                     )
 
                     Color.black.opacity(isHovered ? 0.25 : 0.35)
@@ -265,10 +265,10 @@ struct AddProjectButton: View {
                             .white.opacity(0.02),
                         ],
                         startPoint: .topLeading,
-                        endPoint: .bottomTrailing
+                        endPoint: .bottomTrailing,
                     )
                 }
-                .clipShape(RoundedRectangle(cornerRadius: 8))
+                .clipShape(RoundedRectangle(cornerRadius: 8)),
             )
             .overlay(
                 RoundedRectangle(cornerRadius: 8)
@@ -279,10 +279,10 @@ struct AddProjectButton: View {
                                 .white.opacity(isHovered ? 0.12 : 0.08),
                             ],
                             startPoint: .topLeading,
-                            endPoint: .bottomTrailing
+                            endPoint: .bottomTrailing,
                         ),
-                        lineWidth: 0.5
-                    )
+                        lineWidth: 0.5,
+                    ),
             )
             .animation(reduceMotion ? AppMotion.reducedMotionFallback : .easeOut(duration: 0.15), value: isHovered)
         }

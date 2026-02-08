@@ -24,7 +24,7 @@ struct WorkstreamsPanel: View {
                     .padding(.vertical, 6)
                     .background(
                         RoundedRectangle(cornerRadius: 8)
-                            .fill(Color.white.opacity(0.08))
+                            .fill(Color.white.opacity(0.08)),
                     )
                 }
                 .buttonStyle(.plain)
@@ -89,7 +89,7 @@ struct WorkstreamsPanel: View {
                 .padding(.vertical, 4)
                 .background(
                     RoundedRectangle(cornerRadius: 6)
-                        .fill(Color.white.opacity(0.06))
+                        .fill(Color.white.opacity(0.06)),
                 )
                 .disabled(isDestroying)
 
@@ -104,7 +104,7 @@ struct WorkstreamsPanel: View {
                     .padding(.vertical, 4)
                     .background(
                         RoundedRectangle(cornerRadius: 6)
-                            .fill(Color.red.opacity(0.18))
+                            .fill(Color.red.opacity(0.18)),
                     )
                     .disabled(isDestroying)
                 } else {
@@ -118,7 +118,7 @@ struct WorkstreamsPanel: View {
                     .padding(.vertical, 4)
                     .background(
                         RoundedRectangle(cornerRadius: 6)
-                            .fill(Color.red.opacity(0.12))
+                            .fill(Color.red.opacity(0.12)),
                     )
                     .disabled(isDestroying)
                 }
@@ -133,7 +133,7 @@ struct WorkstreamsPanel: View {
         .padding(10)
         .background(
             RoundedRectangle(cornerRadius: 10)
-                .fill(Color.white.opacity(0.03))
+                .fill(Color.white.opacity(0.03)),
         )
     }
 

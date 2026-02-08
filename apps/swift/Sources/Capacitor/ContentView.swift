@@ -47,7 +47,7 @@ struct ContentView: View {
                         containerSize: containerSize,
                         onCapture: { text in
                             appState.captureIdea(for: project, text: text)
-                        }
+                        },
                     )
                 }
 
@@ -55,7 +55,7 @@ struct ContentView: View {
 
                 TipTooltipContainer(
                     showTip: $showDragDropTip,
-                    message: "Tip: Drag folders anywhere to connect faster"
+                    message: "Tip: Drag folders anywhere to connect faster",
                 )
 
                 if isDragHovered {
@@ -128,7 +128,7 @@ struct ContentView: View {
 
             RoundedRectangle(cornerRadius: innerCornerRadius, style: .continuous)
                 .strokeBorder(
-                    style: StrokeStyle(lineWidth: 2, dash: [8, 6])
+                    style: StrokeStyle(lineWidth: 2, dash: [8, 6]),
                 )
                 .foregroundStyle(Color.hudAccent.opacity(0.6))
                 .padding(4)

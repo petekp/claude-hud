@@ -23,8 +23,13 @@ enum AppChannel: String, CaseIterable, Codable {
         }
     }
 
-    var label: String { rawValue.uppercased() }
-    var isProduction: Bool { self == .prod }
+    var label: String {
+        rawValue.uppercased()
+    }
+
+    var isProduction: Bool {
+        self == .prod
+    }
 }
 
 struct FeatureFlags: Equatable, Codable {
@@ -102,7 +107,7 @@ struct AppConfig: Equatable {
             environment: environment,
             info: info,
             configFile: configFile,
-            defaultChannel: defaultChannel
+            defaultChannel: defaultChannel,
         )
     }
 
@@ -110,13 +115,13 @@ struct AppConfig: Equatable {
         environment: [String: String],
         info: [String: Any],
         configFile: ConfigFile?,
-        defaultChannel: AppChannel
+        defaultChannel: AppChannel,
     ) -> AppConfig {
         let channel = resolveChannel(
             environment: environment,
             info: info,
             configFile: configFile,
-            defaultChannel: defaultChannel
+            defaultChannel: defaultChannel,
         )
 
         var flags = FeatureFlags.defaults(for: channel)
@@ -131,7 +136,7 @@ struct AppConfig: Equatable {
         environment: [String: String],
         info: [String: Any],
         configFile: ConfigFile?,
-        defaultChannel: AppChannel
+        defaultChannel: AppChannel,
     ) -> AppChannel {
         if let envChannel = AppChannel.parse(environment["CAPACITOR_CHANNEL"]) {
             return envChannel

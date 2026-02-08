@@ -1,6 +1,5 @@
-import XCTest
-
 @testable import Capacitor
+import XCTest
 
 final class AppConfigTests: XCTestCase {
     func testAlphaChannelDefaultsDisableIdeaAndDetails() {
@@ -8,7 +7,7 @@ final class AppConfigTests: XCTestCase {
             environment: ["CAPACITOR_CHANNEL": "alpha"],
             info: [:],
             configFile: nil,
-            defaultChannel: .prod
+            defaultChannel: .prod,
         )
 
         XCTAssertEqual(config.channel, .alpha)
@@ -22,7 +21,7 @@ final class AppConfigTests: XCTestCase {
             environment: ["CAPACITOR_CHANNEL": "beta"],
             info: ["CapacitorChannel": "alpha"],
             configFile: configFile,
-            defaultChannel: .prod
+            defaultChannel: .prod,
         )
 
         XCTAssertEqual(config.channel, .beta)
@@ -37,7 +36,7 @@ final class AppConfigTests: XCTestCase {
             ],
             info: [:],
             configFile: nil,
-            defaultChannel: .prod
+            defaultChannel: .prod,
         )
 
         XCTAssertTrue(config.featureFlags.ideaCapture)
@@ -52,14 +51,14 @@ final class AppConfigTests: XCTestCase {
             featureFlags: [
                 "ideaCapture": true,
                 "projectDetails": false,
-            ]
+            ],
         )
 
         let config = AppConfig.resolve(
             environment: [:],
             info: [:],
             configFile: configFile,
-            defaultChannel: .prod
+            defaultChannel: .prod,
         )
 
         XCTAssertTrue(config.featureFlags.ideaCapture)

@@ -26,7 +26,7 @@ let package = Package(
         // System library wrapper for the Rust FFI
         .systemLibrary(
             name: "hud_coreFFI",
-            path: "Sources/HudCoreFFI"
+            path: "Sources/HudCoreFFI",
         ),
         // Main Swift app
         .executableTarget(
@@ -45,7 +45,7 @@ let package = Package(
             linkerSettings: [
                 .linkedLibrary("hud_core"),
                 .unsafeFlags(["-L", "../../target/release"]),
-            ]
+            ],
         ),
         // Unit tests
         .testTarget(
@@ -54,7 +54,7 @@ let package = Package(
                 "Capacitor",
                 .product(name: "Sparkle", package: "Sparkle"),
             ],
-            path: "Tests/CapacitorTests"
+            path: "Tests/CapacitorTests",
         ),
-    ]
+    ],
 )

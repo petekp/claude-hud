@@ -69,7 +69,7 @@ final class ShellStateStore {
             logger.info("Shell state updated: shells=\(daemonState.shells.count) summary=\(summary, privacy: .public)")
             DebugLog.write("ShellStateStore.loadState shells=\(daemonState.shells.count) summary=\(summary)")
             let threshold = Date().addingTimeInterval(-Constants.shellStalenessThresholdSeconds)
-            let staleCount = daemonState.shells.values.filter { $0.updatedAt <= threshold }.count
+            let staleCount = daemonState.shells.values.count(where: { $0.updatedAt <= threshold })
             Telemetry.emit("shell_state_refresh", "Shell state updated", payload: [
                 "shell_count": daemonState.shells.count,
                 "stale_filtered_count": staleCount,
@@ -133,7 +133,7 @@ final class ShellStateStore {
     }
 
     #if DEBUG
-        // Test-only helper for deterministic resolution.
+        /// Test-only helper for deterministic resolution.
         func setStateForTesting(_ state: ShellCwdState?) {
             self.state = state
         }

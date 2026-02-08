@@ -79,7 +79,9 @@ enum ParentAppCategory: String, CaseIterable, Identifiable {
     case multiplexer = "Multiplexed"
     case unknown = "Unknown Parent"
 
-    var id: String { rawValue }
+    var id: String {
+        rawValue
+    }
 }
 
 // MARK: - Shell Context
@@ -122,7 +124,9 @@ enum ActivationStrategy: String, CaseIterable, Codable, Identifiable {
     case priorityFallback
     case skip
 
-    var id: String { rawValue }
+    var id: String {
+        rawValue
+    }
 
     var displayName: String {
         switch self {

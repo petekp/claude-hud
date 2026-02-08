@@ -24,7 +24,7 @@ struct VibrancyView: NSViewRepresentable {
         material: NSVisualEffectView.Material = .hudWindow,
         blendingMode: NSVisualEffectView.BlendingMode = .behindWindow,
         isEmphasized: Bool = false,
-        forceDarkAppearance: Bool = false
+        forceDarkAppearance: Bool = false,
     ) {
         self.material = material
         self.blendingMode = blendingMode
@@ -63,15 +63,15 @@ extension View {
         material: NSVisualEffectView.Material = .hudWindow,
         blendingMode: NSVisualEffectView.BlendingMode = .behindWindow,
         isEmphasized: Bool = false,
-        forceDarkAppearance: Bool = false
+        forceDarkAppearance: Bool = false,
     ) -> some View {
         background(
             VibrancyView(
                 material: material,
                 blendingMode: blendingMode,
                 isEmphasized: isEmphasized,
-                forceDarkAppearance: forceDarkAppearance
-            )
+                forceDarkAppearance: forceDarkAppearance,
+            ),
         )
     }
 }
@@ -107,7 +107,7 @@ struct DarkFrostedGlass: View {
                 material: material,
                 blendingMode: .behindWindow,
                 isEmphasized: isEmphasized,
-                forceDarkAppearance: true
+                forceDarkAppearance: true,
             )
             .id("vibrancy-\(config.materialType)-\(isEmphasized)-\(config.refreshCounter)")
 
@@ -120,14 +120,14 @@ struct DarkFrostedGlass: View {
                     .clear,
                 ],
                 startPoint: .topLeading,
-                endPoint: .bottomTrailing
+                endPoint: .bottomTrailing,
             )
 
             VStack(spacing: 0) {
                 LinearGradient(
                     colors: [.white.opacity(topHighlightOpacity), .clear],
                     startPoint: .top,
-                    endPoint: .bottom
+                    endPoint: .bottom,
                 )
                 .frame(height: 1)
                 Spacer()
@@ -144,10 +144,10 @@ struct DarkFrostedGlass: View {
                             .white.opacity(borderOpacity * 0.2),
                         ],
                         startPoint: .topLeading,
-                        endPoint: .bottomTrailing
+                        endPoint: .bottomTrailing,
                     ),
-                    lineWidth: 0.5
-                )
+                    lineWidth: 0.5,
+                ),
         )
         .shadow(color: .black.opacity(shadowOpacity * 0.8), radius: 1, y: 1)
         .shadow(color: .black.opacity(shadowOpacity), radius: shadowRadius, y: shadowY)
@@ -170,10 +170,12 @@ extension GlassConfig {
 
 struct DarkFrostedCard: View {
     var isHovered: Bool = false
-    var tintOpacity: Double? = nil
+    var tintOpacity: Double?
     var layoutMode: LayoutMode = .vertical
-    var config: GlassConfig? = nil
-    private var effectiveConfig: GlassConfig { config ?? GlassConfig.shared }
+    var config: GlassConfig?
+    private var effectiveConfig: GlassConfig {
+        config ?? GlassConfig.shared
+    }
 
     #if DEBUG
         private var selectedMaterial: NSVisualEffectView.Material {
@@ -220,14 +222,14 @@ struct DarkFrostedCard: View {
                     material: selectedMaterial,
                     blendingMode: selectedBlendingMode,
                     isEmphasized: effectiveConfig.cardEmphasized,
-                    forceDarkAppearance: effectiveConfig.cardForceDarkAppearance
+                    forceDarkAppearance: effectiveConfig.cardForceDarkAppearance,
                 )
             #else
                 VibrancyView(
                     material: .hudWindow,
                     blendingMode: .behindWindow,
                     isEmphasized: false,
-                    forceDarkAppearance: true
+                    forceDarkAppearance: true,
                 )
             #endif
 
@@ -239,7 +241,7 @@ struct DarkFrostedCard: View {
                     .white.opacity(highlightOpacity * 0.33),
                 ],
                 startPoint: .topLeading,
-                endPoint: .bottomTrailing
+                endPoint: .bottomTrailing,
             )
             #if DEBUG
             .blendMode(selectedSwiftUIBlendMode)

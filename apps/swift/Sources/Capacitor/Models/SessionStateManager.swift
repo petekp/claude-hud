@@ -131,7 +131,7 @@ final class SessionStateManager: ObservableObject {
 
     private nonisolated func mergeDaemonProjectStates(
         _ states: [DaemonProjectState],
-        projects: [Project]
+        projects: [Project],
     ) -> [String: ProjectSessionState] {
         let homeNormalized = PathNormalizer.normalize(NSHomeDirectory())
         var projectInfos: [ProjectMatchInfo] = []
@@ -151,8 +151,8 @@ final class SessionStateManager: ObservableObject {
                     normalizedPath: normalized,
                     depth: depth,
                     repoInfo: repoInfo,
-                    workspaceId: workspaceId
-                )
+                    workspaceId: workspaceId,
+                ),
             )
         }
 
@@ -188,13 +188,13 @@ final class SessionStateManager: ObservableObject {
                 state: state,
                 normalizedPath: normalizedStatePath,
                 repoInfo: stateRepoInfo,
-                workspaceId: stateWorkspaceId
+                workspaceId: stateWorkspaceId,
             )
             guard let match = sortedProjects.first(where: { info in
                 matchesProject(
                     info,
                     state: stateInfo,
-                    homeNormalized: homeNormalized
+                    homeNormalized: homeNormalized,
                 )
             }) else {
                 // If the daemon reports activity for a different workspace within the same repo,
@@ -246,7 +246,7 @@ final class SessionStateManager: ObservableObject {
                 workingOn: nil,
                 context: nil,
                 thinking: nil,
-                hasSession: state.hasSession
+                hasSession: state.hasSession,
             )
             merged[projectPath] = sessionState
         }
@@ -257,7 +257,7 @@ final class SessionStateManager: ObservableObject {
     private nonisolated func matchesProject(
         _ project: ProjectMatchInfo,
         state: StateMatchInfo,
-        homeNormalized: String
+        homeNormalized: String,
     ) -> Bool {
         if project.workspaceId == state.workspaceId {
             return true
@@ -266,7 +266,7 @@ final class SessionStateManager: ObservableObject {
         if isParentOrSelfExcludingHome(
             parent: project.normalizedPath,
             child: state.normalizedPath,
-            homeNormalized: homeNormalized
+            homeNormalized: homeNormalized,
         ) {
             return true
         }
@@ -334,7 +334,7 @@ final class SessionStateManager: ObservableObject {
     }
 
     #if DEBUG
-        // Test-only helper for deterministic session resolution.
+        /// Test-only helper for deterministic session resolution.
         func setSessionStatesForTesting(_ states: [String: ProjectSessionState]) {
             sessionStates = states
             pruneCachedStates()

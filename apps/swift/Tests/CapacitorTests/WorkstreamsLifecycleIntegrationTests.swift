@@ -1,7 +1,6 @@
+@testable import Capacitor
 import Foundation
 import XCTest
-
-@testable import Capacitor
 
 @MainActor
 final class WorkstreamsLifecycleIntegrationTests: XCTestCase {
@@ -43,7 +42,7 @@ final class WorkstreamsLifecycleIntegrationTests: XCTestCase {
             hasLocalSettings: false,
             taskCount: 0,
             stats: nil,
-            isMissing: false
+            isMissing: false,
         )
 
         let sessionStateManager = SessionStateManager()
@@ -60,15 +59,15 @@ final class WorkstreamsLifecycleIntegrationTests: XCTestCase {
                         parentApp: "terminal",
                         tmuxSession: nil,
                         tmuxClientTty: nil,
-                        updatedAt: Date()
+                        updatedAt: Date(),
                     ),
-                ]
-            )
+                ],
+            ),
         )
 
         let resolver = ActiveProjectResolver(
             sessionStateManager: sessionStateManager,
-            shellStateStore: shellStateStore
+            shellStateStore: shellStateStore,
         )
         resolver.updateProjects([project])
         resolver.resolve()
@@ -80,7 +79,7 @@ final class WorkstreamsLifecycleIntegrationTests: XCTestCase {
             try service.removeManagedWorktree(
                 in: repoRoot.path,
                 name: "workstream-1",
-                activeWorktreePaths: [shellPath]
+                activeWorktreePaths: [shellPath],
             )
             XCTFail("Expected guardrail to block destroy for active worktree")
         } catch let error as WorktreeService.Error {

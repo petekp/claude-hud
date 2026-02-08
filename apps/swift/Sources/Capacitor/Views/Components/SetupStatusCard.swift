@@ -32,11 +32,11 @@ struct SetupStatusCard: View {
         }
         .background(
             RoundedRectangle(cornerRadius: 10)
-                .fill(cardBackgroundColor.opacity(0.1))
+                .fill(cardBackgroundColor.opacity(0.1)),
         )
         .overlay(
             RoundedRectangle(cornerRadius: 10)
-                .strokeBorder(cardBackgroundColor.opacity(0.2), lineWidth: 0.5)
+                .strokeBorder(cardBackgroundColor.opacity(0.2), lineWidth: 0.5),
         )
         .accessibilityElement(children: .contain)
         .accessibilityLabel(accessibilityDescription)
@@ -104,16 +104,16 @@ struct SetupStatusCard: View {
         VStack(alignment: .leading, spacing: 6) {
             checklistItem(
                 label: "Hook binary installed",
-                isOk: diagnostic.binaryOk
+                isOk: diagnostic.binaryOk,
             )
             checklistItem(
                 label: "Settings configured",
-                isOk: diagnostic.configOk
+                isOk: diagnostic.configOk,
             )
             checklistItem(
                 label: firingLabel,
                 isOk: diagnostic.firingOk,
-                isPending: diagnostic.isFirstRun && diagnostic.binaryOk && diagnostic.configOk
+                isPending: diagnostic.isFirstRun && diagnostic.binaryOk && diagnostic.configOk,
             )
         }
     }
@@ -235,7 +235,7 @@ struct SetupStatusCard: View {
                 .padding(.vertical, 6)
                 .background(
                     RoundedRectangle(cornerRadius: 6)
-                        .fill(Color.hudAccent.opacity(fixButtonHovered ? 0.9 : 0.7))
+                        .fill(Color.hudAccent.opacity(fixButtonHovered ? 0.9 : 0.7)),
                 )
             }
             .buttonStyle(.plain)
@@ -272,7 +272,7 @@ struct SetupStatusCard: View {
                 .padding(.vertical, 5)
                 .background(
                     RoundedRectangle(cornerRadius: 5)
-                        .fill(Color.white.opacity(testButtonHovered ? 0.12 : 0.08))
+                        .fill(Color.white.opacity(testButtonHovered ? 0.12 : 0.08)),
                 )
             }
             .buttonStyle(.plain)

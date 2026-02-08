@@ -55,16 +55,16 @@ struct SkeletonView: View {
                             .clear,
                         ],
                         startPoint: .leading,
-                        endPoint: .trailing
+                        endPoint: .trailing,
                     )
-                    .offset(x: isAnimating ? geometry.size.width : -geometry.size.width)
+                    .offset(x: isAnimating ? geometry.size.width : -geometry.size.width),
                 )
                 .clipShape(RoundedRectangle(cornerRadius: 4))
         }
         .onAppear {
             withAnimation(
                 .linear(duration: 1.5)
-                    .repeatForever(autoreverses: false)
+                    .repeatForever(autoreverses: false),
             ) {
                 isAnimating = true
             }
@@ -110,7 +110,7 @@ struct SkeletonCard: View {
         .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
         .overlay(
             RoundedRectangle(cornerRadius: cornerRadius)
-                .strokeBorder(Color.white.opacity(0.05), lineWidth: 0.5)
+                .strokeBorder(Color.white.opacity(0.05), lineWidth: 0.5),
         )
     }
 }

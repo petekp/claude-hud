@@ -58,7 +58,7 @@ struct WelcomeView: View {
         .sheet(isPresented: $manager.showShellInstructions) {
             ShellInstructionsSheet(
                 isPresented: $manager.showShellInstructions,
-                onDismiss: { manager.dismissShellInstructions() }
+                onDismiss: { manager.dismissShellInstructions() },
             )
         }
     }
@@ -105,7 +105,7 @@ struct WelcomeView: View {
                         _Concurrency.Task {
                             await manager.retryStep(step.id)
                         }
-                    }
+                    },
                 )
             }
         }

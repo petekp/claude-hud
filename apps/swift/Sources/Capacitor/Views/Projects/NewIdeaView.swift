@@ -96,7 +96,7 @@ struct NewIdeaView: View {
                     .cornerRadius(8)
                     .overlay(
                         RoundedRectangle(cornerRadius: 8)
-                            .stroke(Color.white.opacity(0.1), lineWidth: 1)
+                            .stroke(Color.white.opacity(0.1), lineWidth: 1),
                     )
             }
 
@@ -115,7 +115,7 @@ struct NewIdeaView: View {
                     .cornerRadius(8)
                     .overlay(
                         RoundedRectangle(cornerRadius: 8)
-                            .stroke(Color.white.opacity(0.1), lineWidth: 1)
+                            .stroke(Color.white.opacity(0.1), lineWidth: 1),
                     )
             }
 
@@ -147,7 +147,7 @@ struct NewIdeaView: View {
                         .cornerRadius(8)
                         .overlay(
                             RoundedRectangle(cornerRadius: 8)
-                                .stroke(Color.white.opacity(0.1), lineWidth: 1)
+                                .stroke(Color.white.opacity(0.1), lineWidth: 1),
                         )
                 }
                 .transition(.opacity.combined(with: .move(edge: .top)))
@@ -216,7 +216,7 @@ struct NewIdeaView: View {
             .background(
                 isFormValid
                     ? Color.hudAccent
-                    : Color.hudAccent.opacity(0.3)
+                    : Color.hudAccent.opacity(0.3),
             )
             .cornerRadius(10)
         }
@@ -243,7 +243,7 @@ struct NewIdeaView: View {
             description: projectDescription.trimmingCharacters(in: .whitespaces),
             location: defaultLocation,
             language: selectedLanguage?.lowercased(),
-            framework: framework.isEmpty ? nil : framework
+            framework: framework.isEmpty ? nil : framework,
         )
 
         appState.createProjectFromIdea(request) { result in

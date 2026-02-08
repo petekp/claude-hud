@@ -34,7 +34,7 @@ extension ProjectCreation: Codable {
             progress: progress,
             error: error,
             createdAt: createdAt,
-            completedAt: completedAt
+            completedAt: completedAt,
         )
     }
 

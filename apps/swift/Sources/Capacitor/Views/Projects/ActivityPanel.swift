@@ -118,7 +118,7 @@ struct CreationCard: View {
         .clipShape(RoundedRectangle(cornerRadius: 10))
         .overlay(
             RoundedRectangle(cornerRadius: 10)
-                .stroke(statusColor.opacity(0.2), lineWidth: 1)
+                .stroke(statusColor.opacity(0.2), lineWidth: 1),
         )
         .onAppear {
             if creation.status == .inProgress {
@@ -129,7 +129,6 @@ struct CreationCard: View {
         }
     }
 
-    @ViewBuilder
     private var actionButtons: some View {
         HStack(spacing: 6) {
             switch creation.status {

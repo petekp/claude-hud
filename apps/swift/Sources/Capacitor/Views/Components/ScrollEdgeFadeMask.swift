@@ -11,7 +11,7 @@ struct ScrollEdgeFadeStops {
         topInset: CGFloat,
         bottomInset: CGFloat,
         topFade: CGFloat,
-        bottomFade: CGFloat
+        bottomFade: CGFloat,
     ) -> ScrollEdgeFadeStops {
         guard height > 0 else {
             return ScrollEdgeFadeStops(topClear: 0, topOpaque: 0, bottomOpaque: 1, bottomClear: 1)
@@ -30,7 +30,7 @@ struct ScrollEdgeFadeStops {
             topClear: topClear,
             topOpaque: resolvedTopOpaque,
             bottomOpaque: resolvedBottomOpaque,
-            bottomClear: resolvedBottomClear
+            bottomClear: resolvedBottomClear,
         )
     }
 
@@ -68,7 +68,7 @@ struct ScrollEdgeFadeMask: View {
                 topInset: topInset,
                 bottomInset: bottomInset,
                 topFade: topFade,
-                bottomFade: bottomFade
+                bottomFade: bottomFade,
             )
 
             LinearGradient(
@@ -81,7 +81,7 @@ struct ScrollEdgeFadeMask: View {
                     .init(color: .clear, location: 1),
                 ],
                 startPoint: .top,
-                endPoint: .bottom
+                endPoint: .bottom,
             )
         }
     }
@@ -92,15 +92,15 @@ extension View {
         topInset: CGFloat = 0,
         bottomInset: CGFloat = 0,
         topFade: CGFloat,
-        bottomFade: CGFloat
+        bottomFade: CGFloat,
     ) -> some View {
         mask(
             ScrollEdgeFadeMask(
                 topInset: topInset,
                 bottomInset: bottomInset,
                 topFade: topFade,
-                bottomFade: bottomFade
-            )
+                bottomFade: bottomFade,
+            ),
         )
     }
 }

@@ -49,7 +49,7 @@ final class UpdaterController: ObservableObject {
         let controller = SPUStandardUpdaterController(
             startingUpdater: true,
             updaterDelegate: nil,
-            userDriverDelegate: nil
+            userDriverDelegate: nil,
         )
         updaterController = controller
 

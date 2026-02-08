@@ -58,7 +58,7 @@ actor ProjectIngestionWorker {
             addedCount: addedCount,
             addedPaths: addedPaths,
             alreadyTrackedPaths: alreadyTrackedPaths,
-            failedNames: failedNames
+            failedNames: failedNames,
         )
     }
 }

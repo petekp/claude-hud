@@ -10,7 +10,7 @@ final class DaemonStatusEvaluatorTests: XCTestCase {
         let status = evaluator.statusForHealthResult(
             isEnabled: true,
             result: .failure(TestError()),
-            now: now.addingTimeInterval(DaemonStatusEvaluator.startupGraceInterval / 2)
+            now: now.addingTimeInterval(DaemonStatusEvaluator.startupGraceInterval / 2),
         )
 
         XCTAssertNil(status)
@@ -24,7 +24,7 @@ final class DaemonStatusEvaluatorTests: XCTestCase {
         let first = evaluator.statusForHealthResult(
             isEnabled: true,
             result: .failure(TestError()),
-            now: now.addingTimeInterval(DaemonStatusEvaluator.startupGraceInterval + 0.1)
+            now: now.addingTimeInterval(DaemonStatusEvaluator.startupGraceInterval + 0.1),
         )
 
         XCTAssertNil(first)
@@ -32,7 +32,7 @@ final class DaemonStatusEvaluatorTests: XCTestCase {
         let second = evaluator.statusForHealthResult(
             isEnabled: true,
             result: .failure(TestError()),
-            now: now.addingTimeInterval(DaemonStatusEvaluator.startupGraceInterval + 0.2)
+            now: now.addingTimeInterval(DaemonStatusEvaluator.startupGraceInterval + 0.2),
         )
 
         XCTAssertEqual(second?.isHealthy, false)
@@ -46,7 +46,7 @@ final class DaemonStatusEvaluatorTests: XCTestCase {
         let status = evaluator.statusForHealthResult(
             isEnabled: true,
             result: .success(health),
-            now: Date()
+            now: Date(),
         )
 
         XCTAssertEqual(status?.isHealthy, true)
@@ -60,7 +60,7 @@ final class DaemonStatusEvaluatorTests: XCTestCase {
         let status = evaluator.statusForHealthResult(
             isEnabled: false,
             result: .failure(TestError()),
-            now: Date()
+            now: Date(),
         )
 
         XCTAssertEqual(status?.isEnabled, false)
@@ -74,7 +74,7 @@ final class DaemonStatusEvaluatorTests: XCTestCase {
             isHealthy: false,
             message: "Daemon unavailable",
             pid: nil,
-            version: nil
+            version: nil,
         )
 
         let updatedStatus = evaluator.beginStartup(currentStatus: offlineStatus, now: Date())

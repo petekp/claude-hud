@@ -57,7 +57,7 @@ actor CapacitorConfig {
             if !FileManager.default.fileExists(atPath: capacitorDir.path) {
                 try FileManager.default.createDirectory(
                     at: capacitorDir,
-                    withIntermediateDirectories: true
+                    withIntermediateDirectories: true,
                 )
             }
 

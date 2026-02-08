@@ -178,7 +178,7 @@ struct IdeaCaptureOverlay: View {
                 fontSize: dynamicFontSize,
                 textColor: .white,
                 placeholderColor: .white.withAlphaComponent(0.3),
-                isDisabled: isCapturing
+                isDisabled: isCapturing,
             )
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .padding(.top, 60)
@@ -290,7 +290,7 @@ struct IdeaCaptureModalOverlay: View {
 
         return UnitPoint(
             x: max(0, min(1, unitX)),
-            y: max(0, min(1, unitY))
+            y: max(0, min(1, unitY)),
         )
     }
 
@@ -307,7 +307,7 @@ struct IdeaCaptureModalOverlay: View {
                     isPresented: $isPresented,
                     shouldFocus: $shouldFocusTextArea,
                     projectName: projectName,
-                    onCapture: onCapture
+                    onCapture: onCapture,
                 )
                 .scaleEffect(animatedIn ? 1 : 0.3, anchor: anchorPoint)
                 .opacity(animatedIn ? 1 : 0)
@@ -363,7 +363,7 @@ struct IdeaCaptureModalOverlay: View {
                 material: .fullScreenUI,
                 blendingMode: .behindWindow,
                 isEmphasized: false,
-                forceDarkAppearance: true
+                forceDarkAppearance: true,
             )
             .opacity(0.4)
         }
@@ -389,7 +389,7 @@ struct IdeaCaptureModalOverlay: View {
     }
 }
 
-// Keep the old name as an alias for compatibility
+/// Keep the old name as an alias for compatibility
 typealias IdeaCapturePopover = IdeaCaptureOverlay
 
 // MARK: - NSView Extension for finding TextEditor's NSTextView

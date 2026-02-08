@@ -22,7 +22,7 @@ struct GitRepositoryInfo {
         return GitRepositoryInfo(
             repoRoot: repoRootNormalized,
             commonDir: commonDirNormalized,
-            relativePath: relativePath
+            relativePath: relativePath,
         )
     }
 
@@ -96,8 +96,7 @@ struct GitRepositoryInfo {
     }
 
     private static func resolveGitPath(base: URL, raw: String) -> URL {
-        let pathUrl = URL(fileURLWithPath: raw, relativeTo: base).standardizedFileURL
-        return pathUrl
+        URL(fileURLWithPath: raw, relativeTo: base).standardizedFileURL
     }
 
     private static func relativePath(from root: String, to path: String) -> String? {

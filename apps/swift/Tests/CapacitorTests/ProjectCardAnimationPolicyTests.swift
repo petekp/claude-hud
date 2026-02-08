@@ -7,7 +7,7 @@ final class ProjectCardAnimationPolicyTests: XCTestCase {
             isActive: false,
             isHovered: false,
             isWaiting: true,
-            isWorking: false
+            isWorking: false,
         )
 
         XCTAssertTrue(shouldAnimate)
@@ -18,7 +18,7 @@ final class ProjectCardAnimationPolicyTests: XCTestCase {
             isActive: false,
             isHovered: false,
             isWaiting: false,
-            isWorking: false
+            isWorking: false,
         )
 
         XCTAssertFalse(shouldAnimate)
@@ -29,7 +29,7 @@ final class ProjectCardAnimationPolicyTests: XCTestCase {
             isActive: false,
             isHovered: false,
             isWaiting: false,
-            isWorking: true
+            isWorking: true,
         )
 
         XCTAssertTrue(shouldAnimate)

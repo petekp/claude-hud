@@ -1,7 +1,6 @@
+@testable import Capacitor
 import Foundation
 import XCTest
-
-@testable import Capacitor
 
 @MainActor
 final class ActiveProjectResolverTests: XCTestCase {
@@ -19,7 +18,7 @@ final class ActiveProjectResolverTests: XCTestCase {
                 workingOn: nil,
                 context: nil,
                 thinking: nil,
-                hasSession: true
+                hasSession: true,
             ),
             projectB.path: ProjectSessionState(
                 state: .ready,
@@ -29,7 +28,7 @@ final class ActiveProjectResolverTests: XCTestCase {
                 workingOn: nil,
                 context: nil,
                 thinking: nil,
-                hasSession: true
+                hasSession: true,
             ),
         ])
 
@@ -55,7 +54,7 @@ final class ActiveProjectResolverTests: XCTestCase {
                 workingOn: nil,
                 context: nil,
                 thinking: nil,
-                hasSession: true
+                hasSession: true,
             ),
             projectB.path: ProjectSessionState(
                 state: .ready,
@@ -65,7 +64,7 @@ final class ActiveProjectResolverTests: XCTestCase {
                 workingOn: nil,
                 context: nil,
                 thinking: nil,
-                hasSession: true
+                hasSession: true,
             ),
         ])
 
@@ -123,10 +122,10 @@ final class ActiveProjectResolverTests: XCTestCase {
                         parentApp: "terminal",
                         tmuxSession: nil,
                         tmuxClientTty: nil,
-                        updatedAt: Date()
+                        updatedAt: Date(),
                     ),
-                ]
-            )
+                ],
+            ),
         )
 
         let resolver = ActiveProjectResolver(sessionStateManager: sessionStateManager, shellStateStore: shellStateStore)
@@ -148,7 +147,7 @@ final class ActiveProjectResolverTests: XCTestCase {
             hasLocalSettings: false,
             taskCount: 0,
             stats: nil,
-            isMissing: false
+            isMissing: false,
         )
     }
 }

@@ -98,7 +98,7 @@ enum DaemonService {
             binaryPath: String,
             homeDir: URL = FileManager.default.homeDirectoryForCurrentUser,
             uid: uid_t = getuid(),
-            runLaunchctl: ([String]) -> (exitCode: Int32, output: String) = systemLaunchctl
+            runLaunchctl: ([String]) -> (exitCode: Int32, output: String) = systemLaunchctl,
         ) -> String? {
             let plistURL: URL
             let didChange: Bool

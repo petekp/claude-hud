@@ -151,7 +151,7 @@ final class DaemonClient {
         return try await performRequest(
             method: "get_shell_state",
             params: String?.none,
-            decoder: decoder
+            decoder: decoder,
         )
     }
 
@@ -168,7 +168,7 @@ final class DaemonClient {
     private func performRequest<Payload: Decodable>(
         method: String,
         params: (some Encodable)?,
-        decoder: JSONDecoder = JSONDecoder()
+        decoder: JSONDecoder = JSONDecoder(),
     ) async throws -> Payload {
         guard isEnabled else {
             DebugLog.write("DaemonClient.performRequest disabled method=\(method)")
@@ -179,7 +179,7 @@ final class DaemonClient {
             protocolVersion: Constants.protocolVersion,
             method: method,
             id: UUID().uuidString,
-            params: params
+            params: params,
         )
 
         let encoder = JSONEncoder()
@@ -275,7 +275,7 @@ final class DaemonClient {
         let microseconds = Int32((timeoutSeconds - floor(timeoutSeconds)) * 1_000_000)
         var timeout = timeval(
             tv_sec: Int(timeoutSeconds),
-            tv_usec: microseconds
+            tv_usec: microseconds,
         )
         let timeSize = socklen_t(MemoryLayout<timeval>.size)
         _ = setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &timeout, timeSize)

@@ -7,7 +7,7 @@ extension Color {
     static let hudCard = Color(hue: 260 / 360, saturation: 0.055, brightness: 0.145)
     static let hudCardElevated = Color(hue: 260 / 360, saturation: 0.06, brightness: 0.17)
 
-    // Status colors - driven by GlassConfig
+    /// Status colors - driven by GlassConfig
     static var statusReady: Color {
         let config = GlassConfig.shared
         return Color(hue: config.statusReadyHue, saturation: config.statusReadySaturation, brightness: config.statusReadyBrightness)
@@ -33,13 +33,16 @@ extension Color {
         return Color.white.opacity(config.statusIdleOpacity)
     }
 
-    // Accent - uses system accent color
-    static var hudAccent: Color { Color.accentColor }
+    /// Accent - uses system accent color
+    static var hudAccent: Color {
+        Color.accentColor
+    }
+
     static var hudAccentDark: Color {
         Color(nsColor: NSColor.controlAccentColor.blended(withFraction: 0.3, of: .black) ?? NSColor.controlAccentColor)
     }
 
-    // Detail view section accent
+    /// Detail view section accent
     static var sectionAccent: Color {
         Color(nsColor: NSColor.controlAccentColor.blended(withFraction: 0.15, of: .black) ?? NSColor.controlAccentColor)
     }

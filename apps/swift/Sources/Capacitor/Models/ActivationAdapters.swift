@@ -9,7 +9,7 @@ struct TmuxClientAdapter: TmuxClient {
     init(
         hasAnyClientAttached: @escaping () async -> Bool,
         getCurrentClientTty: @escaping () async -> String?,
-        switchClient: @escaping (String, String?) async -> Bool
+        switchClient: @escaping (String, String?) async -> Bool,
     ) {
         hasAnyClientAttachedHandler = hasAnyClientAttached
         getCurrentClientTtyHandler = getCurrentClientTty
@@ -40,7 +40,7 @@ struct TerminalDiscoveryAdapter: TerminalDiscovery {
         activateTerminalByTTY: @escaping (String) async -> Bool,
         activateAppByName: @escaping (String) -> Bool,
         isGhosttyRunning: @escaping () -> Bool,
-        countGhosttyWindows: @escaping () -> Int
+        countGhosttyWindows: @escaping () -> Int,
     ) {
         activateTerminalByTTYHandler = activateTerminalByTTY
         activateAppByNameHandler = activateAppByName

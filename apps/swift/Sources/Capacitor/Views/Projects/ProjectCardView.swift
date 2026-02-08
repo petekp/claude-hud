@@ -77,12 +77,12 @@ struct ProjectCardView: View {
         if isPressed {
             return .spring(
                 response: glassConfig.cardPressedSpringResponse(for: .vertical),
-                dampingFraction: glassConfig.cardPressedSpringDamping(for: .vertical)
+                dampingFraction: glassConfig.cardPressedSpringDamping(for: .vertical),
             )
         }
         return .spring(
             response: glassConfig.cardHoverSpringResponse(for: .vertical),
-            dampingFraction: glassConfig.cardHoverSpringDamping(for: .vertical)
+            dampingFraction: glassConfig.cardHoverSpringDamping(for: .vertical),
         )
     }
 
@@ -108,7 +108,7 @@ struct ProjectCardView: View {
                 floatingCardBackground: floatingCardBackground,
                 solidCardBackground: solidCardBackground,
                 animationSeed: project.path,
-                isPressed: isPressed
+                isPressed: isPressed,
             )
             .scaleEffect(cardScale)
             .animation(cardAnimation, value: cardScale)
@@ -118,7 +118,7 @@ struct ProjectCardView: View {
             .cardInteractions(
                 isHovered: $isHovered,
                 onTap: onTap,
-                onDragStarted: onDragStarted
+                onDragStarted: onDragStarted,
             )
             .cardLifecycleHandlers(
                 flashState: flashState,
@@ -128,7 +128,7 @@ struct ProjectCardView: View {
                 lastChimeTime: $lastChimeTime,
                 flashOpacity: $flashOpacity,
                 chimeCooldown: chimeCooldown,
-                glassConfig: glassConfigForHandlers
+                glassConfig: glassConfigForHandlers,
             )
             .contextMenu { cardContextMenu }
             .accessibilityElement(children: .combine)
@@ -162,19 +162,19 @@ struct ProjectCardView: View {
                 ProjectCardHeader(
                     project: project,
                     nameColor: nameColor,
-                    onInfoTap: onInfoTap
+                    onInfoTap: onInfoTap,
                 )
 
                 ProjectCardContent(
                     sessionState: sessionState,
-                    blocker: projectStatus?.blocker
+                    blocker: projectStatus?.blocker,
                 )
             }
 
             CardActionButtons(
                 isCardHovered: isHovered,
                 onCaptureIdea: onCaptureIdea,
-                onDetails: onInfoTap
+                onDetails: onInfoTap,
             )
         }
         .frame(minHeight: 40) // Match action button height for consistent card sizing
@@ -235,7 +235,7 @@ struct ProjectCardView: View {
                 LinearGradient(
                     colors: [.white.opacity(isHovered ? 0.08 : 0.04), .clear],
                     startPoint: .top,
-                    endPoint: .bottom
+                    endPoint: .bottom,
                 )
                 .frame(height: 1)
                 Spacer()
@@ -265,7 +265,7 @@ private struct ProjectCardHeader: View {
                     name: project.name,
                     nameColor: nameColor,
                     isMissing: project.isMissing,
-                    action: onInfoTap
+                    action: onInfoTap,
                 )
             } else {
                 Text(project.name)
@@ -321,7 +321,7 @@ struct CardActionButtons: View {
                     action: { frame in onCaptureIdea(frame) },
                     isVisible: isCardHovered,
                     entranceDelay: 0,
-                    style: style
+                    style: style,
                 )
                 .help("Capture idea")
                 .accessibilityLabel("Capture idea for this project")
@@ -333,7 +333,7 @@ struct CardActionButtons: View {
                     action: { _ in onDetails() },
                     isVisible: isCardHovered,
                     entranceDelay: 0.03,
-                    style: style
+                    style: style,
                 )
                 .help("View details")
                 .accessibilityLabel("View project details")
@@ -356,7 +356,7 @@ private struct TickerText: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .transition(.asymmetric(
                 insertion: .move(edge: .bottom).combined(with: .opacity),
-                removal: .move(edge: .top).combined(with: .opacity)
+                removal: .move(edge: .top).combined(with: .opacity),
             ))
             .overlay {
                 if isShimmering {
@@ -365,7 +365,7 @@ private struct TickerText: View {
                             Text(text)
                                 .font(AppTypography.body)
                                 .lineLimit(2)
-                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .frame(maxWidth: .infinity, alignment: .leading),
                         )
                 }
             }
@@ -389,7 +389,7 @@ private struct ShimmerEffect: View {
                     .init(color: .white.opacity(0), location: 1),
                 ]),
                 startPoint: .leading,
-                endPoint: .trailing
+                endPoint: .trailing,
             )
             .onAppear {
                 withAnimation(.linear(duration: 2.0).repeatForever(autoreverses: false)) {

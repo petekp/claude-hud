@@ -64,7 +64,7 @@ struct StatusChipsRow: View {
             StatusChip(
                 state: sessionState?.state,
                 stateChangedAt: sessionState?.stateChangedAt,
-                style: style
+                style: style,
             )
         }
     }

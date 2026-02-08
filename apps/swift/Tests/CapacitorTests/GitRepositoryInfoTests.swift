@@ -1,7 +1,6 @@
+@testable import Capacitor
 import Foundation
 import XCTest
-
-@testable import Capacitor
 
 final class GitRepositoryInfoTests: XCTestCase {
     func testResolveReturnsNilAtFilesystemRoot() {

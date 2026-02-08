@@ -52,8 +52,13 @@ class AppState: ObservableObject {
     @Published private(set) var channel: AppChannel = AppConfig.defaultChannel
     @Published private(set) var featureFlags: FeatureFlags = .defaults(for: AppConfig.defaultChannel)
 
-    var isIdeaCaptureEnabled: Bool { featureFlags.ideaCapture }
-    var isProjectDetailsEnabled: Bool { featureFlags.projectDetails }
+    var isIdeaCaptureEnabled: Bool {
+        featureFlags.ideaCapture
+    }
+
+    var isProjectDetailsEnabled: Bool {
+        featureFlags.projectDetails
+    }
 
     // MARK: - Navigation
 
@@ -122,7 +127,7 @@ class AppState: ObservableObject {
         },
         activeWorktreePathsProvider: { [weak self] in
             self?.activeWorktreePathsForGuardrails() ?? []
-        }
+        },
     )
 
     private(set) var activeProjectResolver: ActiveProjectResolver!
@@ -169,7 +174,7 @@ class AppState: ObservableObject {
 
         activeProjectResolver = ActiveProjectResolver(
             sessionStateManager: sessionStateManager,
-            shellStateStore: shellStateStore
+            shellStateStore: shellStateStore,
         )
 
         sessionStateCancellable = sessionStateManager.objectWillChange
@@ -344,7 +349,7 @@ class AppState: ObservableObject {
                 heartbeatOk: false,
                 heartbeatAgeSecs: nil,
                 stateFileOk: false,
-                message: "Engine not initialized"
+                message: "Engine not initialized",
             )
         }
         return engine.runHookTest()
@@ -364,7 +369,7 @@ class AppState: ObservableObject {
                     isHealthy: false,
                     message: message,
                     pid: nil,
-                    version: nil
+                    version: nil,
                 )
             }
             self?.checkDaemonHealth()
@@ -378,7 +383,7 @@ class AppState: ObservableObject {
                 isHealthy: false,
                 message: "Daemon disabled",
                 pid: nil,
-                version: nil
+                version: nil,
             )
             Telemetry.emit("daemon_health", "Daemon disabled", payload: [
                 "enabled": false,
@@ -394,7 +399,7 @@ class AppState: ObservableObject {
                     self.daemonRecoveryDecider.noteSuccess()
                     if let status = self.daemonStatusEvaluator.statusForHealthResult(
                         isEnabled: true,
-                        result: .success(health)
+                        result: .success(health),
                     ) {
                         self.daemonStatus = status
                         Telemetry.emit("daemon_health", "Daemon healthy", payload: [
@@ -414,7 +419,7 @@ class AppState: ObservableObject {
                     }
                     if let status = self.daemonStatusEvaluator.statusForHealthResult(
                         isEnabled: true,
-                        result: .failure(error)
+                        result: .failure(error),
                     ) {
                         self.daemonStatus = status
                         Telemetry.emit("daemon_health", "Daemon unhealthy", payload: [
@@ -552,13 +557,13 @@ class AppState: ObservableObject {
                 if !finalFailedNames.isEmpty {
                     let message = Self.formatMixedResultsToast(
                         failedNames: finalFailedNames,
-                        connectedCount: finalAddedCount
+                        connectedCount: finalAddedCount,
                     )
                     self.toast = .error(message)
                 } else if finalAddedCount == 0 {
                     if movedCount > 0 {
                         self.toast = ToastMessage(
-                            movedCount == 1 ? "Moved to In Progress" : "Moved \(movedCount) projects to In Progress"
+                            movedCount == 1 ? "Moved to In Progress" : "Moved \(movedCount) projects to In Progress",
                         )
                     } else if alreadyInProgressCount > 0 {
                         self.toast = ToastMessage("Already linked!")
@@ -884,7 +889,7 @@ class AppState: ObservableObject {
             progress: CreationProgress(phase: "setup", message: "Initializing project...", percentComplete: 0),
             error: nil,
             createdAt: now,
-            completedAt: nil
+            completedAt: nil,
         )
         activeCreations.insert(creation, at: 0)
         saveCreations()
@@ -911,7 +916,7 @@ class AppState: ObservableObject {
         activeCreations[index].progress = CreationProgress(
             phase: phase,
             message: message,
-            percentComplete: percentComplete.map { UInt8(clamping: $0) }
+            percentComplete: percentComplete.map { UInt8(clamping: $0) },
         )
         saveCreations()
     }
@@ -956,7 +961,7 @@ class AppState: ObservableObject {
                 success: false,
                 projectPath: "",
                 sessionId: nil,
-                error: AppFeatureError.ideaCaptureDisabled.errorDescription ?? "Idea capture is disabled."
+                error: AppFeatureError.ideaCaptureDisabled.errorDescription ?? "Idea capture is disabled.",
             ))
             return
         }
@@ -972,7 +977,7 @@ class AppState: ObservableObject {
                         success: false,
                         projectPath: "",
                         sessionId: nil,
-                        error: error.localizedDescription
+                        error: error.localizedDescription,
                     ))
                 }
             }
@@ -994,7 +999,7 @@ class AppState: ObservableObject {
                 success: false,
                 projectPath: projectPath,
                 sessionId: nil,
-                error: "Project directory already exists"
+                error: "Project directory already exists",
             )
         }
 
@@ -1034,7 +1039,7 @@ class AppState: ObservableObject {
                 success: false,
                 projectPath: projectPath,
                 sessionId: nil,
-                error: "Failed to run Claude: \(error.localizedDescription)"
+                error: "Failed to run Claude: \(error.localizedDescription)",
             )
         }
 
@@ -1052,7 +1057,7 @@ class AppState: ObservableObject {
             success: true,
             projectPath: projectPath,
             sessionId: sessionId,
-            error: nil
+            error: nil,
         )
     }
 

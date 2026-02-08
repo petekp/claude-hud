@@ -1,7 +1,6 @@
+@testable import Capacitor
 import Foundation
 import XCTest
-
-@testable import Capacitor
 
 @MainActor
 final class SessionStateManagerTests: XCTestCase {
@@ -21,7 +20,7 @@ final class SessionStateManagerTests: XCTestCase {
                 state: "working",
                 updatedAt: "2026-02-02T19:00:00Z",
                 stateChangedAt: "2026-02-02T19:00:00Z",
-                sessionId: "session-1"
+                sessionId: "session-1",
             ),
         ]))
 
@@ -39,7 +38,7 @@ final class SessionStateManagerTests: XCTestCase {
             hasLocalSettings: false,
             taskCount: 0,
             stats: nil,
-            isMissing: false
+            isMissing: false,
         )
 
         manager.refreshSessionStates(for: [project])
@@ -64,7 +63,7 @@ final class SessionStateManagerTests: XCTestCase {
                 state: "working",
                 updatedAt: "2026-02-02T19:00:00Z",
                 stateChangedAt: "2026-02-02T19:00:00Z",
-                sessionId: "session-1"
+                sessionId: "session-1",
             ),
         ])
         server.start(response: response)
@@ -75,11 +74,11 @@ final class SessionStateManagerTests: XCTestCase {
         let manager = SessionStateManager()
         let rootProject = makeProject(
             "assistant-ui",
-            path: "/Users/pete/Code/assistant-ui"
+            path: "/Users/pete/Code/assistant-ui",
         )
         let packageProject = makeProject(
             "assistant-ui-web",
-            path: "/Users/pete/Code/assistant-ui/packages/web"
+            path: "/Users/pete/Code/assistant-ui/packages/web",
         )
 
         manager.refreshSessionStates(for: [rootProject, packageProject])
@@ -106,7 +105,7 @@ final class SessionStateManagerTests: XCTestCase {
                 state: "working",
                 updatedAt: "2026-02-02T19:00:00Z",
                 stateChangedAt: "2026-02-02T19:00:00Z",
-                sessionId: "session-1"
+                sessionId: "session-1",
             ),
         ])
         server.start(response: response)
@@ -117,7 +116,7 @@ final class SessionStateManagerTests: XCTestCase {
         let manager = SessionStateManager()
         let rootProject = makeProject(
             "assistant-ui",
-            path: "/Users/pete/Code/assistant-ui"
+            path: "/Users/pete/Code/assistant-ui",
         )
 
         manager.refreshSessionStates(for: [rootProject])
@@ -143,7 +142,7 @@ final class SessionStateManagerTests: XCTestCase {
                 state: "working",
                 updatedAt: "2026-02-02T19:00:00Z",
                 stateChangedAt: "2026-02-02T19:00:00Z",
-                sessionId: "session-1"
+                sessionId: "session-1",
             ),
         ])
         server.start(response: response)
@@ -154,7 +153,7 @@ final class SessionStateManagerTests: XCTestCase {
         let manager = SessionStateManager()
         let packageProject = makeProject(
             "assistant-ui-web",
-            path: "/Users/pete/Code/assistant-ui/packages/web"
+            path: "/Users/pete/Code/assistant-ui/packages/web",
         )
 
         manager.refreshSessionStates(for: [packageProject])
@@ -199,7 +198,7 @@ final class SessionStateManagerTests: XCTestCase {
                 state: "working",
                 updatedAt: "2026-02-02T19:00:00Z",
                 stateChangedAt: "2026-02-02T19:00:00Z",
-                sessionId: "session-1"
+                sessionId: "session-1",
             ),
         ]))
 
@@ -209,7 +208,7 @@ final class SessionStateManagerTests: XCTestCase {
         let manager = SessionStateManager()
         let project = makeProject(
             "assistant-ui-docs",
-            path: pinnedPath.path
+            path: pinnedPath.path,
         )
 
         manager.refreshSessionStates(for: [project])
@@ -253,7 +252,7 @@ final class SessionStateManagerTests: XCTestCase {
                 state: "ready",
                 updatedAt: "2026-02-02T19:00:00Z",
                 stateChangedAt: "2026-02-02T19:00:00Z",
-                sessionId: "session-1"
+                sessionId: "session-1",
             ),
         ]))
 
@@ -263,7 +262,7 @@ final class SessionStateManagerTests: XCTestCase {
         let manager = SessionStateManager()
         let project = makeProject(
             "assistant-ui-docs",
-            path: pinnedPath.path
+            path: pinnedPath.path,
         )
 
         manager.refreshSessionStates(for: [project])
@@ -296,7 +295,7 @@ final class SessionStateManagerTests: XCTestCase {
                 state: "ready",
                 updatedAt: "2026-02-02T19:00:00Z",
                 stateChangedAt: "2026-02-02T19:00:00Z",
-                sessionId: "session-1"
+                sessionId: "session-1",
             ),
         ]))
 
@@ -306,7 +305,7 @@ final class SessionStateManagerTests: XCTestCase {
         let manager = SessionStateManager()
         let project = makeProject(
             "assistant-ui-docs",
-            path: pinnedPath.path
+            path: pinnedPath.path,
         )
 
         manager.refreshSessionStates(for: [project])
@@ -341,7 +340,7 @@ final class SessionStateManagerTests: XCTestCase {
                 state: "working",
                 updatedAt: "2026-02-02T19:00:00Z",
                 stateChangedAt: "2026-02-02T19:00:00Z",
-                sessionId: "session-1"
+                sessionId: "session-1",
             ),
         ]))
 
@@ -351,7 +350,7 @@ final class SessionStateManagerTests: XCTestCase {
         let manager = SessionStateManager()
         let project = makeProject(
             "assistant-ui-docs",
-            path: pinnedPath.path
+            path: pinnedPath.path,
         )
 
         manager.refreshSessionStates(for: [project])
@@ -364,7 +363,7 @@ final class SessionStateManagerTests: XCTestCase {
     private func waitForSessionState(
         _ manager: SessionStateManager,
         project: Project,
-        timeout: TimeInterval = 1.0
+        timeout: TimeInterval = 1.0,
     ) async -> ProjectSessionState? {
         let deadline = Date().addingTimeInterval(timeout)
         while Date() < deadline {
@@ -395,7 +394,7 @@ final class SessionStateManagerTests: XCTestCase {
             hasLocalSettings: false,
             taskCount: 0,
             stats: nil,
-            isMissing: false
+            isMissing: false,
         )
     }
 

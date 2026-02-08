@@ -79,20 +79,20 @@ final class SetupRequirementsManager {
                 id: "claude",
                 title: "Claude CLI",
                 description: "Required for session tracking",
-                status: .pending
+                status: .pending,
             ),
             SetupStep(
                 id: "hooks",
                 title: "Session hooks",
                 description: "Required for live state tracking",
-                status: .pending
+                status: .pending,
             ),
             SetupStep(
                 id: "shell",
                 title: "Shell integration",
                 description: "Track active project across terminals",
                 status: .pending,
-                isOptional: true
+                isOptional: true,
             ),
         ]
     }

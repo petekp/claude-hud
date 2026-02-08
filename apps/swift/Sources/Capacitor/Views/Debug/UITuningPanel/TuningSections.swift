@@ -60,7 +60,7 @@ import SwiftUI
                             ("Menu", 2),
                             ("Sidebar", 3),
                             ("Full Screen UI", 4),
-                        ]
+                        ],
                     )
 
                     TuningPickerRow(
@@ -69,7 +69,7 @@ import SwiftUI
                         options: [
                             ("Behind Window", 0),
                             ("Within Window", 1),
-                        ]
+                        ],
                     )
 
                     TuningToggleRow(label: "Emphasized", isOn: $config.cardEmphasized)
@@ -87,7 +87,7 @@ import SwiftUI
                             ("Overlay", 3),
                             ("Screen", 4),
                             ("Multiply", 5),
-                        ]
+                        ],
                     )
                 }
             })
@@ -291,7 +291,6 @@ import SwiftUI
     struct CardStateEffectsSection: View {
         @ObservedObject var config: GlassConfig
 
-        @ViewBuilder
         var body: some View {
             StickySection(title: "Ready — Ripple", onReset: resetReady) {
                 TuningRow(label: "Speed", value: $config.rippleSpeed, range: 1 ... 10)
@@ -529,7 +528,7 @@ import SwiftUI
                             ("Menu", 2),
                             ("Sidebar", 3),
                             ("Full Screen UI", 4),
-                        ]
+                        ],
                     )
                 }
             })
@@ -553,7 +552,7 @@ import SwiftUI
                         label: "Ready Color",
                         hue: $config.statusReadyHue,
                         saturation: $config.statusReadySaturation,
-                        brightness: $config.statusReadyBrightness
+                        brightness: $config.statusReadyBrightness,
                     )
                 }
 
@@ -562,7 +561,7 @@ import SwiftUI
                         label: "Working Color",
                         hue: $config.statusWorkingHue,
                         saturation: $config.statusWorkingSaturation,
-                        brightness: $config.statusWorkingBrightness
+                        brightness: $config.statusWorkingBrightness,
                     )
                 }
 
@@ -571,7 +570,7 @@ import SwiftUI
                         label: "Waiting Color",
                         hue: $config.statusWaitingHue,
                         saturation: $config.statusWaitingSaturation,
-                        brightness: $config.statusWaitingBrightness
+                        brightness: $config.statusWaitingBrightness,
                     )
                 }
 
@@ -580,7 +579,7 @@ import SwiftUI
                         label: "Compacting Color",
                         hue: $config.statusCompactingHue,
                         saturation: $config.statusCompactingSaturation,
-                        brightness: $config.statusCompactingBrightness
+                        brightness: $config.statusCompactingBrightness,
                     )
                 }
 
@@ -646,7 +645,7 @@ import SwiftUI
                             ("Color Dodge", 7),
                             ("Hard Light", 8),
                             ("Luminosity", 9),
-                        ]
+                        ],
                     )
                 }
 
@@ -663,7 +662,7 @@ import SwiftUI
                                 ("Menu", 2),
                                 ("Sidebar", 3),
                                 ("Full Screen UI", 4),
-                            ]
+                            ],
                         )
 
                         TuningPickerRow(
@@ -672,7 +671,7 @@ import SwiftUI
                             options: [
                                 ("Behind Window", 0),
                                 ("Within Window", 1),
-                            ]
+                            ],
                         )
 
                         TuningToggleRow(label: "Emphasized", isOn: $config.logoEmphasized)

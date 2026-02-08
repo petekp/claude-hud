@@ -27,7 +27,7 @@ final class SparkleConfigurationTests: XCTestCase {
     func testValidConfiguration() {
         let config = SparkleConfiguration(
             feedURL: "https://example.com/appcast.xml",
-            publicKey: "abc123EdDSAKey=="
+            publicKey: "abc123EdDSAKey==",
         )
         XCTAssertTrue(config.isValid)
     }
@@ -35,7 +35,7 @@ final class SparkleConfigurationTests: XCTestCase {
     func testMissingFeedURL() {
         let config = SparkleConfiguration(
             feedURL: nil,
-            publicKey: "abc123EdDSAKey=="
+            publicKey: "abc123EdDSAKey==",
         )
         XCTAssertFalse(config.isValid)
     }
@@ -43,7 +43,7 @@ final class SparkleConfigurationTests: XCTestCase {
     func testEmptyFeedURL() {
         let config = SparkleConfiguration(
             feedURL: "",
-            publicKey: "abc123EdDSAKey=="
+            publicKey: "abc123EdDSAKey==",
         )
         XCTAssertFalse(config.isValid)
     }
@@ -51,7 +51,7 @@ final class SparkleConfigurationTests: XCTestCase {
     func testMissingPublicKey() {
         let config = SparkleConfiguration(
             feedURL: "https://example.com/appcast.xml",
-            publicKey: nil
+            publicKey: nil,
         )
         XCTAssertFalse(config.isValid)
     }
@@ -59,7 +59,7 @@ final class SparkleConfigurationTests: XCTestCase {
     func testEmptyPublicKey() {
         let config = SparkleConfiguration(
             feedURL: "https://example.com/appcast.xml",
-            publicKey: ""
+            publicKey: "",
         )
         XCTAssertFalse(config.isValid)
     }
@@ -67,7 +67,7 @@ final class SparkleConfigurationTests: XCTestCase {
     func testPlaceholderPublicKey() {
         let config = SparkleConfiguration(
             feedURL: "https://example.com/appcast.xml",
-            publicKey: "YOUR_PUBLIC_KEY_HERE"
+            publicKey: "YOUR_PUBLIC_KEY_HERE",
         )
         XCTAssertFalse(config.isValid)
     }
@@ -75,7 +75,7 @@ final class SparkleConfigurationTests: XCTestCase {
     func testBothMissing() {
         let config = SparkleConfiguration(
             feedURL: nil,
-            publicKey: nil
+            publicKey: nil,
         )
         XCTAssertFalse(config.isValid)
     }
@@ -83,7 +83,7 @@ final class SparkleConfigurationTests: XCTestCase {
     func testBothEmpty() {
         let config = SparkleConfiguration(
             feedURL: "",
-            publicKey: ""
+            publicKey: "",
         )
         XCTAssertFalse(config.isValid)
     }
@@ -91,7 +91,7 @@ final class SparkleConfigurationTests: XCTestCase {
     func testRealWorldConfiguration() {
         let config = SparkleConfiguration(
             feedURL: "https://github.com/petekp/claude-hud/releases/latest/download/appcast.xml",
-            publicKey: "F9qGHLJ2ro5Q+mffrwkiQSGpkGD5+GCDnusHuRkXqrE="
+            publicKey: "F9qGHLJ2ro5Q+mffrwkiQSGpkGD5+GCDnusHuRkXqrE=",
         )
         XCTAssertTrue(config.isValid)
     }

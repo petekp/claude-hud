@@ -110,10 +110,10 @@ import SwiftUI
                         material: .hudWindow,
                         blendingMode: .behindWindow,
                         isEmphasized: true,
-                        forceDarkAppearance: true
+                        forceDarkAppearance: true,
                     )
                     MatrixTokens.Surface.headerOverlay
-                }
+                },
             )
         }
 
@@ -146,11 +146,11 @@ import SwiftUI
             .padding(MatrixTokens.Spacing.cardPadding)
             .background(
                 RoundedRectangle(cornerRadius: MatrixTokens.Radius.card)
-                    .fill(MatrixTokens.Surface.cardActive)
+                    .fill(MatrixTokens.Surface.cardActive),
             )
             .overlay(
                 RoundedRectangle(cornerRadius: MatrixTokens.Radius.card)
-                    .strokeBorder(MatrixTokens.Border.active, lineWidth: 0.5)
+                    .strokeBorder(MatrixTokens.Border.active, lineWidth: 0.5),
             )
             .accessibilityElement(children: .combine)
             .accessibilityLabel("Active shell: \(scenario.shortDescription), PID \(details.pid)")
@@ -171,11 +171,11 @@ import SwiftUI
             .padding(MatrixTokens.Spacing.cardPadding)
             .background(
                 RoundedRectangle(cornerRadius: MatrixTokens.Radius.card)
-                    .fill(MatrixTokens.Surface.card)
+                    .fill(MatrixTokens.Surface.card),
             )
             .overlay(
                 RoundedRectangle(cornerRadius: MatrixTokens.Radius.card)
-                    .strokeBorder(MatrixTokens.Border.muted, lineWidth: 0.5)
+                    .strokeBorder(MatrixTokens.Border.muted, lineWidth: 0.5),
             )
             .accessibilityLabel("No active shell detected")
         }
@@ -198,7 +198,7 @@ import SwiftUI
                     ForEach(scenarios) { scenario in
                         ScenarioRow(
                             scenario: scenario,
-                            config: config
+                            config: config,
                         )
                     }
                 }
@@ -232,10 +232,10 @@ import SwiftUI
                         material: .hudWindow,
                         blendingMode: .behindWindow,
                         isEmphasized: true,
-                        forceDarkAppearance: true
+                        forceDarkAppearance: true,
                     )
                     MatrixTokens.Surface.headerOverlay
-                }
+                },
             )
         }
     }
@@ -333,7 +333,7 @@ import SwiftUI
                         var newBehavior = behavior
                         newBehavior.primaryStrategy = newValue
                         config.setBehavior(newBehavior, for: scenario)
-                    }
+                    },
                 )
 
                 StrategyPickerRow(
@@ -345,7 +345,7 @@ import SwiftUI
                         var newBehavior = behavior
                         newBehavior.fallbackStrategy = newValue == .skip ? nil : newValue
                         config.setBehavior(newBehavior, for: scenario)
-                    }
+                    },
                 )
             }
         }
@@ -398,7 +398,7 @@ import SwiftUI
         private var strategyPicker: some View {
             Picker(label, selection: Binding(
                 get: { strategy },
-                set: { onStrategyChange($0) }
+                set: { onStrategyChange($0) },
             )) {
                 if includeNone {
                     Text("None").tag(ActivationStrategy.skip)

@@ -34,14 +34,14 @@ struct ProjectDetailView: View {
                     DescriptionSection(
                         description: appState.getDescription(for: project),
                         isGenerating: appState.isGeneratingDescription(for: project),
-                        onGenerate: { appState.generateDescription(for: project) }
+                        onGenerate: { appState.generateDescription(for: project) },
                     )
                     .opacity(appeared ? 1 : 0)
                     .offset(y: appeared ? 0 : 12)
 
                     WorkstreamsPanel(
                         project: project,
-                        manager: appState.workstreamsManager
+                        manager: appState.workstreamsManager,
                     )
                     .opacity(appeared ? 1 : 0)
                     .offset(y: appeared ? 0 : 14)
@@ -63,7 +63,7 @@ struct ProjectDetailView: View {
                                 withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
                                     appState.dismissIdea(idea, for: project)
                                 }
-                            }
+                            },
                         )
                     }
                     .opacity(appeared ? 1 : 0)
@@ -109,7 +109,7 @@ struct ProjectDetailView: View {
                     }
                     selectedIdea = nil
                     selectedIdeaFrame = nil
-                }
+                },
             )
         }
         .onAppear {
@@ -151,8 +151,8 @@ struct DetailCard<Content: View>: View {
                     LinearGradient(
                         colors: [.white.opacity(0.1), .white.opacity(0.03)],
                         startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
+                        endPoint: .bottomTrailing,
+                    ),
                 )
 
             RoundedRectangle(cornerRadius: 12)
@@ -160,9 +160,9 @@ struct DetailCard<Content: View>: View {
                     LinearGradient(
                         colors: [.white.opacity(0.2), .white.opacity(0.08)],
                         startPoint: .topLeading,
-                        endPoint: .bottomTrailing
+                        endPoint: .bottomTrailing,
                     ),
-                    lineWidth: 0.5
+                    lineWidth: 0.5,
                 )
         }
     }
@@ -176,7 +176,7 @@ struct DetailCard<Content: View>: View {
                 LinearGradient(
                     colors: [.white.opacity(0.05), .clear],
                     startPoint: .top,
-                    endPoint: .bottom
+                    endPoint: .bottom,
                 )
                 .frame(height: 1)
                 Spacer()
@@ -188,9 +188,9 @@ struct DetailCard<Content: View>: View {
                     LinearGradient(
                         colors: [.white.opacity(0.12), .white.opacity(0.05)],
                         startPoint: .topLeading,
-                        endPoint: .bottomTrailing
+                        endPoint: .bottomTrailing,
                     ),
-                    lineWidth: 0.5
+                    lineWidth: 0.5,
                 )
         }
     }
@@ -248,11 +248,11 @@ struct DescriptionSection: View {
                     .padding(.vertical, 6)
                     .background(
                         RoundedRectangle(cornerRadius: 8)
-                            .fill(Color.white.opacity(isHovered ? 0.1 : 0))
+                            .fill(Color.white.opacity(isHovered ? 0.1 : 0)),
                     )
                     .overlay(
                         RoundedRectangle(cornerRadius: 8)
-                            .strokeBorder(Color.white.opacity(isHovered ? 0.15 : 0), lineWidth: 0.5)
+                            .strokeBorder(Color.white.opacity(isHovered ? 0.15 : 0), lineWidth: 0.5),
                     )
                 }
                 .buttonStyle(.plain)

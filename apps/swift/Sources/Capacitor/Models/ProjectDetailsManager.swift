@@ -149,7 +149,7 @@ final class ProjectDetailsManager {
         try engine?.updateIdeaStatus(
             projectPath: project.path,
             ideaId: idea.id,
-            newStatus: newStatus
+            newStatus: newStatus,
         )
         loadIdeas(for: project)
     }
@@ -246,7 +246,7 @@ final class ProjectDetailsManager {
             existingTitles: existingTitles,
             recentFiles: recentFiles,
             gitBranch: gitBranch,
-            lastCommitMessage: lastCommitMessage
+            lastCommitMessage: lastCommitMessage,
         )
     }
 
@@ -423,7 +423,7 @@ final class ProjectDetailsManager {
 
                 let description = try await generateWithHaiku(
                     prompt: buildDescriptionPrompt(claudeMd: claudeMdContent, projectName: project.name),
-                    stripTrailingPunctuation: false
+                    stripTrailingPunctuation: false,
                 )
 
                 await MainActor.run {
@@ -492,7 +492,7 @@ private extension ProjectDetailsManager {
                     continuation.resume(throwing: NSError(
                         domain: "HUD",
                         code: Int(process.terminationStatus),
-                        userInfo: [NSLocalizedDescriptionKey: "Haiku generation failed"]
+                        userInfo: [NSLocalizedDescriptionKey: "Haiku generation failed"],
                     ))
                 }
             }

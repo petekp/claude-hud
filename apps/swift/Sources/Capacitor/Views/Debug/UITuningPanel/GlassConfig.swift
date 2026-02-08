@@ -1,15 +1,8 @@
 import Combine
 import SwiftUI
 
-private struct GlassConfigKey: EnvironmentKey {
-    static let defaultValue = GlassConfig.shared
-}
-
 extension EnvironmentValues {
-    var glassConfig: GlassConfig {
-        get { self[GlassConfigKey.self] }
-        set { self[GlassConfigKey.self] = newValue }
-    }
+    @Entry var glassConfig: GlassConfig = .shared
 }
 
 struct TunableColor {
@@ -103,7 +96,7 @@ class GlassConfig: ObservableObject {
     @Published var cardEmphasized: Bool = true
     @Published var cardForceDarkAppearance: Bool = true
 
-    // Card SwiftUI blend mode for highlight overlay
+    /// Card SwiftUI blend mode for highlight overlay
     @Published var cardSwiftUIBlendMode: Int = 5 // 0=normal, 1=plusLighter, 2=softLight, 3=overlay, 4=screen, 5=multiply
 
     // Material settings
@@ -122,7 +115,7 @@ class GlassConfig: ObservableObject {
     @Published var logoEmphasized: Bool = false
     @Published var logoForceDarkAppearance: Bool = true
 
-    // Logo SwiftUI blend mode
+    /// Logo SwiftUI blend mode
     @Published var logoSwiftUIBlendMode: Int = 2 // 0=normal, 1=plusLighter, 2=softLight, 3=overlay, 4=screen, 5=multiply, 6=difference
 
     // Status Colors - Ready (cyan-green)
@@ -145,7 +138,7 @@ class GlassConfig: ObservableObject {
     @Published var statusCompactingSaturation: Double = 0.50
     @Published var statusCompactingBrightness: Double = 1.00
 
-    // Status Colors - Idle (gray)
+    /// Status Colors - Idle (gray)
     @Published var statusIdleOpacity: Double = 0.40
 
     // Ready ripple effect (continuous)
@@ -291,92 +284,296 @@ class GlassConfig: ObservableObject {
 
     // MARK: - Layout Rounded Accessors (whole pixels)
 
-    var cardListSpacingRounded: CGFloat { round(cardListSpacing) }
-    var cardPaddingH: CGFloat { round(cardPaddingHorizontal) }
-    var cardPaddingV: CGFloat { round(cardPaddingVertical) }
-    var listHorizontalPaddingRounded: CGFloat { round(listHorizontalPadding) }
-    var dockCardSpacingRounded: CGFloat { round(dockCardSpacing) }
-    var dockCardPaddingH: CGFloat { round(dockCardPaddingHorizontal) }
-    var dockCardPaddingV: CGFloat { round(dockCardPaddingVertical) }
-    var dockHorizontalPaddingRounded: CGFloat { round(dockHorizontalPadding) }
+    var cardListSpacingRounded: CGFloat {
+        round(cardListSpacing)
+    }
 
-    // State Preview
+    var cardPaddingH: CGFloat {
+        round(cardPaddingHorizontal)
+    }
+
+    var cardPaddingV: CGFloat {
+        round(cardPaddingVertical)
+    }
+
+    var listHorizontalPaddingRounded: CGFloat {
+        round(listHorizontalPadding)
+    }
+
+    var dockCardSpacingRounded: CGFloat {
+        round(dockCardSpacing)
+    }
+
+    var dockCardPaddingH: CGFloat {
+        round(dockCardPaddingHorizontal)
+    }
+
+    var dockCardPaddingV: CGFloat {
+        round(dockCardPaddingVertical)
+    }
+
+    var dockHorizontalPaddingRounded: CGFloat {
+        round(dockHorizontalPadding)
+    }
+
+    /// State Preview
     @Published var previewState: PreviewState = .none
 
     // MARK: - Layout-Aware Accessors (unified - layout param kept for API compatibility)
 
-    func rippleSpeed(for _: LayoutMode) -> Double { rippleSpeed }
-    func rippleCount(for _: LayoutMode) -> Int { rippleCount }
-    func rippleMaxOpacity(for _: LayoutMode) -> Double { rippleMaxOpacity }
-    func rippleLineWidth(for _: LayoutMode) -> Double { rippleLineWidth }
-    func rippleBlurAmount(for _: LayoutMode) -> Double { rippleBlurAmount }
-    func rippleOriginX(for _: LayoutMode) -> Double { rippleOriginX }
-    func rippleOriginY(for _: LayoutMode) -> Double { rippleOriginY }
-    func rippleFadeInZone(for _: LayoutMode) -> Double { rippleFadeInZone }
-    func rippleFadeOutPower(for _: LayoutMode) -> Double { rippleFadeOutPower }
+    func rippleSpeed(for _: LayoutMode) -> Double {
+        rippleSpeed
+    }
 
-    func borderGlowInnerWidth(for _: LayoutMode) -> Double { borderGlowInnerWidth }
-    func borderGlowOuterWidth(for _: LayoutMode) -> Double { borderGlowOuterWidth }
-    func borderGlowInnerBlur(for _: LayoutMode) -> Double { borderGlowInnerBlur }
-    func borderGlowOuterBlur(for _: LayoutMode) -> Double { borderGlowOuterBlur }
-    func borderGlowBaseOpacity(for _: LayoutMode) -> Double { borderGlowBaseOpacity }
-    func borderGlowPulseIntensity(for _: LayoutMode) -> Double { borderGlowPulseIntensity }
-    func borderGlowRotationMultiplier(for _: LayoutMode) -> Double { borderGlowRotationMultiplier }
+    func rippleCount(for _: LayoutMode) -> Int {
+        rippleCount
+    }
+
+    func rippleMaxOpacity(for _: LayoutMode) -> Double {
+        rippleMaxOpacity
+    }
+
+    func rippleLineWidth(for _: LayoutMode) -> Double {
+        rippleLineWidth
+    }
+
+    func rippleBlurAmount(for _: LayoutMode) -> Double {
+        rippleBlurAmount
+    }
+
+    func rippleOriginX(for _: LayoutMode) -> Double {
+        rippleOriginX
+    }
+
+    func rippleOriginY(for _: LayoutMode) -> Double {
+        rippleOriginY
+    }
+
+    func rippleFadeInZone(for _: LayoutMode) -> Double {
+        rippleFadeInZone
+    }
+
+    func rippleFadeOutPower(for _: LayoutMode) -> Double {
+        rippleFadeOutPower
+    }
+
+    func borderGlowInnerWidth(for _: LayoutMode) -> Double {
+        borderGlowInnerWidth
+    }
+
+    func borderGlowOuterWidth(for _: LayoutMode) -> Double {
+        borderGlowOuterWidth
+    }
+
+    func borderGlowInnerBlur(for _: LayoutMode) -> Double {
+        borderGlowInnerBlur
+    }
+
+    func borderGlowOuterBlur(for _: LayoutMode) -> Double {
+        borderGlowOuterBlur
+    }
+
+    func borderGlowBaseOpacity(for _: LayoutMode) -> Double {
+        borderGlowBaseOpacity
+    }
+
+    func borderGlowPulseIntensity(for _: LayoutMode) -> Double {
+        borderGlowPulseIntensity
+    }
+
+    func borderGlowRotationMultiplier(for _: LayoutMode) -> Double {
+        borderGlowRotationMultiplier
+    }
 
     // MARK: - Waiting Effect Accessors (unified)
 
-    func waitingCycleLength(for _: LayoutMode) -> Double { waitingCycleLength }
-    func waitingFirstPulseDuration(for _: LayoutMode) -> Double { waitingFirstPulseDuration }
-    func waitingFirstPulseFadeOut(for _: LayoutMode) -> Double { waitingFirstPulseFadeOut }
-    func waitingSecondPulseDelay(for _: LayoutMode) -> Double { waitingSecondPulseDelay }
-    func waitingSecondPulseDuration(for _: LayoutMode) -> Double { waitingSecondPulseDuration }
-    func waitingSecondPulseFadeOut(for _: LayoutMode) -> Double { waitingSecondPulseFadeOut }
-    func waitingFirstPulseIntensity(for _: LayoutMode) -> Double { waitingFirstPulseIntensity }
-    func waitingSecondPulseIntensity(for _: LayoutMode) -> Double { waitingSecondPulseIntensity }
-    func waitingMaxOpacity(for _: LayoutMode) -> Double { waitingMaxOpacity }
-    func waitingBlurAmount(for _: LayoutMode) -> Double { waitingBlurAmount }
-    func waitingPulseScale(for _: LayoutMode) -> Double { waitingPulseScale }
-    func waitingScaleAmount(for _: LayoutMode) -> Double { waitingScaleAmount }
-    func waitingSpringDamping(for _: LayoutMode) -> Double { waitingSpringDamping }
-    func waitingSpringOmega(for _: LayoutMode) -> Double { waitingSpringOmega }
-    func waitingBorderBaseOpacity(for _: LayoutMode) -> Double { waitingBorderBaseOpacity }
-    func waitingBorderPulseOpacity(for _: LayoutMode) -> Double { waitingBorderPulseOpacity }
-    func waitingBorderInnerWidth(for _: LayoutMode) -> Double { waitingBorderInnerWidth }
-    func waitingBorderOuterWidth(for _: LayoutMode) -> Double { waitingBorderOuterWidth }
-    func waitingBorderOuterBlur(for _: LayoutMode) -> Double { waitingBorderOuterBlur }
-    func waitingOriginX(for _: LayoutMode) -> Double { waitingOriginX }
-    func waitingOriginY(for _: LayoutMode) -> Double { waitingOriginY }
+    func waitingCycleLength(for _: LayoutMode) -> Double {
+        waitingCycleLength
+    }
+
+    func waitingFirstPulseDuration(for _: LayoutMode) -> Double {
+        waitingFirstPulseDuration
+    }
+
+    func waitingFirstPulseFadeOut(for _: LayoutMode) -> Double {
+        waitingFirstPulseFadeOut
+    }
+
+    func waitingSecondPulseDelay(for _: LayoutMode) -> Double {
+        waitingSecondPulseDelay
+    }
+
+    func waitingSecondPulseDuration(for _: LayoutMode) -> Double {
+        waitingSecondPulseDuration
+    }
+
+    func waitingSecondPulseFadeOut(for _: LayoutMode) -> Double {
+        waitingSecondPulseFadeOut
+    }
+
+    func waitingFirstPulseIntensity(for _: LayoutMode) -> Double {
+        waitingFirstPulseIntensity
+    }
+
+    func waitingSecondPulseIntensity(for _: LayoutMode) -> Double {
+        waitingSecondPulseIntensity
+    }
+
+    func waitingMaxOpacity(for _: LayoutMode) -> Double {
+        waitingMaxOpacity
+    }
+
+    func waitingBlurAmount(for _: LayoutMode) -> Double {
+        waitingBlurAmount
+    }
+
+    func waitingPulseScale(for _: LayoutMode) -> Double {
+        waitingPulseScale
+    }
+
+    func waitingScaleAmount(for _: LayoutMode) -> Double {
+        waitingScaleAmount
+    }
+
+    func waitingSpringDamping(for _: LayoutMode) -> Double {
+        waitingSpringDamping
+    }
+
+    func waitingSpringOmega(for _: LayoutMode) -> Double {
+        waitingSpringOmega
+    }
+
+    func waitingBorderBaseOpacity(for _: LayoutMode) -> Double {
+        waitingBorderBaseOpacity
+    }
+
+    func waitingBorderPulseOpacity(for _: LayoutMode) -> Double {
+        waitingBorderPulseOpacity
+    }
+
+    func waitingBorderInnerWidth(for _: LayoutMode) -> Double {
+        waitingBorderInnerWidth
+    }
+
+    func waitingBorderOuterWidth(for _: LayoutMode) -> Double {
+        waitingBorderOuterWidth
+    }
+
+    func waitingBorderOuterBlur(for _: LayoutMode) -> Double {
+        waitingBorderOuterBlur
+    }
+
+    func waitingOriginX(for _: LayoutMode) -> Double {
+        waitingOriginX
+    }
+
+    func waitingOriginY(for _: LayoutMode) -> Double {
+        waitingOriginY
+    }
 
     // MARK: - Working Effect Accessors (unified)
 
-    func workingStripeWidth(for _: LayoutMode) -> Double { workingStripeWidth }
-    func workingStripeSpacing(for _: LayoutMode) -> Double { workingStripeSpacing }
-    func workingStripeAngle(for _: LayoutMode) -> Double { workingStripeAngle }
-    func workingScrollSpeed(for _: LayoutMode) -> Double { workingScrollSpeed }
-    func workingStripeOpacity(for _: LayoutMode) -> Double { workingStripeOpacity }
-    func workingGlowIntensity(for _: LayoutMode) -> Double { workingGlowIntensity }
-    func workingGlowBlurRadius(for _: LayoutMode) -> Double { workingGlowBlurRadius }
-    func workingCoreBrightness(for _: LayoutMode) -> Double { workingCoreBrightness }
-    func workingGradientFalloff(for _: LayoutMode) -> Double { workingGradientFalloff }
-    func workingVignetteInnerRadius(for _: LayoutMode) -> Double { workingVignetteInnerRadius }
-    func workingVignetteOuterRadius(for _: LayoutMode) -> Double { workingVignetteOuterRadius }
-    func workingVignetteCenterOpacity(for _: LayoutMode) -> Double { workingVignetteCenterOpacity }
-    func workingVignetteColorIntensity(for _: LayoutMode) -> Double { workingVignetteColorIntensity }
-    func workingBorderWidth(for _: LayoutMode) -> Double { workingBorderWidth }
-    func workingBorderBaseOpacity(for _: LayoutMode) -> Double { workingBorderBaseOpacity }
-    func workingBorderPulseIntensity(for _: LayoutMode) -> Double { workingBorderPulseIntensity }
-    func workingBorderPulseSpeed(for _: LayoutMode) -> Double { workingBorderPulseSpeed }
-    func workingBorderBlurAmount(for _: LayoutMode) -> Double { workingBorderBlurAmount }
+    func workingStripeWidth(for _: LayoutMode) -> Double {
+        workingStripeWidth
+    }
+
+    func workingStripeSpacing(for _: LayoutMode) -> Double {
+        workingStripeSpacing
+    }
+
+    func workingStripeAngle(for _: LayoutMode) -> Double {
+        workingStripeAngle
+    }
+
+    func workingScrollSpeed(for _: LayoutMode) -> Double {
+        workingScrollSpeed
+    }
+
+    func workingStripeOpacity(for _: LayoutMode) -> Double {
+        workingStripeOpacity
+    }
+
+    func workingGlowIntensity(for _: LayoutMode) -> Double {
+        workingGlowIntensity
+    }
+
+    func workingGlowBlurRadius(for _: LayoutMode) -> Double {
+        workingGlowBlurRadius
+    }
+
+    func workingCoreBrightness(for _: LayoutMode) -> Double {
+        workingCoreBrightness
+    }
+
+    func workingGradientFalloff(for _: LayoutMode) -> Double {
+        workingGradientFalloff
+    }
+
+    func workingVignetteInnerRadius(for _: LayoutMode) -> Double {
+        workingVignetteInnerRadius
+    }
+
+    func workingVignetteOuterRadius(for _: LayoutMode) -> Double {
+        workingVignetteOuterRadius
+    }
+
+    func workingVignetteCenterOpacity(for _: LayoutMode) -> Double {
+        workingVignetteCenterOpacity
+    }
+
+    func workingVignetteColorIntensity(for _: LayoutMode) -> Double {
+        workingVignetteColorIntensity
+    }
+
+    func workingBorderWidth(for _: LayoutMode) -> Double {
+        workingBorderWidth
+    }
+
+    func workingBorderBaseOpacity(for _: LayoutMode) -> Double {
+        workingBorderBaseOpacity
+    }
+
+    func workingBorderPulseIntensity(for _: LayoutMode) -> Double {
+        workingBorderPulseIntensity
+    }
+
+    func workingBorderPulseSpeed(for _: LayoutMode) -> Double {
+        workingBorderPulseSpeed
+    }
+
+    func workingBorderBlurAmount(for _: LayoutMode) -> Double {
+        workingBorderBlurAmount
+    }
 
     // MARK: - Card Interaction Accessors (unified)
 
-    func cardIdleScale(for _: LayoutMode) -> Double { cardIdleScale }
-    func cardHoverScale(for _: LayoutMode) -> Double { cardHoverScale }
-    func cardHoverSpringResponse(for _: LayoutMode) -> Double { cardHoverSpringResponse }
-    func cardHoverSpringDamping(for _: LayoutMode) -> Double { cardHoverSpringDamping }
-    func cardPressedScale(for _: LayoutMode) -> Double { cardPressedScale }
-    func cardPressedSpringResponse(for _: LayoutMode) -> Double { cardPressedSpringResponse }
-    func cardPressedSpringDamping(for _: LayoutMode) -> Double { cardPressedSpringDamping }
+    func cardIdleScale(for _: LayoutMode) -> Double {
+        cardIdleScale
+    }
+
+    func cardHoverScale(for _: LayoutMode) -> Double {
+        cardHoverScale
+    }
+
+    func cardHoverSpringResponse(for _: LayoutMode) -> Double {
+        cardHoverSpringResponse
+    }
+
+    func cardHoverSpringDamping(for _: LayoutMode) -> Double {
+        cardHoverSpringDamping
+    }
+
+    func cardPressedScale(for _: LayoutMode) -> Double {
+        cardPressedScale
+    }
+
+    func cardPressedSpringResponse(for _: LayoutMode) -> Double {
+        cardPressedSpringResponse
+    }
+
+    func cardPressedSpringDamping(for _: LayoutMode) -> Double {
+        cardPressedSpringDamping
+    }
 
     // MARK: - Corner Radius Accessors
 

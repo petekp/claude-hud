@@ -145,7 +145,7 @@ struct AnimatedCompactingText: View {
                 compressDamping: config.compactingCompressDamping,
                 compressOmega: config.compactingCompressOmega,
                 expandDamping: config.compactingExpandDamping,
-                expandOmega: config.compactingExpandOmega
+                expandOmega: config.compactingExpandOmega,
             )
         #else
             CompactingTrackingParameters(
@@ -158,7 +158,7 @@ struct AnimatedCompactingText: View {
                 compressDamping: 0.3,
                 compressOmega: 16.0,
                 expandDamping: 0.8,
-                expandOmega: 4.0
+                expandOmega: 4.0,
             )
         #endif
     }
@@ -315,7 +315,7 @@ struct ProjectCardBackground: View {
                 LinearGradient(
                     colors: [.white.opacity(isHovered ? 0.08 : 0.04), .clear],
                     startPoint: .top,
-                    endPoint: .bottom
+                    endPoint: .bottom,
                 )
                 .frame(height: 1)
                 Spacer()

@@ -54,8 +54,8 @@ struct VibrancyActionButton: View {
                                 material: .hudWindow,
                                 blendingMode: .behindWindow,
                                 isEmphasized: true,
-                                forceDarkAppearance: true
-                            )
+                                forceDarkAppearance: true,
+                            ),
                         )
                         .clipShape(Circle())
 
@@ -67,7 +67,7 @@ struct VibrancyActionButton: View {
                     Circle()
                         .strokeBorder(
                             Color.white.opacity(0.15),
-                            lineWidth: 0.5
+                            lineWidth: 0.5,
                         )
                 }
 
@@ -87,9 +87,9 @@ struct VibrancyActionButton: View {
             GeometryReader { geo in
                 Color.clear.preference(
                     key: ButtonFramePreferenceKey.self,
-                    value: geo.frame(in: .named("contentView"))
+                    value: geo.frame(in: .named("contentView")),
                 )
-            }
+            },
         )
         .onPreferenceChange(ButtonFramePreferenceKey.self) { frame in
             buttonFrame = frame

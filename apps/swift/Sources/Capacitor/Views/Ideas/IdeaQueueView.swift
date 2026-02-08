@@ -68,7 +68,7 @@ struct IdeaQueueView: View {
                                     containerFrame = newFrame
                                 }
                             }
-                    }
+                    },
                 )
 
             // Layer 2: The dragged item overlay
@@ -78,18 +78,18 @@ struct IdeaQueueView: View {
                     isFirst: false,
                     isGeneratingTitle: isGeneratingTitle(idea.id),
                     onTap: nil,
-                    onRemove: nil
+                    onRemove: nil,
                 )
                 .frame(height: draggingItemHeight)
                 .scaleEffect(isAnimatingRelease ? 1.0 : 1.03)
                 .shadow(
                     color: .black.opacity(isAnimatingRelease ? 0 : 0.3),
                     radius: isAnimatingRelease ? 0 : 12,
-                    y: isAnimatingRelease ? 0 : 4
+                    y: isAnimatingRelease ? 0 : 4,
                 )
                 .position(
                     x: containerFrame.width / 2,
-                    y: dragPosition.y - containerFrame.minY
+                    y: dragPosition.y - containerFrame.minY,
                 )
                 .animation(.spring(response: 0.3, dampingFraction: 1.0), value: dragPosition)
                 .animation(.spring(response: 0.3, dampingFraction: 1.0), value: isAnimatingRelease)
@@ -114,7 +114,7 @@ struct IdeaQueueView: View {
                             onTapIdea?(idea, frame)
                         }
                     },
-                    onRemove: onRemove != nil ? { onRemove?(idea) } : nil
+                    onRemove: onRemove != nil ? { onRemove?(idea) } : nil,
                 )
                 .background(NonMovableBackground())
                 .background(
@@ -130,7 +130,7 @@ struct IdeaQueueView: View {
                                     rowFrames[idea.id] = newFrame
                                 }
                             }
-                    }
+                    },
                 )
                 // Hide the original when dragging (the overlay shows the dragged copy)
                 .opacity(isBeingDragged ? 0 : 1)
@@ -141,7 +141,7 @@ struct IdeaQueueView: View {
                         }
                         .onEnded { _ in
                             handleDragEnded()
-                        }
+                        },
                 )
             }
         }
@@ -315,7 +315,6 @@ struct IdeaQueueRow: View {
         .animation(.easeInOut(duration: 0.3), value: isGeneratingTitle)
     }
 
-    @ViewBuilder
     private var hoverActions: some View {
         HStack(spacing: 6) {
             if let onRemove {
@@ -339,7 +338,9 @@ struct IdeaQueueRow: View {
 
 private struct NonMovableBackground: NSViewRepresentable {
     private class NonMovableNSView: NSView {
-        override var mouseDownCanMoveWindow: Bool { false }
+        override var mouseDownCanMoveWindow: Bool {
+            false
+        }
     }
 
     func makeNSView(context _: Context) -> NSView {
@@ -370,11 +371,11 @@ struct ShimmeringText: View {
                             .init(color: .clear, location: clampedLocation(phase + 0.15)),
                         ]),
                         startPoint: .leading,
-                        endPoint: .trailing
+                        endPoint: .trailing,
                     )
                     .mask(
                         Text(text)
-                            .font(AppTypography.bodySecondary)
+                            .font(AppTypography.bodySecondary),
                     )
                 }
             }

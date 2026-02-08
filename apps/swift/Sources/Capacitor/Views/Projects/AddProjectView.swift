@@ -67,7 +67,7 @@ struct AddProjectView: View {
                 ZStack {
                     RoundedRectangle(cornerRadius: 16)
                         .strokeBorder(
-                            style: StrokeStyle(lineWidth: 2, dash: [8, 6])
+                            style: StrokeStyle(lineWidth: 2, dash: [8, 6]),
                         )
                         .foregroundColor(.white.opacity(isDragHovered ? 0.4 : 0.15))
 
@@ -81,8 +81,8 @@ struct AddProjectView: View {
                                         .white.opacity(isDragHovered ? 0.5 : 0.25),
                                     ],
                                     startPoint: .top,
-                                    endPoint: .bottom
-                                )
+                                    endPoint: .bottom,
+                                ),
                             )
                             .scaleEffect(isDragHovered ? 1.1 : 1.0)
 
@@ -111,7 +111,6 @@ struct AddProjectView: View {
 
     // MARK: - Validation Result View
 
-    @ViewBuilder
     private func validationResultView(_ result: ValidationResultFfi) -> some View {
         VStack(spacing: 20) {
             validationIcon(for: result.resultType)
@@ -386,7 +385,7 @@ private struct ValidationPrimaryButtonStyle: ButtonStyle {
             .padding(.vertical, 8)
             .background(
                 RoundedRectangle(cornerRadius: 8)
-                    .fill(Color.hudAccent.opacity(configuration.isPressed ? 0.6 : 0.8))
+                    .fill(Color.hudAccent.opacity(configuration.isPressed ? 0.6 : 0.8)),
             )
             .scaleEffect(configuration.isPressed ? 0.98 : 1.0)
     }
@@ -404,8 +403,8 @@ private struct ValidationSecondaryButtonStyle: ButtonStyle {
                     .strokeBorder(Color.white.opacity(0.2), lineWidth: 1)
                     .background(
                         RoundedRectangle(cornerRadius: 8)
-                            .fill(Color.white.opacity(configuration.isPressed ? 0.1 : 0.05))
-                    )
+                            .fill(Color.white.opacity(configuration.isPressed ? 0.1 : 0.05)),
+                    ),
             )
             .scaleEffect(configuration.isPressed ? 0.98 : 1.0)
     }

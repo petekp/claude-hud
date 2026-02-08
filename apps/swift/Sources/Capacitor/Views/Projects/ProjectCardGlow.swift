@@ -56,13 +56,13 @@ struct ReadyAmbientGlow: View {
                                 x: originX - radius,
                                 y: originY - radius,
                                 width: radius * 2,
-                                height: radius * 2
+                                height: radius * 2,
                             )
                             let path = Circle().path(in: rect)
                             context.stroke(
                                 path,
                                 with: .color(Color.statusReady.opacity(opacity)),
-                                lineWidth: effectiveLineWidth
+                                lineWidth: effectiveLineWidth,
                             )
                         }
                     }
@@ -83,7 +83,7 @@ struct ReadyAmbientGlow: View {
             originXPercent: config.rippleOriginX(for: layoutMode),
             originYPercent: config.rippleOriginY(for: layoutMode),
             fadeInZone: config.rippleFadeInZone(for: layoutMode),
-            fadeOutPower: config.rippleFadeOutPower(for: layoutMode)
+            fadeOutPower: config.rippleFadeOutPower(for: layoutMode),
         )
     }
 
@@ -177,7 +177,7 @@ struct ReadyBorderGlowContent: View {
             innerWidth: params.innerWidth,
             outerWidth: params.outerWidth,
             innerBlur: params.innerBlur,
-            outerBlur: params.outerBlur
+            outerBlur: params.outerBlur,
         )
     }
 
@@ -194,7 +194,7 @@ struct ReadyBorderGlowContent: View {
                 innerWidth: config.borderGlowInnerWidth(for: layoutMode),
                 outerWidth: config.borderGlowOuterWidth(for: layoutMode),
                 innerBlur: config.borderGlowInnerBlur(for: layoutMode),
-                outerBlur: config.borderGlowOuterBlur(for: layoutMode)
+                outerBlur: config.borderGlowOuterBlur(for: layoutMode),
             )
         }
         return BorderGlowParameters(
@@ -208,7 +208,7 @@ struct ReadyBorderGlowContent: View {
             innerWidth: layoutMode == .dock ? 1.55 : 0.49,
             outerWidth: layoutMode == .dock ? 1.93 : 2.88,
             innerBlur: layoutMode == .dock ? 0.3 : 0.5,
-            outerBlur: layoutMode == .dock ? 3.1 : 1.5
+            outerBlur: layoutMode == .dock ? 3.1 : 1.5,
         )
     }
 
@@ -241,9 +241,9 @@ struct ReadyBorderGlowContent: View {
                             .init(color: Color.statusReady.opacity(baseOpacity * 0.3), location: 1.0),
                         ]),
                         center: .center,
-                        angle: rotationAngle
+                        angle: rotationAngle,
                     ),
-                    lineWidth: innerWidth
+                    lineWidth: innerWidth,
                 )
                 .blur(radius: innerBlur)
 
@@ -260,9 +260,9 @@ struct ReadyBorderGlowContent: View {
                             .init(color: Color.statusReady.opacity(baseOpacity * 0.2), location: 1.0),
                         ]),
                         center: .center,
-                        angle: rotationAngle + Angle(degrees: 180)
+                        angle: rotationAngle + Angle(degrees: 180),
                     ),
-                    lineWidth: outerWidth
+                    lineWidth: outerWidth,
                 )
                 .blur(radius: outerBlur)
         }
@@ -309,8 +309,8 @@ struct WaitingAmbientPulse: View {
                         colors: [Color.statusWaiting.opacity(0.25), Color.statusWaiting.opacity(0)],
                         center: .center,
                         startRadius: 0,
-                        endRadius: max(geometry.size.width, geometry.size.height) * 0.8
-                    )
+                        endRadius: max(geometry.size.width, geometry.size.height) * 0.8,
+                    ),
                 )
                 .frame(width: geometry.size.width * 2, height: geometry.size.height * 2)
                 .position(x: geometry.size.width / 2, y: geometry.size.height / 2)
@@ -340,13 +340,13 @@ struct WaitingAmbientPulse: View {
                             ],
                             center: .center,
                             startRadius: 0,
-                            endRadius: pulseSize / 2
-                        )
+                            endRadius: pulseSize / 2,
+                        ),
                     )
                     .frame(width: pulseSize, height: pulseSize)
                     .position(
                         x: geometry.size.width * params.originXPercent,
-                        y: geometry.size.height * params.originYPercent
+                        y: geometry.size.height * params.originYPercent,
                     )
                     .blur(radius: params.blurAmount + intensity * 10)
             }
@@ -371,7 +371,7 @@ struct WaitingAmbientPulse: View {
             firstPulseIntensity: config.waitingFirstPulseIntensity(for: layoutMode),
             secondPulseIntensity: config.waitingSecondPulseIntensity(for: layoutMode),
             originXPercent: config.waitingOriginX(for: layoutMode),
-            originYPercent: config.waitingOriginY(for: layoutMode)
+            originYPercent: config.waitingOriginY(for: layoutMode),
         )
     }
 
@@ -463,13 +463,13 @@ struct WaitingBorderPulse: View {
                 RoundedRectangle(cornerRadius: cornerRadius)
                     .strokeBorder(
                         Color.statusWaiting.opacity(params.baseOpacity + intensity * params.pulseOpacity),
-                        lineWidth: params.innerWidth + intensity * 1.5
+                        lineWidth: params.innerWidth + intensity * 1.5,
                     )
 
                 RoundedRectangle(cornerRadius: cornerRadius)
                     .strokeBorder(
                         Color.statusWaiting.opacity((params.baseOpacity + intensity * params.pulseOpacity) * 0.5),
-                        lineWidth: params.outerWidth + intensity * 4
+                        lineWidth: params.outerWidth + intensity * 4,
                     )
                     .blur(radius: params.outerBlur + intensity * 6)
             }
@@ -497,7 +497,7 @@ struct WaitingBorderPulse: View {
             innerWidth: config.waitingBorderInnerWidth(for: layoutMode),
             outerWidth: config.waitingBorderOuterWidth(for: layoutMode),
             innerBlur: 0,
-            outerBlur: config.waitingBorderOuterBlur(for: layoutMode)
+            outerBlur: config.waitingBorderOuterBlur(for: layoutMode),
         )
     }
 
@@ -757,8 +757,8 @@ struct WorkingStripeOverlay: View {
                 with: .linearGradient(
                     gradient,
                     startPoint: CGPoint(x: x, y: 0),
-                    endPoint: CGPoint(x: x + stripeWidth, y: 0)
-                )
+                    endPoint: CGPoint(x: x + stripeWidth, y: 0),
+                ),
             )
         }
     }
@@ -779,7 +779,7 @@ struct WorkingStripeOverlay: View {
             vignetteCenterOpacity: config.workingVignetteCenterOpacity(for: layoutMode),
             vignetteColor: config.workingVignetteColor,
             vignetteColorIntensity: config.workingVignetteColorIntensity(for: layoutMode),
-            vignetteBlendMode: config.workingVignetteBlendMode
+            vignetteBlendMode: config.workingVignetteBlendMode,
         )
     }
 }
@@ -827,13 +827,13 @@ struct WorkingBorderGlow: View {
                 RoundedRectangle(cornerRadius: cornerRadius)
                     .strokeBorder(
                         Color.statusWorking.opacity(opacity),
-                        lineWidth: params.borderWidth
+                        lineWidth: params.borderWidth,
                     )
 
                 RoundedRectangle(cornerRadius: cornerRadius)
                     .strokeBorder(
                         Color.statusWorking.opacity(opacity * 0.5),
-                        lineWidth: params.borderWidth * 2
+                        lineWidth: params.borderWidth * 2,
                     )
                     .blur(radius: params.blurAmount)
             }
@@ -848,7 +848,7 @@ struct WorkingBorderGlow: View {
             baseOpacity: config.workingBorderBaseOpacity(for: layoutMode),
             pulseIntensity: config.workingBorderPulseIntensity(for: layoutMode),
             pulseSpeed: config.workingBorderPulseSpeed(for: layoutMode),
-            blurAmount: config.workingBorderBlurAmount(for: layoutMode)
+            blurAmount: config.workingBorderBlurAmount(for: layoutMode),
         )
     }
 }
