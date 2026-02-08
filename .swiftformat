@@ -1,5 +1,5 @@
 --swiftversion 6.2
 --indent 4
 --linebreaks lf
---exclude apps/swift/.build,apps/swift/Packages,apps/swift/DerivedData,apps/swift/bindings/hud_core.swift,apps/swift/Sources/Capacitor/Bridge/hud_core.swift
+--exclude apps/swift/.build,apps/swift/Packages,apps/swift/DerivedData,apps/swift/bindings/hud_core.swift,apps/swift/Sources/Capacitor/Bridge/hud_core.swift,apps/swift/Package.swift
 --disable enumNamespaces
