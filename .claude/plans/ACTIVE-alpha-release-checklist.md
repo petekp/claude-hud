@@ -107,8 +107,8 @@ The current `WelcomeView` is step-by-step with hook installation + shell setup. 
 ## 5. Distribution & Updates
 
 ### Sparkle Auto-Updates
-- [ ] SUFeedURL configured in Info.plist with valid appcast URL
-- [ ] SUPublicEDKey set for signature verification
+ - [x] SUFeedURL configured in Info.plist with valid appcast URL (set in build-distribution.sh)
+ - [x] SUPublicEDKey set for signature verification (set in build-distribution.sh)
 - [ ] "Check for Updates..." menu item works
 - [ ] Automatic update check on launch (configurable in Settings)
 - [ ] Test full update cycle: publish appcast → app detects → downloads → installs
