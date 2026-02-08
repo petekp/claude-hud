@@ -171,9 +171,9 @@ The current `WelcomeView` is step-by-step with hook installation + shell setup. 
 
 ## 8. Pre-Launch Cleanup
 
-- [ ] Remove any hardcoded dev paths or test data
+- [x] Remove any hardcoded dev paths or test data (runtime code clean; only tests/docs include example paths)
 - [x] Audit `print()` / `NSLog` statements — remove or guard behind DEBUG
-- [ ] Verify version number is set correctly for alpha (e.g., `0.2.0-alpha.1`)
+- [x] Verify version number is set correctly for alpha (e.g., `0.2.0-alpha.1`)
 - [ ] Create GitHub release with changelog
 - [ ] Tag release in git
 - [ ] Test download → install → launch cycle from a clean Mac (or as close as possible)

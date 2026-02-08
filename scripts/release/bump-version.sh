@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Bump version across all project files
-# Usage: ./bump-version.sh <major|minor|patch|X.Y.Z>
+# Usage: ./bump-version.sh <major|minor|patch|X.Y.Z[-prerelease][+build]>
 #
 # Examples:
 #   ./bump-version.sh patch     # 0.1.0 -> 0.1.1
@@ -22,7 +22,7 @@ VERSION_FILE="$PROJECT_ROOT/VERSION"
 CARGO_TOML="$PROJECT_ROOT/Cargo.toml"
 
 if [ -z "$1" ]; then
-    echo "Usage: $0 <major|minor|patch|X.Y.Z>"
+    echo "Usage: $0 <major|minor|patch|X.Y.Z[-prerelease][+build]>"
     echo ""
     echo "Examples:"
     echo "  $0 patch     # 0.1.0 -> 0.1.1"
@@ -40,32 +40,36 @@ fi
 CURRENT_VERSION=$(cat "$VERSION_FILE" | tr -d '[:space:]')
 echo -e "${YELLOW}Current version: $CURRENT_VERSION${NC}"
 
-IFS='.' read -r MAJOR MINOR PATCH <<< "$CURRENT_VERSION"
+CURRENT_VERSION_BASE="${CURRENT_VERSION%%-*}"
+CURRENT_VERSION_BASE="${CURRENT_VERSION_BASE%%+*}"
+IFS='.' read -r MAJOR MINOR PATCH <<< "$CURRENT_VERSION_BASE"
 
 case "$1" in
     major)
         MAJOR=$((MAJOR + 1))
         MINOR=0
         PATCH=0
+        NEW_VERSION="$MAJOR.$MINOR.$PATCH"
         ;;
     minor)
         MINOR=$((MINOR + 1))
         PATCH=0
+        NEW_VERSION="$MAJOR.$MINOR.$PATCH"
         ;;
     patch)
         PATCH=$((PATCH + 1))
+        NEW_VERSION="$MAJOR.$MINOR.$PATCH"
         ;;
     *)
-        if [[ $1 =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            IFS='.' read -r MAJOR MINOR PATCH <<< "$1"
+        if [[ $1 =~ ^[0-9]+\.[0-9]+\.[0-9]+([\-+][0-9A-Za-z.-]+)?$ ]]; then
+            NEW_VERSION="$1"
         else
-            echo -e "${RED}ERROR: Invalid version format. Use major|minor|patch or X.Y.Z${NC}"
+            echo -e "${RED}ERROR: Invalid version format. Use major|minor|patch or X.Y.Z[-prerelease][+build]${NC}"
             exit 1
         fi
         ;;
 esac
 
-NEW_VERSION="$MAJOR.$MINOR.$PATCH"
 echo -e "${GREEN}New version: $NEW_VERSION${NC}"
 echo ""
 
@@ -75,7 +79,7 @@ echo -e "${GREEN}✓ VERSION file updated${NC}"
 
 echo -e "${YELLOW}Updating Cargo.toml workspace version...${NC}"
 if [ -f "$CARGO_TOML" ]; then
-    sed -i '' "s/^version = \"[0-9]*\.[0-9]*\.[0-9]*\"/version = \"$NEW_VERSION\"/" "$CARGO_TOML"
+    sed -i '' -E "s/^version = \"[0-9]+\\.[0-9]+\\.[0-9]+([-.][0-9A-Za-z.-]+)?\"/version = \"$NEW_VERSION\"/" "$CARGO_TOML"
     echo -e "${GREEN}✓ Cargo.toml updated${NC}"
 else
     echo -e "${YELLOW}⚠ Cargo.toml not found, skipping${NC}"

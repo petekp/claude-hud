@@ -426,7 +426,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         // Ultimate fallback (kept in sync by bump-version.sh)
-        return "0.1.27"
+        return "0.2.0-alpha.1"
     }
 
     private func validateHookSetup() {
