@@ -30,6 +30,12 @@ pub struct DaemonSessionRecord {
     #[serde(default)]
     pub last_event: Option<String>,
     #[serde(default)]
+    pub last_activity_at: Option<String>,
+    #[serde(default)]
+    pub tools_in_flight: u32,
+    #[serde(default)]
+    pub ready_reason: Option<String>,
+    #[serde(default)]
     pub is_alive: Option<bool>,
 }
 
@@ -215,6 +221,9 @@ mod tests {
             updated_at: updated_at.to_string(),
             state_changed_at: updated_at.to_string(),
             last_event: None,
+            last_activity_at: None,
+            tools_in_flight: 0,
+            ready_reason: None,
             is_alive: Some(true),
         }
     }

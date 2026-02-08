@@ -54,14 +54,20 @@ pub struct SessionRecord {
     pub updated_at: String,
     pub state_changed_at: String,
     pub last_event: Option<String>,
+    pub last_activity_at: Option<String>,
+    pub tools_in_flight: u32,
+    pub ready_reason: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[allow(clippy::large_enum_variant)]
 pub enum SessionUpdate {
     Upsert(SessionRecord),
     Delete { session_id: String },
     Skip,
 }
+
+const STOP_RECENT_ACTIVITY_SECS: i64 = 5;
 
 pub fn reduce_session(current: Option<&SessionRecord>, event: &EventEnvelope) -> SessionUpdate {
     if event.event_type == EventType::ShellCwd {
@@ -85,38 +91,104 @@ pub fn reduce_session(current: Option<&SessionRecord>, event: &EventEnvelope) ->
             {
                 SessionUpdate::Skip
             } else {
-                upsert_session(current, event, session_id, SessionState::Ready)
+                upsert_session(current, event, session_id, SessionState::Ready, None)
             }
         }
         EventType::UserPromptSubmit => {
-            upsert_session(current, event, session_id, SessionState::Working)
+            upsert_session(current, event, session_id, SessionState::Working, None)
         }
         EventType::PreToolUse | EventType::PostToolUse => {
-            upsert_session(current, event, session_id, SessionState::Working)
+            upsert_session(current, event, session_id, SessionState::Working, None)
         }
         EventType::PermissionRequest => {
-            upsert_session(current, event, session_id, SessionState::Waiting)
+            upsert_session(current, event, session_id, SessionState::Waiting, None)
         }
         EventType::PreCompact => {
-            upsert_session(current, event, session_id, SessionState::Compacting)
+            upsert_session(current, event, session_id, SessionState::Compacting, None)
         }
         EventType::Notification => {
             if event.notification_type.as_deref() == Some("idle_prompt") {
-                upsert_session(current, event, session_id, SessionState::Ready)
+                if current
+                    .map(|record| record.tools_in_flight > 0)
+                    .unwrap_or(false)
+                {
+                    SessionUpdate::Skip
+                } else {
+                    upsert_session(
+                        current,
+                        event,
+                        session_id,
+                        SessionState::Ready,
+                        Some("idle_prompt".to_string()),
+                    )
+                }
             } else {
                 SessionUpdate::Skip
             }
         }
         EventType::Stop => {
-            if event.stop_hook_active == Some(true) {
+            if should_skip_stop(current, event) {
                 SessionUpdate::Skip
             } else {
-                upsert_session(current, event, session_id, SessionState::Ready)
+                upsert_session(
+                    current,
+                    event,
+                    session_id,
+                    SessionState::Ready,
+                    Some("stop_gate".to_string()),
+                )
             }
         }
         EventType::SessionEnd => SessionUpdate::Delete { session_id },
         EventType::ShellCwd => SessionUpdate::Skip,
     }
+}
+
+fn has_agent_id_metadata(event: &EventEnvelope) -> bool {
+    event
+        .metadata
+        .as_ref()
+        .and_then(|value| value.get("agent_id"))
+        .and_then(|value| value.as_str())
+        .map(|value| !value.is_empty())
+        .unwrap_or(false)
+}
+
+fn should_skip_stop(current: Option<&SessionRecord>, event: &EventEnvelope) -> bool {
+    if event.stop_hook_active == Some(true) || has_agent_id_metadata(event) {
+        return true;
+    }
+
+    if current
+        .map(|record| record.tools_in_flight > 0)
+        .unwrap_or(false)
+    {
+        return true;
+    }
+
+    has_recent_activity(current, event)
+}
+
+fn has_recent_activity(current: Option<&SessionRecord>, event: &EventEnvelope) -> bool {
+    let Some(last_activity_at) = current.and_then(|record| record.last_activity_at.as_deref())
+    else {
+        return false;
+    };
+    let Some(last_activity_time) = parse_rfc3339(last_activity_at) else {
+        return true;
+    };
+    let Some(event_time) = parse_rfc3339(&event.recorded_at) else {
+        return true;
+    };
+
+    let delta = event_time
+        .signed_duration_since(last_activity_time)
+        .num_seconds();
+    if delta < 0 {
+        return true;
+    }
+
+    delta < STOP_RECENT_ACTIVITY_SECS
 }
 
 fn is_event_stale(current: Option<&SessionRecord>, event: &EventEnvelope) -> bool {
@@ -136,6 +208,7 @@ fn upsert_session(
     event: &EventEnvelope,
     session_id: String,
     new_state: SessionState,
+    ready_reason: Option<String>,
 ) -> SessionUpdate {
     let pid = event
         .pid
@@ -191,6 +264,20 @@ fn upsert_session(
         Some(record) if record.state == new_state => record.state_changed_at.clone(),
         _ => updated_at.clone(),
     };
+    let mut last_activity_at = current.and_then(|record| record.last_activity_at.clone());
+    if should_update_activity(&event.event_type) {
+        last_activity_at = Some(updated_at.clone());
+    }
+
+    let tools_in_flight = adjust_tools_in_flight(
+        current.map(|record| record.tools_in_flight).unwrap_or(0),
+        &event.event_type,
+    );
+    let ready_reason = if new_state == SessionState::Ready {
+        ready_reason.or_else(|| current.and_then(|record| record.ready_reason.clone()))
+    } else {
+        None
+    };
 
     SessionUpdate::Upsert(SessionRecord {
         session_id,
@@ -202,7 +289,29 @@ fn upsert_session(
         updated_at,
         state_changed_at,
         last_event: Some(event_type_string(&event.event_type)),
+        last_activity_at,
+        tools_in_flight,
+        ready_reason,
     })
+}
+
+fn should_update_activity(event_type: &EventType) -> bool {
+    matches!(
+        event_type,
+        EventType::UserPromptSubmit
+            | EventType::PreToolUse
+            | EventType::PostToolUse
+            | EventType::PreCompact
+    )
+}
+
+fn adjust_tools_in_flight(current: u32, event_type: &EventType) -> u32 {
+    match event_type {
+        EventType::PreToolUse => current.saturating_add(1),
+        EventType::PostToolUse => current.saturating_sub(1),
+        EventType::SessionStart | EventType::PreCompact => 0,
+        _ => current,
+    }
 }
 
 fn is_parent_path(parent: &str, child: &str) -> bool {
@@ -301,6 +410,9 @@ mod tests {
             updated_at: "2026-01-30T23:59:00Z".to_string(),
             state_changed_at: state_changed_at.to_string(),
             last_event: Some("session_start".to_string()),
+            last_activity_at: None,
+            tools_in_flight: 0,
+            ready_reason: None,
         }
     }
 
@@ -315,6 +427,7 @@ mod tests {
                 assert_eq!(record.updated_at, event.recorded_at);
                 assert_eq!(record.state_changed_at, event.recorded_at);
                 assert_eq!(record.cwd, "/repo");
+                assert_eq!(record.ready_reason, None);
             }
             _ => panic!("expected upsert"),
         }
@@ -464,6 +577,9 @@ mod tests {
             updated_at: "2026-01-31T00:00:00Z".to_string(),
             state_changed_at: "2026-01-31T00:00:00Z".to_string(),
             last_event: Some("post_tool_use".to_string()),
+            last_activity_at: None,
+            tools_in_flight: 0,
+            ready_reason: None,
         };
 
         let mut event = event_base(EventType::PreCompact);
@@ -475,6 +591,52 @@ mod tests {
             SessionUpdate::Upsert(record) => {
                 assert_eq!(record.project_path, expected_docs);
                 assert_eq!(record.project_id, expected_git);
+            }
+            _ => panic!("expected upsert"),
+        }
+    }
+
+    #[test]
+    fn pre_compact_resets_tools_in_flight() {
+        let mut event = event_base(EventType::PreCompact);
+        event.recorded_at = "2026-01-31T00:00:10Z".to_string();
+
+        let mut current = record_with_state(SessionState::Working, "2026-01-31T00:00:00Z");
+        current.tools_in_flight = 2;
+
+        let update = reduce_session(Some(&current), &event);
+
+        match update {
+            SessionUpdate::Upsert(record) => {
+                assert_eq!(record.state, SessionState::Compacting);
+                assert_eq!(record.tools_in_flight, 0);
+            }
+            _ => panic!("expected upsert"),
+        }
+    }
+
+    #[test]
+    fn stop_after_pre_compact_can_ready() {
+        let mut pre_compact = event_base(EventType::PreCompact);
+        pre_compact.recorded_at = "2026-01-31T00:00:10Z".to_string();
+
+        let mut current = record_with_state(SessionState::Working, "2026-01-31T00:00:00Z");
+        current.tools_in_flight = 1;
+
+        let after_compact = match reduce_session(Some(&current), &pre_compact) {
+            SessionUpdate::Upsert(record) => record,
+            _ => panic!("expected upsert"),
+        };
+
+        let mut stop = event_base(EventType::Stop);
+        stop.stop_hook_active = Some(false);
+        stop.recorded_at = "2026-01-31T00:00:20Z".to_string();
+
+        let update = reduce_session(Some(&after_compact), &stop);
+        match update {
+            SessionUpdate::Upsert(record) => {
+                assert_eq!(record.state, SessionState::Ready);
+                assert_eq!(record.ready_reason, Some("stop_gate".to_string()));
             }
             _ => panic!("expected upsert"),
         }
@@ -548,6 +710,7 @@ mod tests {
         match update {
             SessionUpdate::Upsert(record) => {
                 assert_eq!(record.state, SessionState::Ready);
+                assert_eq!(record.ready_reason, Some("idle_prompt".to_string()));
             }
             _ => panic!("expected upsert"),
         }
@@ -570,6 +733,69 @@ mod tests {
     }
 
     #[test]
+    fn stop_skips_when_tools_in_flight() {
+        let mut event = event_base(EventType::Stop);
+        event.stop_hook_active = Some(false);
+        event.recorded_at = "2026-01-31T00:00:10Z".to_string();
+
+        let mut current = record_with_state(SessionState::Working, "2026-01-31T00:00:00Z");
+        current.tools_in_flight = 1;
+        current.last_activity_at = Some("2026-01-31T00:00:05Z".to_string());
+
+        let update = reduce_session(Some(&current), &event);
+        assert_eq!(update, SessionUpdate::Skip);
+    }
+
+    #[test]
+    fn stop_skips_when_recent_activity() {
+        let mut event = event_base(EventType::Stop);
+        event.stop_hook_active = Some(false);
+        event.recorded_at = "2026-01-31T00:00:10Z".to_string();
+
+        let mut current = record_with_state(SessionState::Working, "2026-01-31T00:00:00Z");
+        current.tools_in_flight = 0;
+        current.last_activity_at = Some("2026-01-31T00:00:08Z".to_string());
+
+        let update = reduce_session(Some(&current), &event);
+        assert_eq!(update, SessionUpdate::Skip);
+    }
+
+    #[test]
+    fn stop_skips_when_activity_timestamp_invalid() {
+        let mut event = event_base(EventType::Stop);
+        event.stop_hook_active = Some(false);
+        event.recorded_at = "2026-01-31T00:00:10Z".to_string();
+
+        let mut current = record_with_state(SessionState::Working, "2026-01-31T00:00:00Z");
+        current.last_activity_at = Some("not-a-timestamp".to_string());
+
+        let update = reduce_session(Some(&current), &event);
+        assert_eq!(update, SessionUpdate::Skip);
+    }
+
+    #[test]
+    fn stop_skips_when_event_timestamp_invalid() {
+        let mut event = event_base(EventType::Stop);
+        event.stop_hook_active = Some(false);
+        event.recorded_at = "invalid".to_string();
+
+        let mut current = record_with_state(SessionState::Working, "2026-01-31T00:00:00Z");
+        current.last_activity_at = Some("2026-01-31T00:00:05Z".to_string());
+
+        let update = reduce_session(Some(&current), &event);
+        assert_eq!(update, SessionUpdate::Skip);
+    }
+
+    #[test]
+    fn stop_with_agent_id_metadata_skips() {
+        let mut event = event_base(EventType::Stop);
+        event.stop_hook_active = Some(false);
+        event.metadata = Some(serde_json::json!({ "agent_id": "agent-1" }));
+        let update = reduce_session(None, &event);
+        assert_eq!(update, SessionUpdate::Skip);
+    }
+
+    #[test]
     fn stop_hook_inactive_sets_ready() {
         let mut event = event_base(EventType::Stop);
         event.stop_hook_active = Some(false);
@@ -578,6 +804,23 @@ mod tests {
         match update {
             SessionUpdate::Upsert(record) => {
                 assert_eq!(record.state, SessionState::Ready);
+                assert_eq!(record.ready_reason, Some("stop_gate".to_string()));
+            }
+            _ => panic!("expected upsert"),
+        }
+    }
+
+    #[test]
+    fn stop_without_agent_id_metadata_sets_ready() {
+        let mut event = event_base(EventType::Stop);
+        event.stop_hook_active = Some(false);
+        event.metadata = Some(serde_json::json!({ "note": "no-agent" }));
+        let update = reduce_session(None, &event);
+
+        match update {
+            SessionUpdate::Upsert(record) => {
+                assert_eq!(record.state, SessionState::Ready);
+                assert_eq!(record.ready_reason, Some("stop_gate".to_string()));
             }
             _ => panic!("expected upsert"),
         }
@@ -609,7 +852,73 @@ mod tests {
             updated_at: "2026-01-31T00:00:10Z".to_string(),
             state_changed_at: "2026-01-31T00:00:10Z".to_string(),
             last_event: Some("session_start".to_string()),
+            last_activity_at: None,
+            tools_in_flight: 0,
+            ready_reason: None,
         };
+
+        let update = reduce_session(Some(&current), &event);
+        assert_eq!(update, SessionUpdate::Skip);
+    }
+
+    #[test]
+    fn pre_tool_use_increments_tools_in_flight() {
+        let event = event_base(EventType::PreToolUse);
+        let mut current = record_with_state(SessionState::Working, "2026-01-30T23:55:00Z");
+        current.tools_in_flight = 1;
+
+        let update = reduce_session(Some(&current), &event);
+
+        match update {
+            SessionUpdate::Upsert(record) => {
+                assert_eq!(record.tools_in_flight, 2);
+                assert_eq!(record.last_activity_at, Some(event.recorded_at.clone()));
+            }
+            _ => panic!("expected upsert"),
+        }
+    }
+
+    #[test]
+    fn post_tool_use_decrements_tools_in_flight() {
+        let event = event_base(EventType::PostToolUse);
+        let mut current = record_with_state(SessionState::Working, "2026-01-30T23:55:00Z");
+        current.tools_in_flight = 1;
+
+        let update = reduce_session(Some(&current), &event);
+
+        match update {
+            SessionUpdate::Upsert(record) => {
+                assert_eq!(record.tools_in_flight, 0);
+                assert_eq!(record.last_activity_at, Some(event.recorded_at.clone()));
+            }
+            _ => panic!("expected upsert"),
+        }
+    }
+
+    #[test]
+    fn user_prompt_updates_last_activity() {
+        let event = event_base(EventType::UserPromptSubmit);
+        let current = record_with_state(SessionState::Ready, "2026-01-30T23:55:00Z");
+
+        let update = reduce_session(Some(&current), &event);
+
+        match update {
+            SessionUpdate::Upsert(record) => {
+                assert_eq!(record.last_activity_at, Some(event.recorded_at.clone()));
+            }
+            _ => panic!("expected upsert"),
+        }
+    }
+
+    #[test]
+    fn stop_skips_when_activity_timestamp_is_in_future() {
+        let mut event = event_base(EventType::Stop);
+        event.stop_hook_active = Some(false);
+        event.recorded_at = "2026-01-31T00:00:05Z".to_string();
+
+        let mut current = record_with_state(SessionState::Working, "2026-01-31T00:00:00Z");
+        current.tools_in_flight = 0;
+        current.last_activity_at = Some("2026-01-31T00:00:08Z".to_string());
 
         let update = reduce_session(Some(&current), &event);
         assert_eq!(update, SessionUpdate::Skip);

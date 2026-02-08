@@ -23,7 +23,13 @@ const READ_TIMEOUT_MS: u64 = 600;
 const WRITE_TIMEOUT_MS: u64 = 600;
 const RETRY_DELAY_MS: u64 = 50;
 
-pub fn send_handle_event(event: &HookEvent, session_id: &str, pid: u32, cwd: &str) -> bool {
+pub fn send_handle_event(
+    event: &HookEvent,
+    session_id: &str,
+    pid: u32,
+    cwd: &str,
+    agent_id: Option<&str>,
+) -> bool {
     if !daemon_enabled() {
         return false;
     }
@@ -51,6 +57,14 @@ pub fn send_handle_event(event: &HookEvent, session_id: &str, pid: u32, cwd: &st
 
     let event_id = make_event_id(pid);
     let recorded_at = Utc::now().to_rfc3339();
+    let metadata = agent_id.and_then(|id| {
+        let trimmed = id.trim();
+        if trimmed.is_empty() {
+            None
+        } else {
+            Some(serde_json::json!({ "agent_id": trimmed }))
+        }
+    });
     let build_envelope = || EventEnvelope {
         event_id: event_id.clone(),
         recorded_at: recorded_at.clone(),
@@ -66,7 +80,7 @@ pub fn send_handle_event(event: &HookEvent, session_id: &str, pid: u32, cwd: &st
         tmux_client_tty: None,
         notification_type: notification_type.clone(),
         stop_hook_active,
-        metadata: None,
+        metadata: metadata.clone(),
     };
 
     send_event_with_retry(build_envelope, "session event").is_ok()

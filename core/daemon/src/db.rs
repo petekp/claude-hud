@@ -242,8 +242,9 @@ impl Db {
     pub fn upsert_session(&self, record: &SessionRecord) -> Result<(), String> {
         self.with_connection(|conn| {
             conn.execute(
-                "INSERT INTO sessions (session_id, pid, state, cwd, project_id, project_path, updated_at, state_changed_at, last_event) \
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9) \
+                "INSERT INTO sessions \
+                    (session_id, pid, state, cwd, project_id, project_path, updated_at, state_changed_at, last_event, last_activity_at, tools_in_flight, ready_reason) \
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12) \
                  ON CONFLICT(session_id) DO UPDATE SET \
                     pid = excluded.pid, \
                     state = excluded.state, \
@@ -252,7 +253,10 @@ impl Db {
                     project_path = excluded.project_path, \
                     updated_at = excluded.updated_at, \
                     state_changed_at = excluded.state_changed_at, \
-                    last_event = excluded.last_event",
+                    last_event = excluded.last_event, \
+                    last_activity_at = excluded.last_activity_at, \
+                    tools_in_flight = excluded.tools_in_flight, \
+                    ready_reason = excluded.ready_reason",
                 params![
                     record.session_id,
                     record.pid,
@@ -262,7 +266,10 @@ impl Db {
                     record.project_path,
                     record.updated_at,
                     record.state_changed_at,
-                    record.last_event
+                    record.last_event,
+                    record.last_activity_at,
+                    record.tools_in_flight,
+                    record.ready_reason
                 ],
             )
             .map_err(|err| format!("Failed to upsert session: {}", err))?;
@@ -276,7 +283,8 @@ impl Db {
                 "SELECT session_id, COALESCE(pid, 0), state, cwd, \
                         COALESCE(project_id, project_path, cwd), \
                         COALESCE(project_path, cwd), \
-                        updated_at, state_changed_at, last_event \
+                        updated_at, state_changed_at, last_event, last_activity_at, \
+                        COALESCE(tools_in_flight, 0), ready_reason \
                  FROM sessions WHERE session_id = ?1",
                 params![session_id],
                 |row| {
@@ -302,6 +310,9 @@ impl Db {
                         updated_at: row.get(6)?,
                         state_changed_at: row.get(7)?,
                         last_event: row.get(8)?,
+                        last_activity_at: row.get(9)?,
+                        tools_in_flight: row.get(10)?,
+                        ready_reason: row.get(11)?,
                     })
                 },
             )
@@ -317,7 +328,8 @@ impl Db {
                     "SELECT session_id, COALESCE(pid, 0), state, cwd, \
                             COALESCE(project_id, project_path, cwd), \
                             COALESCE(project_path, cwd), \
-                            updated_at, state_changed_at, last_event \
+                            updated_at, state_changed_at, last_event, last_activity_at, \
+                            COALESCE(tools_in_flight, 0), ready_reason \
                      FROM sessions ORDER BY updated_at DESC",
                 )
                 .map_err(|err| format!("Failed to prepare sessions query: {}", err))?;
@@ -345,6 +357,9 @@ impl Db {
                         updated_at: row.get(6)?,
                         state_changed_at: row.get(7)?,
                         last_event: row.get(8)?,
+                        last_activity_at: row.get(9)?,
+                        tools_in_flight: row.get(10)?,
+                        ready_reason: row.get(11)?,
                     })
                 })
                 .map_err(|err| format!("Failed to query sessions: {}", err))?;
@@ -796,7 +811,10 @@ impl Db {
                     project_path TEXT,
                     updated_at TEXT NOT NULL,
                     state_changed_at TEXT NOT NULL,
-                    last_event TEXT
+                    last_event TEXT,
+                    last_activity_at TEXT,
+                    tools_in_flight INTEGER NOT NULL DEFAULT 0,
+                    ready_reason TEXT
                  );
                  CREATE TABLE IF NOT EXISTS activity (
                     session_id TEXT NOT NULL,
@@ -879,6 +897,24 @@ fn ensure_sessions_columns(conn: &Connection) -> Result<(), String> {
             [],
         )
         .map_err(|err| format!("Failed to add pid column: {}", err))?;
+    }
+
+    if !columns.iter().any(|name| name == "last_activity_at") {
+        conn.execute("ALTER TABLE sessions ADD COLUMN last_activity_at TEXT", [])
+            .map_err(|err| format!("Failed to add last_activity_at column: {}", err))?;
+    }
+
+    if !columns.iter().any(|name| name == "tools_in_flight") {
+        conn.execute(
+            "ALTER TABLE sessions ADD COLUMN tools_in_flight INTEGER NOT NULL DEFAULT 0",
+            [],
+        )
+        .map_err(|err| format!("Failed to add tools_in_flight column: {}", err))?;
+    }
+
+    if !columns.iter().any(|name| name == "ready_reason") {
+        conn.execute("ALTER TABLE sessions ADD COLUMN ready_reason TEXT", [])
+            .map_err(|err| format!("Failed to add ready_reason column: {}", err))?;
     }
 
     Ok(())
@@ -1167,6 +1203,9 @@ mod tests {
             updated_at: "2026-01-31T00:00:00Z".to_string(),
             state_changed_at: "2026-01-31T00:00:00Z".to_string(),
             last_event: Some("session_start".to_string()),
+            last_activity_at: None,
+            tools_in_flight: 0,
+            ready_reason: None,
         };
 
         db.upsert_session(&record).expect("upsert session");

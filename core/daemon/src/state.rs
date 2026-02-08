@@ -27,7 +27,6 @@ const SESSION_TTL_ACTIVE_SECS: i64 = 20 * 60; // Working/Waiting/Compacting
 const SESSION_TTL_READY_SECS: i64 = 30 * 60; // Ready
 const SESSION_TTL_IDLE_SECS: i64 = 10 * 60; // Idle
                                             // Ready does not auto-idle; it remains until TTL or session end.
-const ACTIVE_TO_READY_SECS: i64 = 8; // Working/Waiting/Compacting -> Ready after inactivity
 
 pub struct SharedState {
     db: Db,
@@ -303,6 +302,9 @@ impl SharedState {
                 updated_at: record.updated_at,
                 state_changed_at: record.state_changed_at,
                 last_event: record.last_event,
+                last_activity_at: record.last_activity_at,
+                tools_in_flight: record.tools_in_flight,
+                ready_reason: record.ready_reason,
                 is_alive,
             });
         }
@@ -351,7 +353,7 @@ impl SharedState {
                 continue;
             }
 
-            let effective_state = effective_session_state(&record, now);
+            let effective_state = effective_session_state(&record);
             let session_time = session_timestamp(&record).unwrap_or(now);
             let priority = session_state_priority(&effective_state);
             let is_active = session_state_is_active(&effective_state);
@@ -578,23 +580,8 @@ fn session_state_is_active(state: &crate::reducer::SessionState) -> bool {
     )
 }
 
-fn effective_session_state(
-    record: &SessionRecord,
-    now: DateTime<Utc>,
-) -> crate::reducer::SessionState {
-    let state = record.state.clone();
-    if !session_state_is_active(&state) {
-        return state;
-    }
-
-    let last_seen = session_timestamp(record).unwrap_or(now);
-    let inactive_for = now.signed_duration_since(last_seen).num_seconds();
-
-    if inactive_for >= ACTIVE_TO_READY_SECS {
-        crate::reducer::SessionState::Ready
-    } else {
-        state
-    }
+fn effective_session_state(record: &SessionRecord) -> crate::reducer::SessionState {
+    record.state.clone()
 }
 
 fn session_ttl_seconds(state: &crate::reducer::SessionState) -> i64 {
@@ -639,23 +626,26 @@ mod tests {
             updated_at: updated_at.clone(),
             state_changed_at: updated_at,
             last_event: None,
+            last_activity_at: None,
+            tools_in_flight: 0,
+            ready_reason: None,
         }
     }
 
     #[test]
-    fn project_states_downgrade_working_after_inactivity() {
+    fn project_states_do_not_auto_ready_without_stop() {
         let temp_dir = tempfile::tempdir().expect("temp dir");
         let db_path = temp_dir.path().join("state.db");
         let db = Db::new(db_path).expect("db init");
         let state = SharedState::new(db);
 
-        let stale_time = (Utc::now() - Duration::seconds(ACTIVE_TO_READY_SECS + 2)).to_rfc3339();
+        let stale_time = (Utc::now() - Duration::seconds(120)).to_rfc3339();
         let record = make_record("session-stale", "/repo", SessionState::Working, stale_time);
         state.db.upsert_session(&record).expect("insert session");
 
         let aggregates = state.project_states_snapshot().expect("project states");
         assert_eq!(aggregates.len(), 1);
-        assert_eq!(aggregates[0].state, SessionState::Ready);
+        assert_eq!(aggregates[0].state, SessionState::Working);
     }
 
     #[test]
@@ -665,7 +655,7 @@ mod tests {
         let db = Db::new(db_path).expect("db init");
         let state = SharedState::new(db);
 
-        let fresh_time = (Utc::now() - Duration::seconds(ACTIVE_TO_READY_SECS - 2)).to_rfc3339();
+        let fresh_time = (Utc::now() - Duration::seconds(2)).to_rfc3339();
         let record = make_record("session-fresh", "/repo", SessionState::Working, fresh_time);
         state.db.upsert_session(&record).expect("insert session");
 
@@ -771,6 +761,11 @@ pub struct EnrichedSession {
     pub state_changed_at: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub last_event: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub last_activity_at: Option<String>,
+    pub tools_in_flight: u32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ready_reason: Option<String>,
     /// Whether the session's process is still alive.
     /// None if pid is 0 (unknown), Some(true) if alive, Some(false) if dead.
     #[serde(skip_serializing_if = "Option::is_none")]

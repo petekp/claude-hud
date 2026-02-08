@@ -227,7 +227,7 @@ mod tests {
 // PreCompact             → compacting
 // Stop                   → ready    (ignored if stop_hook_active=true)
 // SessionEnd             → removes session record
-// SubagentStop           → ignored  (metadata only, no state change)
+// SubagentStop           → ignored  (implemented via agent_id metadata filtering)
 // -----------------------------------------------------------------------------
 
 /// Most recent hook event observed for this session (captured for debugging + future features).

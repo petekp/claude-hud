@@ -80,6 +80,17 @@ fn handle_hook_input_with_home(hook_input: HookInput, home: &Path) -> Result<(),
     let cwd = hook_input.resolve_cwd(None);
     let (action, _new_state, _file_activity) = process_event(&event, None, &hook_input);
 
+    // Skip subagent Stop events — they share the parent session_id
+    // but shouldn't affect the parent session's state.
+    if matches!(event, HookEvent::Stop { .. }) && hook_input.agent_id.is_some() {
+        tracing::debug!(
+            agent_id = ?hook_input.agent_id,
+            session = %session_id,
+            "Skipping subagent Stop event"
+        );
+        return Ok(());
+    }
+
     if cwd.is_none() && action != Action::Delete {
         tracing::debug!(
             event = ?hook_input.hook_event_name,
@@ -93,7 +104,13 @@ fn handle_hook_input_with_home(hook_input: HookInput, home: &Path) -> Result<(),
     let claude_pid = std::process::id();
     let ppid = get_ppid().unwrap_or(claude_pid);
 
-    let daemon_sent = crate::daemon_client::send_handle_event(&event, &session_id, ppid, &cwd);
+    let daemon_sent = crate::daemon_client::send_handle_event(
+        &event,
+        &session_id,
+        ppid,
+        &cwd,
+        hook_input.agent_id.as_deref(),
+    );
     if daemon_sent {
         touch_heartbeat(home);
         tracing::debug!(
@@ -215,5 +232,79 @@ fn touch_heartbeat(home: &Path) {
         .open(&heartbeat_path)
     {
         let _ = writeln!(file, "{}", Utc::now().timestamp());
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::{Mutex, OnceLock};
+
+    static ENV_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+
+    struct EnvGuard {
+        key: &'static str,
+        prior: Option<String>,
+    }
+
+    impl EnvGuard {
+        fn set(key: &'static str, value: &str) -> Self {
+            let prior = std::env::var(key).ok();
+            std::env::set_var(key, value);
+            Self { key, prior }
+        }
+    }
+
+    impl Drop for EnvGuard {
+        fn drop(&mut self) {
+            if let Some(value) = &self.prior {
+                std::env::set_var(self.key, value);
+            } else {
+                std::env::remove_var(self.key);
+            }
+        }
+    }
+
+    fn env_lock() -> std::sync::MutexGuard<'static, ()> {
+        ENV_LOCK.get_or_init(|| Mutex::new(())).lock().unwrap()
+    }
+
+    #[test]
+    fn subagent_stop_skips_daemon_send() {
+        let _guard = env_lock();
+        let _enabled = EnvGuard::set("CAPACITOR_DAEMON_ENABLED", "1");
+        let temp_dir = std::env::temp_dir().join(format!(
+            "hud-hook-test-{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&temp_dir).expect("create temp dir");
+        let socket_path = temp_dir.join("missing.sock");
+        let _socket = EnvGuard::set(
+            "CAPACITOR_DAEMON_SOCKET",
+            socket_path.to_string_lossy().as_ref(),
+        );
+
+        let hook_input = HookInput {
+            hook_event_name: Some("Stop".to_string()),
+            session_id: Some("session-1".to_string()),
+            cwd: Some("/repo".to_string()),
+            trigger: None,
+            notification_type: None,
+            stop_hook_active: Some(false),
+            tool_name: None,
+            tool_use_id: None,
+            tool_input: None,
+            tool_response: None,
+            source: None,
+            reason: None,
+            agent_id: Some("agent-123".to_string()),
+            agent_transcript_path: None,
+        };
+
+        let result = handle_hook_input_with_home(hook_input, &temp_dir);
+        assert!(result.is_ok());
     }
 }
