@@ -40,7 +40,7 @@ actor CapacitorConfig {
             cachedConfig = config
             return config
         } catch {
-            print("Warning: Could not load config: \(error)")
+            DebugLog.write("Warning: Could not load config: \(error)")
             let defaultConfig = Config()
             cachedConfig = defaultConfig
             return defaultConfig
@@ -67,7 +67,7 @@ actor CapacitorConfig {
             let data = try encoder.encode(config)
             try data.write(to: configURL, options: .atomic)
         } catch {
-            print("Warning: Could not save config: \(error)")
+            DebugLog.write("Warning: Could not save config: \(error)")
         }
     }
 

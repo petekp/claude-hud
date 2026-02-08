@@ -24,7 +24,7 @@ final class ReadyChime {
         do {
             try engine.start()
         } catch {
-            print("ReadyChime: Failed to start audio engine: \(error)")
+            DebugLog.write("ReadyChime: Failed to start audio engine: \(error)")
         }
     }
 

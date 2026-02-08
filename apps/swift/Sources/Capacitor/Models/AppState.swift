@@ -218,7 +218,7 @@ class AppState: ObservableObject {
             ensureDaemonRunning()
             let cleanupStats = engine!.runStartupCleanup()
             if !cleanupStats.errors.isEmpty {
-                print("[Startup] Cleanup errors: \(cleanupStats.errors.joined(separator: "; "))")
+                DebugLog.write("[Startup] Cleanup errors: \(cleanupStats.errors.joined(separator: "; "))")
             }
 
             projectDetailsManager.configure(engine: engine)

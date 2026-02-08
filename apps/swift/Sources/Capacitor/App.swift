@@ -440,10 +440,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         case .symlinkBroken, .binaryBroken, .notInstalled:
             if attemptAutoRepair(engine: engine) {
-                print("[Startup] Hook auto-repair succeeded")
+                DebugLog.write("[Startup] Hook auto-repair succeeded")
                 return
             }
-            print("[Startup] Hook auto-repair failed, showing WelcomeView")
+            DebugLog.write("[Startup] Hook auto-repair failed, showing WelcomeView")
             UserDefaults.standard.set(false, forKey: "setupComplete")
 
         case .policyBlocked:
@@ -453,7 +453,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func attemptAutoRepair(engine: HudEngine) -> Bool {
         if let installError = HookInstaller.installBundledBinary(using: engine) {
-            print("[Startup] Hook binary install failed: \(installError)")
+            DebugLog.write("[Startup] Hook binary install failed: \(installError)")
             return false
         }
 
@@ -465,9 +465,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                     return true
                 }
             }
-            print("[Startup] Hook config install failed: \(result.message)")
+            DebugLog.write("[Startup] Hook config install failed: \(result.message)")
         } catch {
-            print("[Startup] Hook install threw: \(error)")
+            DebugLog.write("[Startup] Hook install threw: \(error)")
         }
 
         return false
