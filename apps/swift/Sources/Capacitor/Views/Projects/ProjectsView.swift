@@ -116,15 +116,14 @@ struct ProjectsView: View {
                                         pausedCollapsed.toggle()
                                     }
                                     if expanding {
-                                        DispatchQueue.main.async {
+                                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
                                             withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                                                scrollProxy.scrollTo("hidden-section", anchor: .top)
+                                                scrollProxy.scrollTo("scroll-end", anchor: .bottom)
                                             }
                                         }
                                     }
                                 }
                             )
-                            .id("hidden-section")
                             .padding(.top, activeProjects.isEmpty ? 4 : 12)
                             .transition(.opacity)
 
@@ -133,6 +132,9 @@ struct ProjectsView: View {
                                     ForEach(Array(pausedProjects.enumerated()), id: \.element.path) { index, project in
                                         pausedProjectCard(project: project, index: index)
                                     }
+                                    // Anchor inside the eager VStack so it's always materialized
+                                    // when the section is expanded (LazyVStack won't defer it)
+                                    Color.clear.frame(height: 1).id("scroll-end")
                                 }
                             }
                         }
@@ -146,9 +148,9 @@ struct ProjectsView: View {
                         withAnimation(.spring(response: glassConfig.sectionToggleSpringResponse, dampingFraction: 0.85)) {
                             pausedCollapsed = false
                         }
-                        DispatchQueue.main.async {
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
                             withAnimation(.spring(response: glassConfig.sectionToggleSpringResponse, dampingFraction: 0.85)) {
-                                scrollProxy.scrollTo("hidden-section", anchor: .top)
+                                scrollProxy.scrollTo("scroll-end", anchor: .bottom)
                             }
                         }
                     }
