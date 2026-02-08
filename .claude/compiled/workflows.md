@@ -4,6 +4,7 @@
 ## Quick Dev Loop
 ```bash
 ./scripts/dev/restart-app.sh
+./scripts/dev/restart-app.sh --channel alpha
 ```
 
 ## Rust Core
@@ -18,7 +19,10 @@ cargo build -p hud-core --release
 ```bash
 cd apps/swift
 swift build
-swift run
+# Preferred dev loop (builds + bundles debug app):
+./scripts/dev/restart-app.sh
+# Direct run (no bundle/Info.plist) — set channel explicitly:
+CAPACITOR_CHANNEL=dev swift run
 ```
 
 ## UniFFI Regen (after Rust API changes)

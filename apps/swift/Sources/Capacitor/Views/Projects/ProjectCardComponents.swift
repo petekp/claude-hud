@@ -218,13 +218,9 @@ struct CompactingTrackingParameters {
 struct ProjectContextMenu: View {
     let project: Project
     let onTap: () -> Void
-    #if !ALPHA
-        let onInfoTap: () -> Void
-    #endif
+    let onInfoTap: (() -> Void)?
     let onMoveToDormant: () -> Void
-    #if !ALPHA
-        var onCaptureIdea: (() -> Void)?
-    #endif
+    var onCaptureIdea: (() -> Void)?
     let onRemove: () -> Void
 
     var body: some View {
@@ -237,12 +233,12 @@ struct ProjectContextMenu: View {
 
     @ViewBuilder
     private var missingProjectMenu: some View {
-        #if !ALPHA
+        if let onInfoTap {
             Button(action: onInfoTap) {
                 Label("View Details", systemImage: "info.circle")
             }
             Divider()
-        #endif
+        }
         Button(role: .destructive, action: onRemove) {
             Label("Disconnect", systemImage: "trash")
         }
@@ -253,16 +249,16 @@ struct ProjectContextMenu: View {
         Button(action: onTap) {
             Label("Open in Terminal", systemImage: "terminal")
         }
-        #if !ALPHA
+        if let onInfoTap {
             Button(action: onInfoTap) {
                 Label("View Details", systemImage: "info.circle")
             }
-            if let onCaptureIdea {
-                Button(action: onCaptureIdea) {
-                    Label("Capture Idea...", systemImage: "lightbulb")
-                }
+        }
+        if let onCaptureIdea {
+            Button(action: onCaptureIdea) {
+                Label("Capture Idea...", systemImage: "lightbulb")
             }
-        #endif
+        }
         Divider()
         Button(action: onMoveToDormant) {
             Label("Hide", systemImage: "eye.slash")
@@ -329,49 +325,46 @@ struct ProjectCardBackground: View {
     }
 }
 
-#if !ALPHA
+// MARK: - Clickable Project Title
 
-    // MARK: - Clickable Project Title
+struct ClickableProjectTitle: View {
+    let name: String
+    let nameColor: Color
+    var isMissing: Bool = false
+    let action: () -> Void
 
-    struct ClickableProjectTitle: View {
-        let name: String
-        let nameColor: Color
-        var isMissing: Bool = false
-        let action: () -> Void
+    var font: Font = AppTypography.cardTitle.monospaced()
 
-        var font: Font = AppTypography.cardTitle.monospaced()
+    @State private var isHovered = false
+    @Environment(\.prefersReducedMotion) private var reduceMotion
 
-        @State private var isHovered = false
-        @Environment(\.prefersReducedMotion) private var reduceMotion
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 4) {
+                Text(name)
+                    .font(font)
+                    .foregroundStyle(isHovered ? nameColor.opacity(1.0) : nameColor)
+                    .strikethrough(isMissing, color: .white.opacity(0.3))
 
-        var body: some View {
-            Button(action: action) {
-                HStack(spacing: 4) {
-                    Text(name)
-                        .font(font)
-                        .foregroundStyle(isHovered ? nameColor.opacity(1.0) : nameColor)
-                        .strikethrough(isMissing, color: .white.opacity(0.3))
-
-                    Image(systemName: "chevron.right")
-                        .font(.system(size: 10, weight: .semibold))
-                        .foregroundStyle(.white.opacity(isHovered ? 0.6 : 0.35))
-                        .opacity(isHovered ? 1 : 0)
-                        .offset(x: isHovered ? 0 : -4)
-                }
-                .contentShape(.rect)
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(.white.opacity(isHovered ? 0.6 : 0.35))
+                    .opacity(isHovered ? 1 : 0)
+                    .offset(x: isHovered ? 0 : -4)
             }
-            .buttonStyle(.plain)
-            .onHover { hovering in
-                withAnimation(reduceMotion ? AppMotion.reducedMotionFallback : .spring(response: 0.25, dampingFraction: 0.8)) {
-                    isHovered = hovering
-                }
-            }
-            .help("View project details")
-            .accessibilityLabel("View \(name) details")
-            .accessibilityHint("Shows description, ideas, and other project information")
+            .contentShape(.rect)
         }
+        .buttonStyle(.plain)
+        .onHover { hovering in
+            withAnimation(reduceMotion ? AppMotion.reducedMotionFallback : .spring(response: 0.25, dampingFraction: 0.8)) {
+                isHovered = hovering
+            }
+        }
+        .help("View project details")
+        .accessibilityLabel("View \(name) details")
+        .accessibilityHint("Shows description, ideas, and other project information")
     }
-#endif // !ALPHA
+}
 
 // MARK: - Shared Badges
 

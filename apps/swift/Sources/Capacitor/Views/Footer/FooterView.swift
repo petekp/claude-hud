@@ -48,6 +48,12 @@ struct FooterView: View {
         VStack(spacing: 0) {
             // Footer content
             ZStack {
+                HStack {
+                    if !appState.channel.isProduction {
+                        ChannelBadge(channel: appState.channel)
+                    }
+                    Spacer()
+                }
                 LogoView()
 
                 HStack {
@@ -62,6 +68,21 @@ struct FooterView: View {
                 floatingMode ? Color.clear : Color.hudBackground
             }
         }
+    }
+}
+
+private struct ChannelBadge: View {
+    let channel: AppChannel
+
+    var body: some View {
+        Text(channel.label)
+            .font(.system(size: 10, weight: .semibold, design: .monospaced))
+            .foregroundColor(.white.opacity(0.45))
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(Color.white.opacity(0.08))
+            .clipShape(Capsule())
+            .accessibilityLabel("Channel \(channel.label)")
     }
 }
 

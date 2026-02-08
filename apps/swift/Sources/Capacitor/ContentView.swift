@@ -14,51 +14,42 @@ struct ContentView: View {
         @ObservedObject private var glassConfig = GlassConfig.shared
     #endif
 
-    #if !ALPHA
-        private var isCaptureModalOpen: Bool {
-            appState.showCaptureModal && appState.captureModalProject != nil
-        }
-    #endif
+    private var isCaptureModalOpen: Bool {
+        appState.isIdeaCaptureEnabled &&
+            appState.showCaptureModal &&
+            appState.captureModalProject != nil
+    }
 
     var body: some View {
         GeometryReader { geometry in
             let containerSize = geometry.size
 
             ZStack {
-                #if ALPHA
-                    Group {
-                        switch appState.layoutMode {
-                        case .vertical:
-                            verticalLayout
-                        case .dock:
-                            dockLayout
-                        }
+                Group {
+                    switch appState.layoutMode {
+                    case .vertical:
+                        verticalLayout
+                    case .dock:
+                        dockLayout
                     }
-                #else
-                    Group {
-                        switch appState.layoutMode {
-                        case .vertical:
-                            verticalLayout
-                        case .dock:
-                            dockLayout
-                        }
-                    }
-                    .blur(radius: isCaptureModalOpen ? 8 : 0)
-                    .saturation(isCaptureModalOpen ? 0.8 : 1)
-                    .animation(.easeInOut(duration: 0.25), value: isCaptureModalOpen)
+                }
+                .blur(radius: isCaptureModalOpen ? 8 : 0)
+                .saturation(isCaptureModalOpen ? 0.8 : 1)
+                .animation(.easeInOut(duration: 0.25), value: isCaptureModalOpen)
 
-                    if let project = appState.captureModalProject {
-                        IdeaCaptureModalOverlay(
-                            isPresented: $appState.showCaptureModal,
-                            projectName: project.name,
-                            originFrame: appState.captureModalOrigin,
-                            containerSize: containerSize,
-                            onCapture: { text in
-                                appState.captureIdea(for: project, text: text)
-                            }
-                        )
-                    }
-                #endif
+                if appState.isIdeaCaptureEnabled,
+                   let project = appState.captureModalProject
+                {
+                    IdeaCaptureModalOverlay(
+                        isPresented: $appState.showCaptureModal,
+                        projectName: project.name,
+                        originFrame: appState.captureModalOrigin,
+                        containerSize: containerSize,
+                        onCapture: { text in
+                            appState.captureIdea(for: project, text: text)
+                        }
+                    )
+                }
 
                 ToastContainer(toast: $appState.toast)
 
@@ -139,17 +130,17 @@ struct ContentView: View {
                 .strokeBorder(
                     style: StrokeStyle(lineWidth: 2, dash: [8, 6])
                 )
-                .foregroundColor(Color.hudAccent.opacity(0.6))
+                .foregroundStyle(Color.hudAccent.opacity(0.6))
                 .padding(4)
 
             VStack(spacing: 12) {
                 Image(systemName: "folder.badge.plus")
                     .font(.system(size: 40, weight: .light))
-                    .foregroundColor(.hudAccent.opacity(0.8))
+                    .foregroundStyle(Color.hudAccent.opacity(0.8))
 
                 Text("Drop to connect projects")
                     .font(.system(size: 14, weight: .medium))
-                    .foregroundColor(.white.opacity(0.8))
+                    .foregroundStyle(.white.opacity(0.8))
             }
         }
         .allowsHitTesting(false)

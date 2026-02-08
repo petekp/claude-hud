@@ -3,9 +3,7 @@ import SwiftUI
 struct CompactProjectCardView: View {
     let project: Project
     let onTap: () -> Void
-    #if !ALPHA
-        let onInfoTap: () -> Void
-    #endif
+    let onInfoTap: (() -> Void)?
     let onMoveToRecent: () -> Void
     let onRemove: () -> Void
     var showSeparator: Bool = true
@@ -62,11 +60,11 @@ struct CompactProjectCardView: View {
             Button(action: onTap) {
                 Label("Open in Terminal", systemImage: "terminal")
             }
-            #if !ALPHA
+            if let onInfoTap {
                 Button(action: onInfoTap) {
                     Label("View Details", systemImage: "info.circle")
                 }
-            #endif
+            }
             Divider()
             Button(action: onMoveToRecent) {
                 Label("Unhide", systemImage: "eye")

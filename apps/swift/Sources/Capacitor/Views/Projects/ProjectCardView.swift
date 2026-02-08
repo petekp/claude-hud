@@ -10,13 +10,9 @@ struct ProjectCardView: View {
     let isStale: Bool
     let isActive: Bool
     let onTap: () -> Void
-    #if !ALPHA
-        let onInfoTap: () -> Void
-    #endif
+    let onInfoTap: (() -> Void)?
     let onMoveToDormant: () -> Void
-    #if !ALPHA
-        var onCaptureIdea: ((CGRect) -> Void)?
-    #endif
+    var onCaptureIdea: ((CGRect) -> Void)?
     let onRemove: () -> Void
     var onDragStarted: (() -> NSItemProvider)?
     var isDragging: Bool = false
@@ -140,9 +136,9 @@ struct ProjectCardView: View {
             .accessibilityValue(accessibilityStatusDescription)
             .accessibilityHint("Double-tap to open in terminal. Use actions menu for more options.")
             .accessibilityAction(named: "Open in Terminal", onTap)
-        #if !ALPHA
-            .accessibilityAction(named: "View Details", onInfoTap)
-        #endif
+            .applyIf(onInfoTap) { view, action in
+                view.accessibilityAction(named: "View Details", action)
+            }
             .accessibilityAction(named: "Hide", onMoveToDormant)
     }
 
@@ -163,18 +159,11 @@ struct ProjectCardView: View {
     private var cardContent: some View {
         HStack(spacing: 12) {
             VStack(alignment: .leading, spacing: 6) {
-                #if ALPHA
-                    ProjectCardHeader(
-                        project: project,
-                        nameColor: nameColor
-                    )
-                #else
-                    ProjectCardHeader(
-                        project: project,
-                        nameColor: nameColor,
-                        onInfoTap: onInfoTap
-                    )
-                #endif
+                ProjectCardHeader(
+                    project: project,
+                    nameColor: nameColor,
+                    onInfoTap: onInfoTap
+                )
 
                 ProjectCardContent(
                     sessionState: sessionState,
@@ -182,17 +171,11 @@ struct ProjectCardView: View {
                 )
             }
 
-            #if ALPHA
-                CardActionButtons(
-                    isCardHovered: isHovered
-                )
-            #else
-                CardActionButtons(
-                    isCardHovered: isHovered,
-                    onCaptureIdea: onCaptureIdea,
-                    onDetails: onInfoTap
-                )
-            #endif
+            CardActionButtons(
+                isCardHovered: isHovered,
+                onCaptureIdea: onCaptureIdea,
+                onDetails: onInfoTap
+            )
         }
         .frame(minHeight: 40) // Match action button height for consistent card sizing
         .animation(.spring(response: 0.4, dampingFraction: 0.8), value: projectStatus?.blocker)
@@ -203,12 +186,12 @@ struct ProjectCardView: View {
     @ViewBuilder
     private var cardContextMenu: some View {
         if project.isMissing {
-            #if !ALPHA
+            if let onInfoTap {
                 Button(action: onInfoTap) {
                     Label("View Details", systemImage: "info.circle")
                 }
                 Divider()
-            #endif
+            }
             Button(role: .destructive, action: onRemove) {
                 Label("Disconnect", systemImage: "trash")
             }
@@ -216,16 +199,16 @@ struct ProjectCardView: View {
             Button(action: onTap) {
                 Label("Open in Terminal", systemImage: "terminal")
             }
-            #if !ALPHA
+            if let onInfoTap {
                 Button(action: onInfoTap) {
                     Label("View Details", systemImage: "info.circle")
                 }
-                if let onCaptureIdea {
-                    Button(action: { onCaptureIdea(.zero) }) {
-                        Label("Capture Idea...", systemImage: "lightbulb")
-                    }
+            }
+            if let onCaptureIdea {
+                Button(action: { onCaptureIdea(.zero) }) {
+                    Label("Capture Idea...", systemImage: "lightbulb")
                 }
-            #endif
+            }
             Divider()
             Button(action: onMoveToDormant) {
                 Label("Hide", systemImage: "eye.slash")
@@ -267,9 +250,7 @@ struct ProjectCardView: View {
 private struct ProjectCardHeader: View {
     let project: Project
     let nameColor: Color
-    #if !ALPHA
-        let onInfoTap: () -> Void
-    #endif
+    let onInfoTap: (() -> Void)?
 
     var body: some View {
         HStack {
@@ -279,19 +260,19 @@ private struct ProjectCardHeader: View {
                     .foregroundColor(.orange)
             }
 
-            #if ALPHA
-                Text(project.name)
-                    .font(AppTypography.cardTitle.monospaced())
-                    .foregroundStyle(nameColor)
-                    .strikethrough(project.isMissing, color: .white.opacity(0.3))
-            #else
+            if let onInfoTap {
                 ClickableProjectTitle(
                     name: project.name,
                     nameColor: nameColor,
                     isMissing: project.isMissing,
                     action: onInfoTap
                 )
-            #endif
+            } else {
+                Text(project.name)
+                    .font(AppTypography.cardTitle.monospaced())
+                    .foregroundStyle(nameColor)
+                    .strikethrough(project.isMissing, color: .white.opacity(0.3))
+            }
 
             Spacer()
         }
@@ -328,27 +309,25 @@ private struct ProjectCardContent: View {
 /// Container for action buttons that appear on card hover with staggered animation
 struct CardActionButtons: View {
     let isCardHovered: Bool
-    #if !ALPHA
-        var onCaptureIdea: ((CGRect) -> Void)?
-        let onDetails: () -> Void
-    #endif
+    var onCaptureIdea: ((CGRect) -> Void)?
+    var onDetails: (() -> Void)?
     var style: VibrancyActionButton.Style = .normal
 
     var body: some View {
         HStack(spacing: 0) {
-            #if !ALPHA
-                if let onCaptureIdea {
-                    VibrancyActionButton(
-                        icon: "lightbulb",
-                        action: { frame in onCaptureIdea(frame) },
-                        isVisible: isCardHovered,
-                        entranceDelay: 0,
-                        style: style
-                    )
-                    .help("Capture idea")
-                    .accessibilityLabel("Capture idea for this project")
-                }
+            if let onCaptureIdea {
+                VibrancyActionButton(
+                    icon: "lightbulb",
+                    action: { frame in onCaptureIdea(frame) },
+                    isVisible: isCardHovered,
+                    entranceDelay: 0,
+                    style: style
+                )
+                .help("Capture idea")
+                .accessibilityLabel("Capture idea for this project")
+            }
 
+            if let onDetails {
                 VibrancyActionButton(
                     icon: "chevron.right",
                     action: { _ in onDetails() },
@@ -358,7 +337,7 @@ struct CardActionButtons: View {
                 )
                 .help("View details")
                 .accessibilityLabel("View project details")
-            #endif
+            }
         }
     }
 }
@@ -426,3 +405,14 @@ private struct ShimmerEffect: View {
 // Note: View modifiers and glow effects are in separate files:
 // - ProjectCardModifiers.swift (cardStyling, cardInteractions, cardLifecycleHandlers)
 // - ProjectCardGlow.swift (ReadyAmbientGlow, ReadyBorderGlow)
+
+private extension View {
+    @ViewBuilder
+    func applyIf<T>(_ value: T?, transform: (Self, T) -> some View) -> some View {
+        if let value {
+            transform(self, value)
+        } else {
+            self
+        }
+    }
+}

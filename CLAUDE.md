@@ -12,7 +12,8 @@ Native macOS dashboard for Claude Code—displays project statistics, session st
 
 ```bash
 # Quick iteration (most common)
-./scripts/dev/restart-app.sh      # Rebuild Swift + restart app
+./scripts/dev/restart-app.sh              # Rebuild Rust + Swift, relaunch debug bundle
+./scripts/dev/restart-app.sh --channel alpha  # Launch with runtime alpha gating
 
 # Rust (when changing core/)
 cargo fmt                         # Format (required before commits)
@@ -20,7 +21,9 @@ cargo clippy -- -D warnings       # Lint
 cargo test                        # Test
 
 # Full rebuild (after Rust changes)
-cargo build -p hud-core --release && cd apps/swift && swift build && swift run
+cargo build -p hud-core --release && cd apps/swift && swift build
+# If using swift run directly (no bundle/Info.plist), set channel explicitly:
+CAPACITOR_CHANNEL=dev swift run
 ```
 
 **First-time setup:** `./scripts/dev/setup.sh`
@@ -85,6 +88,7 @@ Server runs on `http://localhost:9133` by default. See `docs/transparent-ui/READ
 - **UniFFI Task shadows Swift Task** — Use `_Concurrency.Task` explicitly in async code
 - **UniFFI bindings after FFI changes** — `cargo run --bin uniffi-bindgen generate --library target/release/libhud_core.dylib --language swift --out-dir apps/swift/bindings && cp apps/swift/bindings/hud_core.swift apps/swift/Sources/Capacitor/Bridge/`
 - **OSLog invisible for debug builds** — Use `FileHandle.standardError.write()` for telemetry; capture with `./Capacitor 2> /tmp/log.log &`
+- **Alpha gating is runtime** — Channel resolves env → Info.plist → `~/.capacitor/config.json` → default (`.dev` for debug, `.prod` for release). `swift run` ignores Info.plist, so set `CAPACITOR_CHANNEL=alpha` (or use `./scripts/dev/restart-app.sh --channel alpha`) when testing alpha gating. Feature overrides exist via `CAPACITOR_FEATURES_ENABLED` / `CAPACITOR_FEATURES_DISABLED`.
 - **Terminal activation prefers known parent apps** — If the newest shell entry has `parent_app=unknown` (missing `TERM_PROGRAM`), Ghostty activation can fail. The resolver should prefer shells with known `parent_app` before timestamp tie‑breakers.
 
 **Full gotchas reference:** `.claude/docs/gotchas.md`

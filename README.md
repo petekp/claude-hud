@@ -119,6 +119,11 @@ cd capacitor
 
 # Run the app
 ./scripts/dev/restart-app.sh
+
+# Run with a specific channel (affects feature gating)
+./scripts/dev/restart-app.sh --channel alpha
+# Or when using swift run directly:
+CAPACITOR_CHANNEL=alpha swift run
 ```
 
 ## Setup
@@ -206,8 +211,9 @@ swiftformat apps/swift
 cargo test
 
 # Build and run the app
-cargo build -p hud-core --release
-cd apps/swift && swift run
+./scripts/dev/restart-app.sh
+# If using swift run directly (no bundle/Info.plist), set channel explicitly:
+CAPACITOR_CHANNEL=dev swift run
 ```
 
 ### Useful Scripts

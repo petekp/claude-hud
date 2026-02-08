@@ -5,7 +5,7 @@
 
 ## Current State Summary
 
-Capacitor is a native macOS SwiftUI app (Apple Silicon, macOS 14+) that acts as a sidecar dashboard for Claude Code. The architecture uses a Rust core (`hud-core`) with UniFFI bindings to Swift plus a **Rust daemon (`capacitor-daemon`) that is the canonical source of truth** for session, shell, activity, and process-liveness state. Hooks emit events to the daemon over a Unix socket (`~/.capacitor/daemon.sock`), and Swift reads daemon snapshots (shell state + project aggregation); file-based JSON fallbacks are removed in daemon-only mode. Workstreams (managed git worktrees) are now first-class with create/open/destroy UX and slug-prefixed naming; activation matching avoids crossing repo cards with managed worktree tmux panes. The Transparent UI tooling (`docs/transparent-ui/` + `scripts/transparent-ui-server.mjs`) is the debug hub with live activation traces, daemon snapshots, and structured telemetry/agent briefing endpoints. Terminal activation uses a Rust-only decision path (Swift executes macOS APIs).
+Capacitor is a native macOS SwiftUI app (Apple Silicon, macOS 14+) that acts as a sidecar dashboard for Claude Code. The architecture uses a Rust core (`hud-core`) with UniFFI bindings to Swift plus a **Rust daemon (`capacitor-daemon`) that is the canonical source of truth** for session, shell, activity, and process-liveness state. Hooks emit events to the daemon over a Unix socket (`~/.capacitor/daemon.sock`), and Swift reads daemon snapshots (shell state + project aggregation); file-based JSON fallbacks are removed in daemon-only mode. Workstreams (managed git worktrees) are now first-class with create/open/destroy UX and slug-prefixed naming; activation matching avoids crossing repo cards with managed worktree tmux panes. The Transparent UI tooling (`docs/transparent-ui/` + `scripts/transparent-ui-server.mjs`) is the debug hub with live activation traces, daemon snapshots, and structured telemetry/agent briefing endpoints. Terminal activation uses a Rust-only decision path (Swift executes macOS APIs). Build channel + alpha gating are now runtime via `AppConfig` (env/Info.plist/config file), not compile-time flags.
 
 > **Historical note:** Timeline entries below may reference pre-daemon artifacts (locks, `sessions.json`, `shell-cwd.json`). Treat them as historical context only; they are not current behavior.
 
@@ -16,6 +16,22 @@ Capacitor is a native macOS SwiftUI app (Apple Silicon, macOS 14+) that acts as 
 | docs/architecture-decisions/003-sidecar-architecture-pattern.md | “Hooks write `~/.capacitor/sessions.json` and HUD reads files.” | Daemon is the single writer; hooks/app are IPC clients; JSON is legacy/fallback only. | 2026-01 |
 
 ## Timeline
+
+### 2026-02-08 — Runtime Channel Feature Flags for Alpha Gating (Unreleased)
+
+**What changed:**
+- Added `AppConfig` + `FeatureFlags` with channel resolution order: env → Info.plist → `~/.capacitor/config.json` → default.
+- Alpha channel defaults disable idea capture + project details; opt-in overrides via `CAPACITOR_FEATURES_*`, Info.plist keys, or config file.
+- Removed compile-time `#if ALPHA` gates in Swift UI; runtime `appState.isIdeaCaptureEnabled` / `isProjectDetailsEnabled` now control all entry points.
+- Build scripts now write `CapacitorChannel` into debug/release Info.plist and accept `--channel` / `--alpha` to set runtime channel.
+- Added `AppConfigTests` to lock down channel precedence + feature override behavior.
+
+**Why:**
+- Avoid inconsistent alpha behavior across build variants; allow channel toggles without recompiling.
+
+**Agent impact:**
+- To test alpha gating, set channel via Info.plist or `CAPACITOR_CHANNEL`; no compile-time flags required.
+- Feature overrides are supported for targeted testing (`CAPACITOR_FEATURES_ENABLED` / `CAPACITOR_FEATURES_DISABLED`).
 
 ### 2026-02-08 — Transparent UI Telemetry Hub + Agent Briefing (Completed)
 
@@ -48,6 +64,21 @@ Capacitor is a native macOS SwiftUI app (Apple Silicon, macOS 14+) that acts as 
 **Agent impact:**
 - Treat the Interface Explorer as the canonical visual map for boundaries + activation flow.
 - Use the IA plan to guide future transparent UI panel additions (behavior-first, progressive disclosure).
+
+### 2026-02-07 — Alpha Feature Gating + UI Terminology Polish (Completed)
+
+**What changed:**
+- Gated non-alpha UI behind compile-time `#if !ALPHA` checks (idea capture, project detail view, activity panel, workstreams, new-idea flow).
+- Build scripts gained `--alpha` to pass `-Xswiftc -DALPHA` during Swift builds.
+- UI terminology polish: “Remove from HUD” → “Disconnect”, “Paused” → “Hidden”, hover actions stripped for alpha.
+- Hidden section auto-scroll fix via `ScrollViewReader` + `PausedSectionHeader` delegation.
+
+**Why:**
+- Align public alpha scope to a smaller, reliable feature surface while keeping broader capabilities in mainline.
+
+**Agent impact:**
+- Alpha gating is **compile-time**; to test alpha behavior you must rebuild with `-DALPHA` (e.g., `restart-app.sh --alpha` or `build-distribution.sh --alpha`).
+- If you run debug builds without `--alpha`, gated features will still appear.
 
 ### 2026-02-05 — Workstreams Lifecycle UX (Completed)
 

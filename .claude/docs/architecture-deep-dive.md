@@ -798,14 +798,15 @@ cd capacitor
 # 2. Run setup script (installs Rust, Swift tools, dependencies)
 ./scripts/dev/setup.sh
 
-# 3. Build everything
+# 3. Build everything (optional; restart-app.sh will build too)
 cargo build -p hud-core --release
 cargo build -p capacitor-daemon --release
 cargo build -p hud-hook --release
 cd apps/swift && swift build
 
-# 4. Run app
+# 4. Run app (bundles debug app + writes Info.plist)
 ./scripts/dev/restart-app.sh
+./scripts/dev/restart-app.sh --channel alpha
 ```
 
 ### Daily Development

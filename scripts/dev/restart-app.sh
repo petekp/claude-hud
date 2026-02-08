@@ -8,27 +8,42 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 # Parse flags
 FORCE_REBUILD=false
 SWIFT_ONLY=false
-ALPHA_BUILD=false
-for arg in "$@"; do
-    case $arg in
+CHANNEL="dev"
+while [[ $# -gt 0 ]]; do
+    case $1 in
         --force|-f)
             FORCE_REBUILD=true
+            shift
             ;;
         --swift-only|-s)
             SWIFT_ONLY=true
+            shift
             ;;
         --alpha)
-            ALPHA_BUILD=true
+            CHANNEL="alpha"
+            shift
+            ;;
+        --channel)
+            CHANNEL="${2:-$CHANNEL}"
+            shift 2
+            ;;
+        --channel=*)
+            CHANNEL="${1#*=}"
+            shift
             ;;
         --help|-h)
             echo "Usage: restart-app.sh [OPTIONS]"
             echo ""
             echo "Options:"
-            echo "  -f, --force       Force full rebuild (touch source to invalidate cache)"
-            echo "  -s, --swift-only  Skip Rust build, only rebuild Swift"
-            echo "      --alpha       Build with ALPHA feature gating"
-            echo "  -h, --help        Show this help message"
+            echo "  -f, --force         Force full rebuild (touch source to invalidate cache)"
+            echo "  -s, --swift-only    Skip Rust build, only rebuild Swift"
+            echo "      --alpha         Alias for --channel alpha"
+            echo "      --channel NAME  Set runtime channel (dev|alpha|beta|prod)"
+            echo "  -h, --help          Show this help message"
             exit 0
+            ;;
+        *)
+            shift
             ;;
     esac
 done
@@ -106,15 +121,8 @@ fi
 
 cd "$PROJECT_ROOT/apps/swift"
 
-# Build extra Swift flags
-SWIFT_FLAGS=""
-if [ "$ALPHA_BUILD" = true ]; then
-    SWIFT_FLAGS="-Xswiftc -DALPHA"
-    echo "Alpha build: feature gating enabled"
-fi
-
 # Get the actual build directory (portable across toolchain/layout changes)
-SWIFT_DEBUG_DIR=$(swift build --show-bin-path $SWIFT_FLAGS)
+SWIFT_DEBUG_DIR=$(swift build --show-bin-path)
 mkdir -p "$SWIFT_DEBUG_DIR"
 
 # Copy dylib (skip if --swift-only, assume it's already there)
@@ -139,7 +147,7 @@ elif [ -f "$HOME/.local/bin/capacitor-daemon" ]; then
     cp "$HOME/.local/bin/capacitor-daemon" "$SWIFT_DEBUG_DIR/" 2>/dev/null || true
 fi
 
-swift build $SWIFT_FLAGS || { echo "Swift build failed"; exit 1; }
+swift build || { echo "Swift build failed"; exit 1; }
 
 # Debug runtime sanity checks to avoid dyld "Library not loaded" crashes.
 DEBUG_BIN="$SWIFT_DEBUG_DIR/Capacitor"
@@ -178,7 +186,7 @@ if [ ! -d "$TEMPLATE_APP" ]; then
     else
         echo "Error: Template app bundle not found at $TEMPLATE_APP or $FALLBACK_TEMPLATE" >&2
         echo "Falling back to swift run (no bundle)." >&2
-        swift run 2>&1 &
+        CAPACITOR_CHANNEL="$CHANNEL" swift run 2>&1 &
         exit 0
     fi
 fi
@@ -190,6 +198,9 @@ rsync -a "$TEMPLATE_APP/" "$DEBUG_APP/"
 /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier com.capacitor.app.debug" "$DEBUG_APP/Contents/Info.plist"
 /usr/libexec/PlistBuddy -c "Set :CFBundleName Capacitor Debug" "$DEBUG_APP/Contents/Info.plist"
 /usr/libexec/PlistBuddy -c "Add :CFBundleDisplayName string Capacitor Debug" "$DEBUG_APP/Contents/Info.plist" 2>/dev/null || true
+if ! /usr/libexec/PlistBuddy -c "Set :CapacitorChannel $CHANNEL" "$DEBUG_APP/Contents/Info.plist" 2>/dev/null; then
+    /usr/libexec/PlistBuddy -c "Add :CapacitorChannel string $CHANNEL" "$DEBUG_APP/Contents/Info.plist" 2>/dev/null || true
+fi
 
 # Replace the app executable with the debug binary.
 cp "$DEBUG_BIN" "$DEBUG_APP/Contents/MacOS/Capacitor"

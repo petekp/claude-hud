@@ -96,9 +96,9 @@ struct ProjectsView: View {
                     } else if appState.projects.isEmpty {
                         EmptyProjectsView()
                     } else {
-                        #if !ALPHA
+                        if appState.isIdeaCaptureEnabled {
                             ActivityPanel()
-                        #endif
+                        }
 
                         if !activeProjects.isEmpty {
                             SectionHeader(
@@ -197,137 +197,72 @@ struct ProjectsView: View {
 
     @ViewBuilder
     private func activeProjectCard(project: Project, index: Int) -> some View {
-        #if ALPHA
-            ProjectCardView(
-                project: project,
-                sessionState: appState.getSessionState(for: project),
-                projectStatus: appState.getProjectStatus(for: project),
-                flashState: appState.isFlashing(project),
-                isStale: isStale(project),
-                isActive: appState.activeProjectPath == project.path,
-                onTap: {
-                    appState.launchTerminal(for: project)
-                },
-                onMoveToDormant: {
-                    withAnimation(.spring(response: 0.25, dampingFraction: 0.75)) {
-                        appState.moveToDormant(project)
-                    }
-                },
-                onRemove: {
-                    withAnimation(.spring(response: 0.25, dampingFraction: 0.75)) {
-                        appState.removeProject(project.path)
-                    }
-                },
-                onDragStarted: {
-                    draggedProject = project
-                    return NSItemProvider(object: project.path as NSString)
-                },
-                isDragging: draggedProject?.path == project.path
-            )
-            .activeProjectCardModifiers(
-                project: project,
-                index: index,
-                activeProjects: activeProjects,
-                draggedProject: $draggedProject,
-                appState: appState,
-                glassConfig: glassConfig
-            )
-        #else
-            ProjectCardView(
-                project: project,
-                sessionState: appState.getSessionState(for: project),
-                projectStatus: appState.getProjectStatus(for: project),
-                flashState: appState.isFlashing(project),
-                isStale: isStale(project),
-                isActive: appState.activeProjectPath == project.path,
-                onTap: {
-                    appState.launchTerminal(for: project)
-                },
-                onInfoTap: {
-                    appState.showProjectDetail(project)
-                },
-                onMoveToDormant: {
-                    withAnimation(.spring(response: 0.25, dampingFraction: 0.75)) {
-                        appState.moveToDormant(project)
-                    }
-                },
-                onCaptureIdea: { frame in
-                    appState.showIdeaCaptureModal(for: project, from: frame)
-                },
-                onRemove: {
-                    withAnimation(.spring(response: 0.25, dampingFraction: 0.75)) {
-                        appState.removeProject(project.path)
-                    }
-                },
-                onDragStarted: {
-                    draggedProject = project
-                    return NSItemProvider(object: project.path as NSString)
-                },
-                isDragging: draggedProject?.path == project.path
-            )
-            .activeProjectCardModifiers(
-                project: project,
-                index: index,
-                activeProjects: activeProjects,
-                draggedProject: $draggedProject,
-                appState: appState,
-                glassConfig: glassConfig
-            )
-        #endif
+        let canShowDetails = appState.isProjectDetailsEnabled
+        let canCaptureIdeas = appState.isIdeaCaptureEnabled
+
+        ProjectCardView(
+            project: project,
+            sessionState: appState.getSessionState(for: project),
+            projectStatus: appState.getProjectStatus(for: project),
+            flashState: appState.isFlashing(project),
+            isStale: isStale(project),
+            isActive: appState.activeProjectPath == project.path,
+            onTap: {
+                appState.launchTerminal(for: project)
+            },
+            onInfoTap: canShowDetails ? { appState.showProjectDetail(project) } : nil,
+            onMoveToDormant: {
+                withAnimation(.spring(response: 0.25, dampingFraction: 0.75)) {
+                    appState.moveToDormant(project)
+                }
+            },
+            onCaptureIdea: canCaptureIdeas ? { frame in appState.showIdeaCaptureModal(for: project, from: frame) } : nil,
+            onRemove: {
+                withAnimation(.spring(response: 0.25, dampingFraction: 0.75)) {
+                    appState.removeProject(project.path)
+                }
+            },
+            onDragStarted: {
+                draggedProject = project
+                return NSItemProvider(object: project.path as NSString)
+            },
+            isDragging: draggedProject?.path == project.path
+        )
+        .activeProjectCardModifiers(
+            project: project,
+            index: index,
+            activeProjects: activeProjects,
+            draggedProject: $draggedProject,
+            appState: appState,
+            glassConfig: glassConfig
+        )
     }
 
     @ViewBuilder
     private func pausedProjectCard(project: Project, index: Int) -> some View {
-        #if ALPHA
-            CompactProjectCardView(
-                project: project,
-                onTap: {
-                    appState.launchTerminal(for: project)
-                },
-                onMoveToRecent: {
-                    withAnimation(.spring(response: 0.25, dampingFraction: 0.75)) {
-                        appState.moveToRecent(project)
-                    }
-                },
-                onRemove: {
-                    withAnimation(.spring(response: 0.2, dampingFraction: 0.8)) {
-                        appState.removeProject(project.path)
-                    }
-                },
-                showSeparator: index < pausedProjects.count - 1
-            )
-            .pausedProjectCardModifiers(
-                project: project,
-                index: index,
-                glassConfig: glassConfig
-            )
-        #else
-            CompactProjectCardView(
-                project: project,
-                onTap: {
-                    appState.launchTerminal(for: project)
-                },
-                onInfoTap: {
-                    appState.showProjectDetail(project)
-                },
-                onMoveToRecent: {
-                    withAnimation(.spring(response: 0.25, dampingFraction: 0.75)) {
-                        appState.moveToRecent(project)
-                    }
-                },
-                onRemove: {
-                    withAnimation(.spring(response: 0.2, dampingFraction: 0.8)) {
-                        appState.removeProject(project.path)
-                    }
-                },
-                showSeparator: index < pausedProjects.count - 1
-            )
-            .pausedProjectCardModifiers(
-                project: project,
-                index: index,
-                glassConfig: glassConfig
-            )
-        #endif
+        CompactProjectCardView(
+            project: project,
+            onTap: {
+                appState.launchTerminal(for: project)
+            },
+            onInfoTap: appState.isProjectDetailsEnabled ? { appState.showProjectDetail(project) } : nil,
+            onMoveToRecent: {
+                withAnimation(.spring(response: 0.25, dampingFraction: 0.75)) {
+                    appState.moveToRecent(project)
+                }
+            },
+            onRemove: {
+                withAnimation(.spring(response: 0.2, dampingFraction: 0.8)) {
+                    appState.removeProject(project.path)
+                }
+            },
+            showSeparator: index < pausedProjects.count - 1
+        )
+        .pausedProjectCardModifiers(
+            project: project,
+            index: index,
+            glassConfig: glassConfig
+        )
     }
 }
 

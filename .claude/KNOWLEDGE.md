@@ -21,7 +21,7 @@
 ### Commands
 | Action | Command |
 |---|---|
-| Restart app (dev) | `./scripts/dev/restart-app.sh` |
+| Restart app (dev) | `./scripts/dev/restart-app.sh` (use `--channel alpha` for alpha gating) |
 | Build Rust core | `cargo build -p hud-core --release` |
 | Swift build/run | `cd apps/swift && swift build && swift run` |
 | Daemon health | `printf '{"protocol_version":1,"method":"get_health","id":"health","params":null}\n' | nc -U ~/.capacitor/daemon.sock` |

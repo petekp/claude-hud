@@ -21,6 +21,35 @@ set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+CHANNEL="dev"
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --alpha)
+            CHANNEL="alpha"
+            shift
+            ;;
+        --channel)
+            CHANNEL="${2:-$CHANNEL}"
+            shift 2
+            ;;
+        --channel=*)
+            CHANNEL="${1#*=}"
+            shift
+            ;;
+        --help|-h)
+            echo "Usage: reset-for-testing.sh [OPTIONS]"
+            echo ""
+            echo "Options:"
+            echo "      --alpha         Alias for --channel alpha"
+            echo "      --channel NAME  Set runtime channel (dev|alpha|beta|prod)"
+            echo "  -h, --help          Show this help message"
+            exit 0
+            ;;
+        *)
+            shift
+            ;;
+    esac
+done
 
 echo "╔══════════════════════════════════════════════════════════════╗"
 echo "║           Capacitor - Complete Reset for Testing             ║"
@@ -190,4 +219,4 @@ echo "Launching Capacitor..."
 echo ""
 
 cd "$REPO_ROOT/apps/swift"
-swift run
+CAPACITOR_CHANNEL="$CHANNEL" swift run

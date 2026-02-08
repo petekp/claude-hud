@@ -5,10 +5,11 @@ Detailed procedures for common development tasks in Capacitor.
 ## Quick Start
 
 ```bash
-cargo build -p hud-core --release  # Build Rust library first
-cd apps/swift
-swift build       # Debug build
-swift run         # Run the app
+./scripts/dev/restart-app.sh
+# Alpha gating (runtime channel)
+./scripts/dev/restart-app.sh --channel alpha
+# If using swift run directly (no bundle/Info.plist), set channel explicitly:
+CAPACITOR_CHANNEL=alpha swift run
 ```
 
 ## Common Commands
@@ -29,7 +30,10 @@ cargo test                        # Run all tests
 ```bash
 swift build             # Debug build
 swift build -c release  # Release build
-swift run               # Run the app
+# Preferred dev loop (builds + bundles debug app):
+./scripts/dev/restart-app.sh
+# Direct run (no bundle/Info.plist) — set channel explicitly:
+CAPACITOR_CHANNEL=dev swift run
 ```
 
 ### Daemon Health (local)
@@ -53,10 +57,7 @@ Notes:
 ### Building for Distribution
 
 ```bash
-cargo build -p hud-core --release
-cd apps/swift
-swift build -c release
-# Create .app bundle manually or use xcodebuild
+./scripts/release/build-distribution.sh --skip-notarization
 ```
 
 ## Regenerating Swift Bindings

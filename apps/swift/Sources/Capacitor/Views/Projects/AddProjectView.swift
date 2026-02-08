@@ -349,15 +349,13 @@ struct AddProjectView: View {
     }
 
     private func goToExistingProject(path: String) {
-        #if ALPHA
+        if appState.isProjectDetailsEnabled,
+           let project = appState.projects.first(where: { $0.path == path })
+        {
+            appState.showProjectDetail(project)
+        } else {
             appState.showProjectList()
-        #else
-            if let project = appState.projects.first(where: { $0.path == path }) {
-                appState.showProjectDetail(project)
-            } else {
-                appState.showProjectList()
-            }
-        #endif
+        }
     }
 
     private func moveToInProgressAndReturn(path: String) {
