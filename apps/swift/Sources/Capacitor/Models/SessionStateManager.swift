@@ -9,7 +9,7 @@ import Foundation
 ///
 /// All state logic (staleness, lock detection, resolution) lives in Rust.
 @MainActor
-final class SessionStateManager {
+final class SessionStateManager: ObservableObject {
     private struct ProjectMatchInfo {
         let project: Project
         let normalizedPath: String
@@ -29,8 +29,8 @@ final class SessionStateManager {
         static let flashDurationSeconds: TimeInterval = 1.4
     }
 
-    private(set) var sessionStates: [String: ProjectSessionState] = [:]
-    private(set) var flashingProjects: [String: SessionState] = [:]
+    @Published private(set) var sessionStates: [String: ProjectSessionState] = [:]
+    @Published private(set) var flashingProjects: [String: SessionState] = [:]
     private var previousSessionStates: [String: SessionState] = [:]
 
     private let daemonClient = DaemonClient.shared
@@ -59,9 +59,9 @@ final class SessionStateManager {
             guard let self else { return }
             do {
                 let daemonProjects = try await daemonClient.fetchProjectStates()
+                let merged = mergeDaemonProjectStates(daemonProjects, projects: projects)
                 await MainActor.run {
                     DebugLog.write("SessionStateManager.fetchProjectStates success count=\(daemonProjects.count)")
-                    let merged = self.mergeDaemonProjectStates(daemonProjects, projects: projects)
                     if !merged.isEmpty {
                         let summary = merged
                             .map { "\($0.key) state=\($0.value.state) updated=\($0.value.updatedAt ?? "nil") session=\($0.value.sessionId ?? "nil")" }
@@ -71,9 +71,14 @@ final class SessionStateManager {
                     } else {
                         DebugLog.write("SessionStateManager.merge summary=empty")
                     }
-                    self.sessionStates = merged
+                    let didChange = merged != self.sessionStates
+                    if didChange {
+                        self.sessionStates = merged
+                    }
                     self.pruneCachedStates()
-                    self.checkForStateChanges()
+                    if didChange {
+                        self.checkForStateChanges()
+                    }
                 }
             } catch {
                 await MainActor.run {
@@ -124,7 +129,7 @@ final class SessionStateManager {
         sessionStates[project.path]
     }
 
-    private func mergeDaemonProjectStates(
+    private nonisolated func mergeDaemonProjectStates(
         _ states: [DaemonProjectState],
         projects: [Project]
     ) -> [String: ProjectSessionState] {
@@ -249,7 +254,7 @@ final class SessionStateManager {
         return merged
     }
 
-    private func matchesProject(
+    private nonisolated func matchesProject(
         _ project: ProjectMatchInfo,
         state: StateMatchInfo,
         homeNormalized: String
@@ -287,7 +292,7 @@ final class SessionStateManager {
         return stateRel.hasPrefix(projectRel + "/")
     }
 
-    private func isParentOrSelfExcludingHome(parent: String, child: String, homeNormalized: String) -> Bool {
+    private nonisolated func isParentOrSelfExcludingHome(parent: String, child: String, homeNormalized: String) -> Bool {
         if parent == child {
             return true
         }
@@ -297,7 +302,7 @@ final class SessionStateManager {
         return child.hasPrefix(parent + "/")
     }
 
-    private func isMoreRecent(_ candidate: DaemonProjectState, than existing: DaemonProjectState) -> Bool {
+    private nonisolated func isMoreRecent(_ candidate: DaemonProjectState, than existing: DaemonProjectState) -> Bool {
         let candidateTime = parseISO8601Date(candidate.updatedAt) ?? parseISO8601Date(candidate.stateChangedAt)
         let existingTime = parseISO8601Date(existing.updatedAt) ?? parseISO8601Date(existing.stateChangedAt)
 
@@ -311,7 +316,7 @@ final class SessionStateManager {
         }
     }
 
-    private func mapDaemonState(_ state: String) -> SessionState {
+    private nonisolated func mapDaemonState(_ state: String) -> SessionState {
         switch state.lowercased() {
         case "working":
             .working

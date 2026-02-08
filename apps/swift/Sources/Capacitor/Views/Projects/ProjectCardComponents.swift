@@ -68,26 +68,26 @@ struct StatusIndicator: View {
 struct AnimatedEllipsis: View {
     let color: Color
 
-    @State private var dotCount = 0
     @Environment(\.prefersReducedMotion) private var reduceMotion
 
-    private let timer = Timer.publish(every: 0.4, on: .main, in: .common).autoconnect()
-
     var body: some View {
+        if reduceMotion {
+            ellipsisText(dotCount: 3)
+        } else {
+            TimelineView(.animation) { timeline in
+                let phase = timeline.date.timeIntervalSinceReferenceDate / 0.4
+                let dotCount = Int(phase.truncatingRemainder(dividingBy: 4))
+                ellipsisText(dotCount: dotCount)
+            }
+        }
+    }
+
+    private func ellipsisText(dotCount: Int) -> some View {
         Text(String(repeating: ".", count: dotCount))
             .font(.system(.callout, design: .monospaced).weight(.semibold))
             .tracking(-1)
             .foregroundStyle(color)
             .frame(width: 24, alignment: .leading)
-            .onReceive(timer) { _ in
-                guard !reduceMotion else { return }
-                dotCount = (dotCount + 1) % 4
-            }
-            .onAppear {
-                if reduceMotion {
-                    dotCount = 3
-                }
-            }
             .accessibilityHidden(true)
     }
 }

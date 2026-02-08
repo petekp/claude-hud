@@ -1,3 +1,4 @@
+import Combine
 import Foundation
 import SwiftUI
 
@@ -139,6 +140,7 @@ class AppState: ObservableObject {
     /// Prevents recursive layout crashes when multiple sessions change simultaneously.
     private var refreshDebounceWork: DispatchWorkItem?
     private var isRefreshScheduled = false
+    private var sessionStateCancellable: AnyCancellable?
 
     // MARK: - Computed Properties (bridging to managers)
 
@@ -165,6 +167,11 @@ class AppState: ObservableObject {
             sessionStateManager: sessionStateManager,
             shellStateStore: shellStateStore
         )
+
+        sessionStateCancellable = sessionStateManager.objectWillChange
+            .sink { [weak self] _ in
+                self?.scheduleSessionStateRefresh()
+            }
 
         terminalLauncher.onActivationTrace = { [weak self] trace in
             _Concurrency.Task { @MainActor in
@@ -274,7 +281,13 @@ class AppState: ObservableObject {
                 "source": String(describing: activeProjectResolver.activeSource),
             ])
         }
+    }
 
+    func refreshProjectStatuses() {
+        objectWillChange.send()
+    }
+
+    private func scheduleSessionStateRefresh() {
         // Debounce objectWillChange to prevent recursive layout crashes
         // when multiple sessions change rapidly (e.g., killing many sessions at once).
         // This coalesces rapid state changes into a single UI update.
@@ -290,10 +303,6 @@ class AppState: ObservableObject {
 
         // 16ms delay (~1 frame at 60fps) to coalesce updates within a single frame
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.016, execute: workItem)
-    }
-
-    func refreshProjectStatuses() {
-        objectWillChange.send()
     }
 
     // MARK: - Hook Diagnostic

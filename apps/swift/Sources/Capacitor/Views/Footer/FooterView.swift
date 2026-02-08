@@ -72,11 +72,15 @@ struct LogoView: View {
 
     private let baseHeight: CGFloat = 14
 
-    private var logoImage: NSImage? {
+    private static let cachedLogoImage: NSImage? = {
         guard let url = ResourceBundle.url(forResource: "logo", withExtension: "pdf") else {
             return nil
         }
         return NSImage(contentsOf: url)
+    }()
+
+    private var logoImage: NSImage? {
+        Self.cachedLogoImage
     }
 
     #if DEBUG

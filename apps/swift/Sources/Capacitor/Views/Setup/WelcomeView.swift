@@ -8,11 +8,15 @@ struct WelcomeView: View {
     var shellStateStore: ShellStateStore?
     var onComplete: () -> Void
 
-    private var logomarkImage: NSImage? {
+    private static let cachedLogomarkImage: NSImage? = {
         guard let url = ResourceBundle.url(forResource: "logomark", withExtension: "pdf") else {
             return nil
         }
         return NSImage(contentsOf: url)
+    }()
+
+    private var logomarkImage: NSImage? {
+        Self.cachedLogomarkImage
     }
 
     private var userFirstName: String {

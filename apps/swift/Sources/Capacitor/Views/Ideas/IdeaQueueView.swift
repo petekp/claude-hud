@@ -17,6 +17,7 @@ struct IdeaQueueView: View {
     @State private var dragStartPosition: CGPoint = .zero
     @State private var containerFrame: CGRect = .zero
     @State private var isAnimatingRelease = false
+    @State private var shouldTrackFrames = false
 
     @Environment(\.prefersReducedMotion) private var reduceMotion
 
@@ -58,10 +59,14 @@ struct IdeaQueueView: View {
                     GeometryReader { geo in
                         Color.clear
                             .onAppear {
-                                containerFrame = geo.frame(in: .global)
+                                if shouldTrackFrames || containerFrame == .zero {
+                                    containerFrame = geo.frame(in: .global)
+                                }
                             }
                             .onChange(of: geo.frame(in: .global)) { _, newFrame in
-                                containerFrame = newFrame
+                                if shouldTrackFrames {
+                                    containerFrame = newFrame
+                                }
                             }
                     }
                 )
@@ -116,10 +121,14 @@ struct IdeaQueueView: View {
                     GeometryReader { geo in
                         Color.clear
                             .onAppear {
-                                rowFrames[idea.id] = geo.frame(in: .global)
+                                if shouldTrackFrames || rowFrames[idea.id] == nil {
+                                    rowFrames[idea.id] = geo.frame(in: .global)
+                                }
                             }
                             .onChange(of: geo.frame(in: .global)) { _, newFrame in
-                                rowFrames[idea.id] = newFrame
+                                if shouldTrackFrames {
+                                    rowFrames[idea.id] = newFrame
+                                }
                             }
                     }
                 )
@@ -144,6 +153,7 @@ struct IdeaQueueView: View {
         // Start dragging if not already
         if draggingId == nil {
             draggingId = idea.id
+            shouldTrackFrames = true
             // Record where the drag started (center of the row)
             if let frame = rowFrames[idea.id] {
                 dragStartPosition = CGPoint(x: frame.midX, y: frame.midY)
@@ -222,6 +232,7 @@ struct IdeaQueueView: View {
             self.draggingId = nil
             dragPosition = .zero
             isAnimatingRelease = false
+            shouldTrackFrames = false
 
             // Notify parent of final order
             let reorderedQueue = localIdeas.filter { $0.status != "done" }
