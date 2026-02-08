@@ -155,8 +155,10 @@ extension View {
         isHovered: Binding<Bool>,
         onTap: @escaping () -> Void,
         onDragStarted: (() -> NSItemProvider)?,
+        dragPreview: AnyView? = nil,
     ) -> some View {
-        contentShape(Rectangle())
+        let preview = dragPreview ?? AnyView(Color.clear.frame(width: 1, height: 1))
+        return contentShape(Rectangle())
             .onTapGesture(perform: onTap)
             .accessibilityAddTraits(.isButton)
             .accessibilityAction { onTap() }
@@ -179,7 +181,7 @@ extension View {
                 _ = onDragStarted?()
                 return NSItemProvider(object: "" as NSString)
             } preview: {
-                Color.clear.frame(width: 1, height: 1)
+                preview
             }
     }
 
@@ -214,7 +216,7 @@ extension View {
                     newState: newValue,
                     lastChimeTime: lastChimeTime.wrappedValue,
                     now: now,
-                    chimeCooldown: chimeCooldown
+                    chimeCooldown: chimeCooldown,
                 ) {
                     lastChimeTime.wrappedValue = now
                     ReadyChime.shared.play()

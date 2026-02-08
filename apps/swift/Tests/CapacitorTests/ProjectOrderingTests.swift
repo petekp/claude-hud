@@ -13,7 +13,7 @@ final class ProjectOrderingTests: XCTestCase {
             hasLocalSettings: false,
             taskCount: 0,
             stats: nil,
-            isMissing: false
+            isMissing: false,
         )
         let projectB = Project(
             name: "B",
@@ -25,7 +25,7 @@ final class ProjectOrderingTests: XCTestCase {
             hasLocalSettings: false,
             taskCount: 0,
             stats: nil,
-            isMissing: false
+            isMissing: false,
         )
         let projectC = Project(
             name: "C",
@@ -37,12 +37,12 @@ final class ProjectOrderingTests: XCTestCase {
             hasLocalSettings: false,
             taskCount: 0,
             stats: nil,
-            isMissing: false
+            isMissing: false,
         )
 
         let ordered = ProjectOrdering.orderedProjects(
             [projectA, projectB, projectC],
-            customOrder: ["/tmp/c", "/tmp/a"]
+            customOrder: ["/tmp/c", "/tmp/a"],
         )
 
         XCTAssertEqual(ordered.map(\.path), ["/tmp/c", "/tmp/a", "/tmp/b"])
@@ -59,7 +59,7 @@ final class ProjectOrderingTests: XCTestCase {
             hasLocalSettings: false,
             taskCount: 0,
             stats: nil,
-            isMissing: false
+            isMissing: false,
         )
         let projectB = Project(
             name: "B",
@@ -71,7 +71,7 @@ final class ProjectOrderingTests: XCTestCase {
             hasLocalSettings: false,
             taskCount: 0,
             stats: nil,
-            isMissing: false
+            isMissing: false,
         )
         let projectC = Project(
             name: "C",
@@ -83,13 +83,13 @@ final class ProjectOrderingTests: XCTestCase {
             hasLocalSettings: false,
             taskCount: 0,
             stats: nil,
-            isMissing: false
+            isMissing: false,
         )
 
         let moved = ProjectOrdering.movedOrder(
             from: IndexSet(integer: 2),
             to: 0,
-            in: [projectA, projectB, projectC]
+            in: [projectA, projectB, projectC],
         )
 
         XCTAssertEqual(moved, ["/tmp/c", "/tmp/a", "/tmp/b"])

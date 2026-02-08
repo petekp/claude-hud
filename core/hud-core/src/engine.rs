@@ -1114,8 +1114,12 @@ mod tests {
         let engine = HudEngine::with_storage(storage.clone()).expect("engine");
         let project_string = project_path.to_string_lossy().to_string();
 
-        engine.add_project(project_string.clone()).expect("add project");
-        engine.remove_project(project_string.clone()).expect("remove project");
+        engine
+            .add_project(project_string.clone())
+            .expect("add project");
+        engine
+            .remove_project(project_string.clone())
+            .expect("remove project");
 
         let engine_after_restart = HudEngine::with_storage(storage).expect("engine restart");
         let projects = engine_after_restart.list_projects().expect("list projects");

@@ -2,9 +2,9 @@
 import XCTest
 
 final class ProjectOrderStoreTests: XCTestCase {
-    func testSaveAndLoadOrder() {
+    func testSaveAndLoadOrder() throws {
         let suiteName = "ProjectOrderStoreTests-\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suiteName)!
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
         defer {
             defaults.removePersistentDomain(forName: suiteName)
         }

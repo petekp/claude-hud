@@ -9,7 +9,7 @@ final class ProjectIngestionWorkerTests: XCTestCase {
             suggestedPath: "/tmp/project",
             reason: nil,
             hasClaudeMd: false,
-            hasOtherMarkers: true
+            hasOtherMarkers: true,
         )
 
         let decision = ProjectIngestionWorker.decision(for: "/tmp/project/subdir", result: result)
@@ -29,7 +29,7 @@ final class ProjectIngestionWorkerTests: XCTestCase {
             suggestedPath: nil,
             reason: "No markers",
             hasClaudeMd: false,
-            hasOtherMarkers: false
+            hasOtherMarkers: false,
         )
 
         let decision = ProjectIngestionWorker.decision(for: "/tmp/empty", result: result)
@@ -49,7 +49,7 @@ final class ProjectIngestionWorkerTests: XCTestCase {
             suggestedPath: nil,
             reason: nil,
             hasClaudeMd: true,
-            hasOtherMarkers: true
+            hasOtherMarkers: true,
         )
 
         let decision = ProjectIngestionWorker.decision(for: "/tmp/project", result: result)
@@ -69,7 +69,7 @@ final class ProjectIngestionWorkerTests: XCTestCase {
             suggestedPath: nil,
             reason: nil,
             hasClaudeMd: true,
-            hasOtherMarkers: true
+            hasOtherMarkers: true,
         )
 
         let decision = ProjectIngestionWorker.decision(for: "/tmp/project", result: result)

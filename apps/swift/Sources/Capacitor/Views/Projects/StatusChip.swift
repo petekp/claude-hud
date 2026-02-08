@@ -6,7 +6,7 @@ struct StatusChip: View {
     let state: SessionState?
     let stateChangedAt: String?
     var style: ChipStyle = .normal
-    var staleOverride: Bool? = nil
+    var staleOverride: Bool?
 
     @Environment(\.prefersReducedMotion) private var reduceMotion
 

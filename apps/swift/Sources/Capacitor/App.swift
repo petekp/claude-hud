@@ -133,6 +133,7 @@ struct CapacitorApp: App {
             CommandGroup(replacing: .help) {
                 Link("Capacitor Help", destination: URL(string: "https://github.com/petekp/capacitor#readme")!)
                     .keyboardShortcut("?", modifiers: [.command, .shift])
+                Link("Report a Bug...", destination: URL(string: "https://github.com/petekp/capacitor/issues/new")!)
             }
 
             #if DEBUG

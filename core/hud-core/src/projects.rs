@@ -293,3 +293,34 @@ pub fn load_projects_with_storage(storage: &StorageConfig) -> Result<Vec<Project
 
     Ok(projects.into_iter().map(|(p, _)| p).collect())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::save_hud_config_with_storage;
+    use crate::types::HudConfig;
+    use tempfile::tempdir;
+
+    #[test]
+    fn missing_project_path_is_marked_missing() {
+        let temp = tempdir().expect("tempdir");
+        let root = temp.path().join("capacitor");
+        let claude_root = temp.path().join("claude");
+        std::fs::create_dir_all(&root).expect("create root");
+        std::fs::create_dir_all(&claude_root).expect("create claude root");
+
+        let storage = StorageConfig::with_roots(root, claude_root);
+        let missing_path = temp.path().join("missing-project");
+
+        let config = HudConfig {
+            pinned_projects: vec![missing_path.to_string_lossy().to_string()],
+            terminal_app: "Terminal".to_string(),
+        };
+        save_hud_config_with_storage(&storage, &config).expect("save config");
+
+        let projects = load_projects_with_storage(&storage).expect("load projects");
+        assert_eq!(projects.len(), 1);
+        assert!(projects[0].is_missing);
+        assert_eq!(projects[0].path, missing_path.to_string_lossy());
+    }
+}

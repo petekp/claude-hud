@@ -42,31 +42,31 @@ These features exist in the codebase but are **out of scope** for alpha.
 - [x] Projects persist across app restarts
 
 ### Project Card Reordering
-- [ ] Drag-to-reorder within active projects works with visual feedback
+- [x] Drag-to-reorder within active projects works with visual feedback
 - [x] Order persists across app restarts (UserDefaults)
 - [x] Reordering only applies to active (non-paused) projects
 
 ### Pause / Revive
-- [ ] "Pause" action on project card moves it to Paused section
-- [ ] Paused section appears/collapses correctly
-- [ ] "Revive" button moves project back to In Progress
-- [ ] Pause state persists across app restarts
+- [x] "Pause" action on project card moves it to Paused section
+- [x] Paused section appears/collapses correctly
+- [x] "Revive" button moves project back to In Progress
+- [x] Pause state persists across app restarts
 
 ### Keyboard Shortcuts
-- [ ] `⌘1` — Vertical layout
-- [ ] `⌘2` — Dock layout
-- [ ] `⌘⇧T` — Toggle floating mode
-- [ ] `⌘⇧P` — Toggle always-on-top
-- [ ] `⌘⇧?` — Open help (GitHub README)
-- [ ] `ESC` — Back navigation (if applicable after details view is hidden)
-- [ ] Audit for any shortcuts tied to hidden features (⌘+I idea capture) — remove them
+- [x] `⌘1` — Vertical layout
+- [x] `⌘2` — Dock layout
+- [x] `⌘⇧T` — Toggle floating mode
+- [x] `⌘⇧P` — Toggle always-on-top
+- [x] `⌘⇧?` — Open help (GitHub README)
+- [x] `ESC` — Back navigation (if applicable after details view is hidden)
+- [x] Audit for any shortcuts tied to hidden features (⌘+I idea capture) — remove them
 
 ### Dock Mode
-- [ ] Horizontal strip layout renders correctly
-- [ ] Pagination works with page indicators
-- [ ] Project cards display session state in compact form
-- [ ] One-click terminal activation from dock cards
-- [ ] Window constraints (min/max width/height) feel right for dock use
+- [x] Horizontal strip layout renders correctly
+- [x] Pagination works with page indicators
+- [x] Project cards display session state in compact form
+- [x] One-click terminal activation from dock cards
+- [x] Window constraints (min/max width/height) feel right for dock use
 
 ---
 
@@ -88,19 +88,19 @@ The current `WelcomeView` is step-by-step with hook installation + shell setup. 
 ## 4. Window & Chrome
 
 ### Pin Window Option
-- [ ] Always-on-top toggle works (`⌘⇧P`)
-- [ ] Visual indicator when pinned (subtle UI cue so user knows state)
-- [ ] Persists across app restarts
+- [x] Always-on-top toggle works (`⌘⇧P`)
+- [x] Visual indicator when pinned (subtle UI cue so user knows state)
+- [x] Persists across app restarts
 
 ### About Window
-- [ ] Shows app icon, name, version
-- [ ] Version reads from Info.plist / VERSION file correctly
-- [ ] Accessible via menu: "About Capacitor"
+- [x] Shows app icon, name, version
+- [x] Version reads from Info.plist / VERSION file correctly
+- [x] Accessible via menu: "About Capacitor"
 
 ### Help Menu
-- [ ] "Capacitor Help" links to GitHub README
-- [ ] `⌘⇧?` shortcut works
-- [ ] Consider adding: "Report a Bug" → GitHub Issues link
+- [x] "Capacitor Help" links to GitHub README
+- [x] `⌘⇧?` shortcut works
+- [x] Consider adding: "Report a Bug" → GitHub Issues link
 
 ---
 
@@ -121,26 +121,26 @@ The current `WelcomeView` is step-by-step with hook installation + shell setup. 
 
 ### Easy Sharing
 - [ ] **Landing page or GitHub release** — A single URL someone can visit to download
-- [ ] **README has clear install instructions** — Download → drag to Applications → launch
+- [x] **README has clear install instructions** — Download → drag to Applications → launch
 - [ ] Consider: brew cask formula (stretch goal, not required for alpha)
 
 ---
 
 ## 6. README & Branding
 
-- [ ] **App icon / logomark** finalized and included in assets
-- [ ] **README rewrite for public audience** — Current README is developer-facing; alpha README should be user-facing
+- [x] **App icon / logomark** finalized and included in assets
+- [x] **README rewrite for public audience** — Current README is developer-facing; alpha README should be user-facing
   - [ ] Hero section with screenshot/gif
-  - [ ] Clear value proposition (1-2 sentences)
-  - [ ] Feature list matching alpha scope (no workstreams, no ideas, no details)
-  - [ ] Supported terminals (Ghostty, iTerm2, Terminal.app)
-  - [ ] System requirements (Apple Silicon, macOS 14+)
-  - [ ] Installation instructions
-  - [ ] Setup guide (hook installation, shell integration)
-  - [ ] Keyboard shortcuts reference
-  - [ ] Known limitations / alpha caveats
-  - [ ] Link to report issues
-- [ ] **Remove references to hidden features** from README (workstreams, ideas, project creation)
+  - [x] Clear value proposition (1-2 sentences)
+  - [x] Feature list matching alpha scope (no workstreams, no ideas, no details)
+  - [x] Supported terminals (Ghostty, iTerm2, Terminal.app)
+  - [x] System requirements (Apple Silicon, macOS 14+)
+  - [x] Installation instructions
+  - [x] Setup guide (hook installation, shell integration)
+  - [x] Keyboard shortcuts reference
+  - [x] Known limitations / alpha caveats
+  - [x] Link to report issues
+- [x] **Remove references to hidden features** from README (workstreams, ideas, project creation)
 
 ---
 
@@ -156,8 +156,8 @@ The current `WelcomeView` is step-by-step with hook installation + shell setup. 
 - [ ] Test with Claude Code actually running sessions — state transitions are accurate
 
 ### Edge Cases
-- [ ] Project directory deleted while tracked — app handles gracefully
-- [ ] Terminal app not installed — activation fails gracefully with useful message
+- [x] Project directory deleted while tracked — app handles gracefully
+- [x] Terminal app not installed — activation fails gracefully with useful message
 - [ ] Multiple monitors — window positioning works correctly
 - [ ] App launched at login — doesn't crash or hang
 

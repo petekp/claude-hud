@@ -73,16 +73,22 @@ extension ParentApp {
         case .iTerm: "/Applications/iTerm.app"
         case .alacritty: "/Applications/Alacritty.app"
         case .warp: "/Applications/Warp.app"
-        case .kitty, .terminal: nil
+        case .terminal: "/System/Applications/Utilities/Terminal.app"
+        case .kitty: nil
         default: nil
         }
     }
 
     var isInstalled: Bool {
         guard category == .terminal, isAlphaSupportedTerminal else { return false }
-        guard let path = bundlePath else {
-            return self == .terminal
+        if self == .terminal {
+            let candidates = [
+                "/System/Applications/Utilities/Terminal.app",
+                "/Applications/Utilities/Terminal.app",
+            ]
+            return candidates.contains { FileManager.default.fileExists(atPath: $0) }
         }
+        guard let path = bundlePath else { return false }
         return FileManager.default.fileExists(atPath: path)
     }
 
@@ -342,6 +348,21 @@ final class TerminalLauncher: ActivationActionDependencies {
             "path": project.path,
         ])
         logger.info("  Project path: \(project.path)")
+
+        if !ParentApp.alphaSupportedTerminals.contains(where: \.isInstalled) {
+            logger.error("  No supported terminals installed")
+            telemetry(" Activation failed: no supported terminals installed", payload: [
+                "project": project.name,
+                "path": project.path,
+            ])
+            onActivationResult?(TerminalActivationResult(
+                projectName: project.name,
+                projectPath: project.path,
+                success: false,
+                usedFallback: false,
+            ))
+            return
+        }
 
         if let state = shellState {
             logger.info("  Shell state provided: \(state.shells.count) shells")
@@ -796,12 +817,6 @@ final class TerminalLauncher: ActivationActionDependencies {
         elif [ -d "/Applications/iTerm.app" ]; then
             osascript -e "tell application \\"iTerm\\" to create window with default profile command \\"\(tmuxCmd)\\""
             osascript -e 'tell application "iTerm" to activate'
-        elif [ -d "/Applications/Alacritty.app" ]; then
-            open -na "Alacritty.app" --args -e sh -c "\(tmuxCmd)"
-        elif command -v kitty &>/dev/null; then
-            kitty sh -c "\(tmuxCmd)" &
-        elif [ -d "/Applications/Warp.app" ]; then
-            open -a "Warp"
         else
             osascript -e "tell application \\"Terminal\\" to do script \\"\(tmuxCmd)\\""
             osascript -e 'tell application "Terminal" to activate'
@@ -1339,12 +1354,6 @@ enum TerminalScripts {
         elif [ -d "/Applications/iTerm.app" ]; then
             osascript -e "tell application \\"iTerm\\" to create window with default profile command \\"cd '$PATH_ESC' && exec \\$SHELL\\""
             osascript -e 'tell application "iTerm" to activate'
-        elif [ -d "/Applications/Alacritty.app" ]; then
-            open -na "Alacritty.app" --args --working-directory "$PROJECT_PATH"
-        elif command -v kitty &>/dev/null; then
-            kitty --directory "$PROJECT_PATH" &
-        elif [ -d "/Applications/Warp.app" ]; then
-            open -a "Warp" "$PROJECT_PATH"
         else
             osascript -e "tell application \\"Terminal\\" to do script \\"cd '$PATH_ESC'\\""
             osascript -e 'tell application "Terminal" to activate'

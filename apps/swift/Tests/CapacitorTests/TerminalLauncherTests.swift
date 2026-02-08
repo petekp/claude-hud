@@ -105,6 +105,18 @@ final class TerminalLauncherTests: XCTestCase {
         XCTAssertFalse(script.lowercased().contains("tmux"))
     }
 
+    func testLaunchNoTmuxScriptSkipsUnsupportedTerminalsForAlpha() {
+        let script = TerminalScripts.launchNoTmux(
+            projectPath: "/Users/pete/Code/myproject",
+            projectName: "myproject",
+            claudePath: "/opt/homebrew/bin/claude",
+        )
+        let lowercased = script.lowercased()
+        XCTAssertFalse(lowercased.contains("alacritty"))
+        XCTAssertFalse(lowercased.contains("warp"))
+        XCTAssertFalse(lowercased.contains("kitty"))
+    }
+
     func testLaunchNewTerminalScriptDoesNotReferenceTmux() {
         let script = TerminalLauncher.launchNewTerminalScript(
             projectPath: "/Users/pete/Code/myproject",

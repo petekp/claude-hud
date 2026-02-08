@@ -247,7 +247,7 @@ struct AppConfig: Equatable {
 private enum FeatureKey: String, CaseIterable {
     case ideaCapture = "ideacapture"
     case projectDetails = "projectdetails"
-    case workstreams = "workstreams"
+    case workstreams
     case projectCreation = "projectcreation"
     case llmFeatures = "llmfeatures"
 

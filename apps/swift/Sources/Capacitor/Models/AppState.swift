@@ -150,8 +150,6 @@ class AppState: ObservableObject {
 
     // MARK: - Private State
 
-    private let dormantOverridesKey = "manuallyDormantProjects"
-    private let projectOrderKey = "customProjectOrder"
     private let layoutModeKey = "layoutMode"
     private var engine: HudEngine?
     private var stalenessTimer: Timer?
@@ -630,6 +628,8 @@ class AppState: ObservableObject {
         guard let engine else { return }
         do {
             try engine.removeProject(path: path)
+            customProjectOrder.removeAll { $0 == path }
+            manuallyDormant.remove(path)
             loadDashboard()
         } catch {
             self.error = error.localizedDescription
@@ -740,13 +740,11 @@ class AppState: ObservableObject {
     // MARK: - Dormant/Order Persistence
 
     private func loadDormantOverrides() {
-        if let paths = UserDefaults.standard.array(forKey: dormantOverridesKey) as? [String] {
-            manuallyDormant = Set(paths)
-        }
+        manuallyDormant = DormantOverrideStore.load()
     }
 
     private func saveDormantOverrides() {
-        UserDefaults.standard.set(Array(manuallyDormant), forKey: dormantOverridesKey)
+        DormantOverrideStore.save(manuallyDormant)
     }
 
     private func loadProjectOrder() {
