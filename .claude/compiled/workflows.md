@@ -35,10 +35,18 @@ printf '{"protocol_version":1,"method":"get_health","id":"health","params":null}
 tail -50 ~/.capacitor/daemon/daemon.stderr.log
 ```
 
+## Telemetry Hub
+```bash
+./scripts/run-transparent-ui.sh
+```
+Agent payload:
+```bash
+curl 'http://localhost:9133/agent-briefing?limit=200&shells=recent&shell_limit=25'
+```
+
 ## Hook Build + Install
 ```bash
 cargo build -p hud-hook --release
 ln -sf target/release/hud-hook ~/.local/bin/hud-hook
 ./scripts/sync-hooks.sh --force
 ```
-

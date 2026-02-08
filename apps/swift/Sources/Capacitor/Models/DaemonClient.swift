@@ -185,10 +185,22 @@ final class DaemonClient {
         let encoder = JSONEncoder()
         let requestData = try encoder.encode(request) + Data([0x0A])
         DebugLog.write("DaemonClient.performRequest send method=\(method) bytes=\(requestData.count)")
-        let responseData = try await sendAndReceive(requestData)
+        let responseData: Data
+        do {
+            responseData = try await sendAndReceive(requestData)
+        } catch {
+            Telemetry.emit("daemon_ipc_error", "IPC send/receive failed", payload: [
+                "method": method,
+                "error": String(describing: error),
+            ])
+            throw error
+        }
 
         guard !responseData.isEmpty else {
             DebugLog.write("DaemonClient.performRequest recv method=\(method) emptyResponse")
+            Telemetry.emit("daemon_ipc_error", "Empty daemon response", payload: [
+                "method": method,
+            ])
             throw DaemonClientError.invalidResponse
         }
 
@@ -197,6 +209,10 @@ final class DaemonClient {
             response = try decoder.decode(DaemonResponse<Payload>.self, from: responseData)
         } catch {
             DebugLog.write("DaemonClient.performRequest recv method=\(method) decodeError=\(error)")
+            Telemetry.emit("daemon_ipc_error", "Daemon response decode failed", payload: [
+                "method": method,
+                "error": String(describing: error),
+            ])
             throw DaemonClientError.invalidResponse
         }
         DebugLog.write("DaemonClient.performRequest recv method=\(method) ok=\(response.ok) hasData=\(response.data != nil)")
@@ -207,6 +223,10 @@ final class DaemonClient {
 
         let message = response.error?.message ?? "Unknown daemon error"
         DebugLog.write("DaemonClient.performRequest error method=\(method) message=\(message)")
+        Telemetry.emit("daemon_ipc_error", "Daemon returned error", payload: [
+            "method": method,
+            "message": message,
+        ])
         throw DaemonClientError.daemonUnavailable(message)
     }
 

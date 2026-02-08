@@ -43,6 +43,10 @@ final class ActiveProjectResolver {
     func setManualOverride(_ project: Project) {
         manualOverride = project
         logger.info("Manual override set: \(project.path, privacy: .public)")
+        Telemetry.emit("active_project_override", "Manual override set", payload: [
+            "project": project.name,
+            "path": project.path,
+        ])
     }
 
     func resolve() {
@@ -84,6 +88,11 @@ final class ActiveProjectResolver {
             activeSource = .none
             logger.info("Resolve result: activeProject=\(override.path, privacy: .public) source=manualOverride")
             DebugLog.write("ActiveProjectResolver.result activeProject=\(override.path) source=manualOverride")
+            Telemetry.emit("active_project_resolution", "Manual override active", payload: [
+                "project": override.name,
+                "path": override.path,
+                "source": "manualOverride",
+            ])
             return
         }
 
@@ -95,6 +104,12 @@ final class ActiveProjectResolver {
             activeSource = .claude(sessionId: sessionId)
             logger.info("Resolve result: activeProject=\(project.path, privacy: .public) source=claude session=\(sessionId, privacy: .public)")
             DebugLog.write("ActiveProjectResolver.result activeProject=\(project.path) source=claude session=\(sessionId)")
+            Telemetry.emit("active_project_resolution", "Claude session active", payload: [
+                "project": project.name,
+                "path": project.path,
+                "source": "claude",
+                "session_id": sessionId,
+            ])
             return
         }
 
@@ -106,6 +121,13 @@ final class ActiveProjectResolver {
             activeSource = .shell(pid: pid, app: app)
             logger.info("Resolve result: activeProject=\(project.path, privacy: .public) source=shell pid=\(pid, privacy: .public) app=\(app ?? "unknown", privacy: .public)")
             DebugLog.write("ActiveProjectResolver.result activeProject=\(project.path) source=shell pid=\(pid) app=\(app ?? "unknown")")
+            Telemetry.emit("active_project_resolution", "Shell selection active", payload: [
+                "project": project.name,
+                "path": project.path,
+                "source": "shell",
+                "pid": pid,
+                "app": app ?? "unknown",
+            ])
             return
         }
 
@@ -113,6 +135,9 @@ final class ActiveProjectResolver {
         activeSource = .none
         logger.info("Resolve result: activeProject=nil source=none")
         DebugLog.write("ActiveProjectResolver.result activeProject=nil source=none")
+        Telemetry.emit("active_project_resolution", "No active project", payload: [
+            "source": "none",
+        ])
     }
 
     // MARK: - Private Resolution
@@ -178,22 +203,40 @@ final class ActiveProjectResolver {
         let preferredApp = preferredParentApp()
         if let preferredApp {
             DebugLog.write("ActiveProjectResolver.shellSelection preferredApp=\(preferredApp)")
+            Telemetry.emit("shell_selection", "Preferred parent app", payload: [
+                "preferred_app": preferredApp,
+            ])
         }
 
         guard let (pid, shell) = shellStateStore.mostRecentShell(matchingParentApp: preferredApp) else {
             logger.info("Shell selection: no recent shell")
             DebugLog.write("ActiveProjectResolver.shellSelection none")
+            Telemetry.emit("shell_selection", "No recent shell", payload: [
+                "preferred_app": preferredApp ?? "none",
+            ])
             return nil
         }
 
         guard let project = projectContaining(path: shell.cwd) else {
             logger.info("Shell selection: no matching project for cwd=\(shell.cwd, privacy: .public)")
             DebugLog.write("ActiveProjectResolver.shellSelection noProject cwd=\(shell.cwd)")
+            Telemetry.emit("shell_selection", "No matching project for shell", payload: [
+                "cwd": shell.cwd,
+                "pid": pid,
+                "preferred_app": preferredApp ?? "none",
+            ])
             return nil
         }
 
         logger.info("Shell selection: project=\(project.path, privacy: .public) pid=\(pid, privacy: .public) cwd=\(shell.cwd, privacy: .public)")
         DebugLog.write("ActiveProjectResolver.shellSelection project=\(project.path) pid=\(pid) cwd=\(shell.cwd)")
+        Telemetry.emit("shell_selection", "Shell project selected", payload: [
+            "project": project.name,
+            "path": project.path,
+            "pid": pid,
+            "cwd": shell.cwd,
+            "parent_app": shell.parentApp ?? "unknown",
+        ])
         return (project, pid, shell.parentApp)
     }
 

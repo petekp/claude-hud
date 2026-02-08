@@ -10,6 +10,7 @@
 | Swift UI + app state | apps/swift/, .claude/docs/architecture-overview.md, .claude/compiled/rules.md | AppState, HudEngine, SwiftUI |
 | UniFFI bindings | CLAUDE.md, .claude/docs/development-workflows.md | uniffi-bindgen, hud_core.swift |
 | Terminal activation | .claude/docs/terminal-switching-matrix.md, .claude/docs/terminal-activation-test-matrix.md, .claude/compiled/terminal.md | tmux, Ghostty, Warp |
+| Debugging / telemetry hub | .claude/docs/debugging-guide.md, docs/transparent-ui/README.md | agent-briefing, telemetry-stream, activation-trace |
 | Debugging / daemon health | .claude/docs/debugging-guide.md, .claude/compiled/debugging.md | daemon stderr, get_health |
 | Side effects / storage | .claude/compiled/side-effects.md | state.db, daemon.sock |
 | Session UI state | .claude/compiled/ui-state.md | Working, Ready, Idle |
@@ -24,6 +25,7 @@
 | Build Rust core | `cargo build -p hud-core --release` |
 | Swift build/run | `cd apps/swift && swift build && swift run` |
 | Daemon health | `printf '{"protocol_version":1,"method":"get_health","id":"health","params":null}\n' | nc -U ~/.capacitor/daemon.sock` |
+| Telemetry hub | `./scripts/run-transparent-ui.sh` |
 | Regen UniFFI | `cargo run --bin uniffi-bindgen generate --library target/release/libhud_core.dylib --language swift --out-dir apps/swift/bindings && cp apps/swift/bindings/hud_core.swift apps/swift/Sources/Capacitor/Bridge/` |
 
 ### Paths
@@ -32,6 +34,7 @@
 | Daemon socket | `~/.capacitor/daemon.sock` |
 | Daemon logs | `~/.capacitor/daemon/daemon.stderr.log` |
 | Hook binary | `~/.local/bin/hud-hook` (symlink) |
+| Telemetry hub | `docs/transparent-ui/` + `scripts/transparent-ui-server.mjs` |
 | Rust core | `core/hud-core/` |
 | Swift app | `apps/swift/Sources/Capacitor/` |
 

@@ -367,6 +367,31 @@ The telemetry uses structured markers for easy filtering:
 
 ### Debugging Workflow
 
+### Telemetry Hub (Transparent UI)
+
+The transparent UI server is the fastest way to capture live behavior and provide a single payload for agents.
+
+**Start the hub:**
+```bash
+./scripts/run-transparent-ui.sh
+```
+or headless:
+```bash
+node scripts/transparent-ui-server.mjs
+```
+
+**Key endpoints (http://localhost:9133):**
+- `GET /agent-briefing?limit=200&shells=recent&shell_limit=25` — compact agent payload (summary + recent shells + telemetry)
+- `GET /agent-briefing?shells=all` — full shell inventory when needed
+- `GET /daemon-snapshot` — authoritative daemon state snapshot
+- `GET /telemetry?limit=200` — recent in-memory telemetry events
+- `GET /telemetry-stream` — live telemetry stream (SSE)
+- `GET /activation-trace` — live activation trace stream (SSE)
+
+**Notes:**
+- Telemetry is in-memory only; restarting the server clears events.
+- Swift app telemetry posts to `/telemetry` automatically (see `docs/transparent-ui/README.md`).
+
 **Step 1: Reproduce and capture logs**
 ```bash
 # App debug log (Swift DebugLog)

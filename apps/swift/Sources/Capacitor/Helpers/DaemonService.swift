@@ -15,6 +15,9 @@ enum DaemonService {
 
         if let installError = DaemonInstaller.installBundledBinary() {
             DebugLog.write("DaemonService.ensureRunning install error=\(installError)")
+            Telemetry.emit("daemon_install_error", "Failed to install daemon binary", payload: [
+                "error": installError,
+            ])
             return installError
         }
 
@@ -142,10 +145,16 @@ enum DaemonService {
             }
 
             DebugLog.write("DaemonService.kickstart failed output=\(kickstart.output)")
+            Telemetry.emit("daemon_kickstart_error", "launchctl kickstart failed", payload: [
+                "output": kickstart.output,
+            ])
 
             let retryKickstart = runLaunchctl(["kickstart", "-k", serviceTarget])
             if retryKickstart.exitCode != 0 {
                 DebugLog.write("DaemonService.kickstart -k failed output=\(retryKickstart.output)")
+                Telemetry.emit("daemon_kickstart_error", "launchctl kickstart -k failed", payload: [
+                    "output": retryKickstart.output,
+                ])
                 return "Failed to start daemon: \(retryKickstart.output.trimmingCharacters(in: .whitespacesAndNewlines))"
             }
             DebugLog.write("DaemonService.kickstart -k ok")

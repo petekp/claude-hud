@@ -11,6 +11,12 @@
 - Legacy files (`sessions.json`, `shell-cwd.json`, locks) are **non-authoritative**
 - If daemon is down: surface error; do not silently fall back
 
+## Telemetry Hub (Agent Briefing)
+- Start: `./scripts/run-transparent-ui.sh` (local server + UI)
+- Compact briefing: `GET /agent-briefing?limit=200&shells=recent&shell_limit=25`
+- Full shells: `GET /agent-briefing?shells=all`
+- Live streams: `/telemetry-stream`, `/activation-trace`
+
 ## Hooks
 - `hud-hook` must be a **symlink** to `target/release/hud-hook`
 - Hooks emit events over IPC; no direct file writes in daemon-only mode
@@ -25,4 +31,3 @@
 
 ## Terminal Limits
 - Ghostty/Warp: no window/tab selection APIs → best-effort only
-

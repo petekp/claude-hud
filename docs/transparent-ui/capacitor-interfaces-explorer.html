@@ -841,6 +841,261 @@ Created for:
       line-height: 1.35;
     }
 
+    .snapshot {
+      display: none;
+      border: 1px solid var(--border);
+      border-radius: 0;
+      background: rgba(10, 8, 2, 0.92);
+      padding: 10px;
+      flex: 0 0 auto;
+      max-height: 260px;
+      overflow-y: auto;
+    }
+
+    .snapshot.visible {
+      display: block;
+    }
+
+    .snapshot h2 {
+      margin: 0 0 8px;
+      font-size: 15px;
+      font-weight: 600;
+      color: var(--text-secondary);
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+
+    .snapshot-controls {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 8px;
+      flex-wrap: wrap;
+    }
+
+    .snapshot-status {
+      font-size: 11px;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+
+    .snapshot-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .snapshot-toggle {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 11px;
+      color: var(--muted);
+    }
+
+    .snapshot-body {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 8px;
+    }
+
+    .snapshot-card {
+      border: 1px solid var(--border);
+      background: var(--surface);
+      padding: 8px;
+      font-size: 11px;
+      color: var(--muted);
+    }
+
+    .snapshot-card strong {
+      color: var(--text);
+    }
+
+    .snapshot-list {
+      list-style: none;
+      padding: 0;
+      margin: 6px 0 0;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .snapshot-list li {
+      font-size: 10px;
+      color: var(--muted);
+      line-height: 1.4;
+      word-break: break-word;
+    }
+
+    .telemetry {
+      display: none;
+      border: 1px solid var(--border);
+      border-radius: 0;
+      background: rgba(10, 8, 2, 0.92);
+      padding: 10px;
+      flex: 0 0 auto;
+      max-height: 260px;
+      overflow-y: auto;
+    }
+
+    .telemetry.visible {
+      display: block;
+    }
+
+    .telemetry h2 {
+      margin: 0 0 8px;
+      font-size: 15px;
+      font-weight: 600;
+      color: var(--text-secondary);
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+
+    .telemetry-controls {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 8px;
+      flex-wrap: wrap;
+    }
+
+    .telemetry-status {
+      font-size: 11px;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+
+    .telemetry-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .telemetry-body {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .telemetry-event {
+      border: 1px solid var(--border);
+      background: rgba(14, 11, 4, 0.85);
+      padding: 6px 8px;
+      font-size: 11px;
+      color: var(--muted);
+    }
+
+    .telemetry-event strong {
+      color: var(--text);
+    }
+
+    .briefing {
+      display: none;
+      border: 1px solid var(--border);
+      border-radius: 0;
+      background: rgba(10, 8, 2, 0.92);
+      padding: 10px;
+      flex: 0 0 auto;
+      max-height: 360px;
+      overflow-y: auto;
+    }
+
+    .briefing.visible {
+      display: block;
+    }
+
+    .briefing h2 {
+      margin: 0 0 8px;
+      font-size: 15px;
+      font-weight: 600;
+      color: var(--text-secondary);
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+
+    .briefing-controls {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 8px;
+      flex-wrap: wrap;
+    }
+
+    .briefing-status {
+      font-size: 11px;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+
+    .briefing-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .briefing-body {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .briefing-card {
+      border: 1px solid var(--border);
+      background: var(--surface);
+      padding: 8px;
+      font-size: 11px;
+      color: var(--muted);
+    }
+
+    .briefing-card strong {
+      color: var(--text);
+    }
+
+    .briefing-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 6px;
+      margin-top: 6px;
+    }
+
+    .briefing-list {
+      list-style: none;
+      padding: 0;
+      margin: 6px 0 0;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .briefing-list li {
+      font-size: 10px;
+      color: var(--muted);
+      line-height: 1.4;
+      word-break: break-word;
+    }
+
+    .briefing-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 2px 6px;
+      border: 1px solid var(--border);
+      font-size: 10px;
+      color: var(--text-secondary);
+      background: rgba(14, 11, 4, 0.6);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+
     .trace {
       display: none;
       border: 1px solid var(--border);
@@ -1355,6 +1610,59 @@ Created for:
     .policy-status.disabled { color: var(--muted); }
     .policy-status.conditional { color: var(--warn); }
 
+    .detail-section {
+      margin-bottom: 10px;
+    }
+
+    .detail-section h4 {
+      margin: 0 0 6px;
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--text-secondary);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+
+    .detail-list {
+      margin: 0;
+      padding-left: 16px;
+      color: var(--muted);
+      font-size: 11px;
+      line-height: 1.4;
+    }
+
+    .data-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 11px;
+    }
+
+    .data-table th {
+      text-align: left;
+      color: var(--text-secondary);
+      font-weight: 600;
+      border-bottom: 1px solid var(--border);
+      padding: 4px 6px;
+    }
+
+    .data-table td {
+      color: var(--muted);
+      border-bottom: 1px solid rgba(42, 32, 16, 0.6);
+      padding: 4px 6px;
+      vertical-align: top;
+    }
+
+    .data-table .table-name {
+      color: var(--text);
+      font-weight: 600;
+      display: block;
+    }
+
+    .data-table .table-desc {
+      font-size: 10px;
+      color: var(--muted);
+    }
+
     /* Boundary type badge in focus panel */
     .boundary-badge {
       display: inline-block;
@@ -1576,6 +1884,45 @@ Created for:
       <div id="trace-lines" role="log" aria-live="polite" aria-relevant="additions"></div>
     </section>
 
+    <section class="snapshot" id="snapshot">
+      <h2>Live Daemon Snapshot</h2>
+      <div class="snapshot-controls">
+        <div class="snapshot-status" id="snapshot-status">Snapshot: idle</div>
+        <div class="snapshot-actions">
+          <input class="trace-input" id="snapshot-url" type="text" aria-label="Snapshot URL" placeholder="http://localhost:9133/daemon-snapshot" />
+          <button class="ctrl" id="snapshot-refresh" type="button">Refresh</button>
+          <label class="snapshot-toggle"><input type="checkbox" id="snapshot-auto" checked /> Auto</label>
+        </div>
+      </div>
+      <div class="snapshot-body" id="snapshot-body"></div>
+    </section>
+
+    <section class="telemetry" id="telemetry">
+      <h2>Telemetry Feed</h2>
+      <div class="telemetry-controls">
+        <div class="telemetry-status" id="telemetry-status">Telemetry: idle</div>
+        <div class="telemetry-actions">
+          <input class="trace-input" id="telemetry-url" type="text" aria-label="Telemetry URL" placeholder="http://localhost:9133/telemetry" />
+          <button class="ctrl" id="telemetry-refresh" type="button">Refresh</button>
+          <label class="snapshot-toggle"><input type="checkbox" id="telemetry-auto" checked /> Auto</label>
+        </div>
+      </div>
+      <div class="telemetry-body" id="telemetry-body"></div>
+    </section>
+
+    <section class="briefing" id="briefing">
+      <h2>Agent Briefing</h2>
+      <div class="briefing-controls">
+        <div class="briefing-status" id="briefing-status">Briefing: idle</div>
+        <div class="briefing-actions">
+          <input class="trace-input" id="briefing-url" type="text" aria-label="Briefing URL" placeholder="http://localhost:9133/agent-briefing" />
+          <button class="ctrl" id="briefing-refresh" type="button">Refresh</button>
+          <label class="snapshot-toggle"><input type="checkbox" id="briefing-auto" checked /> Auto</label>
+        </div>
+      </div>
+      <div class="briefing-body" id="briefing-body"></div>
+    </section>
+
     <!-- Contracts overlay (toggle with C key) -->
     <div class="overlay-backdrop" id="contracts-overlay" style="display:none;">
       <div class="overlay-panel" id="contracts-panel"></div>
@@ -1607,11 +1954,65 @@ Created for:
     const NODE_H = 78;
 
     const nodes = [
-      { id: "claude", title: "Claude Code", subtitle: "hook event source", x: 40, y: 72, tag: "external CLI", layer: "external" },
-      { id: "shell", title: "Shell Prompt Hook", subtitle: "cwd event source", x: 40, y: 260, tag: "zsh/bash/fish", layer: "external" },
-      { id: "hudhook", title: "hud-hook (Rust CLI)", subtitle: "normalizes + forwards events", x: 280, y: 162, tag: "core/hud-hook", layer: "process" },
       {
-        id: "daemon", title: "capacitor-daemon", subtitle: "single writer + reducer", x: 540, y: 162, tag: "core/daemon", layer: "daemon",
+        id: "claude",
+        title: "Claude Code",
+        subtitle: "hook event source",
+        x: 40,
+        y: 72,
+        tag: "external CLI",
+        layer: "external",
+        purpose: "Emits Claude session lifecycle/tool events for the hook to forward."
+      },
+      {
+        id: "shell",
+        title: "Shell Prompt Hook",
+        subtitle: "cwd event source",
+        x: 40,
+        y: 260,
+        tag: "zsh/bash/fish",
+        layer: "external",
+        purpose: "Reports current cwd/tty context so daemon can map sessions to shells."
+      },
+      {
+        id: "hudhook",
+        title: "hud-hook (Rust CLI)",
+        subtitle: "normalizes + forwards events",
+        x: 280,
+        y: 162,
+        tag: "core/hud-hook",
+        layer: "process",
+        purpose: "Normalizes hook payloads into EventEnvelope and forwards to daemon IPC.",
+        notes: [
+          "Runs as a lightweight CLI invoked by Claude/shell hooks."
+        ]
+      },
+      {
+        id: "daemon",
+        title: "capacitor-daemon",
+        subtitle: "single writer + reducer",
+        x: 540,
+        y: 162,
+        tag: "core/daemon",
+        layer: "daemon",
+        purpose: "Validates events, reduces them into sessions/activity, and serves snapshots over IPC.",
+        exposes: [
+          "get_sessions / get_project_states / get_shell_state / get_process_liveness",
+          "event ingestion with strict validation"
+        ],
+        derivedFrom: [
+          "Replays event log on startup if sessions table is missing or stale",
+          "Rebuilds shell_state from events if table is empty"
+        ],
+        rules: [
+          "Active → Ready after ~8s inactivity (Working/Waiting/Compacting)",
+          "Session TTLs: Working/Waiting/Compacting 20m, Ready 30m, Idle 10m",
+          "Sessions pruned if process liveness fails"
+        ],
+        notes: [
+          "Single-writer; clients are read-only via IPC snapshots",
+          "Event types: session_start, user_prompt_submit, pre_tool_use, post_tool_use, permission_request, pre_compact, notification, stop, session_end, shell_cwd"
+        ],
         stateMachine: {
           name: "SessionState FSM",
           states: ["Working", "Ready", "Idle", "Compacting", "Waiting"],
@@ -1634,12 +2035,104 @@ Created for:
           { scenario: "Duplicate SessionStart for active session", symptom: "State resets unexpectedly", mitigation: "Guard: only transitions if session not already active" }
         ]
       },
-      { id: "sqlite", title: "state.db (SQLite WAL)", subtitle: "authoritative state", x: 810, y: 112, tag: "~/.capacitor/daemon", layer: "persistence" },
-      { id: "swift", title: "Swift AppState", subtitle: "polling + UI state", x: 260, y: 520, tag: "apps/swift", layer: "ui" },
-      { id: "daemonClient", title: "DaemonClient.swift", subtitle: "IPC transport client", x: 540, y: 430, tag: "JSON request/response", layer: "ui" },
-      { id: "hudEngine", title: "HudEngine (Rust)", subtitle: "UniFFI facade", x: 540, y: 590, tag: "core/hud-core", layer: "logic" },
       {
-        id: "resolver", title: "resolve_activation()", subtitle: "pure decision logic", x: 810, y: 590, tag: "Rust module", layer: "logic",
+        id: "sqlite",
+        title: "state.db (SQLite WAL)",
+        subtitle: "authoritative state",
+        x: 810,
+        y: 112,
+        tag: "~/.capacitor/daemon",
+        layer: "persistence",
+        purpose: "Durable store for daemon state: append-only events plus materialized tables.",
+        dataModel: [
+          {
+            name: "events",
+            description: "Append-only event log (full payloads).",
+            columns: ["id", "recorded_at", "event_type", "session_id", "pid", "payload"]
+          },
+          {
+            name: "sessions",
+            description: "Materialized session state per session_id.",
+            columns: ["session_id", "pid", "state", "cwd", "project_id", "project_path", "updated_at", "state_changed_at", "last_event"]
+          },
+          {
+            name: "activity",
+            description: "File/tool activity history for sessions.",
+            columns: ["session_id", "project_path", "file_path", "tool_name", "recorded_at"]
+          },
+          {
+            name: "shell_state",
+            description: "Latest cwd/tty/parent_app per pid for fast focus checks.",
+            columns: ["pid", "cwd", "tty", "parent_app", "tmux_session", "tmux_client_tty", "updated_at"]
+          },
+          {
+            name: "process_liveness",
+            description: "PID identity + last seen time for pruning.",
+            columns: ["pid", "proc_started", "last_seen_at"]
+          },
+          {
+            name: "tombstones",
+            description: "Session deletion TTLs to prevent resurrection.",
+            columns: ["session_id", "created_at", "expires_at"]
+          }
+        ],
+        notes: [
+          "WAL enabled; synchronous=NORMAL; busy_timeout=5s",
+          "Single-writer daemon; clients read via IPC snapshots"
+        ]
+      },
+      {
+        id: "swift",
+        title: "Swift AppState",
+        subtitle: "polling + UI state",
+        x: 260,
+        y: 520,
+        tag: "apps/swift",
+        layer: "ui",
+        purpose: "Owns app UI state; polls daemon and surfaces activation traces.",
+        polling: [
+          "Daemon snapshots every ~2s (ShellStateStore/AppState)",
+          "Staleness timer ~2s; hook diagnostic ~10s; health check ~16s; stats refresh ~30s"
+        ],
+        notes: [
+          "Activation traces show in Debug UI when CAPACITOR_ACTIVATION_TRACE=1"
+        ]
+      },
+      {
+        id: "daemonClient",
+        title: "DaemonClient.swift",
+        subtitle: "IPC transport client",
+        x: 540,
+        y: 430,
+        tag: "JSON request/response",
+        layer: "ui",
+        purpose: "Encodes JSON IPC requests and decodes daemon snapshot responses."
+      },
+      {
+        id: "hudEngine",
+        title: "HudEngine (Rust)",
+        subtitle: "UniFFI facade",
+        x: 540,
+        y: 590,
+        tag: "core/hud-core",
+        layer: "logic",
+        purpose: "Rust core facade for Swift; loads daemon state and computes decisions.",
+        exposes: [
+          "loadDashboard(), resolveActivation(...), resolveActivationWithTrace(...)"
+        ]
+      },
+      {
+        id: "resolver",
+        title: "resolve_activation()",
+        subtitle: "pure decision logic",
+        x: 810,
+        y: 590,
+        tag: "Rust module",
+        layer: "logic",
+        purpose: "Pure policy engine that ranks candidates and returns ActivationDecision.",
+        notes: [
+          "Optional decision trace emitted when tracing is enabled"
+        ],
         policyTable: {
           name: "Activation Selection Policy",
           rules: [
@@ -1657,16 +2150,50 @@ Created for:
           { scenario: "HOME directory matches all child paths", symptom: "Home shell selected instead of project shell", mitigation: "HOME exclusion logic prevents broad matching" }
         ]
       },
-      { id: "launcher", title: "TerminalLauncher", subtitle: "build context + execute", x: 810, y: 430, tag: "Swift model", layer: "executor" },
       {
-        id: "executor", title: "ActivationActionExecutor", subtitle: "adapter-driven routing", x: 1060, y: 430, tag: "Swift protocol layer", layer: "executor",
+        id: "launcher",
+        title: "TerminalLauncher",
+        subtitle: "build context + execute",
+        x: 810,
+        y: 430,
+        tag: "Swift model",
+        layer: "executor",
+        purpose: "Builds execution plan and drives activation + trace logging."
+      },
+      {
+        id: "executor",
+        title: "ActivationActionExecutor",
+        subtitle: "adapter-driven routing",
+        x: 1060,
+        y: 430,
+        tag: "Swift protocol layer",
+        layer: "executor",
+        purpose: "Routes ActivationAction through adapters; handles fallback execution.",
         failureModes: [
           { scenario: "Primary action fails (app not found, tmux error)", symptom: "Terminal doesn't activate", mitigation: "Executor triggers fallback action from ActivationDecision" },
           { scenario: "Ghostty window targeting is heuristic", symptom: "Wrong window activated", mitigation: "Falls back to ActivateApp (app-level, not window-level)" }
         ]
       },
-      { id: "fallback", title: "Fallback Plan", subtitle: "secondary ActivationAction", x: 1120, y: 580, tag: "launcher fallback", layer: "executor" },
-      { id: "os", title: "tmux + macOS APIs", subtitle: "Process, AppleScript, AppKit", x: 1060, y: 220, tag: "outside world", layer: "external" }
+      {
+        id: "fallback",
+        title: "Fallback Plan",
+        subtitle: "secondary ActivationAction",
+        x: 1120,
+        y: 580,
+        tag: "launcher fallback",
+        layer: "executor",
+        purpose: "Secondary activation action used when the primary path fails."
+      },
+      {
+        id: "os",
+        title: "tmux + macOS APIs",
+        subtitle: "Process, AppleScript, AppKit",
+        x: 1060,
+        y: 220,
+        tag: "outside world",
+        layer: "external",
+        purpose: "External side effects: tmux commands, AppleScript, NSWorkspace focus."
+      }
     ];
 
     const edges = [
@@ -2064,16 +2591,42 @@ Created for:
 
     const defaultLiveUrl = new URLSearchParams(window.location.search).get("live")
       || "http://localhost:9133/activation-trace";
+    const defaultSnapshotUrl = new URLSearchParams(window.location.search).get("snapshot")
+      || "http://localhost:9133/daemon-snapshot";
+    const defaultTelemetryUrl = new URLSearchParams(window.location.search).get("telemetry")
+      || "http://localhost:9133/telemetry";
+    const defaultBriefingUrl = new URLSearchParams(window.location.search).get("briefing")
+      || "http://localhost:9133/agent-briefing";
 
     const contracts = [
       {
         title: "Daemon IPC Contract (v1)",
         summary: "Single JSON request/response per Unix socket connection. daemon is single writer.",
         bullets: [
-          "Transport: ~/.capacitor/daemon.sock",
+          "Transport: ~/.capacitor/daemon.sock (one request per connection)",
+          "Envelope: { protocol_version, method, id?, params? } → { ok, data | error }",
           "Methods: event, get_health, get_shell_state, get_sessions, get_project_states, get_process_liveness",
-          "Envelope: { protocol_version, method, id, params }",
-          "Error model: structured code/message; no silent fallback in daemon-only mode"
+          "Validation: event_id ≤ 128, recorded_at RFC3339, session events require session_id/pid/cwd",
+          "Errors: invalid_params, protocol_mismatch, invalid_timestamp, missing_field (no legacy fallback)"
+        ]
+      },
+      {
+        title: "State DB (state.db)",
+        summary: "Single-writer SQLite store backing daemon snapshots.",
+        bullets: [
+          "Tables: events, sessions, activity, shell_state, process_liveness, tombstones",
+          "events are append-only; sessions/activity/shell_state are materialized for fast reads",
+          "WAL enabled; daemon is the only writer; clients read via IPC"
+        ]
+      },
+      {
+        title: "Session Lifecycle + Replay",
+        summary: "Daemon replays and prunes to keep state accurate across restarts.",
+        bullets: [
+          "Replays events if sessions table missing or stale",
+          "Rebuilds shell_state from events if table is empty",
+          "Active → Ready after ~8s inactivity; TTLs: Active 20m, Ready 30m, Idle 10m",
+          "Process liveness rows pruned after 24h"
         ]
       },
       {
@@ -2113,7 +2666,23 @@ Created for:
       liveUrl: defaultLiveUrl,
       liveError: null,
       liveSource: null,
-      liveTransport: null
+      liveTransport: null,
+      lastDecision: null,
+      snapshotUrl: defaultSnapshotUrl,
+      snapshotAuto: true,
+      snapshotTimer: null,
+      snapshotError: null,
+      snapshotData: null,
+      telemetryUrl: defaultTelemetryUrl,
+      telemetryAuto: true,
+      telemetryTimer: null,
+      telemetryError: null,
+      telemetryEvents: [],
+      briefingUrl: defaultBriefingUrl,
+      briefingAuto: true,
+      briefingTimer: null,
+      briefingError: null,
+      briefingData: null
     };
 
     const graphEl = document.getElementById("graph");
@@ -2130,6 +2699,24 @@ Created for:
     const traceStatusEl = document.getElementById("trace-status");
     const liveToggleEl = document.getElementById("live-toggle");
     const liveUrlEl = document.getElementById("live-url");
+    const snapshotEl = document.getElementById("snapshot");
+    const snapshotStatusEl = document.getElementById("snapshot-status");
+    const snapshotUrlEl = document.getElementById("snapshot-url");
+    const snapshotRefreshEl = document.getElementById("snapshot-refresh");
+    const snapshotAutoEl = document.getElementById("snapshot-auto");
+    const snapshotBodyEl = document.getElementById("snapshot-body");
+    const telemetryEl = document.getElementById("telemetry");
+    const telemetryStatusEl = document.getElementById("telemetry-status");
+    const telemetryUrlEl = document.getElementById("telemetry-url");
+    const telemetryRefreshEl = document.getElementById("telemetry-refresh");
+    const telemetryAutoEl = document.getElementById("telemetry-auto");
+    const telemetryBodyEl = document.getElementById("telemetry-body");
+    const briefingEl = document.getElementById("briefing");
+    const briefingStatusEl = document.getElementById("briefing-status");
+    const briefingUrlEl = document.getElementById("briefing-url");
+    const briefingRefreshEl = document.getElementById("briefing-refresh");
+    const briefingAutoEl = document.getElementById("briefing-auto");
+    const briefingBodyEl = document.getElementById("briefing-body");
     const controlState = {
       modeButtons: new Map(),
       flowButtons: new Map(),
@@ -2172,7 +2759,9 @@ Created for:
         el.addEventListener("click", () => {
           state.selectedNodeId = node.id;
           state.selectedEdgeId = null;
-          state.activeTab = node.stateMachine || node.policyTable ? "state" : "overview";
+          const hasState = node.stateMachine || node.policyTable;
+          const hasData = node.dataModel || node.derivedFrom || node.retention || node.exposes || node.polling || node.notes || node.rules;
+          state.activeTab = hasState ? "state" : (hasData ? "data" : "overview");
           render();
         });
         graphEl.appendChild(el);
@@ -2689,35 +3278,64 @@ Created for:
 
       if (state.modeId === "debug") {
         bannerEl.classList.add("visible");
-        // Sample activation decision for demonstration
-        const decision = {
-          outcome: "fallback",  // primary | fallback | failure
-          primary: { action: "TmuxSwitchClient", target: "iTerm2 (PID 45231)", reason: "exact path match" },
-          fallback: { action: "AppFocusAndNewTab", target: "Ghostty", reason: "tmux client not attached" },
-          candidates: [
-            { pid: 45231, cwd: "/Users/pete/Code/capacitor", match: "exact", live: true, tmux: false, parent: "iTerm2", rank: ["live=1","path=0","tmux=0","known=1"], selected: false },
-            { pid: 52847, cwd: "/Users/pete/Code/capacitor", match: "exact", live: true, tmux: false, parent: "Ghostty", rank: ["live=1","path=0","tmux=0","known=1"], selected: true },
-            { pid: 38102, cwd: "/Users/pete/Code", match: "child", live: true, tmux: false, parent: "Terminal", rank: ["live=1","path=1","tmux=0","known=1"], selected: false },
-          ]
-        };
+        const decision = state.lastDecision;
+        if (!decision) {
+          bannerEl.innerHTML = `
+            <div class="card" style="padding:10px 12px;">
+              <div style="font-size:12px;color:var(--text);font-weight:600;">No activation decision trace yet</div>
+              <div style="font-size:11px;color:var(--muted);margin-top:6px;">
+                Enable tracing with <code>CAPACITOR_ACTIVATION_TRACE=1</code> and launch a project,
+                or push a decision payload via <code>window.capacitorExplorer.pushLiveTrace({ decision: ... })</code>.
+              </div>
+            </div>
+          `;
+          return;
+        }
 
-        const outcomeClass = "outcome-" + decision.outcome;
-        const outcomeIcon = decision.outcome === "primary" ? "\u2705" : decision.outcome === "fallback" ? "\u26A0\uFE0F" : "\u274C";
-        const outcomeLabel = decision.outcome === "primary" ? "Primary Action Succeeded" : decision.outcome === "fallback" ? "Fallback Triggered" : "Activation Failed";
+        const outcome = decision.outcome || (decision.fallback ? "fallback" : "primary");
+        const outcomeClass = "outcome-" + outcome;
+        const outcomeIcon = outcome === "primary" ? "\u2705" : outcome === "fallback" ? "\u26A0\uFE0F" : "\u274C";
+        const outcomeLabel = outcome === "primary" ? "Primary Action Succeeded" : outcome === "fallback" ? "Fallback Triggered" : "Activation Failed";
 
-        const candidateRows = decision.candidates.map(c => {
-          const rowClass = c.selected ? "selected-candidate" : "eliminated";
-          const matchClass = c.match;
+        const primary = decision.primary || {};
+        const fallback = decision.fallback || {};
+        const primaryText = primary.action ? `${primary.action} → ${primary.target || "target"}` : "Unknown primary action";
+        const fallbackText = fallback.action ? `${fallback.action} → ${fallback.target || "target"}${fallback.reason ? ` (${fallback.reason})` : ""}` : "No fallback";
+
+        const candidates = decision.candidates || [];
+        const selectedPid = decision.selected_pid || decision.selectedPid;
+        const candidateRows = candidates.map(c => {
+          const isSelected = c.selected || c.is_selected || (selectedPid != null && c.pid === selectedPid);
+          const rowClass = isSelected ? "selected-candidate" : "eliminated";
+          const match = c.match || c.match_type || c.path_match || "—";
+          const matchClass = match === "—" ? "" : match;
+          const live = c.live ?? c.is_live ?? c.isAlive;
+          const tmux = c.tmux ?? c.is_tmux ?? c.has_tmux;
+          const parent = c.parent || c.parent_app || "—";
+          const rank = Array.isArray(c.rank) ? c.rank.join(", ") : (c.rank_key || c.rankKey || "—");
           return `<tr class="${rowClass}">
-            <td>${c.selected ? "\u2192" : ""} ${c.pid}</td>
-            <td style="max-width:140px;overflow:hidden;text-overflow:ellipsis">${c.cwd}</td>
-            <td><span class="match-badge ${matchClass}">${c.match}</span></td>
-            <td>${c.live ? "\u2705" : "\u274C"}</td>
-            <td>${c.tmux ? "\u2705" : "\u2014"}</td>
-            <td>${c.parent}</td>
-            <td class="rank-key">${c.rank.join(", ")}</td>
+            <td>${isSelected ? "\u2192" : ""} ${c.pid ?? "—"}</td>
+            <td style="max-width:140px;overflow:hidden;text-overflow:ellipsis">${c.cwd || "—"}</td>
+            <td><span class="match-badge ${matchClass}">${match}</span></td>
+            <td>${live === true ? "\u2705" : live === false ? "\u274C" : "\u2014"}</td>
+            <td>${tmux === true ? "\u2705" : tmux === false ? "\u274C" : "\u2014"}</td>
+            <td>${parent}</td>
+            <td class="rank-key">${rank}</td>
           </tr>`;
         }).join("");
+
+        const candidatesTable = candidates.length
+          ? `
+            <div class="card" style="padding:8px 12px;">
+              <table class="candidate-table">
+                <thead><tr>
+                  <th>PID</th><th>CWD</th><th>Match</th><th>Live</th><th>Tmux</th><th>Parent</th><th>Rank Key</th>
+                </tr></thead>
+                <tbody>${candidateRows}</tbody>
+              </table>
+            </div>
+          `
+          : `<div class="card" style="padding:8px 12px;font-size:11px;color:var(--muted);">No candidate rows provided.</div>`;
 
         bannerEl.innerHTML = `
           <div class="card decision-banner ${outcomeClass}">
@@ -2725,20 +3343,13 @@ Created for:
             <div>
               <div class="outcome-label">${outcomeLabel}</div>
               <div class="outcome-detail">
-                Primary: ${decision.primary.action} → ${decision.primary.target}
-                ${decision.outcome !== "primary" ? `<br>Fallback: ${decision.fallback.action} → ${decision.fallback.target} (${decision.fallback.reason})` : ""}
+                Primary: ${primaryText}
+                ${outcome !== "primary" ? `<br>Fallback: ${fallbackText}` : ""}
               </div>
             </div>
             <button class="outcome-action" onclick="document.querySelector('[data-node-id=resolver]').click()">View Policy Rules</button>
           </div>
-          <div class="card" style="padding:8px 12px;">
-            <table class="candidate-table">
-              <thead><tr>
-                <th>PID</th><th>CWD</th><th>Match</th><th>Live</th><th>Tmux</th><th>Parent</th><th>Rank Key</th>
-              </tr></thead>
-              <tbody>${candidateRows}</tbody>
-            </table>
-          </div>
+          ${candidatesTable}
         `;
       } else if (state.modeId === "trace") {
         bannerEl.classList.add("visible");
@@ -2746,15 +3357,19 @@ Created for:
         const statusText = state.liveConnected ? "Connected" : "Disconnected";
         const eventCount = state.trace.length;
 
-        // Generate a sample event timeline (60 bars representing last 60 seconds)
-        const bars = Array.from({ length: 60 }, (_, i) => {
-          const types = ["hook", "poll", "activate", "error"];
-          const type = i < eventCount ? types[i % 3] : "";
-          const height = type ? (6 + Math.random() * 18) : 4;
+        const totalBars = 60;
+        const recent = state.trace.slice(0, totalBars).reverse();
+        const bars = recent.map(line => {
+          const type = line.kind || "";
+          const height = type === "error" ? 22 : type ? 16 : 8;
           return type
             ? `<div class="et-bar ${type}" style="height:${height}px"></div>`
-            : `<div class="et-bar" style="height:4px;background:var(--border)"></div>`;
-        }).join("");
+            : `<div class="et-bar" style="height:8px;background:var(--border)"></div>`;
+        });
+        const remaining = totalBars - bars.length;
+        for (let i = 0; i < remaining; i += 1) {
+          bars.push(`<div class="et-bar" style="height:4px;background:var(--border)"></div>`);
+        }
 
         bannerEl.innerHTML = `
           <div class="live-status-banner">
@@ -2763,7 +3378,7 @@ Created for:
             <span style="color:var(--muted);font-size:11px">to daemon event stream</span>
             <div class="event-counter"><strong>${eventCount}</strong> events captured</div>
           </div>
-          <div class="event-timeline">${bars}</div>
+          <div class="event-timeline">${bars.join("")}</div>
         `;
       } else {
         bannerEl.classList.remove("visible");
@@ -2781,6 +3396,69 @@ Created for:
           </details>
         `;
       }).join("");
+    }
+
+    function renderListSection(title, items) {
+      if (!items || items.length === 0) return "";
+      const rows = items.map(item => `<li>${item}</li>`).join("");
+      return `
+        <div class="detail-section">
+          <h4>${title}</h4>
+          <ul class="detail-list">${rows}</ul>
+        </div>
+      `;
+    }
+
+    function renderDataModel(tables) {
+      if (!tables || tables.length === 0) return "";
+      const rows = tables.map(table => {
+        const cols = table.columns ? table.columns.join(", ") : "";
+        return `
+          <tr>
+            <td>
+              <span class="table-name">${table.name}</span>
+              <span class="table-desc">${table.description || ""}</span>
+            </td>
+            <td>${cols}</td>
+          </tr>
+        `;
+      }).join("");
+      return `
+        <div class="detail-section">
+          <h4>Tables</h4>
+          <table class="data-table">
+            <thead><tr><th>Table</th><th>Columns</th></tr></thead>
+            <tbody>${rows}</tbody>
+          </table>
+        </div>
+      `;
+    }
+
+    function renderNodeData(node) {
+      return [
+        renderDataModel(node.dataModel),
+        renderListSection("Snapshots / APIs", node.exposes),
+        renderListSection("Derived from", node.derivedFrom),
+        renderListSection("Session rules", node.rules),
+        renderListSection("Polling / cadence", node.polling),
+        renderListSection("Retention / pruning", node.retention),
+        renderListSection("Notes", node.notes)
+      ].filter(Boolean).join("");
+    }
+
+    function classifyTraceKind(payload, edge) {
+      const action = (payload.action || payload.type || payload.kind || "").toLowerCase();
+      if (action.includes("error") || action.includes("fail")) return "error";
+      if (action.includes("poll")) return "poll";
+      if (action.includes("activate") || action.includes("resolve")) return "activate";
+      if (action.includes("hook")) return "hook";
+      if (edge) {
+        const label = `${edge.label} ${edge.name}`.toLowerCase();
+        if (label.includes("poll") || label.includes("get_")) return "poll";
+        if (label.includes("hook")) return "hook";
+        if (label.includes("activate") || label.includes("activation")) return "activate";
+      }
+      return "";
     }
 
     function renderStateMachine(sm) {
@@ -2882,10 +3560,12 @@ Created for:
         const node = byId(nodes, state.selectedNodeId);
         const related = edges.filter(e => e.from === node.id || e.to === node.id);
         const hasState = node.stateMachine || node.policyTable;
+        const hasData = node.dataModel || node.derivedFrom || node.retention || node.exposes || node.polling || node.notes || node.rules;
         const hasFailures = node.failureModes && node.failureModes.length > 0;
         const defaultTab = state.activeTab || "overview";
 
         const tabsArr = [["overview", "Overview"]];
+        if (hasData) tabsArr.push(["data", "Data"]);
         if (hasState) tabsArr.push(["state", "State"]);
         tabsArr.push(["edges", "Edges"]);
         if (hasFailures) tabsArr.push(["failures", "Failures"]);
@@ -2897,10 +3577,12 @@ Created for:
         const overviewContent = `
           <p><strong>${node.title}</strong></p>
           <p>${node.subtitle}</p>
+          ${node.purpose ? `<p><strong>Purpose</strong> ${node.purpose}</p>` : ""}
           <p><code>layer</code> ${node.layer || "unknown"}</p>
           <p><code>tag</code> ${node.tag}</p>
         `;
 
+        const dataContent = hasData ? renderNodeData(node) : "";
         let stateContent = "";
         if (node.stateMachine) stateContent += renderStateMachine(node.stateMachine);
         if (node.policyTable) stateContent += renderPolicyTable(node.policyTable);
@@ -2921,6 +3603,7 @@ Created for:
         const panels = [
           `<div class="detail-tab-content ${defaultTab === "overview" ? "active" : ""}" data-tab="overview">${overviewContent}</div>`
         ];
+        if (hasData) panels.push(`<div class="detail-tab-content ${defaultTab === "data" ? "active" : ""}" data-tab="data">${dataContent}</div>`);
         if (hasState) panels.push(`<div class="detail-tab-content ${defaultTab === "state" ? "active" : ""}" data-tab="state">${stateContent}</div>`);
         panels.push(`<div class="detail-tab-content ${defaultTab === "edges" ? "active" : ""}" data-tab="edges">${edgesContent}</div>`);
         if (hasFailures) panels.push(`<div class="detail-tab-content ${defaultTab === "failures" ? "active" : ""}" data-tab="failures">${failuresContent}</div>`);
@@ -3050,13 +3733,15 @@ Created for:
       const now = new Date();
       const stamp = now.toLocaleTimeString();
       const flow = currentFlow();
+      const kind = classifyTraceKind({ action }, edge);
       const line = {
         time: stamp,
         text: `[${flow.id}] ${action}: ${edge.name}`,
-        detail: `${edge.request} -> ${edge.response}`
+        detail: `${edge.request} -> ${edge.response}`,
+        kind
       };
       state.trace.unshift(line);
-      state.trace = state.trace.slice(0, 24);
+      state.trace = state.trace.slice(0, 60);
     }
 
     function renderTrace() {
@@ -3066,6 +3751,364 @@ Created for:
           <small>${line.time} | ${line.detail}</small>
         </div>
       `).join("");
+    }
+
+    function renderSnapshot(data) {
+      if (!snapshotBodyEl) return;
+      if (!data || !data.ok) {
+        const err = data && data.error ? data.error : "No snapshot data.";
+        snapshotBodyEl.innerHTML = `<div class="snapshot-card">Snapshot error: ${err}</div>`;
+        return;
+      }
+
+      const sessions = Array.isArray(data.sessions) ? data.sessions : [];
+      const projects = Array.isArray(data.project_states) ? data.project_states : [];
+      const shellsMap = data.shell_state && data.shell_state.shells ? data.shell_state.shells : {};
+      const shells = Object.entries(shellsMap).map(([pid, entry]) => ({ pid, ...entry }));
+
+      const sessionItems = sessions.slice(0, 5).map(session => {
+        const id = session.session_id ? session.session_id.slice(0, 8) : "unknown";
+        const path = session.project_path || session.cwd || "unknown";
+        return `<li><strong>${session.state}</strong> · ${id} · ${path}</li>`;
+      }).join("");
+      const projectItems = projects.slice(0, 5).map(project => {
+        const path = project.project_path || "unknown";
+        const counts = `${project.session_count || 0} sessions / ${project.active_count || 0} active`;
+        return `<li><strong>${project.state}</strong> · ${path} · ${counts}</li>`;
+      }).join("");
+      const shellItems = shells.slice(0, 5).map(shell => {
+        const cwd = shell.cwd || "unknown";
+        const parent = shell.parent_app || shell.parentApp || "unknown";
+        return `<li><strong>${shell.pid}</strong> · ${cwd} · ${parent}</li>`;
+      }).join("");
+
+      snapshotBodyEl.innerHTML = `
+        <div class="snapshot-card">
+          <div><strong>Sessions</strong> ${sessions.length}</div>
+          <ul class="snapshot-list">${sessionItems || "<li>none</li>"}</ul>
+        </div>
+        <div class="snapshot-card">
+          <div><strong>Projects</strong> ${projects.length}</div>
+          <ul class="snapshot-list">${projectItems || "<li>none</li>"}</ul>
+        </div>
+        <div class="snapshot-card">
+          <div><strong>Shells</strong> ${shells.length}</div>
+          <ul class="snapshot-list">${shellItems || "<li>none</li>"}</ul>
+        </div>
+      `;
+    }
+
+    async function fetchSnapshot() {
+      if (!state.snapshotUrl) return;
+      if (snapshotStatusEl) {
+        snapshotStatusEl.textContent = "Snapshot: loading";
+      }
+      try {
+        const response = await fetch(state.snapshotUrl, { cache: "no-store" });
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}`);
+        }
+        const data = await response.json();
+        state.snapshotData = data;
+        state.snapshotError = null;
+        if (snapshotStatusEl) {
+          snapshotStatusEl.textContent = data.timestamp
+            ? `Snapshot: ${new Date(data.timestamp).toLocaleTimeString()}`
+            : "Snapshot: ok";
+        }
+        renderSnapshot(data);
+      } catch (error) {
+        state.snapshotError = error ? String(error) : "fetch failed";
+        if (snapshotStatusEl) {
+          snapshotStatusEl.textContent = `Snapshot: error (${state.snapshotError})`;
+        }
+      }
+    }
+
+    function stopSnapshotPolling() {
+      if (state.snapshotTimer) {
+        clearInterval(state.snapshotTimer);
+        state.snapshotTimer = null;
+      }
+    }
+
+    function startSnapshotPolling() {
+      stopSnapshotPolling();
+      if (!state.snapshotAuto) return;
+      state.snapshotTimer = setInterval(fetchSnapshot, 2000);
+    }
+
+    function initSnapshot() {
+      if (!snapshotEl) return;
+      snapshotEl.classList.add("visible");
+      if (snapshotUrlEl) {
+        snapshotUrlEl.value = state.snapshotUrl;
+        snapshotUrlEl.addEventListener("change", () => {
+          state.snapshotUrl = snapshotUrlEl.value.trim();
+          fetchSnapshot();
+        });
+      }
+      if (snapshotRefreshEl) {
+        snapshotRefreshEl.addEventListener("click", fetchSnapshot);
+      }
+      if (snapshotAutoEl) {
+        snapshotAutoEl.checked = state.snapshotAuto;
+        snapshotAutoEl.addEventListener("change", () => {
+          state.snapshotAuto = snapshotAutoEl.checked;
+          if (state.snapshotAuto) {
+            startSnapshotPolling();
+          } else {
+            stopSnapshotPolling();
+          }
+        });
+      }
+      startSnapshotPolling();
+      fetchSnapshot();
+    }
+
+    function renderTelemetry(events) {
+      if (!telemetryBodyEl) return;
+      if (!events || events.length === 0) {
+        telemetryBodyEl.innerHTML = `<div class="telemetry-event">No telemetry yet.</div>`;
+        return;
+      }
+      const rows = events.slice(0, 20).map(event => {
+        const name = event.name || event.type || event.event || "event";
+        const detail = event.message || event.detail || event.summary || "";
+        const ts = event.received_at || event.timestamp || event.time || "";
+        const payload = event.payload && typeof event.payload === "object"
+          ? JSON.stringify(event.payload)
+          : "";
+        return `
+          <div class="telemetry-event">
+            <div><strong>${name}</strong> ${ts ? `· ${ts}` : ""}</div>
+            ${detail ? `<div>${detail}</div>` : ""}
+            ${payload ? `<div style="font-size:10px;color:var(--muted);">${payload}</div>` : ""}
+          </div>
+        `;
+      }).join("");
+      telemetryBodyEl.innerHTML = rows;
+    }
+
+    async function fetchTelemetry() {
+      if (!state.telemetryUrl) return;
+      if (telemetryStatusEl) {
+        telemetryStatusEl.textContent = "Telemetry: loading";
+      }
+      try {
+        const response = await fetch(state.telemetryUrl, { cache: "no-store" });
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}`);
+        }
+        const data = await response.json();
+        const events = data && data.events ? data.events : [];
+        state.telemetryEvents = events;
+        state.telemetryError = null;
+        if (telemetryStatusEl) {
+          telemetryStatusEl.textContent = data.timestamp
+            ? `Telemetry: ${new Date(data.timestamp).toLocaleTimeString()}`
+            : "Telemetry: ok";
+        }
+        renderTelemetry(events);
+      } catch (error) {
+        state.telemetryError = error ? String(error) : "fetch failed";
+        if (telemetryStatusEl) {
+          telemetryStatusEl.textContent = `Telemetry: error (${state.telemetryError})`;
+        }
+      }
+    }
+
+    function stopTelemetryPolling() {
+      if (state.telemetryTimer) {
+        clearInterval(state.telemetryTimer);
+        state.telemetryTimer = null;
+      }
+    }
+
+    function startTelemetryPolling() {
+      stopTelemetryPolling();
+      if (!state.telemetryAuto) return;
+      state.telemetryTimer = setInterval(fetchTelemetry, 2000);
+    }
+
+    function initTelemetry() {
+      if (!telemetryEl) return;
+      telemetryEl.classList.add("visible");
+      if (telemetryUrlEl) {
+        telemetryUrlEl.value = state.telemetryUrl;
+        telemetryUrlEl.addEventListener("change", () => {
+          state.telemetryUrl = telemetryUrlEl.value.trim();
+          fetchTelemetry();
+        });
+      }
+      if (telemetryRefreshEl) {
+        telemetryRefreshEl.addEventListener("click", fetchTelemetry);
+      }
+      if (telemetryAutoEl) {
+        telemetryAutoEl.checked = state.telemetryAuto;
+        telemetryAutoEl.addEventListener("change", () => {
+          state.telemetryAuto = telemetryAutoEl.checked;
+          if (state.telemetryAuto) {
+            startTelemetryPolling();
+          } else {
+            stopTelemetryPolling();
+          }
+        });
+      }
+      startTelemetryPolling();
+      fetchTelemetry();
+    }
+
+    function renderBriefing(data) {
+      if (!briefingBodyEl) return;
+      if (!data || !data.ok) {
+        const err = data && data.error ? data.error : "No briefing data.";
+        briefingBodyEl.innerHTML = `<div class="briefing-card">Briefing error: ${err}</div>`;
+        return;
+      }
+
+      const snapshot = data.snapshot || {};
+      const sessions = Array.isArray(snapshot.sessions) ? snapshot.sessions : [];
+      const projects = Array.isArray(snapshot.project_states) ? snapshot.project_states : [];
+      const shellsMap = snapshot.shell_state && snapshot.shell_state.shells ? snapshot.shell_state.shells : {};
+      const shells = Object.entries(shellsMap).map(([pid, entry]) => ({ pid, ...entry }));
+      const summary = data.summary || {};
+      const summarySessions = summary.sessions && Number.isFinite(summary.sessions.count)
+        ? summary.sessions.count
+        : sessions.length;
+      const summaryProjects = summary.projects && Number.isFinite(summary.projects.count)
+        ? summary.projects.count
+        : projects.length;
+      const summaryShells = summary.shells || {};
+      const shellsTotal = Number.isFinite(summaryShells.total)
+        ? summaryShells.total
+        : (snapshot.shell_state && Number.isFinite(snapshot.shell_state.total_count)
+          ? snapshot.shell_state.total_count
+          : shells.length);
+      const shellsRecent = Number.isFinite(summaryShells.recent)
+        ? summaryShells.recent
+        : (snapshot.shell_state && Number.isFinite(snapshot.shell_state.recent_count)
+          ? snapshot.shell_state.recent_count
+          : shells.length);
+      const shellsLimit = summaryShells.limit
+        || (snapshot.shell_state ? snapshot.shell_state.selection_limit : null);
+      const shellsMode = summaryShells.mode
+        || (snapshot.shell_state ? snapshot.shell_state.selection : null);
+      const telemetry = Array.isArray(data.telemetry) ? data.telemetry : [];
+      const telemetryCount = summary.telemetry && Number.isFinite(summary.telemetry.count)
+        ? summary.telemetry.count
+        : telemetry.length;
+      const shellsLabel = shellsTotal === shellsRecent
+        ? `${shellsTotal}`
+        : `${shellsRecent} / ${shellsTotal}${shellsLimit ? ` (limit ${shellsLimit})` : ""}`;
+
+      const recentEvents = telemetry.slice(0, 8).map(event => {
+        const name = event.type || event.name || event.event || "event";
+        const msg = event.message || event.detail || "";
+        const ts = event.received_at || event.timestamp || event.time || "";
+        return `<li><strong>${name}</strong> ${ts ? `· ${ts}` : ""}${msg ? ` · ${msg}` : ""}</li>`;
+      }).join("");
+
+      briefingBodyEl.innerHTML = `
+        <div class="briefing-card">
+          <div style="display:flex;justify-content:space-between;align-items:center;">
+            <div><strong>Snapshot Summary</strong></div>
+            <div class="briefing-pill">${snapshot.timestamp ? new Date(snapshot.timestamp).toLocaleTimeString() : "n/a"}</div>
+          </div>
+          <div class="briefing-grid">
+            <div><strong>Sessions</strong> ${summarySessions}</div>
+            <div><strong>Projects</strong> ${summaryProjects}</div>
+            <div><strong>Shells</strong> ${shellsLabel}${shellsMode ? ` · ${shellsMode}` : ""}</div>
+            <div><strong>Telemetry</strong> ${telemetryCount}</div>
+          </div>
+        </div>
+        <div class="briefing-card">
+          <div style="display:flex;justify-content:space-between;align-items:center;">
+            <div><strong>Recent Telemetry</strong></div>
+            <div class="briefing-pill">last ${Math.min(telemetry.length, 8)}</div>
+          </div>
+          <ul class="briefing-list">${recentEvents || "<li>none</li>"}</ul>
+        </div>
+        <div class="briefing-card">
+          <div><strong>Endpoints</strong></div>
+          <ul class="briefing-list">
+            <li>/daemon-snapshot</li>
+            <li>/telemetry?limit=200</li>
+            <li>/telemetry-stream</li>
+            <li>/activation-trace</li>
+            <li>/agent-briefing?shells=recent&shell_limit=25</li>
+            <li>/agent-briefing?shells=all</li>
+          </ul>
+        </div>
+      `;
+    }
+
+    async function fetchBriefing() {
+      if (!state.briefingUrl) return;
+      if (briefingStatusEl) {
+        briefingStatusEl.textContent = "Briefing: loading";
+      }
+      try {
+        const response = await fetch(state.briefingUrl, { cache: "no-store" });
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}`);
+        }
+        const data = await response.json();
+        state.briefingData = data;
+        state.briefingError = null;
+        if (briefingStatusEl) {
+          briefingStatusEl.textContent = data.timestamp
+            ? `Briefing: ${new Date(data.timestamp).toLocaleTimeString()}`
+            : "Briefing: ok";
+        }
+        renderBriefing(data);
+      } catch (error) {
+        state.briefingError = error ? String(error) : "fetch failed";
+        if (briefingStatusEl) {
+          briefingStatusEl.textContent = `Briefing: error (${state.briefingError})`;
+        }
+      }
+    }
+
+    function stopBriefingPolling() {
+      if (state.briefingTimer) {
+        clearInterval(state.briefingTimer);
+        state.briefingTimer = null;
+      }
+    }
+
+    function startBriefingPolling() {
+      stopBriefingPolling();
+      if (!state.briefingAuto) return;
+      state.briefingTimer = setInterval(fetchBriefing, 3000);
+    }
+
+    function initBriefing() {
+      if (!briefingEl) return;
+      briefingEl.classList.add("visible");
+      if (briefingUrlEl) {
+        briefingUrlEl.value = state.briefingUrl;
+        briefingUrlEl.addEventListener("change", () => {
+          state.briefingUrl = briefingUrlEl.value.trim();
+          fetchBriefing();
+        });
+      }
+      if (briefingRefreshEl) {
+        briefingRefreshEl.addEventListener("click", fetchBriefing);
+      }
+      if (briefingAutoEl) {
+        briefingAutoEl.checked = state.briefingAuto;
+        briefingAutoEl.addEventListener("change", () => {
+          state.briefingAuto = briefingAutoEl.checked;
+          if (state.briefingAuto) {
+            startBriefingPolling();
+          } else {
+            stopBriefingPolling();
+          }
+        });
+      }
+      startBriefingPolling();
+      fetchBriefing();
     }
 
     function renderLiveStatus() {
@@ -3087,7 +4130,7 @@ Created for:
       } else {
         traceStatusEl.textContent = state.liveConnected
           ? `Live mode: connected via ${state.liveTransport}`
-          : "Live mode: ready (use window.capacitorExplorer.pushLiveTrace)";
+          : "Live mode: ready (connect SSE or use window.capacitorExplorer.pushLiveTrace)";
       }
       liveToggleEl.textContent = state.liveConnected ? "Disconnect Live" : "Connect Live";
       liveToggleEl.disabled = false;
@@ -3204,6 +4247,9 @@ Created for:
         state.liveMode = true;
       }
       state.liveConnected = true;
+      if (payload.decision) {
+        state.lastDecision = payload.decision;
+      }
       const flowId = payload.flowId || state.flowId;
       const flow = byId(flows, flowId);
       if (!flow) return;
@@ -3228,12 +4274,14 @@ Created for:
         ? byId(edges, payload.edgeId)
         : byId(edges, currentFlow().steps[state.stepIndex].edgeId);
       if (!edge) return;
+      const kind = classifyTraceKind(payload, edge);
       state.trace.unshift({
         time,
         text: `[live] ${action}: ${edge.name}`,
-        detail: payload.detail || `${edge.request} -> ${edge.response}`
+        detail: payload.detail || `${edge.request} -> ${edge.response}`,
+        kind
       });
-      state.trace = state.trace.slice(0, 24);
+      state.trace = state.trace.slice(0, 60);
       render();
     }
 
@@ -3430,6 +4478,9 @@ Created for:
       initTimeline();
       initMinimap();
       initKeyboardShortcuts();
+      initSnapshot();
+      initTelemetry();
+      initBriefing();
       liveToggleEl.addEventListener("click", toggleLiveConnection);
       liveUrlEl.value = state.liveUrl;
       liveUrlEl.addEventListener("change", () => {
@@ -3445,6 +4496,14 @@ Created for:
 
       window.capacitorExplorer = {
         pushLiveTrace,
+        pushTelemetry: event => {
+          if (!state.telemetryUrl) return;
+          fetch(state.telemetryUrl, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(event || {})
+          }).catch(() => {});
+        },
         setMode,
         setFlow,
         connectLive,
@@ -3452,6 +4511,14 @@ Created for:
         setLiveUrl: url => {
           state.liveUrl = url;
           if (liveUrlEl) liveUrlEl.value = url;
+        },
+        setTelemetryUrl: url => {
+          state.telemetryUrl = url;
+          if (telemetryUrlEl) telemetryUrlEl.value = url;
+        },
+        setBriefingUrl: url => {
+          state.briefingUrl = url;
+          if (briefingUrlEl) briefingUrlEl.value = url;
         }
       };
       setMode(modes[0].id);

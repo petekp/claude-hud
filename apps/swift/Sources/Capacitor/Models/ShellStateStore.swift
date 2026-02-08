@@ -68,9 +68,18 @@ final class ShellStateStore {
             .joined(separator: " | ")
             logger.info("Shell state updated: shells=\(daemonState.shells.count) summary=\(summary, privacy: .public)")
             DebugLog.write("ShellStateStore.loadState shells=\(daemonState.shells.count) summary=\(summary)")
+            let threshold = Date().addingTimeInterval(-Constants.shellStalenessThresholdSeconds)
+            let staleCount = daemonState.shells.values.filter { $0.updatedAt <= threshold }.count
+            Telemetry.emit("shell_state_refresh", "Shell state updated", payload: [
+                "shell_count": daemonState.shells.count,
+                "stale_filtered_count": staleCount,
+            ])
         } catch {
             logger.info("Shell state update failed: \(error.localizedDescription, privacy: .public)")
             DebugLog.write("ShellStateStore.loadState failed: \(error)")
+            Telemetry.emit("shell_state_refresh", "Shell state update failed", payload: [
+                "error": error.localizedDescription,
+            ])
         }
     }
 

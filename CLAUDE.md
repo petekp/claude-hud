@@ -64,6 +64,17 @@ Hooks → **daemon** → Capacitor reads daemon snapshots only
 
 **Resolution:** daemon sessions and shell state are authoritative (no file-based fallback).
 
+## Telemetry + Transparent UI
+
+Use the local telemetry hub when debugging runtime behavior or feeding context to coding agents.
+
+- **Launch UI + server:** `./scripts/run-transparent-ui.sh` (opens `docs/transparent-ui/capacitor-interfaces-explorer.html`)
+- **Headless server:** `node scripts/transparent-ui-server.mjs`
+- **Agent briefing (compact):** `GET /agent-briefing?limit=200&shells=recent&shell_limit=25`
+- **Agent briefing (full shells):** `GET /agent-briefing?shells=all`
+
+Server runs on `http://localhost:9133` by default. See `docs/transparent-ui/README.md` for full endpoint list and env vars.
+
 ## Common Gotchas
 
 - **Rebuild after Swift changes** — Run `./scripts/dev/restart-app.sh` after modifying Swift UI code to verify changes compile and render correctly

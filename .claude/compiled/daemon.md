@@ -31,3 +31,8 @@ Required fields vary by `event_type`.
 ## Daemon-Only Rule
 - Do **not** fall back to file writes when daemon is unavailable.
 - Surface errors; rely on LaunchAgent to recover.
+
+## Telemetry Hub (Local)
+- Start: `./scripts/run-transparent-ui.sh`
+- Prefer agent payload: `GET /agent-briefing?limit=200&shells=recent&shell_limit=25`
+- Full shell inventory: `GET /agent-briefing?shells=all`

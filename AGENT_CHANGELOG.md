@@ -1,11 +1,11 @@
 # Agent Changelog
 
 > This file helps coding agents understand project evolution, key decisions,
-> and deprecated patterns. Updated: 2026-02-05
+> and deprecated patterns. Updated: 2026-02-08
 
 ## Current State Summary
 
-Capacitor is a native macOS SwiftUI app (Apple Silicon, macOS 14+) that acts as a sidecar dashboard for Claude Code. The architecture uses a Rust core (`hud-core`) with UniFFI bindings to Swift plus a **Rust daemon (`capacitor-daemon`) that is the canonical source of truth** for session, shell, activity, and process-liveness state. Hooks emit events to the daemon over a Unix socket (`~/.capacitor/daemon.sock`), and Swift reads daemon snapshots (shell state + project aggregation). File-based JSON fallbacks (`sessions.json`, `shell-cwd.json`, `file-activity.json`) and lock compatibility have been removed in daemon-only mode. The app auto-starts the daemon via LaunchAgent and surfaces daemon status in debug builds only. Terminal activation uses a Rust-only decision path (Swift executes macOS APIs). **v0.1.27** completed hook audit remediations (heartbeat gating, safe hook tests, activity migration) and activation matching parity across Rust/Swift.
+Capacitor is a native macOS SwiftUI app (Apple Silicon, macOS 14+) that acts as a sidecar dashboard for Claude Code. The architecture uses a Rust core (`hud-core`) with UniFFI bindings to Swift plus a **Rust daemon (`capacitor-daemon`) that is the canonical source of truth** for session, shell, activity, and process-liveness state. Hooks emit events to the daemon over a Unix socket (`~/.capacitor/daemon.sock`), and Swift reads daemon snapshots (shell state + project aggregation); file-based JSON fallbacks are removed in daemon-only mode. Workstreams (managed git worktrees) are now first-class with create/open/destroy UX and slug-prefixed naming; activation matching avoids crossing repo cards with managed worktree tmux panes. The Transparent UI tooling (`docs/transparent-ui/` + `scripts/transparent-ui-server.mjs`) is the debug hub with live activation traces, daemon snapshots, and structured telemetry/agent briefing endpoints. Terminal activation uses a Rust-only decision path (Swift executes macOS APIs).
 
 > **Historical note:** Timeline entries below may reference pre-daemon artifacts (locks, `sessions.json`, `shell-cwd.json`). Treat them as historical context only; they are not current behavior.
 
@@ -16,6 +16,38 @@ Capacitor is a native macOS SwiftUI app (Apple Silicon, macOS 14+) that acts as 
 | docs/architecture-decisions/003-sidecar-architecture-pattern.md | “Hooks write `~/.capacitor/sessions.json` and HUD reads files.” | Daemon is the single writer; hooks/app are IPC clients; JSON is legacy/fallback only. | 2026-01 |
 
 ## Timeline
+
+### 2026-02-08 — Transparent UI Telemetry Hub + Agent Briefing (Completed)
+
+**What changed:**
+- Added local transparent UI server (`scripts/transparent-ui-server.mjs`) + launcher (`scripts/run-transparent-ui.sh`) that serves:
+  - SSE activation trace (`/activation-trace`)
+  - daemon snapshot (`/daemon-snapshot`)
+  - telemetry ingest + stream (`/telemetry`, `/telemetry-stream`)
+  - agent briefing payload (`/agent-briefing`)
+- Wired Swift telemetry emitter (`Telemetry.swift`) and added structured events for activation decisions, daemon IPC errors, shell state refresh, active project resolution, and daemon health.
+- Updated the Interface Explorer to show telemetry feed + agent briefing panel; briefing defaults to compact shells via `shells=recent` and `shell_limit`.
+
+**Why:**
+- Provide a single debugging hub for humans and coding agents; make runtime decisions observable without digging through logs.
+
+**Agent impact:**
+- Use `/agent-briefing` for compact context; add `shells=all` only when full shell inventory is required.
+- Telemetry is in-memory only; restart clears events (persist in daemon or disk if needed).
+- Prefer the transparent UI server during debugging; no production dependency.
+
+### 2026-02-07 — Transparent UI IA Plan + Interface Explorer (Completed)
+
+**What changed:**
+- Added IA synthesis plan (`.claude/plans/ACTIVE-transparent-ui-ia-synthesis.md`) and Task3 UX architecture plan.
+- Added initial Interface Explorer (`docs/transparent-ui/capacitor-interfaces-explorer.html`) and enriched data model (`docs/transparent-ui/enriched-data-model.ts`).
+
+**Why:**
+- Establish a unified IA roadmap and a concrete debugging/learning artifact for system behavior.
+
+**Agent impact:**
+- Treat the Interface Explorer as the canonical visual map for boundaries + activation flow.
+- Use the IA plan to guide future transparent UI panel additions (behavior-first, progressive disclosure).
 
 ### 2026-02-05 — Workstreams Lifecycle UX (Completed)
 
@@ -35,6 +67,13 @@ Capacitor is a native macOS SwiftUI app (Apple Silicon, macOS 14+) that acts as 
   - next available workstream naming (`workstream-N`)
 - Added `WorkstreamsPanel` and wired it into `ProjectDetailView` for create/list/open/destroy lifecycle actions.
 - Added integration coverage for lifecycle flow (`create -> shell attribution -> destroy guardrail`) in `WorkstreamsLifecycleIntegrationTests`.
+- Added workstream deletion flow + UI confirmations, with coverage in `WorkstreamsManagerTests`.
+- Prefixed workstream names with the project slug for clarity and collision avoidance.
+- Hardened activation matching for managed worktrees:
+  - worktree activation ranking fixes in Rust policy
+  - tmux session matching fixes for managed worktree open
+  - repo card open no longer matches managed worktree tmux panes
+  - create retry path made resilient
 
 **Why:**
 - Ship the user-visible workstreams lifecycle on top of the already-completed identity/mapping foundation.
@@ -43,6 +82,8 @@ Capacitor is a native macOS SwiftUI app (Apple Silicon, macOS 14+) that acts as 
 - Managed worktrees now have a canonical Swift service (`WorktreeService`) and UI-facing state model (`WorkstreamsManager`).
 - Destroy UX should use service errors directly; avoid ad-hoc string parsing in UI.
 - Treat `.capacitor/worktrees/` under repo root as the managed namespace.
+- Workstream names now use `${projectSlug}-workstream-N`; rely on this naming for UI and matching logic.
+- Activation resolution should not bind repo cards to managed worktree tmux panes; use worktree-aware matching first.
 
 ### 2026-02-04 — Worktrees + Workspace Mapping (Foundation Completed)
 
@@ -68,8 +109,8 @@ Capacitor is a native macOS SwiftUI app (Apple Silicon, macOS 14+) that acts as 
 - Do not rely on path-prefix matching as the only resolver path; use git common-dir identity when worktree paths diverge.
 - Keep macOS workspace hashing behavior aligned across Rust and Swift, or cross-process workspace matching will break.
 
-**Remaining feature work:**
-- Worktree lifecycle UX is still pending (create/list/remove worktrees from Capacitor UI and related safety guardrails).
+**Status update:**
+- Worktree lifecycle UX completed on 2026-02-05; follow-up naming/activation matching fixes landed same day.
 
 ### 2026-02-05 — Session Staleness + Ghostty Activation (In Progress)
 
@@ -1182,7 +1223,13 @@ Fixed terminal activation to check the daemon shell snapshot BEFORE tmux session
 
 ## Trajectory
 
-Primary near-term trajectory:
+Current near-term focus (2026-02-08):
+
+1. **Transparent UI rollout** — implement IA plan panels (state machine, policy table, candidate trace) and keep telemetry/briefing endpoints as the agent-facing hub.
+2. **Alpha release readiness** — drive `ACTIVE-alpha-release-checklist.md` and `ACTIVE-task3-ux-architecture-design.md` to completion.
+3. **Workstreams polish** — continue refining managed worktree UX and activation matching edge cases as they surface.
+
+Previously planned trajectory (largely complete):
 
 1. **Daemon-only cutover** — remove legacy JSON fallbacks and finalize lock deprecation.
 2. **Session state heuristics** — eliminate stuck Working/Ready states with daemon-side TTL + liveness.
@@ -1218,4 +1265,4 @@ Primary near-term trajectory:
     - OSLog limitation documented: Use stderr telemetry for debug builds
     - 4 new unit tests for HOME exclusion behavior
 
-The core sidecar architecture is stable and validated. The 12-session side-effects audit confirmed all major subsystems work correctly; the few issues found have been remediated. **All implementation plans are now complete.** Terminal activation has been hardened with comprehensive test coverage (15 scenarios validated). Focus areas: lock reliability (session-based, self-healing, fail-safe error handling), exact-match path resolution for monorepos, terminal integration, and codebase hygiene (dead code removal, documentation accuracy).
+The core sidecar architecture is stable and validated. The 12-session side-effects audit confirmed all major subsystems work correctly; the few issues found have been remediated. Terminal activation has been hardened with comprehensive test coverage (15 scenarios validated). Current focus is the transparent UI/telemetry hub and alpha-release readiness, with ongoing polish to workstreams + activation matching. Focus areas remain: lock reliability (session-based, self-healing, fail-safe error handling), exact-match path resolution for monorepos, terminal integration, and documentation accuracy.

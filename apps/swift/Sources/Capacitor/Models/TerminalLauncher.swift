@@ -4,10 +4,11 @@ import os.log
 
 private let logger = Logger(subsystem: "com.capacitor.app", category: "TerminalLauncher")
 
-private func telemetry(_ message: String) {
+private func telemetry(_ message: String, payload: [String: Any] = [:]) {
     let output = "[TELEMETRY] \(message)\n"
     FileHandle.standardError.write(Data(output.utf8))
     DebugLog.write("[TerminalLauncher] \(message)")
+    Telemetry.emit("activation_log", message, payload: payload)
 }
 
 private func debugLog(_ message: String) {
@@ -316,7 +317,14 @@ final class TerminalLauncher: ActivationActionDependencies {
 
     private func launchTerminalWithRustResolver(for project: Project, shellState: ShellCwdState? = nil) async {
         logger.info("━━━ ACTIVATION START: \(project.name) ━━━")
-        telemetry(" ━━━ ACTIVATION START: \(project.name) ━━━")
+        telemetry(" ━━━ ACTIVATION START: \(project.name) ━━━", payload: [
+            "project": project.name,
+            "path": project.path,
+        ])
+        Telemetry.emit("activation_start", "Activation started", payload: [
+            "project": project.name,
+            "path": project.path,
+        ])
         logger.info("  Project path: \(project.path)")
 
         if let state = shellState {
@@ -355,9 +363,18 @@ final class TerminalLauncher: ActivationActionDependencies {
             )
 
         logger.info("  Decision: \(decision.reason)")
-        telemetry(" Decision: \(decision.reason)")
+        telemetry(" Decision: \(decision.reason)", payload: [
+            "reason": decision.reason,
+        ])
         logger.info("  Primary action: \(String(describing: decision.primary))")
-        telemetry(" Primary action: \(String(describing: decision.primary))")
+        telemetry(" Primary action: \(String(describing: decision.primary))", payload: [
+            "primary": String(describing: decision.primary),
+            "fallback": decision.fallback.map { String(describing: $0) } ?? "none",
+        ])
+        Telemetry.emit("activation_decision", decision.reason, payload: [
+            "primary": String(describing: decision.primary),
+            "fallback": decision.fallback.map { String(describing: $0) } ?? "none",
+        ])
         if let fallback = decision.fallback {
             logger.info("  Fallback action: \(String(describing: fallback))")
         }
@@ -367,12 +384,22 @@ final class TerminalLauncher: ActivationActionDependencies {
 
         let primarySuccess = await executeActivationAction(decision.primary, projectPath: project.path, projectName: project.name)
         logger.info("  Primary action result: \(primarySuccess ? "SUCCESS" : "FAILED")")
-        telemetry(" Primary action result: \(primarySuccess ? "SUCCESS" : "FAILED")")
+        telemetry(" Primary action result: \(primarySuccess ? "SUCCESS" : "FAILED")", payload: [
+            "result": primarySuccess ? "success" : "failed",
+        ])
+        Telemetry.emit("activation_primary_result", primarySuccess ? "success" : "failed", payload: [
+            "project": project.name,
+            "path": project.path,
+        ])
 
         if !primarySuccess, let fallback = decision.fallback {
             logger.info("  ▸ Primary failed, executing fallback: \(String(describing: fallback))")
             let fallbackSuccess = await executeActivationAction(fallback, projectPath: project.path, projectName: project.name)
             logger.info("  Fallback result: \(fallbackSuccess ? "SUCCESS" : "FAILED")")
+            Telemetry.emit("activation_fallback_result", fallbackSuccess ? "success" : "failed", payload: [
+                "project": project.name,
+                "path": project.path,
+            ])
         }
         logger.info("━━━ ACTIVATION END ━━━")
     }
@@ -436,6 +463,9 @@ final class TerminalLauncher: ActivationActionDependencies {
         let formatted = formatActivationTrace(trace: trace)
         debugLog(formatted)
         onActivationTrace?(formatted)
+        Telemetry.emit("activation_trace", "Activation trace", payload: [
+            "trace": formatted,
+        ])
     }
 
     // MARK: - Action Helpers
