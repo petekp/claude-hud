@@ -153,6 +153,33 @@ var body: some View {
 
 **See:** `DockLayoutView.swift:20-22`, `ProjectsView.swift:37-41`, crash log `Capacitor-2026-01-29-102502.ips`
 
+### TimelineView + Material Blur Crashes WindowServer
+
+**Problem:** `TimelineView(.animation)` re-evaluates its closure every display frame (120fps on ProMotion). If the view hierarchy includes `.ultraThinMaterial` or other `Material` fills, each frame forces WindowServer to re-composite the real-time blur — a GPU-intensive operation. At sustained 120fps this can overwhelm WindowServer and force a macOS logout.
+
+**Symptom:** Dragging a file onto the app (or any action that shows a view with both `TimelineView(.animation)` and a material blur) causes the entire Mac to log out.
+
+**Solution:** Never use `TimelineView(.animation)` adjacent to or inside views with material blur. Use `@State` + `withAnimation(.linear.repeatForever)` instead — SwiftUI's animation system interpolates via Core Animation on the render server without re-evaluating the view body or invalidating the blur cache.
+
+```swift
+// BAD — re-renders material blur 120x/sec
+TimelineView(.animation) { timeline in
+    let phase = timeline.date.timeIntervalSinceReferenceDate * 30
+    shape.strokeBorder(style: StrokeStyle(dashPhase: CGFloat(phase)))
+}
+
+// GOOD — Core Animation interpolates, blur stays cached
+@State private var phase: CGFloat = 0
+shape.strokeBorder(style: StrokeStyle(dashPhase: phase))
+    .onAppear {
+        withAnimation(.linear(duration: 0.35).repeatForever(autoreverses: false)) {
+            phase = 10
+        }
+    }
+```
+
+**See:** `ContentView.swift` `MarchingAntsBorder`, Feb 2026.
+
 ### ScrollView Fade Mask Without Masking Scrollbars
 
 **Problem:** Applying `.mask` to a SwiftUI `ScrollView` also masks the scroll indicators, and AppKit clip-view masks can appear to “scroll” with content.

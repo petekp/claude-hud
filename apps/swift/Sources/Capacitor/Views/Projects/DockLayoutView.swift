@@ -1,4 +1,5 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct DockLayoutView: View {
     @EnvironmentObject var appState: AppState
@@ -121,7 +122,7 @@ struct DockLayoutView: View {
         .preventWindowDrag()
         .zIndex(draggedProject?.path == project.path ? 999 : 0)
         .onDrop(
-            of: [.text],
+            of: [.text, .fileURL],
             delegate: DockDropDelegate(
                 project: project,
                 activeProjects: activeProjects,
@@ -176,7 +177,18 @@ struct DockDropDelegate: DropDelegate {
     @Binding var draggedProject: Project?
     let appState: AppState
 
-    func dropEntered(info _: DropInfo) {
+    private var isExternalFileDrag: Bool {
+        draggedProject == nil
+    }
+
+    func dropEntered(info: DropInfo) {
+        // External file URL drag (from Finder) → signal ContentView overlay
+        if isExternalFileDrag, info.hasItemsConforming(to: [.fileURL]) {
+            appState.isFileDragOverCard = true
+            return
+        }
+
+        // Internal card reorder
         guard let draggedProject,
               draggedProject.path != project.path,
               let fromIndex = activeProjects.firstIndex(where: { $0.path == draggedProject.path }),
@@ -192,11 +204,26 @@ struct DockDropDelegate: DropDelegate {
         }
     }
 
-    func dropUpdated(info _: DropInfo) -> DropProposal? {
-        DropProposal(operation: .move)
+    func dropExited(info _: DropInfo) {
+        if isExternalFileDrag {
+            appState.isFileDragOverCard = false
+        }
     }
 
-    func performDrop(info _: DropInfo) -> Bool {
+    func dropUpdated(info: DropInfo) -> DropProposal? {
+        if isExternalFileDrag, info.hasItemsConforming(to: [.fileURL]) {
+            return DropProposal(operation: .copy)
+        }
+        return DropProposal(operation: .move)
+    }
+
+    func performDrop(info: DropInfo) -> Bool {
+        if isExternalFileDrag, info.hasItemsConforming(to: [.fileURL]) {
+            appState.isFileDragOverCard = false
+            let providers = info.itemProviders(for: [.fileURL])
+            appState.handleFileURLDrop(providers)
+            return true
+        }
         draggedProject = nil
         return true
     }

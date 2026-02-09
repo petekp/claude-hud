@@ -51,7 +51,7 @@ struct ContentView: View {
                     )
                 }
 
-                if !appState.isLoading, appState.projects.isEmpty, !isDragHovered {
+                if !appState.isLoading, appState.projects.isEmpty, !isDragHovered, !appState.isFileDragOverCard {
                     EmptyStateBorderGlow()
                         .transition(.opacity)
                 }
@@ -63,9 +63,13 @@ struct ContentView: View {
                     message: "Tip: Drag folders anywhere to connect faster",
                 )
 
-                if isDragHovered {
-                    dropOverlay
+                Group {
+                    if isDragHovered || appState.isFileDragOverCard {
+                        dropOverlay
+                    }
                 }
+                .animation(.spring(response: 0.22, dampingFraction: 0.82), value: isDragHovered)
+                .animation(.spring(response: 0.22, dampingFraction: 0.82), value: appState.isFileDragOverCard)
             }
             .coordinateSpace(name: "contentView")
         }
@@ -128,20 +132,20 @@ struct ContentView: View {
         let cornerRadius = WindowCornerRadius.value(floatingMode: floatingMode)
         let innerCornerRadius = max(cornerRadius - 2, 0)
         return ZStack {
+            // Frosted glass backdrop
             RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                .fill(Color.hudAccent.opacity(0.15))
+                .fill(.ultraThinMaterial)
 
-            RoundedRectangle(cornerRadius: innerCornerRadius, style: .continuous)
-                .strokeBorder(
-                    style: StrokeStyle(lineWidth: 2, dash: [8, 6]),
-                )
-                .foregroundStyle(Color.hudAccent.opacity(0.6))
-                .padding(4)
+            // Brand tint over the blur
+            RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                .fill(Color.brand.opacity(0.08))
+
+            MarchingAntsBorder(cornerRadius: innerCornerRadius)
 
             VStack(spacing: 12) {
                 Image(systemName: "folder.badge.plus")
                     .font(.system(size: 40, weight: .light))
-                    .foregroundStyle(Color.hudAccent.opacity(0.8))
+                    .foregroundStyle(Color.brand.opacity(0.8))
 
                 Text("Drop to connect projects")
                     .font(.system(size: 14, weight: .medium))
@@ -150,7 +154,6 @@ struct ContentView: View {
         }
         .allowsHitTesting(false)
         .transition(.opacity)
-        .animation(.easeOut(duration: 0.15), value: isDragHovered)
     }
 
     private func handleDrop(_ providers: [NSItemProvider]) -> Bool {
@@ -183,6 +186,31 @@ struct ContentView: View {
         }
 
         return true
+    }
+}
+
+// MARK: - Marching Ants Border
+
+/// Self-contained animated dashed border that uses SwiftUI's animation
+/// system instead of TimelineView to avoid per-frame re-evaluation of
+/// the parent view hierarchy (which can overwhelm WindowServer when
+/// combined with material blur).
+private struct MarchingAntsBorder: View {
+    let cornerRadius: CGFloat
+    @State private var phase: CGFloat = 0
+
+    var body: some View {
+        RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+            .strokeBorder(
+                style: StrokeStyle(lineWidth: 1, dash: [6, 4], dashPhase: phase),
+            )
+            .foregroundStyle(Color.brand.opacity(0.5))
+            .padding(4)
+            .onAppear {
+                withAnimation(.linear(duration: 0.35).repeatForever(autoreverses: false)) {
+                    phase = 10
+                }
+            }
     }
 }
 

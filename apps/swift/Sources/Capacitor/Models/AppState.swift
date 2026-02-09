@@ -1,6 +1,7 @@
 import Combine
 import Foundation
 import SwiftUI
+import UniformTypeIdentifiers
 
 enum LayoutMode: String, CaseIterable {
     case vertical
@@ -100,6 +101,10 @@ class AppState: ObservableObject {
     @Published var error: String?
     @Published var toast: ToastMessage?
     @Published var pendingDragDropTip = false
+
+    /// Set by card-level DropDelegates when a file URL drag hovers over a project card.
+    /// Complements ContentView's `isDragHovered` (which only fires between cards).
+    @Published var isFileDragOverCard = false
 
     // MARK: - Hook Diagnostic
 
@@ -553,6 +558,38 @@ class AppState: ObservableObject {
         guard panel.runModal() == .OK, let url = panel.url else { return }
 
         showAddProject(withPath: url.path)
+    }
+
+    /// Extracts file URLs from drop providers and forwards to `addProjectsFromDrop`.
+    /// Used by card-level DropDelegates to handle external file drags that land on project cards.
+    func handleFileURLDrop(_ providers: [NSItemProvider]) {
+        var urls: [URL] = []
+        let group = DispatchGroup()
+
+        for provider in providers {
+            guard provider.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier) else {
+                continue
+            }
+
+            group.enter()
+            provider.loadItem(forTypeIdentifier: UTType.fileURL.identifier, options: nil) { data, _ in
+                defer { group.leave() }
+                guard let data = data as? Data,
+                      let url = URL(dataRepresentation: data, relativeTo: nil)
+                else {
+                    return
+                }
+                DispatchQueue.main.async {
+                    urls.append(url)
+                }
+            }
+        }
+
+        group.notify(queue: .main) { [weak self] in
+            if !urls.isEmpty {
+                self?.addProjectsFromDrop(urls)
+            }
+        }
     }
 
     /// Connects multiple projects from a drag-and-drop operation.
