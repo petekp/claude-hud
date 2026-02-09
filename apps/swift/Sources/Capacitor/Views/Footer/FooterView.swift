@@ -42,25 +42,30 @@ private extension View {
 struct FooterView: View {
     @EnvironmentObject var appState: AppState
     @Environment(\.floatingMode) private var floatingMode
+    @Environment(\.prefersReducedMotion) private var reduceMotion
     @Binding var isPinned: Bool
+
+    private var showCTA: Bool {
+        !appState.selectedSuggestedPaths.isEmpty
+    }
 
     var body: some View {
         VStack(spacing: 0) {
-            // Footer content
             ZStack {
-                HStack {
-                    if !appState.channel.isProduction {
-                        ChannelBadge(channel: appState.channel)
-                    }
-                    Spacer()
-                }
-                LogoView()
+                // Default footer content — slides down when CTA appears
+                defaultContent
+                    .opacity(showCTA ? 0 : 1)
+                    .offset(y: showCTA ? 8 : 0)
 
-                HStack {
-                    Spacer()
-                    PinButton(isPinned: $isPinned)
-                }
+                // Contextual CTA — slides up when suggestions selected
+                ctaContent
+                    .opacity(showCTA ? 1 : 0)
+                    .offset(y: showCTA ? 0 : 8)
             }
+            .animation(
+                reduceMotion ? AppMotion.reducedMotionFallback : .spring(response: 0.35, dampingFraction: 0.8),
+                value: showCTA,
+            )
             .padding(.horizontal, 16)
             .padding(.vertical, 6)
             .padding(.bottom, floatingMode ? 6 : 0)
@@ -69,20 +74,102 @@ struct FooterView: View {
             }
         }
     }
+
+    private var defaultContent: some View {
+        ZStack {
+            HStack {
+                PinButton(isPinned: $isPinned)
+                Spacer()
+            }
+            LogoView()
+            HStack {
+                Spacer()
+                AddProjectPillButton()
+            }
+        }
+    }
+
+    private var ctaContent: some View {
+        HStack {
+            Spacer()
+            ConnectProjectsCTAButton(count: appState.selectedSuggestedPaths.count) {
+                withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                    appState.connectSelectedSuggestions()
+                }
+            }
+            Spacer()
+        }
+    }
 }
 
-private struct ChannelBadge: View {
-    let channel: AppChannel
+private struct ConnectProjectsCTAButton: View {
+    let count: Int
+    let action: () -> Void
+    @State private var isHovered = false
+    @Environment(\.prefersReducedMotion) private var reduceMotion
 
     var body: some View {
-        Text(channel.label)
-            .font(.system(size: 10, weight: .semibold, design: .monospaced))
-            .foregroundColor(.white.opacity(0.45))
-            .padding(.horizontal, 8)
-            .padding(.vertical, 4)
-            .background(Color.white.opacity(0.08))
-            .clipShape(Capsule())
-            .accessibilityLabel("Channel \(channel.label)")
+        Button(action: action) {
+            Text("Connect \(count) Project\(count == 1 ? "" : "s")")
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundColor(.white.opacity(isHovered ? 1.0 : 0.9))
+                .padding(.horizontal, 20)
+                .padding(.vertical, 8)
+                .background(
+                    Capsule()
+                        .fill(Color.hudAccent.opacity(isHovered ? 0.6 : 0.45)),
+                )
+                .overlay(
+                    Capsule()
+                        .strokeBorder(Color.hudAccent.opacity(isHovered ? 0.4 : 0.2), lineWidth: 0.5),
+                )
+        }
+        .buttonStyle(.plain)
+        .scaleEffect(isHovered && !reduceMotion ? 1.02 : 1.0)
+        .animation(reduceMotion ? AppMotion.reducedMotionFallback : .easeOut(duration: 0.15), value: isHovered)
+        .onHover { hovering in
+            isHovered = hovering
+        }
+        .accessibilityLabel("Connect \(count) selected project\(count == 1 ? "" : "s")")
+    }
+}
+
+private struct AddProjectPillButton: View {
+    @EnvironmentObject var appState: AppState
+    @State private var isHovered = false
+    @Environment(\.prefersReducedMotion) private var reduceMotion
+
+    var body: some View {
+        Button {
+            appState.connectProjectViaFileBrowser()
+        } label: {
+            Image(systemName: "plus")
+                .font(.system(size: 14, weight: .medium))
+                .foregroundColor(.white.opacity(isHovered ? 0.7 : 0.4))
+                .frame(width: 36, height: 36)
+                .contentShape(Circle())
+                .background(
+                    Circle()
+                        .fill(Color.white.opacity(isHovered ? 0.1 : 0)),
+                )
+                .overlay(
+                    Circle()
+                        .strokeBorder(
+                            Color.white.opacity(isHovered ? 0.15 : 0),
+                            lineWidth: 0.5,
+                        ),
+                )
+        }
+        .buttonStyle(.plain)
+        .help("Connect Project")
+        .accessibilityLabel("Connect project")
+        .accessibilityHint("Opens file browser to select a project folder")
+        .scaleEffect(isHovered && !reduceMotion ? 1.05 : 1.0)
+        .onHover { hovering in
+            withAnimation(reduceMotion ? AppMotion.reducedMotionFallback : .spring(response: 0.2, dampingFraction: 0.7)) {
+                isHovered = hovering
+            }
+        }
     }
 }
 
@@ -223,75 +310,6 @@ struct PinButton: View {
         .scaleEffect(isHovered && !reduceMotion ? 1.05 : 1.0)
         .onHover { hovering in
             withAnimation(reduceMotion ? AppMotion.reducedMotionFallback : .spring(response: 0.2, dampingFraction: 0.7)) {
-                isHovered = hovering
-            }
-        }
-    }
-}
-
-struct AddProjectButton: View {
-    @EnvironmentObject var appState: AppState
-    @State private var isHovered = false
-    @Environment(\.prefersReducedMotion) private var reduceMotion
-
-    var body: some View {
-        Button {
-            appState.connectProjectViaFileBrowser()
-        } label: {
-            HStack(spacing: 6) {
-                Image(systemName: "plus")
-                    .font(.system(size: 12, weight: .semibold))
-
-                Text("Connect Project")
-                    .font(AppTypography.bodySecondary.weight(.medium))
-            }
-            .foregroundColor(.white.opacity(isHovered ? 1.0 : 0.85))
-            .padding(.horizontal, 12)
-            .padding(.vertical, 7)
-            .background(
-                ZStack {
-                    VibrancyView(
-                        material: .hudWindow,
-                        blendingMode: .behindWindow,
-                        isEmphasized: true,
-                        forceDarkAppearance: true,
-                    )
-
-                    Color.black.opacity(isHovered ? 0.25 : 0.35)
-
-                    LinearGradient(
-                        colors: [
-                            .white.opacity(isHovered ? 0.08 : 0.05),
-                            .white.opacity(0.02),
-                        ],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing,
-                    )
-                }
-                .clipShape(RoundedRectangle(cornerRadius: 8)),
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 8)
-                    .strokeBorder(
-                        LinearGradient(
-                            colors: [
-                                .white.opacity(isHovered ? 0.25 : 0.15),
-                                .white.opacity(isHovered ? 0.12 : 0.08),
-                            ],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing,
-                        ),
-                        lineWidth: 0.5,
-                    ),
-            )
-            .animation(reduceMotion ? AppMotion.reducedMotionFallback : .easeOut(duration: 0.15), value: isHovered)
-        }
-        .buttonStyle(.plain)
-        .fixedSize()
-        .accessibilityLabel("Connect project")
-        .accessibilityHint("Opens file browser to select a project folder")
-        .onHover { hovering in
-            withAnimation(reduceMotion ? AppMotion.reducedMotionFallback : .easeOut(duration: 0.15)) {
                 isHovered = hovering
             }
         }

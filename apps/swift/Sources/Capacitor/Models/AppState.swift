@@ -88,6 +88,7 @@ class AppState: ObservableObject {
     @Published var dashboard: DashboardData?
     @Published var projects: [Project] = []
     @Published var suggestedProjects: [SuggestedProject] = []
+    @Published var selectedSuggestedPaths: Set<String> = []
 
     // MARK: - Active project creations (Idea → V1)
 
@@ -483,6 +484,7 @@ class AppState: ObservableObject {
 
     func dismissSuggestedProjects() {
         suggestedProjects = []
+        selectedSuggestedPaths = []
     }
 
     func addSuggestedProject(_ suggestion: SuggestedProject) {
@@ -515,6 +517,12 @@ class AppState: ObservableObject {
             loadDashboard()
             toast = ToastMessage("Connected \(addedCount) project\(addedCount == 1 ? "" : "s")")
         }
+    }
+
+    func connectSelectedSuggestions() {
+        let selected = suggestedProjects.filter { selectedSuggestedPaths.contains($0.path) }
+        addSuggestedProjects(selected)
+        selectedSuggestedPaths = []
     }
 
     func addProject(_ path: String) {

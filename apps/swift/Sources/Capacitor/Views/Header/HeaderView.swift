@@ -24,8 +24,6 @@ struct HeaderView: View {
                 }
 
                 Spacer()
-
-                AddProjectButton()
             }
             .padding(.horizontal, 12)
             .padding(.top, floatingMode ? 9 : 6)

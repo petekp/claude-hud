@@ -426,26 +426,29 @@ struct EmptyProjectsView: View {
     @Environment(\.floatingMode) private var floatingMode
     @Environment(\.prefersReducedMotion) private var reduceMotion
     @State private var appeared = false
-    @State private var selectedPaths: Set<String> = []
+    @State private var hoveredPath: String?
+
+    @State private var browseHovered = false
 
     var body: some View {
-        VStack(spacing: 28) {
-            Spacer()
+        VStack(spacing: 20) {
+            VStack(spacing: 6) {
+                Text("Connect your projects")
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundColor(.white.opacity(0.7))
 
-            Text("Drag a project folder to connect")
-                .font(.system(size: 14, weight: .medium))
-                .foregroundColor(.white.opacity(0.4))
-                .opacity(appeared || reduceMotion ? 1 : 0)
-                .offset(y: appeared || reduceMotion ? 0 : 8)
+                instructionText
+            }
+            .opacity(appeared || reduceMotion ? 1 : 0)
+            .offset(y: appeared || reduceMotion ? 0 : 8)
 
             if !appState.suggestedProjects.isEmpty {
                 suggestedProjectsList
                     .opacity(appeared || reduceMotion ? 1 : 0)
                     .offset(y: appeared || reduceMotion ? 0 : 10)
             }
-
-            Spacer()
         }
+        .padding(.top, 16)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background {
             if floatingMode {
@@ -470,82 +473,88 @@ struct EmptyProjectsView: View {
         }
     }
 
+    private var instructionText: some View {
+        HStack(spacing: 0) {
+            Text("Drop a project folder here, or ")
+                .foregroundColor(.white.opacity(0.4))
+
+            Text("browse")
+                .foregroundColor(.white.opacity(browseHovered ? 0.7 : 0.55))
+                .underline(browseHovered, color: .white.opacity(0.4))
+                .onHover { hovering in
+                    withAnimation(.easeOut(duration: 0.1)) {
+                        browseHovered = hovering
+                    }
+                }
+                .onTapGesture {
+                    appState.connectProjectViaFileBrowser()
+                }
+        }
+        .font(.system(size: 13, weight: .medium))
+    }
+
     private var suggestedProjectsList: some View {
         VStack(spacing: 2) {
             ForEach(appState.suggestedProjects, id: \.path) { suggestion in
                 suggestionRow(suggestion)
-            }
-
-            if !selectedPaths.isEmpty {
-                connectButton
-                    .padding(.top, 10)
             }
         }
         .frame(maxWidth: 260)
     }
 
     private func suggestionRow(_ suggestion: SuggestedProject) -> some View {
-        let isSelected = selectedPaths.contains(suggestion.path)
+        let isSelected = appState.selectedSuggestedPaths.contains(suggestion.path)
+        let isHovered = hoveredPath == suggestion.path
         return Button {
             withAnimation(.easeOut(duration: 0.15)) {
                 if isSelected {
-                    selectedPaths.remove(suggestion.path)
+                    appState.selectedSuggestedPaths.remove(suggestion.path)
                 } else {
-                    selectedPaths.insert(suggestion.path)
+                    appState.selectedSuggestedPaths.insert(suggestion.path)
                 }
             }
         } label: {
-            HStack(spacing: 8) {
+            HStack(spacing: 10) {
+                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                    .font(.system(size: 14))
+                    .foregroundColor(
+                        isSelected
+                            ? Color.hudAccent.opacity(0.8)
+                            : .white.opacity(isHovered ? 0.3 : 0.15),
+                    )
+
                 VStack(alignment: .leading, spacing: 2) {
                     Text(suggestion.name)
                         .font(.system(size: 12, weight: .medium))
-                        .foregroundColor(.white.opacity(isSelected ? 0.9 : 0.55))
+                        .foregroundColor(.white.opacity(isSelected ? 0.9 : isHovered ? 0.7 : 0.55))
 
                     Text(suggestion.displayPath)
                         .font(.system(size: 10, design: .monospaced))
-                        .foregroundColor(.white.opacity(isSelected ? 0.4 : 0.25))
+                        .foregroundColor(.white.opacity(isSelected ? 0.4 : isHovered ? 0.3 : 0.25))
                         .lineLimit(1)
                         .truncationMode(.middle)
                 }
 
                 Spacer()
-
-                if isSelected {
-                    Image(systemName: "checkmark.circle.fill")
-                        .font(.system(size: 14))
-                        .foregroundColor(Color.hudAccent.opacity(0.8))
-                        .transition(.scale.combined(with: .opacity))
-                }
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
             .background(
                 RoundedRectangle(cornerRadius: 8)
-                    .fill(isSelected ? Color.hudAccent.opacity(0.08) : Color.clear),
+                    .fill(
+                        isSelected
+                            ? Color.hudAccent.opacity(0.08)
+                            : isHovered ? Color.white.opacity(0.03) : Color.clear,
+                    ),
             )
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-    }
-
-    private var connectButton: some View {
-        Button {
-            let selected = appState.suggestedProjects.filter { selectedPaths.contains($0.path) }
-            appState.addSuggestedProjects(selected)
-            selectedPaths = []
-        } label: {
-            Text("Connect \(selectedPaths.count) Project\(selectedPaths.count == 1 ? "" : "s")")
-                .font(.system(size: 12, weight: .semibold))
-                .foregroundColor(.white.opacity(0.9))
-                .padding(.horizontal, 16)
-                .padding(.vertical, 8)
-                .background(
-                    RoundedRectangle(cornerRadius: 8)
-                        .fill(Color.hudAccent.opacity(0.5)),
-                )
+        .onHover { hovering in
+            withAnimation(.easeOut(duration: 0.1)) {
+                hoveredPath = hovering ? suggestion.path : nil
+            }
         }
-        .buttonStyle(.plain)
-        .transition(.move(edge: .bottom).combined(with: .opacity))
     }
 }
 
