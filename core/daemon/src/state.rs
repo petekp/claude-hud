@@ -619,17 +619,11 @@ fn should_auto_ready(record: &SessionRecord, now: DateTime<Utc>) -> bool {
         return false;
     }
 
-    let Some(last_activity) = record
-        .last_activity_at
-        .as_deref()
-        .and_then(parse_rfc3339)
-    else {
+    let Some(last_activity) = record.last_activity_at.as_deref().and_then(parse_rfc3339) else {
         return false;
     };
 
-    now.signed_duration_since(last_activity)
-        .num_seconds()
-        >= SESSION_AUTO_READY_SECS
+    now.signed_duration_since(last_activity).num_seconds() >= SESSION_AUTO_READY_SECS
 }
 
 fn parse_rfc3339(value: &str) -> Option<DateTime<Utc>> {
@@ -705,8 +699,7 @@ mod tests {
         let db = Db::new(db_path).expect("db init");
         let state = SharedState::new(db);
 
-        let stale_time =
-            (Utc::now() - Duration::seconds(SESSION_AUTO_READY_SECS + 5)).to_rfc3339();
+        let stale_time = (Utc::now() - Duration::seconds(SESSION_AUTO_READY_SECS + 5)).to_rfc3339();
         let mut record = make_record("session-stale", "/repo", SessionState::Working, stale_time);
         record.last_activity_at = Some(record.updated_at.clone());
         record.last_event = Some("post_tool_use".to_string());
@@ -725,8 +718,7 @@ mod tests {
         let db = Db::new(db_path).expect("db init");
         let state = SharedState::new(db);
 
-        let stale_time =
-            (Utc::now() - Duration::seconds(SESSION_AUTO_READY_SECS + 5)).to_rfc3339();
+        let stale_time = (Utc::now() - Duration::seconds(SESSION_AUTO_READY_SECS + 5)).to_rfc3339();
         let mut record = make_record("session-stale", "/repo", SessionState::Working, stale_time);
         record.last_activity_at = Some(record.updated_at.clone());
         record.last_event = Some("post_tool_use".to_string());

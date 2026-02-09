@@ -189,13 +189,36 @@ impl HudEngine {
 
                 // Try to resolve the encoded path
                 if let Some(real_path) = crate::projects::try_resolve_encoded_path(&encoded_name) {
+                    // Skip already-pinned projects (exact match)
                     if pinned_set.contains(&real_path) {
                         continue;
                     }
 
                     let project_path = PathBuf::from(&real_path);
+
+                    // Skip the user's home directory (may have .gitignore)
+                    if let Ok(home) = std::env::var("HOME") {
+                        if real_path == home {
+                            continue;
+                        }
+                    }
+
+                    // Skip subdirectories of already-pinned projects
+                    let is_child_of_pinned = config
+                        .pinned_projects
+                        .iter()
+                        .any(|pinned| project_path.starts_with(pinned));
+                    if is_child_of_pinned {
+                        continue;
+                    }
+
                     let has_indicators = has_project_indicators(&project_path);
                     let has_claude_md = project_path.join("CLAUDE.md").exists();
+
+                    // Skip directories without project indicators or CLAUDE.md
+                    if !has_indicators && !has_claude_md {
+                        continue;
+                    }
 
                     let task_count = fs::read_dir(entry.path())
                         .map(|entries| {
@@ -237,7 +260,7 @@ impl HudEngine {
         }
 
         suggestions.sort_by(|a, b| b.1.cmp(&a.1));
-        Ok(suggestions.into_iter().map(|(s, _)| s).collect())
+        Ok(suggestions.into_iter().take(8).map(|(s, _)| s).collect())
     }
 
     // ─────────────────────────────────────────────────────────────────────────────

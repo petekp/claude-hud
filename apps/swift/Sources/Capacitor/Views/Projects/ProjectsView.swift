@@ -139,6 +139,12 @@ struct ProjectsView: View {
                                 }
                             }
                         }
+
+                        if !appState.suggestedProjects.isEmpty {
+                            SuggestedProjectsBanner()
+                                .padding(.top, 12)
+                                .transition(.opacity.combined(with: .move(edge: .bottom)))
+                        }
                     }
                 }
                 .padding(.leading, listHorizontalPadding)
@@ -378,123 +384,76 @@ struct PausedSectionHeader: View {
     }
 }
 
+// MARK: - Marching Ants Border
+
+struct MarchingAntsBorder: View {
+    @Environment(\.floatingMode) private var floatingMode
+    @Environment(\.prefersReducedMotion) private var reduceMotion
+    @State private var dashPhase: CGFloat = 0
+
+    private let dashLength: CGFloat = 8
+    private let gapLength: CGFloat = 6
+
+    var body: some View {
+        let cornerRadius = WindowCornerRadius.value(floatingMode: floatingMode)
+        let inset: CGFloat = floatingMode ? 5 : 3
+
+        RoundedRectangle(cornerRadius: max(cornerRadius - inset, 0), style: .continuous)
+            .strokeBorder(
+                style: StrokeStyle(
+                    lineWidth: 1.5,
+                    lineCap: .round,
+                    dash: [dashLength, gapLength],
+                    dashPhase: dashPhase,
+                ),
+            )
+            .foregroundStyle(Color.hudAccent.opacity(0.2))
+            .padding(inset)
+            .allowsHitTesting(false)
+            .onAppear {
+                guard !reduceMotion else { return }
+                withAnimation(.linear(duration: 1.5).repeatForever(autoreverses: false)) {
+                    dashPhase = dashLength + gapLength
+                }
+            }
+    }
+}
+
+// MARK: - Empty Projects View
+
 struct EmptyProjectsView: View {
     @EnvironmentObject var appState: AppState
     @Environment(\.floatingMode) private var floatingMode
     @Environment(\.prefersReducedMotion) private var reduceMotion
     @State private var appeared = false
-    @State private var isButtonHovered = false
+    @State private var selectedPaths: Set<String> = []
 
     var body: some View {
-        contentView
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background {
-                // Draggable area behind content - won't block button clicks
-                if floatingMode {
-                    Color.clear
-                        .contentShape(Rectangle())
-                        .windowDraggable()
-                }
-            }
-    }
+        VStack(spacing: 28) {
+            Spacer()
 
-    private var contentView: some View {
-        VStack(spacing: 20) {
-            ZStack {
-                Circle()
-                    .fill(Color.hudAccent.opacity(0.1))
-                    .frame(width: 80, height: 80)
-                    .blur(radius: 20)
-                    .scaleEffect(appeared || reduceMotion ? 1.0 : 0.5)
-                    .opacity(appeared || reduceMotion ? 1 : 0)
-
-                Image(systemName: "folder.badge.plus")
-                    .font(.system(size: 44, weight: .light))
-                    .foregroundStyle(
-                        LinearGradient(
-                            colors: [.white.opacity(0.5), .white.opacity(0.25)],
-                            startPoint: .top,
-                            endPoint: .bottom,
-                        ),
-                    )
-                    .scaleEffect(appeared || reduceMotion ? 1.0 : 0.8)
-                    .opacity(appeared || reduceMotion ? 1 : 0)
-                    .accessibilityHidden(true)
-            }
-            .accessibilityHidden(true)
-
-            VStack(spacing: 6) {
-                Text("Drag folders here")
-                    .font(AppTypography.cardSubtitle.weight(.semibold))
-                    .foregroundColor(.white.opacity(0.7))
-
-                Text("or use the button below to get started")
-                    .font(AppTypography.bodySecondary)
-                    .foregroundColor(.white.opacity(0.4))
-                    .multilineTextAlignment(.center)
-            }
-            .opacity(appeared || reduceMotion ? 1 : 0)
-            .offset(y: appeared || reduceMotion ? 0 : 10)
+            Text("Drag a project folder to connect")
+                .font(.system(size: 14, weight: .medium))
+                .foregroundColor(.white.opacity(0.4))
+                .opacity(appeared || reduceMotion ? 1 : 0)
+                .offset(y: appeared || reduceMotion ? 0 : 8)
 
             if !appState.suggestedProjects.isEmpty {
-                suggestedProjectsSection
+                suggestedProjectsList
                     .opacity(appeared || reduceMotion ? 1 : 0)
-                    .offset(y: appeared || reduceMotion ? 0 : 12)
+                    .offset(y: appeared || reduceMotion ? 0 : 10)
             }
 
-            Button(action: { appState.showAddProject() }) {
-                HStack(spacing: 6) {
-                    Image(systemName: "link")
-                        .font(AppTypography.labelMedium.weight(.semibold))
-                    Text("Link Project")
-                        .font(AppTypography.bodySecondary.weight(.semibold))
-                }
-                .foregroundColor(.white.opacity(isButtonHovered ? 1 : 0.9))
-                .padding(.horizontal, 16)
-                .padding(.vertical, 10)
-                .background(
-                    LinearGradient(
-                        colors: [
-                            Color.hudAccent.opacity(isButtonHovered ? 0.9 : 0.7),
-                            Color.hudAccentDark.opacity(isButtonHovered ? 0.8 : 0.6),
-                        ],
-                        startPoint: .top,
-                        endPoint: .bottom,
-                    ),
-                )
-                .clipShape(RoundedRectangle(cornerRadius: 8))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 8)
-                        .stroke(Color.white.opacity(isButtonHovered ? 0.2 : 0.1), lineWidth: 0.5),
-                )
-                .shadow(color: Color.hudAccent.opacity(isButtonHovered ? 0.4 : 0.2), radius: isButtonHovered && !reduceMotion ? 10 : 4, y: 2)
-                .scaleEffect(isButtonHovered && !reduceMotion ? 1.02 : 1.0)
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Link project")
-            .accessibilityHint("Opens a folder picker to link an existing project directory")
-            .onHover { hovering in
-                withAnimation(reduceMotion ? AppMotion.reducedMotionFallback : .spring(response: 0.25, dampingFraction: 0.7)) {
-                    isButtonHovered = hovering
-                }
-            }
-            .opacity(appeared || reduceMotion ? 1 : 0)
-            .offset(y: appeared || reduceMotion ? 0 : 15)
+            Spacer()
         }
-        .padding(32)
-        .background(
-            RoundedRectangle(cornerRadius: 16)
-                .fill(Color.hudAccent.opacity(0.03)),
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 16)
-                .strokeBorder(
-                    style: StrokeStyle(lineWidth: 2, dash: [8, 6]),
-                )
-                .foregroundColor(Color.hudAccent.opacity(0.25)),
-        )
-        .padding(.horizontal, 24)
-        .padding(.top, 50)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background {
+            if floatingMode {
+                Color.clear
+                    .contentShape(Rectangle())
+                    .windowDraggable()
+            }
+        }
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Drop zone for project folders")
         .onAppear {
@@ -511,13 +470,96 @@ struct EmptyProjectsView: View {
         }
     }
 
-    private var suggestedProjectsSection: some View {
-        let suggestions = Array(appState.suggestedProjects.prefix(3))
-        return VStack(alignment: .leading, spacing: 10) {
+    private var suggestedProjectsList: some View {
+        VStack(spacing: 2) {
+            ForEach(appState.suggestedProjects, id: \.path) { suggestion in
+                suggestionRow(suggestion)
+            }
+
+            if !selectedPaths.isEmpty {
+                connectButton
+                    .padding(.top, 10)
+            }
+        }
+        .frame(maxWidth: 260)
+    }
+
+    private func suggestionRow(_ suggestion: SuggestedProject) -> some View {
+        let isSelected = selectedPaths.contains(suggestion.path)
+        return Button {
+            withAnimation(.easeOut(duration: 0.15)) {
+                if isSelected {
+                    selectedPaths.remove(suggestion.path)
+                } else {
+                    selectedPaths.insert(suggestion.path)
+                }
+            }
+        } label: {
+            HStack(spacing: 8) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(suggestion.name)
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundColor(.white.opacity(isSelected ? 0.9 : 0.55))
+
+                    Text(suggestion.displayPath)
+                        .font(.system(size: 10, design: .monospaced))
+                        .foregroundColor(.white.opacity(isSelected ? 0.4 : 0.25))
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                }
+
+                Spacer()
+
+                if isSelected {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.system(size: 14))
+                        .foregroundColor(Color.hudAccent.opacity(0.8))
+                        .transition(.scale.combined(with: .opacity))
+                }
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .background(
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(isSelected ? Color.hudAccent.opacity(0.08) : Color.clear),
+            )
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var connectButton: some View {
+        Button {
+            let selected = appState.suggestedProjects.filter { selectedPaths.contains($0.path) }
+            appState.addSuggestedProjects(selected)
+            selectedPaths = []
+        } label: {
+            Text("Connect \(selectedPaths.count) Project\(selectedPaths.count == 1 ? "" : "s")")
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundColor(.white.opacity(0.9))
+                .padding(.horizontal, 16)
+                .padding(.vertical, 8)
+                .background(
+                    RoundedRectangle(cornerRadius: 8)
+                        .fill(Color.hudAccent.opacity(0.5)),
+                )
+        }
+        .buttonStyle(.plain)
+        .transition(.move(edge: .bottom).combined(with: .opacity))
+    }
+}
+
+// MARK: - Suggested Projects Banner (in-list)
+
+struct SuggestedProjectsBanner: View {
+    @EnvironmentObject var appState: AppState
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
             HStack {
-                Text("Suggested from Claude history")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundColor(.white.opacity(0.7))
+                Text("Suggested")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundColor(.white.opacity(0.4))
 
                 Spacer()
 
@@ -527,89 +569,47 @@ struct EmptyProjectsView: View {
                     }
                 }
                 .font(.system(size: 11, weight: .medium))
-                .foregroundColor(.white.opacity(0.4))
+                .foregroundColor(.white.opacity(0.3))
                 .buttonStyle(.plain)
             }
 
-            VStack(spacing: 8) {
-                ForEach(suggestions, id: \.path) { suggestion in
-                    suggestedProjectRow(suggestion)
-                }
-            }
+            ForEach(appState.suggestedProjects, id: \.path) { suggestion in
+                Button {
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                        appState.addSuggestedProject(suggestion)
+                    }
+                } label: {
+                    HStack(spacing: 8) {
+                        Image(systemName: "plus.circle")
+                            .font(.system(size: 11))
+                            .foregroundColor(Color.hudAccent.opacity(0.5))
 
-            if appState.suggestedProjects.count > suggestions.count {
-                Text("+\(appState.suggestedProjects.count - suggestions.count) more in ~/.claude/projects")
-                    .font(.system(size: 11))
-                    .foregroundColor(.white.opacity(0.35))
+                        Text(suggestion.name)
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundColor(.white.opacity(0.6))
+
+                        Text(suggestion.displayPath)
+                            .font(.system(size: 10, design: .monospaced))
+                            .foregroundColor(.white.opacity(0.3))
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+
+                        Spacer()
+                    }
+                    .padding(.vertical, 3)
+                }
+                .buttonStyle(.plain)
             }
         }
         .padding(12)
         .background(
-            RoundedRectangle(cornerRadius: 12)
-                .fill(Color.white.opacity(0.04)),
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 12)
-                .strokeBorder(Color.white.opacity(0.08), lineWidth: 0.5),
-        )
-    }
-
-    private func suggestedProjectRow(_ suggestion: SuggestedProject) -> some View {
-        HStack(spacing: 10) {
-            VStack(alignment: .leading, spacing: 4) {
-                Text(suggestion.name)
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundColor(.white.opacity(0.85))
-
-                Text(suggestion.displayPath)
-                    .font(.system(size: 10, design: .monospaced))
-                    .foregroundColor(.white.opacity(0.4))
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-
-                HStack(spacing: 6) {
-                    badge(text: "\(suggestion.taskCount) sessions")
-                    badge(text: suggestion.hasClaudeMd ? "CLAUDE.md" : "No CLAUDE.md")
-                }
-            }
-
-            Spacer()
-
-            Button("Add") {
-                appState.addSuggestedProject(suggestion)
-            }
-            .font(.system(size: 11, weight: .semibold))
-            .foregroundColor(.white.opacity(0.9))
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
-            .background(
-                RoundedRectangle(cornerRadius: 6)
-                    .fill(Color.hudAccent.opacity(0.7)),
-            )
-            .buttonStyle(.plain)
-        }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 8)
-        .background(
             RoundedRectangle(cornerRadius: 10)
-                .fill(Color.white.opacity(0.02)),
+                .fill(Color.white.opacity(0.03)),
         )
         .overlay(
             RoundedRectangle(cornerRadius: 10)
                 .strokeBorder(Color.white.opacity(0.06), lineWidth: 0.5),
         )
-    }
-
-    private func badge(text: String) -> some View {
-        Text(text)
-            .font(.system(size: 9, weight: .semibold))
-            .foregroundColor(.white.opacity(0.6))
-            .padding(.horizontal, 6)
-            .padding(.vertical, 3)
-            .background(
-                RoundedRectangle(cornerRadius: 6)
-                    .fill(Color.white.opacity(0.06)),
-            )
     }
 }
 

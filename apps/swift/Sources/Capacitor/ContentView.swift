@@ -51,6 +51,11 @@ struct ContentView: View {
                     )
                 }
 
+                if !appState.isLoading, appState.projects.isEmpty, !isDragHovered {
+                    MarchingAntsBorder()
+                        .transition(.opacity)
+                }
+
                 ToastContainer(toast: $appState.toast)
 
                 TipTooltipContainer(

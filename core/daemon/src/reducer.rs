@@ -67,7 +67,6 @@ pub enum SessionUpdate {
     Skip,
 }
 
-
 pub fn reduce_session(current: Option<&SessionRecord>, event: &EventEnvelope) -> SessionUpdate {
     if event.event_type == EventType::ShellCwd {
         return SessionUpdate::Skip;
@@ -105,34 +104,32 @@ pub fn reduce_session(current: Option<&SessionRecord>, event: &EventEnvelope) ->
         EventType::PreCompact => {
             upsert_session(current, event, session_id, SessionState::Compacting, None)
         }
-        EventType::Notification => {
-            match event.notification_type.as_deref() {
-                Some("idle_prompt") => {
-                    if current
-                        .map(|record| record.tools_in_flight > 0)
-                        .unwrap_or(false)
-                    {
-                        SessionUpdate::Skip
-                    } else {
-                        upsert_session(
-                            current,
-                            event,
-                            session_id,
-                            SessionState::Ready,
-                            Some("idle_prompt".to_string()),
-                        )
-                    }
+        EventType::Notification => match event.notification_type.as_deref() {
+            Some("idle_prompt") => {
+                if current
+                    .map(|record| record.tools_in_flight > 0)
+                    .unwrap_or(false)
+                {
+                    SessionUpdate::Skip
+                } else {
+                    upsert_session(
+                        current,
+                        event,
+                        session_id,
+                        SessionState::Ready,
+                        Some("idle_prompt".to_string()),
+                    )
                 }
-                Some("permission_prompt") => upsert_session(
-                    current,
-                    event,
-                    session_id,
-                    SessionState::Waiting,
-                    Some("permission_prompt".to_string()),
-                ),
-                _ => SessionUpdate::Skip,
             }
-        }
+            Some("permission_prompt") => upsert_session(
+                current,
+                event,
+                session_id,
+                SessionState::Waiting,
+                Some("permission_prompt".to_string()),
+            ),
+            _ => SessionUpdate::Skip,
+        },
         EventType::SubagentStart | EventType::SubagentStop | EventType::TeammateIdle => {
             SessionUpdate::Skip
         }
@@ -178,9 +175,10 @@ fn should_skip_stop(current: Option<&SessionRecord>, event: &EventEnvelope) -> b
 
     if let Some(current) = current {
         if let Some(activity_at) = current.last_activity_at.as_deref() {
-            if let (Some(activity_time), Some(event_time)) =
-                (parse_rfc3339(activity_at), parse_rfc3339(&event.recorded_at))
-            {
+            if let (Some(activity_time), Some(event_time)) = (
+                parse_rfc3339(activity_at),
+                parse_rfc3339(&event.recorded_at),
+            ) {
                 if activity_time > event_time {
                     return true;
                 }

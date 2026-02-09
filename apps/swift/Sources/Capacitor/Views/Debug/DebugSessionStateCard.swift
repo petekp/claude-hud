@@ -1,7 +1,7 @@
 import Combine
 import SwiftUI
 
-/**
+/* 
  * TRANSPARENT-UI DEBUG TOOL
  *
  * Temporary debugging visualization for session state detection. Remove when no longer needed:
@@ -159,17 +159,17 @@ import SwiftUI
         private func color(for state: String) -> Color {
             switch state.lowercased() {
             case "working":
-                return Color.statusColor(for: .working)
+                Color.statusColor(for: .working)
             case "ready":
-                return Color.statusColor(for: .ready)
+                Color.statusColor(for: .ready)
             case "waiting":
-                return Color.statusColor(for: .waiting)
+                Color.statusColor(for: .waiting)
             case "compacting":
-                return Color.statusColor(for: .compacting)
+                Color.statusColor(for: .compacting)
             case "idle":
-                return Color.statusColor(for: .idle)
+                Color.statusColor(for: .idle)
             default:
-                return Color.white.opacity(0.5)
+                Color.white.opacity(0.5)
             }
         }
 

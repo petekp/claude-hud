@@ -286,10 +286,8 @@ class AppState: ObservableObject {
         do {
             dashboard = try engine.loadDashboard()
             projects = dashboard?.projects ?? []
-            if projects.isEmpty {
+            if projects.isEmpty, suggestedProjects.isEmpty {
                 refreshSuggestedProjects()
-            } else {
-                suggestedProjects = []
             }
             activeProjectResolver.updateProjects(projects)
             refreshSessionStates()
@@ -307,12 +305,12 @@ class AppState: ObservableObject {
     func refreshSessionStates() {
         sessionStateManager.refreshSessionStates(for: projects)
         activeProjectResolver.resolve()
-#if DEBUG
-        DiagnosticsSnapshotLogger.updateContext(
-            activeProjectPath: activeProjectPath,
-            activeSource: activeSource
-        )
-#endif
+        #if DEBUG
+            DiagnosticsSnapshotLogger.updateContext(
+                activeProjectPath: activeProjectPath,
+                activeSource: activeSource,
+            )
+        #endif
         DebugLog.write("AppState.refreshSessionStates activeProject=\(activeProjectResolver.activeProject?.path ?? "nil") source=\(String(describing: activeProjectResolver.activeSource))")
         if let active = activeProjectResolver.activeProject {
             Telemetry.emit("active_project_resolution", "Resolved active project", payload: [
@@ -497,6 +495,25 @@ class AppState: ObservableObject {
             toast = ToastMessage("Connected \(suggestion.name)")
         } catch {
             toast = ToastMessage(error.localizedDescription, isError: true)
+        }
+    }
+
+    func addSuggestedProjects(_ suggestions: [SuggestedProject]) {
+        guard let engine else { return }
+        var addedCount = 0
+        for suggestion in suggestions {
+            do {
+                try engine.addProject(path: suggestion.path)
+                prependToProjectOrder(suggestion.path)
+                suggestedProjects.removeAll { $0.path == suggestion.path }
+                addedCount += 1
+            } catch {
+                DebugLog.write("AppState.addSuggestedProjects error for \(suggestion.name): \(error.localizedDescription)")
+            }
+        }
+        if addedCount > 0 {
+            loadDashboard()
+            toast = ToastMessage("Connected \(addedCount) project\(addedCount == 1 ? "" : "s")")
         }
     }
 
