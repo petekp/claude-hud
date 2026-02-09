@@ -27,6 +27,7 @@ const SESSION_TTL_ACTIVE_SECS: i64 = 20 * 60; // Working/Waiting/Compacting
 const SESSION_TTL_READY_SECS: i64 = 30 * 60; // Ready
 const SESSION_TTL_IDLE_SECS: i64 = 10 * 60; // Idle
                                             // Ready does not auto-idle; it remains until TTL or session end.
+const SESSION_AUTO_READY_SECS: i64 = 60; // Working -> Ready when inactive and no tools are in flight.
 
 pub struct SharedState {
     db: Db,
@@ -353,7 +354,7 @@ impl SharedState {
                 continue;
             }
 
-            let effective_state = effective_session_state(&record);
+            let effective_state = effective_session_state(&record, now);
             let session_time = session_timestamp(&record).unwrap_or(now);
             let priority = session_state_priority(&effective_state);
             let is_active = session_state_is_active(&effective_state);
@@ -580,7 +581,13 @@ fn session_state_is_active(state: &crate::reducer::SessionState) -> bool {
     )
 }
 
-fn effective_session_state(record: &SessionRecord) -> crate::reducer::SessionState {
+fn effective_session_state(
+    record: &SessionRecord,
+    now: DateTime<Utc>,
+) -> crate::reducer::SessionState {
+    if record.state == crate::reducer::SessionState::Working && should_auto_ready(record, now) {
+        return crate::reducer::SessionState::Ready;
+    }
     record.state.clone()
 }
 
@@ -596,6 +603,33 @@ fn session_ttl_seconds(state: &crate::reducer::SessionState) -> i64 {
 
 fn session_timestamp(record: &SessionRecord) -> Option<DateTime<Utc>> {
     parse_rfc3339(&record.updated_at).or_else(|| parse_rfc3339(&record.state_changed_at))
+}
+
+fn should_auto_ready(record: &SessionRecord, now: DateTime<Utc>) -> bool {
+    if record.tools_in_flight > 0 {
+        return false;
+    }
+
+    let last_event = record.last_event.as_deref().unwrap_or_default();
+    let eligible_last_event = matches!(
+        last_event,
+        "post_tool_use" | "post_tool_use_failure" | "task_completed"
+    );
+    if !eligible_last_event {
+        return false;
+    }
+
+    let Some(last_activity) = record
+        .last_activity_at
+        .as_deref()
+        .and_then(parse_rfc3339)
+    else {
+        return false;
+    };
+
+    now.signed_duration_since(last_activity)
+        .num_seconds()
+        >= SESSION_AUTO_READY_SECS
 }
 
 fn parse_rfc3339(value: &str) -> Option<DateTime<Utc>> {
@@ -657,6 +691,46 @@ mod tests {
 
         let fresh_time = (Utc::now() - Duration::seconds(2)).to_rfc3339();
         let record = make_record("session-fresh", "/repo", SessionState::Working, fresh_time);
+        state.db.upsert_session(&record).expect("insert session");
+
+        let aggregates = state.project_states_snapshot().expect("project states");
+        assert_eq!(aggregates.len(), 1);
+        assert_eq!(aggregates[0].state, SessionState::Working);
+    }
+
+    #[test]
+    fn project_states_auto_ready_after_inactive_tool() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let db_path = temp_dir.path().join("state.db");
+        let db = Db::new(db_path).expect("db init");
+        let state = SharedState::new(db);
+
+        let stale_time =
+            (Utc::now() - Duration::seconds(SESSION_AUTO_READY_SECS + 5)).to_rfc3339();
+        let mut record = make_record("session-stale", "/repo", SessionState::Working, stale_time);
+        record.last_activity_at = Some(record.updated_at.clone());
+        record.last_event = Some("post_tool_use".to_string());
+        record.tools_in_flight = 0;
+        state.db.upsert_session(&record).expect("insert session");
+
+        let aggregates = state.project_states_snapshot().expect("project states");
+        assert_eq!(aggregates.len(), 1);
+        assert_eq!(aggregates[0].state, SessionState::Ready);
+    }
+
+    #[test]
+    fn project_states_keep_working_when_tools_in_flight() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let db_path = temp_dir.path().join("state.db");
+        let db = Db::new(db_path).expect("db init");
+        let state = SharedState::new(db);
+
+        let stale_time =
+            (Utc::now() - Duration::seconds(SESSION_AUTO_READY_SECS + 5)).to_rfc3339();
+        let mut record = make_record("session-stale", "/repo", SessionState::Working, stale_time);
+        record.last_activity_at = Some(record.updated_at.clone());
+        record.last_event = Some("post_tool_use".to_string());
+        record.tools_in_flight = 1;
         state.db.upsert_session(&record).expect("insert session");
 
         let aggregates = state.project_states_snapshot().expect("project states");

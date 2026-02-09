@@ -7,9 +7,10 @@
 //! ```text
 //! SessionStart           → ready
 //! UserPromptSubmit       → working
-//! PreToolUse/PostToolUse → working  (heartbeat if already working)
+//! PreToolUse/PostToolUse/PostToolUseFailure → working  (heartbeat if already working)
 //! PermissionRequest      → waiting
 //! Notification           → ready    (only idle_prompt type)
+//! TaskCompleted          → ready
 //! PreCompact             → compacting
 //! Stop                   → ready    (unless stop_hook_active=true)
 //! SessionEnd             → removes session record
@@ -172,6 +173,14 @@ fn process_event(
             }
         }
 
+        HookEvent::PostToolUseFailure { .. } => {
+            if current_state == Some(SessionState::Working) {
+                (Action::Heartbeat, None, None)
+            } else {
+                (Action::Upsert, Some(SessionState::Working), None)
+            }
+        }
+
         HookEvent::PermissionRequest => (Action::Upsert, Some(SessionState::Waiting), None),
 
         HookEvent::PreCompact => (Action::Upsert, Some(SessionState::Compacting), None),
@@ -179,10 +188,16 @@ fn process_event(
         HookEvent::Notification { notification_type } => {
             if notification_type == "idle_prompt" {
                 (Action::Upsert, Some(SessionState::Ready), None)
+            } else if notification_type == "permission_prompt" {
+                (Action::Upsert, Some(SessionState::Waiting), None)
             } else {
                 (Action::Skip, None, None)
             }
         }
+
+        HookEvent::SubagentStart | HookEvent::SubagentStop => (Action::Skip, None, None),
+
+        HookEvent::TeammateIdle => (Action::Skip, None, None),
 
         HookEvent::Stop { stop_hook_active } => {
             if *stop_hook_active {
@@ -191,6 +206,8 @@ fn process_event(
                 (Action::Upsert, Some(SessionState::Ready), None)
             }
         }
+
+        HookEvent::TaskCompleted => (Action::Upsert, Some(SessionState::Ready), None),
 
         HookEvent::SessionEnd => (Action::Delete, None, None),
 

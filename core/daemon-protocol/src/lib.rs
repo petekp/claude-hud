@@ -103,10 +103,15 @@ pub enum EventType {
     UserPromptSubmit,
     PreToolUse,
     PostToolUse,
+    PostToolUseFailure,
     PermissionRequest,
     PreCompact,
     Notification,
+    SubagentStart,
+    SubagentStop,
     Stop,
+    TeammateIdle,
+    TaskCompleted,
     SessionEnd,
     ShellCwd,
 }
@@ -187,7 +192,12 @@ impl EventEnvelope {
             | EventType::UserPromptSubmit
             | EventType::PreToolUse
             | EventType::PostToolUse
+            | EventType::PostToolUseFailure
             | EventType::PermissionRequest
+            | EventType::SubagentStart
+            | EventType::SubagentStop
+            | EventType::TeammateIdle
+            | EventType::TaskCompleted
             | EventType::PreCompact => {
                 require_session_fields(self)?;
             }

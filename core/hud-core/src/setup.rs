@@ -25,19 +25,25 @@ use tempfile::NamedTempFile;
 const HOOK_COMMAND: &str = "CAPACITOR_DAEMON_ENABLED=1 $HOME/.local/bin/hud-hook handle";
 
 /// Hook event configuration: (event_name, needs_matcher, is_async)
-/// - `needs_matcher`: Events like PreToolUse need `matcher: "*"` to fire for all tools
+/// - `needs_matcher`: Tool events like PreToolUse/PostToolUse/PostToolUseFailure/PermissionRequest
+///   need `matcher: "*"` to match all tools.
 /// - `is_async`: If true, hook runs in background without blocking Claude Code
 ///   SessionEnd is sync to ensure cleanup completes before session exits
-const HUD_HOOK_EVENTS: [(&str, bool, bool); 9] = [
+const HUD_HOOK_EVENTS: [(&str, bool, bool); 14] = [
     ("SessionStart", false, true),
     ("SessionEnd", false, false), // Keep sync for guaranteed cleanup
     ("UserPromptSubmit", false, true),
     ("PreToolUse", true, true),
     ("PostToolUse", true, true),
+    ("PostToolUseFailure", true, true),
     ("PermissionRequest", true, true),
     ("Stop", false, true),
     ("PreCompact", false, true),
     ("Notification", false, true),
+    ("SubagentStart", false, true),
+    ("SubagentStop", false, true),
+    ("TeammateIdle", false, true),
+    ("TaskCompleted", false, true),
 ];
 
 const HOOK_TIMEOUT_SECONDS: u32 = 30;
@@ -806,9 +812,15 @@ mod tests {
 
         assert!(settings["hooks"]["SessionStart"].is_array());
         assert!(settings["hooks"]["PostToolUse"].is_array());
+        assert!(settings["hooks"]["PostToolUseFailure"].is_array());
+        assert!(settings["hooks"]["TaskCompleted"].is_array());
+        assert!(settings["hooks"]["SubagentStop"].is_array());
 
         let post_tool_use = &settings["hooks"]["PostToolUse"][0];
         assert_eq!(post_tool_use["matcher"], "*");
+
+        let post_tool_use_failure = &settings["hooks"]["PostToolUseFailure"][0];
+        assert_eq!(post_tool_use_failure["matcher"], "*");
     }
 
     #[test]
@@ -916,7 +928,7 @@ mod tests {
         }"#;
         fs::write(storage.claude_settings_file(), partial).unwrap();
 
-        // hooks_registered_in_settings should return false since PostToolUse is missing
+        // hooks_registered_in_settings should return false since required events are missing
         assert!(!checker.hooks_registered_in_settings());
     }
 
@@ -925,18 +937,19 @@ mod tests {
         let (_temp, storage) = setup_test_env();
         let checker = SetupChecker::new(storage.clone());
 
-        // Write settings with PostToolUse but missing matcher
+        // Write settings with tool events but missing matcher
         let missing_matcher = r#"{
             "hooks": {
                 "SessionStart": [{"hooks": [{"type": "command", "command": "hud-hook handle"}]}],
                 "UserPromptSubmit": [{"hooks": [{"type": "command", "command": "hud-hook handle"}]}],
                 "PostToolUse": [{"hooks": [{"type": "command", "command": "hud-hook handle"}]}],
+                "PostToolUseFailure": [{"hooks": [{"type": "command", "command": "hud-hook handle"}]}],
                 "Stop": [{"hooks": [{"type": "command", "command": "hud-hook handle"}]}]
             }
         }"#;
         fs::write(storage.claude_settings_file(), missing_matcher).unwrap();
 
-        // hooks_registered_in_settings should return false since PostToolUse missing matcher
+        // hooks_registered_in_settings should return false since matcher is missing
         assert!(!checker.hooks_registered_in_settings());
     }
 

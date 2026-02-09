@@ -47,7 +47,7 @@ import SwiftUI
                     }
                     .frame(maxHeight: 180)
                 } else {
-                    Text("No activation trace yet. Set CAPACITOR_ACTIVATION_TRACE=1 and launch a project.")
+                    Text("No activation trace yet (debug-only). Set CAPACITOR_ACTIVATION_TRACE=1 and launch a project to capture one.")
                         .font(.caption)
                         .foregroundColor(.white.opacity(0.6))
                 }

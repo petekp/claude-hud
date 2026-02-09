@@ -24,6 +24,8 @@ import SwiftUI
                         }
 
                         DebugActiveStateCard()
+                        DebugSessionStateCard()
+                        DebugShellStateCard()
                         DebugActivationTraceCard()
                     }
                     .padding(12)

@@ -63,14 +63,22 @@ pub enum HookEvent {
         tool_name: Option<String>,
         file_path: Option<String>,
     },
+    PostToolUseFailure {
+        tool_name: Option<String>,
+        file_path: Option<String>,
+    },
     PermissionRequest,
     PreCompact,
     Notification {
         notification_type: String,
     },
+    SubagentStart,
+    SubagentStop,
     Stop {
         stop_hook_active: bool,
     },
+    TeammateIdle,
+    TaskCompleted,
     Unknown {
         event_name: String,
     },
@@ -107,14 +115,30 @@ impl HookInput {
                     file_path,
                 }
             }
+            "PostToolUseFailure" => {
+                let file_path = tool_input_file_path().or_else(|| {
+                    self.tool_response
+                        .as_ref()
+                        .and_then(|tr| tr.file_path.clone())
+                });
+
+                HookEvent::PostToolUseFailure {
+                    tool_name: self.tool_name.clone(),
+                    file_path,
+                }
+            }
             "PermissionRequest" => HookEvent::PermissionRequest,
             "PreCompact" => HookEvent::PreCompact,
             "Notification" => HookEvent::Notification {
                 notification_type: self.notification_type.clone().unwrap_or_default(),
             },
+            "SubagentStart" => HookEvent::SubagentStart,
+            "SubagentStop" => HookEvent::SubagentStop,
             "Stop" => HookEvent::Stop {
                 stop_hook_active: self.stop_hook_active.unwrap_or(false),
             },
+            "TeammateIdle" => HookEvent::TeammateIdle,
+            "TaskCompleted" => HookEvent::TaskCompleted,
             _ => HookEvent::Unknown {
                 event_name: event_name.to_string(),
             },
@@ -213,6 +237,30 @@ mod tests {
             _ => panic!("expected PreToolUse"),
         }
     }
+
+    #[test]
+    fn post_tool_use_failure_preserves_file_path_from_tool_input() {
+        let mut input = base_input();
+        input.hook_event_name = Some("PostToolUseFailure".to_string());
+        input.tool_name = Some("Edit".to_string());
+        input.tool_input = Some(ToolInput {
+            file_path: Some("apps/docs/src/error.md".to_string()),
+            path: None,
+        });
+
+        let event = input.to_event().expect("event");
+
+        match event {
+            HookEvent::PostToolUseFailure {
+                tool_name,
+                file_path,
+            } => {
+                assert_eq!(tool_name, Some("Edit".to_string()));
+                assert_eq!(file_path, Some("apps/docs/src/error.md".to_string()));
+            }
+            _ => panic!("expected PostToolUseFailure"),
+        }
+    }
 }
 
 // -----------------------------------------------------------------------------
@@ -222,6 +270,7 @@ mod tests {
 // UserPromptSubmit       → working
 // PreToolUse             → working  (heartbeat if already working)
 // PostToolUse            → working  (+ tracks file activity)
+// PostToolUseFailure     → working  (no file activity entry)
 // PermissionRequest      → waiting
 // Notification           → ready    (only idle_prompt type; others ignored)
 // PreCompact             → compacting

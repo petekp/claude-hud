@@ -76,6 +76,9 @@ final class SessionStateManager: ObservableObject {
                         self.sessionStates = merged
                     }
                     self.pruneCachedStates()
+#if DEBUG
+                    DiagnosticsSnapshotLogger.maybeCaptureStuckSessions(sessionStates: merged)
+#endif
                     if didChange {
                         self.checkForStateChanges()
                     }

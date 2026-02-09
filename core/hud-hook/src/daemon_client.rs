@@ -48,6 +48,10 @@ pub fn send_handle_event(
             tool_name,
             file_path,
         } => (tool_name.clone(), file_path.clone(), None, None),
+        HookEvent::PostToolUseFailure {
+            tool_name,
+            file_path,
+        } => (tool_name.clone(), file_path.clone(), None, None),
         HookEvent::Notification { notification_type } => {
             (None, None, Some(notification_type.clone()), None)
         }
@@ -265,10 +269,15 @@ fn event_type_for_hook(event: &HookEvent) -> Option<EventType> {
         HookEvent::UserPromptSubmit => Some(EventType::UserPromptSubmit),
         HookEvent::PreToolUse { .. } => Some(EventType::PreToolUse),
         HookEvent::PostToolUse { .. } => Some(EventType::PostToolUse),
+        HookEvent::PostToolUseFailure { .. } => Some(EventType::PostToolUseFailure),
         HookEvent::PermissionRequest => Some(EventType::PermissionRequest),
         HookEvent::PreCompact => Some(EventType::PreCompact),
         HookEvent::Notification { .. } => Some(EventType::Notification),
+        HookEvent::SubagentStart => Some(EventType::SubagentStart),
+        HookEvent::SubagentStop => Some(EventType::SubagentStop),
         HookEvent::Stop { .. } => Some(EventType::Stop),
+        HookEvent::TeammateIdle => Some(EventType::TeammateIdle),
+        HookEvent::TaskCompleted => Some(EventType::TaskCompleted),
         HookEvent::SessionEnd => Some(EventType::SessionEnd),
         HookEvent::Unknown { .. } => None,
     }

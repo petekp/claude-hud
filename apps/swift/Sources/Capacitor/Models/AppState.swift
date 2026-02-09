@@ -307,6 +307,12 @@ class AppState: ObservableObject {
     func refreshSessionStates() {
         sessionStateManager.refreshSessionStates(for: projects)
         activeProjectResolver.resolve()
+#if DEBUG
+        DiagnosticsSnapshotLogger.updateContext(
+            activeProjectPath: activeProjectPath,
+            activeSource: activeSource
+        )
+#endif
         DebugLog.write("AppState.refreshSessionStates activeProject=\(activeProjectResolver.activeProject?.path ?? "nil") source=\(String(describing: activeProjectResolver.activeSource))")
         if let active = activeProjectResolver.activeProject {
             Telemetry.emit("active_project_resolution", "Resolved active project", payload: [

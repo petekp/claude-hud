@@ -24,6 +24,9 @@ struct DaemonSession: Decodable {
     let updatedAt: String
     let stateChangedAt: String
     let lastEvent: String?
+    let lastActivityAt: String?
+    let toolsInFlight: Int?
+    let readyReason: String?
     /// Whether the session's process is still alive.
     /// nil if pid is 0 (unknown), true if alive, false if dead.
     let isAlive: Bool?
@@ -39,6 +42,9 @@ struct DaemonSession: Decodable {
         case updatedAt = "updated_at"
         case stateChangedAt = "state_changed_at"
         case lastEvent = "last_event"
+        case lastActivityAt = "last_activity_at"
+        case toolsInFlight = "tools_in_flight"
+        case readyReason = "ready_reason"
         case isAlive = "is_alive"
     }
 }
