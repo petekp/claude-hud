@@ -229,8 +229,10 @@ User runs claude → Hooks fire → Daemon updates state.db → Swift app reads 
 - `SessionStart` → state: ready
 - `UserPromptSubmit` → state: working
 - `PermissionRequest` → state: waiting
-- `PostToolUse` → state transitions + heartbeat updates
-- `Notification` (idle_prompt) → state: ready
+- `PreToolUse` / `PostToolUse` / `PostToolUseFailure` → state transitions + heartbeat updates
+- `TaskCompleted` → state: ready
+- `Notification` (idle_prompt → ready, permission_prompt → waiting)
+- `SubagentStart` / `SubagentStop` / `TeammateIdle` → ignored by reducer
 - `Stop` → state: ready
 - `PreCompact` → state: compacting
 - `SessionEnd` → removes session from daemon state

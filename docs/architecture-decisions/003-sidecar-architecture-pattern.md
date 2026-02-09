@@ -30,7 +30,7 @@ This decision affects:
 
 1. **Leverage, Don't Duplicate**
    - Use the user's Claude Code installation as the foundation
-   - Read from `~/.claude/` where Claude Code stores config, sessions, stats
+   - Read from `~/.claude/` where Claude Code stores config, transcripts, stats
    - Invoke `claude` CLI for AI features rather than calling Anthropic API directly
    - Respect existing terminal-based workflows
 
@@ -49,7 +49,7 @@ This decision affects:
 ### In Practice
 
 ✅ **Do:**
-- Read session files from `~/.claude/projects/`
+- Read transcripts/stats from `~/.claude/projects/` (not session state)
 - Parse `~/.claude/settings.json` for config
 - Launch terminals with `claude` command
 - Use hooks to send events to the local daemon; HUD reads daemon snapshots
@@ -63,6 +63,7 @@ This decision affects:
 - Require users to configure HUD separately from Claude Code
 - Try to run Claude "inside" the HUD app
 - Build features that require Claude Code to not be installed
+- Read legacy `sessions.json`/`shell-cwd.json` files; daemon state is canonical
 
 ---
 

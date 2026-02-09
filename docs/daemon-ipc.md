@@ -163,13 +163,18 @@ Sends a single event to the daemon. The daemon validates the payload and respond
   - `user_prompt_submit`
   - `pre_tool_use`
   - `post_tool_use`
+  - `post_tool_use_failure`
   - `permission_request`
   - `pre_compact`
   - `notification`
   - `stop`
+  - `task_completed`
+  - `subagent_start`
+  - `subagent_stop`
+  - `teammate_idle`
   - `session_end`
   - `shell_cwd`
-- For session events (`session_*`, `pre_tool_use`, `post_tool_use`, `permission_request`, `pre_compact`, `notification`, `stop`): `session_id`, `pid`, and `cwd` are required.
+- For session events (`session_*`, `pre_tool_use`, `post_tool_use`, `post_tool_use_failure`, `permission_request`, `pre_compact`, `notification`, `stop`, `task_completed`, `subagent_start`, `subagent_stop`, `teammate_idle`): `session_id`, `pid`, and `cwd` are required.
 - For `notification`: `notification_type` is required.
 - For `stop`: `stop_hook_active` is required.
 - For `shell_cwd`: `pid`, `cwd`, and `tty` are required.

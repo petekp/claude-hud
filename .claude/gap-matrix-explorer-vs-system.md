@@ -24,7 +24,7 @@ The Interface Explorer is excellent at showing **topology** (what talks to what)
 |------------|--------------|-----------------|-------------------|-----------------|-----|
 | **Session States (5 states)** | ❌ No | ✅ Yes | `daemon/src/reducer.rs:6-14` | **P0 - Critical** | Explorer shows "session tracking" but never shows what states exist (Working, Ready, Idle, Compacting, Waiting) or how to recognize them |
 | **State Transition Rules** | ❌ No | ✅ Yes | `daemon/src/reducer.rs:66-120` | **P0 - Critical** | Users see "events flow in" but don't understand which events cause which state changes |
-| **Event Types (9 types)** | ⚠️ Partial | ✅ Yes | `daemon/src/reducer.rs:80-119` | **P0 - Critical** | Explorer mentions "SessionStart, PreToolUse, Stop" but doesn't show all 9 event types or their effects |
+| **Event Types (14 types)** | ⚠️ Partial | ✅ Yes | `daemon/src/reducer.rs:80-119` | **P0 - Critical** | Explorer mentions "SessionStart, PreToolUse, Stop" but doesn't show all 14 event types or their effects |
 | **Activation Policy Rules (6 ranked)** | ❌ No | ✅ Yes | `activation/policy.rs:35-42` | **P0 - Critical** | The most important selection logic is invisible: "live shells beat dead shells", "path specificity: exact > child > parent", etc. |
 | **Candidate Ranking Algorithm** | ❌ No | ✅ Yes | `activation/policy.rs:72-87` | **P0 - Critical** | Users don't see how shells are compared: `is_live.cmp().then(path_rank.cmp()).then(tmux.cmp())...` |
 | **Decision Trace Structure** | ⚠️ Partial | ✅ Yes | `activation/trace.rs:6-26` | **P1 - High** | Explorer mentions "Live Message Trace" but doesn't show structured candidate traces with rank keys |
@@ -73,15 +73,18 @@ pub enum SessionState {
 }
 
 pub fn reduce_session(current: Option<&SessionRecord>, event: &EventEnvelope) -> SessionUpdate {
-    // 9 event types mapped to state transitions
+    // 14 event types mapped to state transitions
     match event.event_type {
         EventType::SessionStart => Ready (if not active),
         EventType::UserPromptSubmit => Working,
-        EventType::PreToolUse | PostToolUse => Working,
+        EventType::PreToolUse | PostToolUse | PostToolUseFailure => Working,
         EventType::PermissionRequest => Waiting,
         EventType::PreCompact => Compacting,
         EventType::Notification(idle_prompt) => Ready,
-        EventType::Stop => Ready (if hook inactive),
+        EventType::Notification(permission_prompt) => Waiting,
+        EventType::TaskCompleted => Ready,
+        EventType::Stop => Ready (if hook inactive, event not stale),
+        EventType::SubagentStart | SubagentStop | TeammateIdle => Skip,
         EventType::SessionEnd => Delete,
         EventType::ShellCwd => Skip,
     }

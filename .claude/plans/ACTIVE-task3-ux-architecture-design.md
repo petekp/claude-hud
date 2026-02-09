@@ -17,7 +17,7 @@ From analysis of the Rust codebase:
 
 ### Session State Machine (reducer.rs)
 - **States**: Working, Ready, Idle, Compacting, Waiting
-- **Events**: SessionStart, UserPromptSubmit, PreToolUse, PostToolUse, PermissionRequest, PreCompact, Notification, Stop, SessionEnd
+- **Events**: SessionStart, UserPromptSubmit, PreToolUse, PostToolUse, PostToolUseFailure, PermissionRequest, PreCompact, Notification, Stop, TaskCompleted, SubagentStart, SubagentStop, TeammateIdle, SessionEnd
 - **Reducer logic**: reduce_session(current, event) → SessionUpdate
 - **Project resolution**: derive_project_identity from file_path or cwd
 - **State transitions**: State changes only when state differs from current

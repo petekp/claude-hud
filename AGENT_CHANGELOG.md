@@ -1,7 +1,7 @@
 # Agent Changelog
 
 > This file helps coding agents understand project evolution, key decisions,
-> and deprecated patterns. Updated: 2026-02-08
+> and deprecated patterns. Updated: 2026-02-09
 
 ## Current State Summary
 
@@ -13,9 +13,51 @@ Capacitor is a native macOS SwiftUI app (Apple Silicon, macOS 14+) that acts as 
 
 | Location | States | Reality | Since |
 |----------|--------|---------|-------|
-| docs/architecture-decisions/003-sidecar-architecture-pattern.md | “Hooks write `~/.capacitor/sessions.json` and HUD reads files.” | Daemon is the single writer; hooks/app are IPC clients; JSON is legacy/fallback only. | 2026-01 |
 
 ## Timeline
+
+### 2026-02-09 — Session Attribution Hardening + Stuck-Session Diagnostics (Completed)
+
+**What changed:**
+- Session reducer now treats `PostToolUseFailure` as Working + activity heartbeat, adds `TaskCompleted` → Ready (`ready_reason=task_completed`), and maps `permission_prompt` notifications to Waiting; SubagentStart/Stop/TeammateIdle events are ignored.
+- Stop gating loosened: stop no longer blocked by tools-in-flight or recent activity; it only skips when stop hook is active or when event timestamps are out-of-order. Stop/TaskCompleted reset `tools_in_flight`.
+- Project identity derivation now ignores `file_path` when it resolves outside the current project path to avoid cross-project attribution.
+- Daemon project aggregation can auto-ready Working sessions after 60s of tool inactivity when `tools_in_flight=0` (uses `last_activity_at` + last_event).
+- Hook registration expanded to include `PostToolUseFailure`, `TaskCompleted`, `SubagentStart/Stop`, `TeammateIdle`, with required tool matchers.
+- Added debug-only diagnostics snapshot logger writing JSONL to `~/.capacitor/daemon/diagnostic-snapshots.jsonl` for stuck Working sessions; new debug cards show daemon sessions/shells + `ready_reason`/`tools_in_flight`.
+
+**Why:**
+- Reduce stuck Working states, avoid mis-attribution from off-project file paths, and make recovery diagnosable without log spelunking.
+
+**Agent impact:**
+- For stuck-session investigations, start with diagnostics snapshots + debug session/shell cards; `ready_reason` and `tools_in_flight` explain Ready transitions.
+- Stop events are now valid readiness gates even if recent tool activity exists (unless stop hook active or timestamp is older than last activity).
+- Do not let off-project file paths override project identity; rely on cwd/project_path.
+
+**Commits:** `0ec8f85`
+
+---
+
+### 2026-02-08 — Ready Gating + Compaction Tool Tracking (Completed)
+
+**What changed:**
+- Daemon sessions now persist `last_activity_at`, `tools_in_flight`, and `ready_reason` (DB schema adds columns; snapshots + Swift decoder include fields).
+- Tools-in-flight tracking: PreToolUse increments, PostToolUse decrements, PreCompact resets; `last_activity_at` updates on tool + prompt events.
+- Ready gating added: idle_prompt notification only sets Ready when `tools_in_flight=0`; Stop sets Ready with `ready_reason=stop_gate` when stop hook not active and no agent-id metadata; recent activity and tools-in-flight originally gated Ready.
+- Compaction transitions explicitly reset `tools_in_flight` so Stop after PreCompact can set Ready without lingering tool counts.
+- Hook sender now passes `agent_id` metadata and skips subagent Stop events before daemon send.
+
+**Why:**
+- Prevent Ready transitions while tools are still running, preserve compaction correctness, and make Ready transitions explainable.
+
+**Agent impact:**
+- Use `tools_in_flight` + `ready_reason` when debugging Ready/Working edges; compaction resets tool counts.
+- DB migrations now expect sessions table to include `tools_in_flight` and `ready_reason`.
+- Stop gating uses `agent_id` metadata; subagent stop events are ignored.
+
+**Commits:** `be71dd4`
+
+---
 
 ### 2026-02-08 — Public Alpha Hardening + Terminal Support Narrowing (Completed)
 
@@ -1287,7 +1329,7 @@ Fixed terminal activation to check the daemon shell snapshot BEFORE tmux session
 
 ## Trajectory
 
-Current near-term focus (2026-02-08):
+Current near-term focus (2026-02-09):
 
 1. **Transparent UI rollout** — implement IA plan panels (state machine, policy table, candidate trace) and keep telemetry/briefing endpoints as the agent-facing hub.
 2. **Alpha release readiness** — drive `ACTIVE-alpha-release-checklist.md` and `ACTIVE-task3-ux-architecture-design.md` to completion.

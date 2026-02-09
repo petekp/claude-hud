@@ -68,10 +68,15 @@ If you prefer to configure manually, add the following hooks to your Claude sett
     "UserPromptSubmit": [{ "hooks": [{ "type": "command", "command": "CAPACITOR_DAEMON_ENABLED=1 $HOME/.local/bin/hud-hook handle", "async": true, "timeout": 30 }] }],
     "PreToolUse": [{ "matcher": "*", "hooks": [{ "type": "command", "command": "CAPACITOR_DAEMON_ENABLED=1 $HOME/.local/bin/hud-hook handle", "async": true, "timeout": 30 }] }],
     "PostToolUse": [{ "matcher": "*", "hooks": [{ "type": "command", "command": "CAPACITOR_DAEMON_ENABLED=1 $HOME/.local/bin/hud-hook handle", "async": true, "timeout": 30 }] }],
+    "PostToolUseFailure": [{ "matcher": "*", "hooks": [{ "type": "command", "command": "CAPACITOR_DAEMON_ENABLED=1 $HOME/.local/bin/hud-hook handle", "async": true, "timeout": 30 }] }],
     "PermissionRequest": [{ "matcher": "*", "hooks": [{ "type": "command", "command": "CAPACITOR_DAEMON_ENABLED=1 $HOME/.local/bin/hud-hook handle", "async": true, "timeout": 30 }] }],
     "Stop": [{ "hooks": [{ "type": "command", "command": "CAPACITOR_DAEMON_ENABLED=1 $HOME/.local/bin/hud-hook handle", "async": true, "timeout": 30 }] }],
     "PreCompact": [{ "hooks": [{ "type": "command", "command": "CAPACITOR_DAEMON_ENABLED=1 $HOME/.local/bin/hud-hook handle", "async": true, "timeout": 30 }] }],
-    "Notification": [{ "hooks": [{ "type": "command", "command": "CAPACITOR_DAEMON_ENABLED=1 $HOME/.local/bin/hud-hook handle", "async": true, "timeout": 30 }] }]
+    "Notification": [{ "hooks": [{ "type": "command", "command": "CAPACITOR_DAEMON_ENABLED=1 $HOME/.local/bin/hud-hook handle", "async": true, "timeout": 30 }] }],
+    "SubagentStart": [{ "hooks": [{ "type": "command", "command": "CAPACITOR_DAEMON_ENABLED=1 $HOME/.local/bin/hud-hook handle", "async": true, "timeout": 30 }] }],
+    "SubagentStop": [{ "hooks": [{ "type": "command", "command": "CAPACITOR_DAEMON_ENABLED=1 $HOME/.local/bin/hud-hook handle", "async": true, "timeout": 30 }] }],
+    "TeammateIdle": [{ "hooks": [{ "type": "command", "command": "CAPACITOR_DAEMON_ENABLED=1 $HOME/.local/bin/hud-hook handle", "async": true, "timeout": 30 }] }],
+    "TaskCompleted": [{ "hooks": [{ "type": "command", "command": "CAPACITOR_DAEMON_ENABLED=1 $HOME/.local/bin/hud-hook handle", "async": true, "timeout": 30 }] }]
   }
 }
 ```

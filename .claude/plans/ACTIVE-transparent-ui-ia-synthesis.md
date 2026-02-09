@@ -51,11 +51,17 @@ stateMachine: {
   states: ["Working", "Ready", "Idle", "Compacting", "Waiting"],
   transitions: [
     { from: "Ready", to: "Working", trigger: "UserPromptSubmit" },
+    { from: "*", to: "Working", trigger: "PreToolUse / PostToolUse / PostToolUseFailure" },
     { from: "Working", to: "Waiting", trigger: "PermissionRequest" },
     { from: "Working", to: "Compacting", trigger: "PreCompact" },
-    { from: "Working", to: "Ready", trigger: "Stop (hook_active=false)" },
+    { from: "Working", to: "Ready", trigger: "Stop (hook_active=false, event not stale)" },
+    { from: "*", to: "Ready", trigger: "TaskCompleted" },
+    { from: "*", to: "Ready", trigger: "Notification (idle_prompt)" },
+    { from: "*", to: "Waiting", trigger: "Notification (permission_prompt)" },
+    { from: "Working", to: "Ready", trigger: "Auto-ready (>=60s tool inactivity, tools_in_flight=0)" },
     { from: "Compacting", to: "Working", trigger: "UserPromptSubmit" },
     { from: "*", to: "Ready", trigger: "SessionStart (not active)" },
+    { from: "*", to: "—", trigger: "SubagentStart / SubagentStop / TeammateIdle (ignored)" },
     { from: "*", to: "—", trigger: "SessionEnd (delete)" },
   ],
   currentState: "Working" // live from daemon
