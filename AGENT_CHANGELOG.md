@@ -1,7 +1,7 @@
 # Agent Changelog
 
 > This file helps coding agents understand project evolution, key decisions,
-> and deprecated patterns. Updated: 2026-02-09
+> and deprecated patterns. Updated: 2026-02-09 (UI polish sprint)
 
 ## Current State Summary
 
@@ -15,6 +15,50 @@ Capacitor is a native macOS SwiftUI app (Apple Silicon, macOS 14+) that acts as 
 |----------|--------|---------|-------|
 
 ## Timeline
+
+### 2026-02-09 — UI Polish Sprint: Empty State, Brand Color, Full-Bleed Dropzone (Completed)
+
+**What changed:**
+- Redesigned empty project list with full-frame marching ants border and multi-select suggestion list. Suggestion heuristics now filter junk paths (home, `/private/tmp`, subdirectories of pinned projects, dirs without project indicators or `CLAUDE.md`). Capped at 8 suggestions.
+- Added dynamic footer CTA that transitions between default (pin/logo/plus) and contextual "Connect N Projects" when suggestions are selected. Moved suggestion selection state to AppState for cross-view coordination.
+- Polished empty state: interactive logomark knob (drag-to-rotate, hover-to-brighten), inline "browse" text link, singular/plural CTA label.
+- Codified brand color as `Color.brand` in Display P3 (`oklch(0.8647 0.2886 150.35)`). Used for empty state glow, ready status chips, and dropzone overlay.
+- Added `logo-small.pdf` for footer LogoView with vibrancy masking.
+- Added `TracklessScroller` (`NSScroller` subclass) to hide scrollbar track while preserving overlay knob, per `NSScroller.h` overlay contract.
+- Replaced `MarchingAntsBorder` empty state animation with `EmptyStateBorderGlow` (animated angular gradient with tunable parameters via DEBUG tuning panel).
+- Made dropzone overlay full-bleed: card-level `DropDelegate`s now handle `.fileURL` drags alongside `.text` reordering, bridging hover state through `AppState.isFileDragOverCard` so the overlay appears regardless of cursor position.
+- Dropzone overlay uses `.ultraThinMaterial` frosted glass backdrop with brand-colored marching ants border and spring animations.
+- **Critical fix:** marching ants use `@State` + `withAnimation(.repeatForever)` instead of `TimelineView(.animation)` — the latter re-evaluates every frame (120fps ProMotion), forcing WindowServer to re-composite material blur per-frame, which crashed the Mac and forced logout.
+- Documented WindowServer crash gotcha in `.claude/docs/gotchas.md`.
+
+**Why:**
+- Create an inviting first-run experience that actively helps users connect projects rather than presenting a blank slate.
+- Establish brand color system for consistent visual identity.
+- Full-bleed dropzone was broken: SwiftUI's nested `.onDrop` modifiers prevent parent `isTargeted` from firing when cursor enters child views. Bridging via AppState resolves this.
+
+**Agent impact:**
+- `Color.brand` is the canonical green accent; prefer it over `Color.hudAccent` for new brand-touch UI.
+- **Never use `TimelineView(.animation)` near material blur** — use `@State` + `withAnimation(.repeatForever)` instead (Core Animation interpolates without view body re-evaluation).
+- `TracklessScroller` hides scrollbar tracks; use via `ScrollViewScrollerInsetsConfigurator`.
+- `EmptyStateBorderGlow` is tunable via `GlassConfig` in debug builds.
+- For nested `.onDrop` scenarios, use the `DockDropDelegate`/`ProjectDropDelegate` pattern: card-level delegates detect external file drags via `draggedProject == nil` and bridge state through AppState.
+- Suggestion heuristics live in `AppState.suggestProjectPaths()` — add project indicators there when new patterns emerge.
+
+**Files changed:**
+- `ContentView.swift` — full-bleed dropzone overlay, `MarchingAntsBorder` struct, `EmptyStateBorderGlow`
+- `AppState.swift` — `isFileDragOverCard`, `handleFileURLDrop()`, suggestion selection state, `addSuggestedProjects()`
+- `ProjectsView.swift` — empty state redesign, `EmptyProjectsView`, `SuggestedProjectsBanner`, logomark knob
+- `DockLayoutView.swift` — `DockDropDelegate` dual-type handling
+- `FooterView.swift` — dynamic CTA, logo-small
+- `HeaderView.swift` — removed connect button
+- `Colors.swift` — `Color.brand` definition
+- `ScrollViewScrollerInsetsConfigurator.swift` — `TracklessScroller`
+- `GlassConfig.swift`, `TuningSections.swift` — glow tuning panel
+- `.claude/docs/gotchas.md` — TimelineView + material blur crash
+
+**Commits:** `9ef6f85`, `e8bc568`, `cd538fd`, `c255264`, `aa78867`
+
+---
 
 ### 2026-02-09 — Session Attribution Hardening + Stuck-Session Diagnostics (Completed)
 
@@ -1277,6 +1321,8 @@ Fixed terminal activation to check the daemon shell snapshot BEFORE tmux session
 
 | Don't | Do Instead | Deprecated Since |
 |-------|------------|------------------|
+| Use `TimelineView(.animation)` near material blur | Use `@State` + `withAnimation(.repeatForever)` (Core Animation, no view re-eval) | 2026-02-09 |
+| Use `Color.hudAccent` for brand-touch UI | Use `Color.brand` (Display P3 green) | 2026-02-09 |
 | Use `#if ALPHA` compile-time feature gating | Use runtime `AppConfig` + `FeatureFlags` (env/Info.plist/config) | 2026-02-08 |
 | Read or write `~/.capacitor/sessions.json` as primary state | Use daemon IPC (`get_sessions`, `get_project_states`) | 2026-02 |
 | Write lock directories as a liveness source | Use daemon `get_process_liveness` | 2026-02 |
@@ -1331,9 +1377,10 @@ Fixed terminal activation to check the daemon shell snapshot BEFORE tmux session
 
 Current near-term focus (2026-02-09):
 
-1. **Transparent UI rollout** — implement IA plan panels (state machine, policy table, candidate trace) and keep telemetry/briefing endpoints as the agent-facing hub.
-2. **Alpha release readiness** — drive `ACTIVE-alpha-release-checklist.md` and `ACTIVE-task3-ux-architecture-design.md` to completion.
-3. **Workstreams polish** — continue refining managed worktree UX and activation matching edge cases as they surface.
+1. **UI polish sprint** — empty state onboarding, brand color system, full-bleed dropzone, and trackless scrollbars are shipped. Next: iterate on card visuals, populated-state UX, and dock layout refinements.
+2. **Transparent UI rollout** — implement IA plan panels (state machine, policy table, candidate trace) and keep telemetry/briefing endpoints as the agent-facing hub.
+3. **Alpha release readiness** — drive `ACTIVE-alpha-release-checklist.md` and `ACTIVE-task3-ux-architecture-design.md` to completion.
+4. **Workstreams polish** — continue refining managed worktree UX and activation matching edge cases as they surface.
 
 Previously planned trajectory (largely complete):
 
