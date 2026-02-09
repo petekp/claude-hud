@@ -110,7 +110,7 @@ private struct ConnectProjectsCTAButton: View {
 
     var body: some View {
         Button(action: action) {
-            Text("Connect \(count) Project\(count == 1 ? "" : "s")")
+            Text(count > 1 ? "Connect \(count) Projects" : "Connect Project")
                 .font(.system(size: 12, weight: .semibold))
                 .foregroundColor(.white.opacity(isHovered ? 1.0 : 0.9))
                 .padding(.horizontal, 20)

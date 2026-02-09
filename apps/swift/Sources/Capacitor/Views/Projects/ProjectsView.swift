@@ -429,10 +429,53 @@ struct EmptyProjectsView: View {
     @State private var hoveredPath: String?
 
     @State private var browseHovered = false
+    @State private var knobRotation: Double = 0
+    @State private var knobDragBase: Double = 0
+    @State private var knobHovered = false
+
+    private static let cachedLogomark: NSImage? = {
+        guard let url = ResourceBundle.url(forResource: "logomark", withExtension: "pdf") else {
+            return nil
+        }
+        return NSImage(contentsOf: url)
+    }()
+
+    @ViewBuilder
+    private var logomark: some View {
+        if let nsImage = Self.cachedLogomark {
+            Image(nsImage: nsImage)
+                .resizable()
+                .frame(width: 32, height: 32)
+                .foregroundStyle(.white.opacity(knobHovered ? 0.7 : 0.5))
+                .rotationEffect(.degrees(knobRotation))
+                .scaleEffect(knobHovered ? 1.08 : 1.0)
+                .animation(.spring(response: 0.25, dampingFraction: 0.6), value: knobHovered)
+                .gesture(
+                    DragGesture(minimumDistance: 2)
+                        .onChanged { value in
+                            // Vertical drag: up = counter-clockwise, down = clockwise
+                            // Sensitivity: ~1 degree per 2pt of drag
+                            let delta = value.translation.height * 0.5
+                            knobRotation = knobDragBase + delta
+                        }
+                        .onEnded { _ in
+                            knobDragBase = knobRotation
+                        },
+                )
+                .onHover { hovering in
+                    knobHovered = hovering
+                }
+                .preventWindowDrag()
+                .help("Give it a spin")
+                .accessibilityLabel("Capacitor logomark")
+        }
+    }
 
     var body: some View {
         VStack(spacing: 20) {
-            VStack(spacing: 6) {
+            VStack(spacing: 10) {
+                logomark
+
                 Text("Connect your projects")
                     .font(.system(size: 18, weight: .semibold))
                     .foregroundColor(.white.opacity(0.7))
