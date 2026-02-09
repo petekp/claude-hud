@@ -181,7 +181,7 @@ struct LogoView: View {
     private let baseHeight: CGFloat = 14
 
     private static let cachedLogoImage: NSImage? = {
-        guard let url = ResourceBundle.url(forResource: "logo", withExtension: "pdf") else {
+        guard let url = ResourceBundle.url(forResource: "logo-small", withExtension: "pdf") else {
             return nil
         }
         return NSImage(contentsOf: url)
@@ -248,6 +248,12 @@ struct LogoView: View {
         @ViewBuilder
         private func logoContent(nsImage: NSImage) -> some View {
             if config.logoUseVibrancy {
+                let logoShape = Image(nsImage: nsImage)
+                    .renderingMode(.template)
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+                    .frame(height: baseHeight * config.logoScale)
+
                 ZStack {
                     VibrancyView(
                         material: selectedMaterial,
@@ -255,12 +261,9 @@ struct LogoView: View {
                         isEmphasized: config.logoEmphasized,
                         forceDarkAppearance: config.logoForceDarkAppearance,
                     )
+                    .mask(logoShape)
 
-                    Image(nsImage: nsImage)
-                        .renderingMode(.template)
-                        .resizable()
-                        .aspectRatio(contentMode: .fit)
-                        .frame(height: baseHeight * config.logoScale)
+                    logoShape
                         .foregroundStyle(.white.opacity(config.logoOpacity))
                         .blendMode(selectedSwiftUIBlendMode)
                 }

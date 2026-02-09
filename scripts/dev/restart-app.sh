@@ -214,6 +214,12 @@ if [ -f "$SWIFT_DEBUG_DIR/hud-hook" ]; then
     cp "$SWIFT_DEBUG_DIR/hud-hook" "$DEBUG_APP/Contents/Resources/"
 fi
 
+# Replace SPM resource bundle with the freshly-built one.
+RESOURCE_BUNDLE="$SWIFT_DEBUG_DIR/Capacitor_Capacitor.bundle"
+if [ -d "$RESOURCE_BUNDLE" ]; then
+    cp -R "$RESOURCE_BUNDLE" "$DEBUG_APP/Contents/Resources/"
+fi
+
 # Replace frameworks with the debug build outputs.
 rm -rf "$DEBUG_APP/Contents/Frameworks/Sparkle.framework"
 cp -R "$SPARKLE_FRAMEWORK" "$DEBUG_APP/Contents/Frameworks/"

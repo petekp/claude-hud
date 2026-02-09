@@ -41,6 +41,7 @@ let package = Package(
                 .process("Resources/Assets.xcassets"),
                 .process("Resources/logomark.pdf"),
                 .process("Resources/logo.pdf"),
+                .process("Resources/logo-small.pdf"),
             ],
             linkerSettings: [
                 .linkedLibrary("hud_core"),

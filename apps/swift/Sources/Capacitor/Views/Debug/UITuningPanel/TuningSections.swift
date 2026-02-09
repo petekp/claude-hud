@@ -498,7 +498,7 @@ import SwiftUI
         }
 
         private func resetPanel() {
-            config.panelTintOpacity = 0.18
+            config.panelTintOpacity = 0.43
             config.panelCornerRadius = 18.87
             config.panelBorderOpacity = 0.14
             config.panelHighlightOpacity = 0.12
@@ -590,8 +590,8 @@ import SwiftUI
         }
 
         private func resetReady() {
-            config.statusReadyHue = 0.406
-            config.statusReadySaturation = 0.83
+            config.statusReadyHue = 0.369
+            config.statusReadySaturation = 0.70
             config.statusReadyBrightness = 1.00
         }
 
@@ -682,20 +682,76 @@ import SwiftUI
         }
 
         private func resetSizeOpacity() {
-            config.logoScale = 0.90
-            config.logoOpacity = 1.0
+            config.logoScale = 0.84
+            config.logoOpacity = 0.22
         }
 
         private func resetBlendMode() {
-            config.logoSwiftUIBlendMode = 2
+            config.logoSwiftUIBlendMode = 3
         }
 
         private func resetVibrancy() {
             config.logoUseVibrancy = true
-            config.logoMaterialType = 0
-            config.logoBlendingMode = 1
+            config.logoMaterialType = 2
+            config.logoBlendingMode = 0
             config.logoEmphasized = false
             config.logoForceDarkAppearance = true
+        }
+    }
+
+    // MARK: - Empty State Glow
+
+    struct EmptyStateGlowSection: View {
+        @ObservedObject var config: GlassConfig
+
+        var body: some View {
+            StickySection(title: "Border Glow", onReset: resetGlow) {
+                TuningRow(label: "Speed (cycle)", value: $config.emptyGlowSpeed, range: 1 ... 20)
+                TuningRow(
+                    label: "Pulse Count",
+                    value: .init(
+                        get: { Double(config.emptyGlowPulseCount) },
+                        set: { config.emptyGlowPulseCount = Int($0) },
+                    ),
+                    range: 1 ... 8,
+                    format: "%.0f",
+                )
+                TuningRow(label: "Base Opacity", value: $config.emptyGlowBaseOpacity, range: 0 ... 0.5)
+                TuningRow(label: "Pulse Range", value: $config.emptyGlowPulseRange, range: 0 ... 1)
+
+                SectionDivider()
+
+                Text("Stroke")
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundColor(.white.opacity(0.5))
+
+                TuningRow(label: "Inner Width", value: $config.emptyGlowInnerWidth, range: 0.1 ... 4)
+                TuningRow(label: "Outer Width", value: $config.emptyGlowOuterWidth, range: 0.5 ... 8)
+                TuningRow(label: "Inner Blur", value: $config.emptyGlowInnerBlur, range: 0 ... 6)
+                TuningRow(label: "Outer Blur", value: $config.emptyGlowOuterBlur, range: 0 ... 8)
+
+                SectionDivider()
+
+                Text("Peak Envelope")
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundColor(.white.opacity(0.5))
+
+                TuningRow(label: "Fade In Zone", value: $config.emptyGlowFadeInZone, range: 0.01 ... 0.5)
+                TuningRow(label: "Fade Out Power", value: $config.emptyGlowFadeOutPower, range: 1 ... 10)
+            }
+        }
+
+        private func resetGlow() {
+            config.emptyGlowSpeed = 3.21
+            config.emptyGlowPulseCount = 4
+            config.emptyGlowBaseOpacity = 0.11
+            config.emptyGlowPulseRange = 0.59
+            config.emptyGlowInnerWidth = 0.91
+            config.emptyGlowOuterWidth = 1.21
+            config.emptyGlowInnerBlur = 0.27
+            config.emptyGlowOuterBlur = 4.19
+            config.emptyGlowFadeInZone = 0.15
+            config.emptyGlowFadeOutPower = 1.0
         }
     }
 

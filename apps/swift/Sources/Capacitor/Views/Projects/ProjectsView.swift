@@ -190,6 +190,7 @@ struct ProjectsView: View {
             ScrollViewScrollerInsetsConfigurator(
                 topInset: scrollbarInset,
                 bottomInset: scrollbarInset,
+                hideTrack: true,
             ),
         )
         .background(floatingMode ? Color.clear : Color.hudBackground)
@@ -384,38 +385,171 @@ struct PausedSectionHeader: View {
     }
 }
 
-// MARK: - Marching Ants Border
+// MARK: - Empty State Border Glow
 
-struct MarchingAntsBorder: View {
+struct EmptyStateBorderGlow: View {
     @Environment(\.floatingMode) private var floatingMode
     @Environment(\.prefersReducedMotion) private var reduceMotion
-    @State private var dashPhase: CGFloat = 0
 
-    private let dashLength: CGFloat = 8
-    private let gapLength: CGFloat = 6
+    #if DEBUG
+        @ObservedObject private var config = GlassConfig.shared
+    #endif
+
+    private var cornerRadius: CGFloat {
+        WindowCornerRadius.value(floatingMode: floatingMode)
+    }
+
+    /// Tunable parameters — reads GlassConfig in DEBUG, constants in RELEASE
+    private var speed: Double {
+        #if DEBUG
+            config.emptyGlowSpeed
+        #else
+            3.21
+        #endif
+    }
+
+    private var pulseCount: Int {
+        #if DEBUG
+            config.emptyGlowPulseCount
+        #else
+            4
+        #endif
+    }
+
+    private var glowBaseOpacity: Double {
+        #if DEBUG
+            config.emptyGlowBaseOpacity
+        #else
+            0.11
+        #endif
+    }
+
+    private var glowPulseRange: Double {
+        #if DEBUG
+            config.emptyGlowPulseRange
+        #else
+            0.59
+        #endif
+    }
+
+    private var innerWidth: Double {
+        #if DEBUG
+            config.emptyGlowInnerWidth
+        #else
+            0.91
+        #endif
+    }
+
+    private var outerWidth: Double {
+        #if DEBUG
+            config.emptyGlowOuterWidth
+        #else
+            1.21
+        #endif
+    }
+
+    private var innerBlur: Double {
+        #if DEBUG
+            config.emptyGlowInnerBlur
+        #else
+            0.27
+        #endif
+    }
+
+    private var outerBlur: Double {
+        #if DEBUG
+            config.emptyGlowOuterBlur
+        #else
+            4.19
+        #endif
+    }
+
+    private var fadeInZone: Double {
+        #if DEBUG
+            config.emptyGlowFadeInZone
+        #else
+            0.15
+        #endif
+    }
+
+    private var fadeOutPower: Double {
+        #if DEBUG
+            config.emptyGlowFadeOutPower
+        #else
+            1.0
+        #endif
+    }
 
     var body: some View {
-        let cornerRadius = WindowCornerRadius.value(floatingMode: floatingMode)
-        let inset: CGFloat = floatingMode ? 5 : 3
+        if reduceMotion {
+            RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                .strokeBorder(Color.brand.opacity(0.2), lineWidth: 1)
+                .allowsHitTesting(false)
+        } else {
+            TimelineView(.animation) { timeline in
+                let time = timeline.date.timeIntervalSinceReferenceDate
+                let phase = time.truncatingRemainder(dividingBy: speed) / speed
+                let rotationAngle = Angle(degrees: time.truncatingRemainder(dividingBy: speed * 2) / (speed * 2) * 360)
+                let intensity = peakIntensity(phase: phase, count: pulseCount)
+                let opacity = glowBaseOpacity + intensity * glowPulseRange
 
-        RoundedRectangle(cornerRadius: max(cornerRadius - inset, 0), style: .continuous)
-            .strokeBorder(
-                style: StrokeStyle(
-                    lineWidth: 1.5,
-                    lineCap: .round,
-                    dash: [dashLength, gapLength],
-                    dashPhase: dashPhase,
-                ),
-            )
-            .foregroundStyle(Color.hudAccent.opacity(0.2))
-            .padding(inset)
-            .allowsHitTesting(false)
-            .onAppear {
-                guard !reduceMotion else { return }
-                withAnimation(.linear(duration: 1.5).repeatForever(autoreverses: false)) {
-                    dashPhase = dashLength + gapLength
+                ZStack {
+                    RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                        .strokeBorder(
+                            AngularGradient(
+                                gradient: Gradient(stops: [
+                                    .init(color: Color.brand.opacity(opacity * 0.3), location: 0.0),
+                                    .init(color: Color.brand.opacity(opacity), location: 0.15),
+                                    .init(color: Color.brand.opacity(opacity * 0.5), location: 0.25),
+                                    .init(color: Color.brand.opacity(opacity * 0.2), location: 0.4),
+                                    .init(color: Color.brand.opacity(opacity * 0.1), location: 0.5),
+                                    .init(color: Color.brand.opacity(opacity * 0.2), location: 0.6),
+                                    .init(color: Color.brand.opacity(opacity * 0.5), location: 0.75),
+                                    .init(color: Color.brand.opacity(opacity), location: 0.85),
+                                    .init(color: Color.brand.opacity(opacity * 0.3), location: 1.0),
+                                ]),
+                                center: .center,
+                                angle: rotationAngle,
+                            ),
+                            lineWidth: innerWidth,
+                        )
+                        .blur(radius: innerBlur)
+
+                    RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                        .strokeBorder(
+                            AngularGradient(
+                                gradient: Gradient(stops: [
+                                    .init(color: Color.brand.opacity(opacity * 0.2), location: 0.0),
+                                    .init(color: Color.brand.opacity(opacity * 0.8), location: 0.15),
+                                    .init(color: Color.brand.opacity(opacity * 0.3), location: 0.25),
+                                    .init(color: Color.brand.opacity(opacity * 0.1), location: 0.5),
+                                    .init(color: Color.brand.opacity(opacity * 0.3), location: 0.75),
+                                    .init(color: Color.brand.opacity(opacity * 0.8), location: 0.85),
+                                    .init(color: Color.brand.opacity(opacity * 0.2), location: 1.0),
+                                ]),
+                                center: .center,
+                                angle: rotationAngle + Angle(degrees: 180),
+                            ),
+                            lineWidth: outerWidth,
+                        )
+                        .blur(radius: outerBlur)
                 }
+                .blendMode(.plusLighter)
             }
+            .allowsHitTesting(false)
+        }
+    }
+
+    private func peakIntensity(phase: Double, count: Int) -> Double {
+        var peak: Double = 0
+        for i in 0 ..< count {
+            let stagger = Double(i) / Double(count)
+            let ringPhase = (phase + stagger).truncatingRemainder(dividingBy: 1.0)
+            let fadeIn = min(ringPhase / fadeInZone, 1.0)
+            let fadeOut = pow(1.0 - ringPhase, fadeOutPower)
+            peak = max(peak, fadeIn * fadeOut)
+        }
+        return peak
     }
 }
 

@@ -73,7 +73,7 @@ class GlassConfig: ObservableObject {
     }
 
     // Panel background
-    @Published var panelTintOpacity: Double = 0.18
+    @Published var panelTintOpacity: Double = 0.43
     @Published var panelCornerRadius: Double = 18.87
     @Published var panelBorderOpacity: Double = 0.14
     @Published var panelHighlightOpacity: Double = 0.12
@@ -105,22 +105,22 @@ class GlassConfig: ObservableObject {
 
     // MARK: - Logo Settings
 
-    @Published var logoScale: Double = 0.90
-    @Published var logoOpacity: Double = 1.0
+    @Published var logoScale: Double = 0.84
+    @Published var logoOpacity: Double = 0.22
 
     // Logo vibrancy (NSVisualEffectView)
     @Published var logoUseVibrancy: Bool = true
-    @Published var logoMaterialType: Int = 0 // 0=hudWindow, 1=popover, 2=menu, 3=sidebar, 4=fullScreenUI
-    @Published var logoBlendingMode: Int = 1 // 0=behindWindow, 1=withinWindow
+    @Published var logoMaterialType: Int = 2 // 0=hudWindow, 1=popover, 2=menu, 3=sidebar, 4=fullScreenUI
+    @Published var logoBlendingMode: Int = 0 // 0=behindWindow, 1=withinWindow
     @Published var logoEmphasized: Bool = false
     @Published var logoForceDarkAppearance: Bool = true
 
     /// Logo SwiftUI blend mode
-    @Published var logoSwiftUIBlendMode: Int = 2 // 0=normal, 1=plusLighter, 2=softLight, 3=overlay, 4=screen, 5=multiply, 6=difference
+    @Published var logoSwiftUIBlendMode: Int = 3 // 0=normal, 1=plusLighter, 2=softLight, 3=overlay, 4=screen, 5=multiply, 6=difference
 
-    // Status Colors - Ready (cyan-green)
-    @Published var statusReadyHue: Double = 0.406
-    @Published var statusReadySaturation: Double = 0.83
+    // Status Colors - Ready (brand green, P3 approx in HSB)
+    @Published var statusReadyHue: Double = 0.369
+    @Published var statusReadySaturation: Double = 0.70
     @Published var statusReadyBrightness: Double = 1.00
 
     // Status Colors - Working (yellow/orange)
@@ -215,6 +215,19 @@ class GlassConfig: ObservableObject {
     @Published var workingBorderPulseIntensity: Double = 0.50
     @Published var workingBorderPulseSpeed: Double = 2.21
     @Published var workingBorderBlurAmount: Double = 8.0
+
+    // MARK: - Empty State Border Glow
+
+    @Published var emptyGlowSpeed: Double = 3.21
+    @Published var emptyGlowPulseCount: Int = 4
+    @Published var emptyGlowBaseOpacity: Double = 0.11
+    @Published var emptyGlowPulseRange: Double = 0.59
+    @Published var emptyGlowInnerWidth: Double = 0.91
+    @Published var emptyGlowOuterWidth: Double = 1.21
+    @Published var emptyGlowInnerBlur: Double = 0.27
+    @Published var emptyGlowOuterBlur: Double = 4.19
+    @Published var emptyGlowFadeInZone: Double = 0.15
+    @Published var emptyGlowFadeOutPower: Double = 1.0
 
     // MARK: - Card Interaction (Per-Pointer-Event, tuned)
 
@@ -597,7 +610,7 @@ class GlassConfig: ObservableObject {
     }
 
     func reset() {
-        panelTintOpacity = 0.18
+        panelTintOpacity = 0.43
         panelCornerRadius = 18.87
         panelBorderOpacity = 0.14
         panelHighlightOpacity = 0.12
@@ -622,17 +635,17 @@ class GlassConfig: ObservableObject {
         useEmphasizedMaterial = true
         materialType = 0
 
-        logoScale = 0.90
-        logoOpacity = 1.0
+        logoScale = 0.84
+        logoOpacity = 0.22
         logoUseVibrancy = true
-        logoMaterialType = 0
-        logoBlendingMode = 1
+        logoMaterialType = 2
+        logoBlendingMode = 0
         logoEmphasized = false
         logoForceDarkAppearance = true
-        logoSwiftUIBlendMode = 2
+        logoSwiftUIBlendMode = 3
 
-        statusReadyHue = 0.406
-        statusReadySaturation = 0.83
+        statusReadyHue = 0.369
+        statusReadySaturation = 0.70
         statusReadyBrightness = 1.00
 
         statusWorkingHue = 0.103
@@ -689,6 +702,18 @@ class GlassConfig: ObservableObject {
         waitingBorderInnerWidth = 0.50
         waitingBorderOuterWidth = 1.86
         waitingBorderOuterBlur = 0.8
+
+        // Empty state border glow
+        emptyGlowSpeed = 3.21
+        emptyGlowPulseCount = 4
+        emptyGlowBaseOpacity = 0.11
+        emptyGlowPulseRange = 0.59
+        emptyGlowInnerWidth = 0.91
+        emptyGlowOuterWidth = 1.21
+        emptyGlowInnerBlur = 0.27
+        emptyGlowOuterBlur = 4.19
+        emptyGlowFadeInZone = 0.15
+        emptyGlowFadeOutPower = 1.0
 
         // Card interaction
         cardIdleScale = 1.0
@@ -748,7 +773,7 @@ class GlassConfig: ObservableObject {
     func exportForLLM() -> String {
         let allParams: [(String, String, Double, Double)] = [
             // Panel Background
-            ("Panel", "panelTintOpacity", 0.18, panelTintOpacity),
+            ("Panel", "panelTintOpacity", 0.43, panelTintOpacity),
             ("Panel", "panelCornerRadius", 18.87, panelCornerRadius),
             ("Panel", "panelBorderOpacity", 0.14, panelBorderOpacity),
             ("Panel", "panelHighlightOpacity", 0.12, panelHighlightOpacity),
@@ -770,17 +795,17 @@ class GlassConfig: ObservableObject {
             ("Card Material", "cardForceDarkAppearance", 1.0, cardForceDarkAppearance ? 1.0 : 0.0),
             ("Card Material", "cardSwiftUIBlendMode", 5, Double(cardSwiftUIBlendMode)),
             // Logo
-            ("Logo", "logoScale", 0.90, logoScale),
-            ("Logo", "logoOpacity", 1.0, logoOpacity),
+            ("Logo", "logoScale", 0.84, logoScale),
+            ("Logo", "logoOpacity", 0.22, logoOpacity),
             ("Logo", "logoUseVibrancy", 1.0, logoUseVibrancy ? 1.0 : 0.0),
-            ("Logo", "logoMaterialType", 0, Double(logoMaterialType)),
-            ("Logo", "logoBlendingMode", 1.0, Double(logoBlendingMode)),
+            ("Logo", "logoMaterialType", 2.0, Double(logoMaterialType)),
+            ("Logo", "logoBlendingMode", 0.0, Double(logoBlendingMode)),
             ("Logo", "logoEmphasized", 0, logoEmphasized ? 1.0 : 0.0),
             ("Logo", "logoForceDarkAppearance", 1.0, logoForceDarkAppearance ? 1.0 : 0.0),
-            ("Logo", "logoSwiftUIBlendMode", 2.0, Double(logoSwiftUIBlendMode)),
+            ("Logo", "logoSwiftUIBlendMode", 3.0, Double(logoSwiftUIBlendMode)),
             // Status Colors - Ready
-            ("Status Ready", "statusReadyHue", 0.406, statusReadyHue),
-            ("Status Ready", "statusReadySaturation", 0.83, statusReadySaturation),
+            ("Status Ready", "statusReadyHue", 0.369, statusReadyHue),
+            ("Status Ready", "statusReadySaturation", 0.70, statusReadySaturation),
             ("Status Ready", "statusReadyBrightness", 1.00, statusReadyBrightness),
             // Status Colors - Working
             ("Status Working", "statusWorkingHue", 0.103, statusWorkingHue),
@@ -871,6 +896,17 @@ class GlassConfig: ObservableObject {
             ("Compacting Text", "compactingCompressOmega", 16.0, compactingCompressOmega),
             ("Compacting Text", "compactingExpandDamping", 0.8, compactingExpandDamping),
             ("Compacting Text", "compactingExpandOmega", 4.0, compactingExpandOmega),
+            // Empty State Glow
+            ("Empty Glow", "emptyGlowSpeed", 3.21, emptyGlowSpeed),
+            ("Empty Glow", "emptyGlowPulseCount", 4, Double(emptyGlowPulseCount)),
+            ("Empty Glow", "emptyGlowBaseOpacity", 0.11, emptyGlowBaseOpacity),
+            ("Empty Glow", "emptyGlowPulseRange", 0.59, emptyGlowPulseRange),
+            ("Empty Glow", "emptyGlowInnerWidth", 0.91, emptyGlowInnerWidth),
+            ("Empty Glow", "emptyGlowOuterWidth", 1.21, emptyGlowOuterWidth),
+            ("Empty Glow", "emptyGlowInnerBlur", 0.27, emptyGlowInnerBlur),
+            ("Empty Glow", "emptyGlowOuterBlur", 4.19, emptyGlowOuterBlur),
+            ("Empty Glow", "emptyGlowFadeInZone", 0.15, emptyGlowFadeInZone),
+            ("Empty Glow", "emptyGlowFadeOutPower", 1.0, emptyGlowFadeOutPower),
             // Card Interaction (tuned defaults)
             ("Card Idle", "cardIdleScale", 1.0, cardIdleScale),
             ("Card Idle", "cardIdleShadowOpacity", 0.17, cardIdleShadowOpacity),

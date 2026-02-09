@@ -52,7 +52,7 @@ struct ContentView: View {
                 }
 
                 if !appState.isLoading, appState.projects.isEmpty, !isDragHovered {
-                    MarchingAntsBorder()
+                    EmptyStateBorderGlow()
                         .transition(.opacity)
                 }
 

@@ -27,7 +27,7 @@ import SwiftUI
             case .projectCard:
                 [.appearance, .cardMaterial, .layout, .interactions, .stateTransitions, .stateEffects]
             case .panel:
-                [.panelBackground, .panelMaterial]
+                [.panelBackground, .panelMaterial, .emptyStateGlow]
             case .logo:
                 [.logoAppearance]
             case .statusColors:
@@ -45,6 +45,7 @@ import SwiftUI
         case stateEffects = "State Effects"
         case panelBackground = "Background"
         case panelMaterial = "Panel Material"
+        case emptyStateGlow = "Empty State Glow"
         case logoAppearance = "Size & Opacity"
         case allStates = "All States"
 
@@ -55,6 +56,7 @@ import SwiftUI
         var displayName: String {
             switch self {
             case .cardMaterial, .panelMaterial: "Material"
+            case .emptyStateGlow: "Empty State"
             default: rawValue
             }
         }
@@ -69,6 +71,7 @@ import SwiftUI
             case .stateEffects: "sparkles"
             case .panelBackground: "square.fill"
             case .panelMaterial: "cube.transparent"
+            case .emptyStateGlow: "sparkle"
             case .logoAppearance: "textformat.size"
             case .allStates: "circle.hexagongrid"
             }
@@ -77,7 +80,7 @@ import SwiftUI
         var parent: TuningCategory {
             switch self {
             case .appearance, .cardMaterial, .layout, .interactions, .stateTransitions, .stateEffects: .projectCard
-            case .panelBackground, .panelMaterial: .panel
+            case .panelBackground, .panelMaterial, .emptyStateGlow: .panel
             case .logoAppearance: .logo
             case .allStates: .statusColors
             }
@@ -239,6 +242,8 @@ import SwiftUI
                 PanelBackgroundSection(config: config)
             case .panelMaterial:
                 PanelMaterialSection(config: config)
+            case .emptyStateGlow:
+                EmptyStateGlowSection(config: config)
             case .logoAppearance:
                 LogoAppearanceSection(config: config)
             case .allStates:

@@ -2,6 +2,10 @@ import AppKit
 import SwiftUI
 
 extension Color {
+    /// Brand — oklch(0.8647 0.2886 150.35) in Display P3
+    /// Out-of-sRGB-gamut green; all Apple Silicon Macs support P3.
+    static let brand = Color(.displayP3, red: 0.302, green: 0.997, blue: 0.450)
+
     // Dark mode background (primary)
     static let hudBackground = Color(hue: 260 / 360, saturation: 0.045, brightness: 0.11)
     static let hudCard = Color(hue: 260 / 360, saturation: 0.055, brightness: 0.145)
@@ -9,8 +13,12 @@ extension Color {
 
     /// Status colors - driven by GlassConfig
     static var statusReady: Color {
-        let config = GlassConfig.shared
-        return Color(hue: config.statusReadyHue, saturation: config.statusReadySaturation, brightness: config.statusReadyBrightness)
+        #if DEBUG
+            let config = GlassConfig.shared
+            return Color(hue: config.statusReadyHue, saturation: config.statusReadySaturation, brightness: config.statusReadyBrightness)
+        #else
+            return .brand
+        #endif
     }
 
     static var statusWorking: Color {
