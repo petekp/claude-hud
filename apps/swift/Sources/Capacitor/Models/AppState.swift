@@ -294,6 +294,9 @@ class AppState: ObservableObject {
             projects = dashboard?.projects ?? []
             if projects.isEmpty, suggestedProjects.isEmpty {
                 refreshSuggestedProjects()
+            } else if !projects.isEmpty, !suggestedProjects.isEmpty {
+                suggestedProjects = []
+                selectedSuggestedPaths = []
             }
             activeProjectResolver.updateProjects(projects)
             refreshSessionStates()
@@ -484,24 +487,6 @@ class AppState: ObservableObject {
         } catch {
             DebugLog.write("AppState.refreshSuggestedProjects error=\(error.localizedDescription)")
             suggestedProjects = []
-        }
-    }
-
-    func dismissSuggestedProjects() {
-        suggestedProjects = []
-        selectedSuggestedPaths = []
-    }
-
-    func addSuggestedProject(_ suggestion: SuggestedProject) {
-        guard let engine else { return }
-        do {
-            try engine.addProject(path: suggestion.path)
-            prependToProjectOrder(suggestion.path)
-            suggestedProjects.removeAll { $0.path == suggestion.path }
-            loadDashboard()
-            toast = ToastMessage("Connected \(suggestion.name)")
-        } catch {
-            toast = ToastMessage(error.localizedDescription, isError: true)
         }
     }
 

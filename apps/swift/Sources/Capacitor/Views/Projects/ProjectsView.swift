@@ -140,12 +140,6 @@ struct ProjectsView: View {
                                 }
                             }
                         }
-
-                        if !appState.suggestedProjects.isEmpty {
-                            SuggestedProjectsBanner()
-                                .padding(.top, 12)
-                                .transition(.opacity.combined(with: .move(edge: .bottom)))
-                        }
                     }
                 }
                 .padding(.leading, listHorizontalPadding)
@@ -733,70 +727,6 @@ struct EmptyProjectsView: View {
                 hoveredPath = hovering ? suggestion.path : nil
             }
         }
-    }
-}
-
-// MARK: - Suggested Projects Banner (in-list)
-
-struct SuggestedProjectsBanner: View {
-    @EnvironmentObject var appState: AppState
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Text("Suggested")
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundColor(.white.opacity(0.4))
-
-                Spacer()
-
-                Button("Dismiss") {
-                    withAnimation(.easeOut(duration: 0.2)) {
-                        appState.dismissSuggestedProjects()
-                    }
-                }
-                .font(.system(size: 11, weight: .medium))
-                .foregroundColor(.white.opacity(0.3))
-                .buttonStyle(.plain)
-            }
-
-            ForEach(appState.suggestedProjects, id: \.path) { suggestion in
-                Button {
-                    withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
-                        appState.addSuggestedProject(suggestion)
-                    }
-                } label: {
-                    HStack(spacing: 8) {
-                        Image(systemName: "plus.circle")
-                            .font(.system(size: 11))
-                            .foregroundColor(Color.hudAccent.opacity(0.5))
-
-                        Text(suggestion.name)
-                            .font(.system(size: 12, weight: .medium))
-                            .foregroundColor(.white.opacity(0.6))
-
-                        Text(suggestion.displayPath)
-                            .font(.system(size: 10, design: .monospaced))
-                            .foregroundColor(.white.opacity(0.3))
-                            .lineLimit(1)
-                            .truncationMode(.middle)
-
-                        Spacer()
-                    }
-                    .padding(.vertical, 3)
-                }
-                .buttonStyle(.plain)
-            }
-        }
-        .padding(12)
-        .background(
-            RoundedRectangle(cornerRadius: 10)
-                .fill(Color.white.opacity(0.03)),
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 10)
-                .strokeBorder(Color.white.opacity(0.06), lineWidth: 0.5),
-        )
     }
 }
 
