@@ -369,6 +369,8 @@ struct CapacitorApp: App {
 #endif
 
 class AppDelegate: NSObject, NSApplicationDelegate {
+    private var windowObserver: NSObjectProtocol?
+
     func applicationDidFinishLaunching(_: Notification) {
         // Ensure the app can be activated and receive focus
         NSApp.setActivationPolicy(.regular)
@@ -376,6 +378,16 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // Re-validate hook setup on every launch
         // If hooks aren't configured, reset setupComplete to show WelcomeView
         validateHookSetup()
+
+        // Lift subsidiary windows (Settings, About, Sparkle) above the main window
+        // when always-on-top is active, so they aren't hidden behind it
+        windowObserver = NotificationCenter.default.addObserver(
+            forName: NSWindow.didBecomeKeyNotification,
+            object: nil,
+            queue: .main,
+        ) { notification in
+            Self.liftSubsidiaryWindowIfNeeded(notification.object as? NSWindow)
+        }
     }
 
     /// Shows a custom About panel with the Capacitor logomark and version info
@@ -471,6 +483,23 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         return false
+    }
+
+    /// When always-on-top is active, subsidiary windows (Settings, About, Sparkle
+    /// update dialogs) are created at `.normal` level and get hidden behind the
+    /// `.floating` main window. This lifts them one level above so they stay visible.
+    private static func liftSubsidiaryWindowIfNeeded(_ window: NSWindow?) {
+        guard let window else { return }
+
+        let alwaysOnTop = UserDefaults.standard.bool(forKey: "alwaysOnTop")
+        guard alwaysOnTop else { return }
+
+        // Find the main content window — it's the one we set to .floating
+        let mainWindow = NSApp.windows.first { $0.level == .floating }
+        guard window !== mainWindow else { return }
+
+        // Lift this subsidiary window above the main floating window
+        window.level = NSWindow.Level(NSWindow.Level.floating.rawValue + 1)
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {

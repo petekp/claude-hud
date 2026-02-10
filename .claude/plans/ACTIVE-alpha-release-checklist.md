@@ -22,13 +22,13 @@ These features exist in the codebase but are **out of scope** for alpha.
 ## 2. Core Features — Must Work Reliably
 
 ### Claude Code Support
-- [ ] Session state detection works end-to-end (Working, Ready, Waiting, Compacting, Idle)
+- [x] Session state detection works end-to-end (Working, Ready, Waiting, Compacting, Idle)
 - [x] Stale session detection (>24hr in ready state) displays correctly
-- [ ] State change animations (flashing/pulsing indicators) are smooth
+- [x] State change animations (flashing/pulsing indicators) are smooth
 - [x] Ready chime plays correctly when a session becomes ready
 
 ### Terminal Support (Ghostty, iTerm2, Terminal.app only)
-- [ ] **Ghostty** — One-click activation, tab selection works
+- [x] **Ghostty** — One-click activation, tab selection works
 - [ ] **iTerm2** — One-click activation, AppleScript tab selection works
 - [ ] **Terminal.app** — One-click activation, AppleScript tab selection works
 - [x] **Hide/remove other terminals from UI** — Alacritty, kitty, Warp, IDE terminals should not appear as options in alpha (or at minimum, mark as unsupported)
@@ -109,14 +109,15 @@ The current `WelcomeView` is step-by-step with hook installation + shell setup. 
 ### Sparkle Auto-Updates
  - [x] SUFeedURL configured in Info.plist with valid appcast URL (set in build-distribution.sh)
  - [x] SUPublicEDKey set for signature verification (set in build-distribution.sh)
-- [ ] "Check for Updates..." menu item works
-- [ ] Automatic update check on launch (configurable in Settings)
-- [ ] Test full update cycle: publish appcast → app detects → downloads → installs
+- [x] "Check for Updates..." menu item works
+- [x] Automatic update check on launch (configurable in Settings)
+- [ ] Test full update cycle: publish appcast → app detects → downloads → installs (deferred — requires publishing 0.2.0-alpha.1 to appcast)
 
 ### Build & Signing
 - [ ] App is code-signed for distribution
 - [ ] App is notarized for macOS Gatekeeper
 - [ ] DMG or ZIP artifact for download
+- [ ] DMG background image — branded installer background with app icon → Applications arrow
 - [ ] Release tagged in git
 
 ### Easy Sharing
@@ -149,11 +150,11 @@ The current `WelcomeView` is step-by-step with hook installation + shell setup. 
 ### Testing
 - [ ] Fresh install test — clone repo, build, launch, full onboarding → add project → verify state tracking
 - [ ] Test with 1, 5, 10, 20+ projects — performance and layout
-- [ ] Test with no projects — empty state is helpful, not broken
-- [ ] Test dock mode at various screen widths
+- [x] Test with no projects — empty state is helpful, not broken (visual polish needed)
+- [x] Test dock mode at various screen widths
 - [ ] Test floating mode positioning and drag behavior
-- [ ] Kill/restart daemon — app recovers gracefully
-- [ ] Test with Claude Code actually running sessions — state transitions are accurate
+- [x] Kill/restart daemon — app recovers gracefully
+- [x] Test with Claude Code actually running sessions — state transitions are accurate
 
 ### Edge Cases
 - [x] Project directory deleted while tracked — app handles gracefully
