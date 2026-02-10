@@ -27,7 +27,7 @@ const SESSION_TTL_ACTIVE_SECS: i64 = 20 * 60; // Working/Waiting/Compacting
 const SESSION_TTL_READY_SECS: i64 = 30 * 60; // Ready
 const SESSION_TTL_IDLE_SECS: i64 = 10 * 60; // Idle
                                             // Ready does not auto-idle; it remains until TTL or session end.
-const SESSION_AUTO_READY_SECS: i64 = 60; // Working -> Ready when inactive and no tools are in flight.
+const SESSION_AUTO_READY_SECS: i64 = 60; // Auto-ready eligible states -> Ready when inactive and no tools are in flight.
 
 pub struct SharedState {
     db: Db,
@@ -585,8 +585,8 @@ fn effective_session_state(
     record: &SessionRecord,
     now: DateTime<Utc>,
 ) -> crate::reducer::SessionState {
-    if record.state == crate::reducer::SessionState::Working && should_auto_ready(record, now) {
-        return crate::reducer::SessionState::Ready;
+    if let Some(state) = inactivity_fallback_state(record, now) {
+        return state;
     }
     record.state.clone()
 }
@@ -605,17 +605,58 @@ fn session_timestamp(record: &SessionRecord) -> Option<DateTime<Utc>> {
     parse_rfc3339(&record.updated_at).or_else(|| parse_rfc3339(&record.state_changed_at))
 }
 
-fn should_auto_ready(record: &SessionRecord, now: DateTime<Utc>) -> bool {
-    if record.tools_in_flight > 0 {
-        return false;
+#[derive(Clone, Copy)]
+enum InactivityFallbackGuard {
+    RequireLastEvent(&'static [&'static str]),
+    InactivityOnly,
+}
+
+fn inactivity_fallback_policy(
+    state: &crate::reducer::SessionState,
+) -> Option<(crate::reducer::SessionState, InactivityFallbackGuard)> {
+    match state {
+        crate::reducer::SessionState::Working => Some((
+            crate::reducer::SessionState::Ready,
+            InactivityFallbackGuard::RequireLastEvent(&["task_completed"]),
+        )),
+        crate::reducer::SessionState::Compacting => Some((
+            crate::reducer::SessionState::Ready,
+            InactivityFallbackGuard::InactivityOnly,
+        )),
+        _ => None,
+    }
+}
+
+fn inactivity_fallback_state(
+    record: &SessionRecord,
+    now: DateTime<Utc>,
+) -> Option<crate::reducer::SessionState> {
+    let (target_state, fallback_guard) = inactivity_fallback_policy(&record.state)?;
+    if should_apply_inactivity_fallback(record, fallback_guard, now) {
+        return Some(target_state);
+    }
+    None
+}
+
+fn should_apply_inactivity_fallback(
+    record: &SessionRecord,
+    fallback_guard: InactivityFallbackGuard,
+    now: DateTime<Utc>,
+) -> bool {
+    match fallback_guard {
+        InactivityFallbackGuard::RequireLastEvent(expected_events) => {
+            let last_event = record.last_event.as_deref().unwrap_or_default();
+            // Working auto-ready should only run after an explicit completion marker.
+            // PostToolUse can occur repeatedly during an active working session and
+            // causes false Ready transitions when activity is sparse.
+            if !expected_events.contains(&last_event) {
+                return false;
+            }
+        }
+        InactivityFallbackGuard::InactivityOnly => {}
     }
 
-    let last_event = record.last_event.as_deref().unwrap_or_default();
-    let eligible_last_event = matches!(
-        last_event,
-        "post_tool_use" | "post_tool_use_failure" | "task_completed"
-    );
-    if !eligible_last_event {
+    if record.tools_in_flight > 0 {
         return false;
     }
 
@@ -623,7 +664,15 @@ fn should_auto_ready(record: &SessionRecord, now: DateTime<Utc>) -> bool {
         return false;
     };
 
-    now.signed_duration_since(last_activity).num_seconds() >= SESSION_AUTO_READY_SECS
+    if now.signed_duration_since(last_activity).num_seconds() < SESSION_AUTO_READY_SECS {
+        return false;
+    }
+
+    let Some(last_session_update) = parse_rfc3339(&record.updated_at) else {
+        return false;
+    };
+
+    now.signed_duration_since(last_session_update).num_seconds() >= SESSION_AUTO_READY_SECS
 }
 
 fn parse_rfc3339(value: &str) -> Option<DateTime<Utc>> {
@@ -693,7 +742,7 @@ mod tests {
     }
 
     #[test]
-    fn project_states_auto_ready_after_inactive_tool() {
+    fn project_states_do_not_auto_ready_after_inactive_tool() {
         let temp_dir = tempfile::tempdir().expect("temp dir");
         let db_path = temp_dir.path().join("state.db");
         let db = Db::new(db_path).expect("db init");
@@ -708,7 +757,33 @@ mod tests {
 
         let aggregates = state.project_states_snapshot().expect("project states");
         assert_eq!(aggregates.len(), 1);
-        assert_eq!(aggregates[0].state, SessionState::Ready);
+        assert_eq!(aggregates[0].state, SessionState::Working);
+    }
+
+    #[test]
+    fn project_states_keep_working_after_inactive_tool_when_session_still_working() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let db_path = temp_dir.path().join("state.db");
+        let db = Db::new(db_path).expect("db init");
+        let state = SharedState::new(db);
+
+        let stale_activity =
+            (Utc::now() - Duration::seconds(SESSION_AUTO_READY_SECS + 5)).to_rfc3339();
+        let fresh_update = (Utc::now() - Duration::seconds(2)).to_rfc3339();
+        let mut record = make_record(
+            "session-stale",
+            "/repo",
+            SessionState::Working,
+            fresh_update,
+        );
+        record.last_activity_at = Some(stale_activity);
+        record.last_event = Some("post_tool_use".to_string());
+        record.tools_in_flight = 0;
+        state.db.upsert_session(&record).expect("insert session");
+
+        let aggregates = state.project_states_snapshot().expect("project states");
+        assert_eq!(aggregates.len(), 1);
+        assert_eq!(aggregates[0].state, SessionState::Working);
     }
 
     #[test]
@@ -728,6 +803,54 @@ mod tests {
         let aggregates = state.project_states_snapshot().expect("project states");
         assert_eq!(aggregates.len(), 1);
         assert_eq!(aggregates[0].state, SessionState::Working);
+    }
+
+    #[test]
+    fn project_states_auto_ready_after_inactive_task_completed() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let db_path = temp_dir.path().join("state.db");
+        let db = Db::new(db_path).expect("db init");
+        let state = SharedState::new(db);
+
+        let stale_time = (Utc::now() - Duration::seconds(SESSION_AUTO_READY_SECS + 5)).to_rfc3339();
+        let mut record = make_record(
+            "session-working",
+            "/repo",
+            SessionState::Working,
+            stale_time,
+        );
+        record.last_activity_at = Some(record.updated_at.clone());
+        record.last_event = Some("task_completed".to_string());
+        record.tools_in_flight = 0;
+        state.db.upsert_session(&record).expect("insert session");
+
+        let aggregates = state.project_states_snapshot().expect("project states");
+        assert_eq!(aggregates.len(), 1);
+        assert_eq!(aggregates[0].state, SessionState::Ready);
+    }
+
+    #[test]
+    fn project_states_auto_ready_after_inactive_compacting() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let db_path = temp_dir.path().join("state.db");
+        let db = Db::new(db_path).expect("db init");
+        let state = SharedState::new(db);
+
+        let stale_time = (Utc::now() - Duration::seconds(SESSION_AUTO_READY_SECS + 5)).to_rfc3339();
+        let mut record = make_record(
+            "session-compacting",
+            "/repo",
+            SessionState::Compacting,
+            stale_time,
+        );
+        record.last_activity_at = Some(record.updated_at.clone());
+        record.last_event = Some("pre_compact".to_string());
+        record.tools_in_flight = 0;
+        state.db.upsert_session(&record).expect("insert session");
+
+        let aggregates = state.project_states_snapshot().expect("project states");
+        assert_eq!(aggregates.len(), 1);
+        assert_eq!(aggregates[0].state, SessionState::Ready);
     }
 
     #[test]
