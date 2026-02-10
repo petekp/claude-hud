@@ -76,28 +76,28 @@ class GlassConfig: ObservableObject {
     @Published var panelTintOpacity: Double = 0.43
     @Published var panelCornerRadius: Double = 18.87
     @Published var panelBorderOpacity: Double = 0.14
-    @Published var panelHighlightOpacity: Double = 0.12
+    @Published var panelHighlightOpacity: Double = 0.04
     @Published var panelTopHighlightOpacity: Double = 0.19
     @Published var panelShadowOpacity: Double = 0.00
     @Published var panelShadowRadius: Double = 0
     @Published var panelShadowY: Double = 0
 
     // Card background
-    @Published var cardTintOpacity: Double = 0.46
-    @Published var cardCornerRadius: Double = 17.59
-    @Published var cardBorderOpacity: Double = 0.18
-    @Published var cardHighlightOpacity: Double = 0.10
-    @Published var cardHoverBorderOpacity: Double = 0.34
-    @Published var cardHoverHighlightOpacity: Double = 0.15
+    @Published var cardTintOpacity: Double = 0.63
+    @Published var cardCornerRadius: Double = 12.95
+    @Published var cardBorderOpacity: Double = 0.16
+    @Published var cardHighlightOpacity: Double = 0.08
+    @Published var cardHoverBorderOpacity: Double = 0.49
+    @Published var cardHoverHighlightOpacity: Double = 0.00
 
     // Card material settings (NSVisualEffectView)
     @Published var cardMaterialType: Int = 0 // 0=hudWindow, 1=popover, 2=menu, 3=sidebar, 4=fullScreenUI
-    @Published var cardBlendingMode: Int = 1 // 0=behindWindow, 1=withinWindow
+    @Published var cardBlendingMode: Int = 0 // 0=behindWindow, 1=withinWindow
     @Published var cardEmphasized: Bool = true
     @Published var cardForceDarkAppearance: Bool = true
 
     /// Card SwiftUI blend mode for highlight overlay
-    @Published var cardSwiftUIBlendMode: Int = 5 // 0=normal, 1=plusLighter, 2=softLight, 3=overlay, 4=screen, 5=multiply
+    @Published var cardSwiftUIBlendMode: Int = 3 // 0=normal, 1=plusLighter, 2=softLight, 3=overlay, 4=screen, 5=multiply
 
     // Material settings
     @Published var useEmphasizedMaterial: Bool = true
@@ -283,15 +283,15 @@ class GlassConfig: ObservableObject {
 
     // MARK: - Layout Settings (Card List)
 
-    @Published var cardListSpacing: Double = 8.0 // Gap between cards in vertical list
-    @Published var cardPaddingHorizontal: Double = 12.0 // Horizontal internal padding for vertical cards
+    @Published var cardListSpacing: Double = 7.89 // Gap between cards in vertical list
+    @Published var cardPaddingHorizontal: Double = 14.56 // Horizontal internal padding for vertical cards
     @Published var cardPaddingVertical: Double = 12.0 // Vertical internal padding for vertical cards
-    @Published var listHorizontalPadding: Double = 12.0 // Horizontal padding for list container
+    @Published var listHorizontalPadding: Double = 12.16 // Horizontal padding for list container
 
     // MARK: - Layout Settings (Dock)
 
-    @Published var dockCardSpacing: Double = 14.0 // Gap between cards in horizontal dock
-    @Published var dockCardPaddingHorizontal: Double = 14.0 // Horizontal internal padding for dock cards
+    @Published var dockCardSpacing: Double = 14.52 // Gap between cards in horizontal dock
+    @Published var dockCardPaddingHorizontal: Double = 14.51 // Horizontal internal padding for dock cards
     @Published var dockCardPaddingVertical: Double = 14.0 // Vertical internal padding for dock cards
     @Published var dockHorizontalPadding: Double = 16.0 // Horizontal padding for dock container
 
@@ -613,24 +613,24 @@ class GlassConfig: ObservableObject {
         panelTintOpacity = 0.43
         panelCornerRadius = 18.87
         panelBorderOpacity = 0.14
-        panelHighlightOpacity = 0.12
+        panelHighlightOpacity = 0.04
         panelTopHighlightOpacity = 0.19
         panelShadowOpacity = 0.00
         panelShadowRadius = 0
         panelShadowY = 0
 
-        cardTintOpacity = 0.46
-        cardCornerRadius = 17.59
-        cardBorderOpacity = 0.18
-        cardHighlightOpacity = 0.10
-        cardHoverBorderOpacity = 0.34
-        cardHoverHighlightOpacity = 0.15
+        cardTintOpacity = 0.63
+        cardCornerRadius = 12.95
+        cardBorderOpacity = 0.16
+        cardHighlightOpacity = 0.08
+        cardHoverBorderOpacity = 0.49
+        cardHoverHighlightOpacity = 0.00
 
         cardMaterialType = 0
-        cardBlendingMode = 1
+        cardBlendingMode = 0
         cardEmphasized = true
         cardForceDarkAppearance = true
-        cardSwiftUIBlendMode = 5
+        cardSwiftUIBlendMode = 3
 
         useEmphasizedMaterial = true
         materialType = 0
@@ -758,12 +758,12 @@ class GlassConfig: ObservableObject {
         sectionToggleSpringResponse = 0.18
 
         // Layout
-        cardListSpacing = 8.0
-        cardPaddingHorizontal = 12.0
+        cardListSpacing = 7.89
+        cardPaddingHorizontal = 14.56
         cardPaddingVertical = 12.0
-        listHorizontalPadding = 12.0
-        dockCardSpacing = 14.0
-        dockCardPaddingHorizontal = 14.0
+        listHorizontalPadding = 12.16
+        dockCardSpacing = 14.52
+        dockCardPaddingHorizontal = 14.51
         dockCardPaddingVertical = 14.0
         dockHorizontalPadding = 16.0
 
@@ -776,24 +776,24 @@ class GlassConfig: ObservableObject {
             ("Panel", "panelTintOpacity", 0.43, panelTintOpacity),
             ("Panel", "panelCornerRadius", 18.87, panelCornerRadius),
             ("Panel", "panelBorderOpacity", 0.14, panelBorderOpacity),
-            ("Panel", "panelHighlightOpacity", 0.12, panelHighlightOpacity),
+            ("Panel", "panelHighlightOpacity", 0.04, panelHighlightOpacity),
             ("Panel", "panelTopHighlightOpacity", 0.19, panelTopHighlightOpacity),
             ("Panel", "panelShadowOpacity", 0.00, panelShadowOpacity),
             ("Panel", "panelShadowRadius", 0, panelShadowRadius),
             ("Panel", "panelShadowY", 0, panelShadowY),
             // Card Background
-            ("Card", "cardTintOpacity", 0.46, cardTintOpacity),
-            ("Card", "cardCornerRadius", 17.59, cardCornerRadius),
-            ("Card", "cardBorderOpacity", 0.18, cardBorderOpacity),
-            ("Card", "cardHighlightOpacity", 0.10, cardHighlightOpacity),
-            ("Card", "cardHoverBorderOpacity", 0.34, cardHoverBorderOpacity),
-            ("Card", "cardHoverHighlightOpacity", 0.15, cardHoverHighlightOpacity),
+            ("Card", "cardTintOpacity", 0.63, cardTintOpacity),
+            ("Card", "cardCornerRadius", 12.95, cardCornerRadius),
+            ("Card", "cardBorderOpacity", 0.16, cardBorderOpacity),
+            ("Card", "cardHighlightOpacity", 0.08, cardHighlightOpacity),
+            ("Card", "cardHoverBorderOpacity", 0.49, cardHoverBorderOpacity),
+            ("Card", "cardHoverHighlightOpacity", 0.00, cardHoverHighlightOpacity),
             // Card Material
             ("Card Material", "cardMaterialType", 0, Double(cardMaterialType)),
-            ("Card Material", "cardBlendingMode", 1, Double(cardBlendingMode)),
+            ("Card Material", "cardBlendingMode", 0, Double(cardBlendingMode)),
             ("Card Material", "cardEmphasized", 1, cardEmphasized ? 1.0 : 0.0),
             ("Card Material", "cardForceDarkAppearance", 1.0, cardForceDarkAppearance ? 1.0 : 0.0),
-            ("Card Material", "cardSwiftUIBlendMode", 5, Double(cardSwiftUIBlendMode)),
+            ("Card Material", "cardSwiftUIBlendMode", 3, Double(cardSwiftUIBlendMode)),
             // Logo
             ("Logo", "logoScale", 0.84, logoScale),
             ("Logo", "logoOpacity", 0.22, logoOpacity),
@@ -936,13 +936,13 @@ class GlassConfig: ObservableObject {
             ("State Transitions", "pausedCardStagger", 0.025, pausedCardStagger),
             ("State Transitions", "sectionToggleSpringResponse", 0.18, sectionToggleSpringResponse),
             // Layout - List
-            ("Layout List", "cardListSpacing", 8.0, cardListSpacing),
-            ("Layout List", "cardPaddingHorizontal", 12.0, cardPaddingHorizontal),
+            ("Layout List", "cardListSpacing", 7.89, cardListSpacing),
+            ("Layout List", "cardPaddingHorizontal", 14.56, cardPaddingHorizontal),
             ("Layout List", "cardPaddingVertical", 12.0, cardPaddingVertical),
-            ("Layout List", "listHorizontalPadding", 12.0, listHorizontalPadding),
+            ("Layout List", "listHorizontalPadding", 12.16, listHorizontalPadding),
             // Layout - Dock
-            ("Layout Dock", "dockCardSpacing", 14.0, dockCardSpacing),
-            ("Layout Dock", "dockCardPaddingHorizontal", 14.0, dockCardPaddingHorizontal),
+            ("Layout Dock", "dockCardSpacing", 14.52, dockCardSpacing),
+            ("Layout Dock", "dockCardPaddingHorizontal", 14.51, dockCardPaddingHorizontal),
             ("Layout Dock", "dockCardPaddingVertical", 14.0, dockCardPaddingVertical),
             ("Layout Dock", "dockHorizontalPadding", 16.0, dockHorizontalPadding),
         ]
