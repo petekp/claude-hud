@@ -2,7 +2,7 @@ import SwiftUI
 
 #if DEBUG
     struct DebugActiveStateCard: View {
-        @EnvironmentObject var appState: AppState
+        @Environment(AppState.self) var appState: AppState
 
         private var mostRecentShellSummary: String {
             guard let shell = appState.shellStateStore.mostRecentShell else {

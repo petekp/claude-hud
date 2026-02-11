@@ -1,4 +1,3 @@
-import Combine
 import Foundation
 import SwiftUI
 import UniformTypeIdentifiers
@@ -11,12 +10,11 @@ enum LayoutMode: String, CaseIterable {
 enum ProjectView: Equatable {
     case list
     case detail(Project)
-    case addLink
     case newIdea
 
     static func == (lhs: ProjectView, rhs: ProjectView) -> Bool {
         switch (lhs, rhs) {
-        case (.list, .list), (.addLink, .addLink), (.newIdea, .newIdea):
+        case (.list, .list), (.newIdea, .newIdea):
             true
         case let (.detail(p1), .detail(p2)):
             p1.path == p2.path
@@ -43,18 +41,19 @@ enum AppFeatureError: LocalizedError {
     }
 }
 
+@Observable
 @MainActor
-class AppState: ObservableObject {
+class AppState {
     // MARK: - Layout Mode
 
-    @Published var layoutMode: LayoutMode = .vertical {
+    var layoutMode: LayoutMode = .vertical {
         didSet { saveLayoutMode() }
     }
 
     // MARK: - Build Channel + Feature Flags
 
-    @Published private(set) var channel: AppChannel = AppConfig.defaultChannel
-    @Published private(set) var featureFlags: FeatureFlags = .defaults(for: AppConfig.defaultChannel)
+    private(set) var channel: AppChannel = AppConfig.defaultChannel
+    private(set) var featureFlags: FeatureFlags = .defaults(for: AppConfig.defaultChannel)
 
     var isIdeaCaptureEnabled: Bool {
         featureFlags.ideaCapture
@@ -78,63 +77,70 @@ class AppState: ObservableObject {
 
     // MARK: - Navigation
 
-    @Published var projectView: ProjectView = .list
-
-    /// Path pending validation when navigating to AddProjectView
-    /// Set by HeaderView's folder picker, consumed by AddProjectView on appear
-    @Published var pendingProjectPath: String?
+    var projectView: ProjectView = .list
 
     // MARK: - Data
 
-    @Published var dashboard: DashboardData?
-    @Published var projects: [Project] = []
-    @Published var suggestedProjects: [SuggestedProject] = []
-    @Published var selectedSuggestedPaths: Set<String> = []
+    var dashboard: DashboardData?
+    var projects: [Project] = []
+    var suggestedProjects: [SuggestedProject] = []
+    var selectedSuggestedPaths: Set<String> = []
 
     // MARK: - Active project creations (Idea → V1)
 
-    @Published var activeCreations: [ProjectCreation] = []
+    var activeCreations: [ProjectCreation] = []
+
+    // MARK: - Cached Project Statuses (avoids FFI call per card per render)
+
+    private(set) var projectStatuses: [String: ProjectStatus] = [:]
 
     // MARK: - UI State
 
-    @Published var isLoading = true
-    @Published var error: String?
-    @Published var toast: ToastMessage?
-    @Published var pendingDragDropTip = false
+    var isLoading = true
+    var error: String?
+    var toast: ToastMessage?
+    var pendingDragDropTip = false
 
     /// Set by card-level DropDelegates when a file URL drag hovers over a project card.
     /// Complements ContentView's `isDragHovered` (which only fires between cards).
-    @Published var isFileDragOverCard = false
+    var isFileDragOverCard = false
 
     // MARK: - Hook Diagnostic
 
-    @Published var hookDiagnostic: HookDiagnosticReport?
+    var hookDiagnostic: HookDiagnosticReport?
 
     // MARK: - Activation Trace (Debug)
 
-    @Published var activationTrace: String?
+    var activationTrace: String?
 
     // MARK: - Daemon Diagnostic
 
-    @Published var daemonStatus: DaemonStatus?
+    var daemonStatus: DaemonStatus?
 
     // MARK: - Manual dormant overrides
 
-    @Published var manuallyDormant: Set<String> = [] {
+    var manuallyDormant: Set<String> = [] {
         didSet { saveDormantOverrides() }
     }
 
-    // MARK: - Custom project ordering
+    // MARK: - Custom project ordering (dual-list: active/idle)
 
-    @Published var customProjectOrder: [String] = [] {
-        didSet { saveProjectOrder() }
+    var activeProjectOrder: [String] = [] {
+        didSet { saveActiveProjectOrder() }
     }
+
+    var idleProjectOrder: [String] = [] {
+        didSet { saveIdleProjectOrder() }
+    }
+
+    /// Tracks last-known activity group per project path for transition detection.
+    private var previousActivityGroup: [String: ActivityGroup] = [:]
 
     // MARK: - Modal State for Idea Capture
 
-    @Published var showCaptureModal = false
-    @Published var captureModalProject: Project?
-    @Published var captureModalOrigin: CGRect?
+    var showCaptureModal = false
+    var captureModalProject: Project?
+    var captureModalOrigin: CGRect?
 
     // MARK: - Managers (extracted for cleaner architecture)
 
@@ -143,6 +149,7 @@ class AppState: ObservableObject {
     let sessionStateManager = SessionStateManager()
     let projectDetailsManager = ProjectDetailsManager()
     private let projectIngestionWorker = ProjectIngestionWorker()
+    @ObservationIgnored
     lazy var workstreamsManager: WorkstreamsManager = .init(
         openWorktree: { [weak self] worktreeProject in
             self?.launchTerminal(for: worktreeProject)
@@ -161,12 +168,7 @@ class AppState: ObservableObject {
     private var stalenessTimer: Timer?
     private var daemonStatusEvaluator = DaemonStatusEvaluator()
     private var daemonRecoveryDecider = DaemonRecoveryDecider()
-
-    /// Debounce work item for coalescing rapid state updates.
-    /// Prevents recursive layout crashes when multiple sessions change simultaneously.
-    private var refreshDebounceWork: DispatchWorkItem?
-    private var isRefreshScheduled = false
-    private var sessionStateCancellable: AnyCancellable?
+    private(set) var sessionStateRevision = 0
 
     // MARK: - Computed Properties (bridging to managers)
 
@@ -187,6 +189,7 @@ class AppState: ObservableObject {
         featureFlags = config.featureFlags
         loadLayoutMode()
         loadDormantOverrides()
+        ProjectOrderStore.migrateIfNeeded()
         loadProjectOrder()
         if isIdeaCaptureEnabled {
             loadCreations()
@@ -196,11 +199,10 @@ class AppState: ObservableObject {
             sessionStateManager: sessionStateManager,
             shellStateStore: shellStateStore,
         )
-
-        sessionStateCancellable = sessionStateManager.objectWillChange
-            .sink { [weak self] _ in
-                self?.scheduleSessionStateRefresh()
-            }
+        sessionStateManager.onVisualStateChanged = { [weak self] in
+            guard let self else { return }
+            sessionStateRevision &+= 1
+        }
 
         terminalLauncher.onActivationTrace = { [weak self] trace in
             _Concurrency.Task { @MainActor in
@@ -300,7 +302,6 @@ class AppState: ObservableObject {
             }
             activeProjectResolver.updateProjects(projects)
             refreshSessionStates()
-            refreshProjectStatuses()
             if isIdeaCaptureEnabled {
                 projectDetailsManager.loadAllIdeas(for: projects)
             }
@@ -313,7 +314,9 @@ class AppState: ObservableObject {
 
     func refreshSessionStates() {
         sessionStateManager.refreshSessionStates(for: projects)
+        refreshProjectStatuses()
         activeProjectResolver.resolve()
+        reconcileProjectGroups()
         #if DEBUG
             DiagnosticsSnapshotLogger.updateContext(
                 activeProjectPath: activeProjectPath,
@@ -332,28 +335,6 @@ class AppState: ObservableObject {
                 "source": String(describing: activeProjectResolver.activeSource),
             ])
         }
-    }
-
-    func refreshProjectStatuses() {
-        objectWillChange.send()
-    }
-
-    private func scheduleSessionStateRefresh() {
-        // Debounce objectWillChange to prevent recursive layout crashes
-        // when multiple sessions change rapidly (e.g., killing many sessions at once).
-        // This coalesces rapid state changes into a single UI update.
-        guard !isRefreshScheduled else { return }
-        isRefreshScheduled = true
-
-        refreshDebounceWork?.cancel()
-        let workItem = DispatchWorkItem { [weak self] in
-            self?.isRefreshScheduled = false
-            self?.objectWillChange.send()
-        }
-        refreshDebounceWork = workItem
-
-        // 16ms delay (~1 frame at 60fps) to coalesce updates within a single frame
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.016, execute: workItem)
     }
 
     // MARK: - Hook Diagnostic
@@ -403,6 +384,8 @@ class AppState: ObservableObject {
     // MARK: - Daemon Diagnostic
 
     func ensureDaemonRunning() {
+        // Ensure daemon-backed reads are enabled before the first session refresh.
+        DaemonService.enableForCurrentProcess()
         daemonStatus = daemonStatusEvaluator.beginStartup(currentStatus: daemonStatus)
         _Concurrency.Task { @MainActor [weak self] in
             let errorMessage = await _Concurrency.Task.detached {
@@ -527,9 +510,15 @@ class AppState: ObservableObject {
     }
 
     private func prependToProjectOrder(_ path: String) {
-        customProjectOrder.removeAll { $0 == path }
-        customProjectOrder.insert(path, at: 0)
-        saveProjectOrder()
+        var newActive = activeProjectOrder
+        newActive.removeAll { $0 == path }
+        newActive.insert(path, at: 0)
+        activeProjectOrder = newActive
+
+        var newIdle = idleProjectOrder
+        newIdle.removeAll { $0 == path }
+        newIdle.insert(path, at: 0)
+        idleProjectOrder = newIdle
     }
 
     func connectProjectViaFileBrowser() {
@@ -542,7 +531,41 @@ class AppState: ObservableObject {
 
         guard panel.runModal() == .OK, let url = panel.url else { return }
 
-        showAddProject(withPath: url.path)
+        let path = url.path
+        guard let result = validateProject(path) else { return }
+
+        switch result.resultType {
+        case "valid", "missing_claude_md":
+            addProject(path)
+            pendingDragDropTip = true
+
+        case "suggest_parent":
+            if let suggested = result.suggestedPath {
+                addProject(suggested)
+                pendingDragDropTip = true
+            } else {
+                toast = .error("Could not determine project root")
+            }
+
+        case "already_tracked":
+            if manuallyDormant.contains(path) {
+                _ = withAnimation(.spring(response: 0.4, dampingFraction: 0.75)) {
+                    manuallyDormant.remove(path)
+                }
+                toast = ToastMessage("Moved to In Progress")
+            } else {
+                toast = ToastMessage("Already linked!")
+            }
+
+        case "dangerous_path":
+            toast = .error(result.reason ?? "Path is too broad")
+
+        case "path_not_found":
+            toast = .error("Path not found")
+
+        default:
+            toast = .error(result.reason ?? "Could not connect project")
+        }
     }
 
     /// Extracts file URLs from drop providers and forwards to `addProjectsFromDrop`.
@@ -681,7 +704,13 @@ class AppState: ObservableObject {
         guard let engine else { return }
         do {
             try engine.removeProject(path: path)
-            customProjectOrder.removeAll { $0 == path }
+            var newActive = activeProjectOrder
+            var newIdle = idleProjectOrder
+            newActive.removeAll { $0 == path }
+            newIdle.removeAll { $0 == path }
+            activeProjectOrder = newActive
+            idleProjectOrder = newIdle
+            previousActivityGroup.removeValue(forKey: path)
             manuallyDormant.remove(path)
             loadDashboard()
         } catch {
@@ -711,15 +740,33 @@ class AppState: ObservableObject {
     // MARK: - Session State Access (delegating to manager)
 
     func getSessionState(for project: Project) -> ProjectSessionState? {
-        sessionStateManager.getSessionState(for: project)
+        _ = sessionStateRevision
+        return sessionStateManager.getSessionState(for: project)
     }
 
     func isFlashing(_ project: Project) -> SessionState? {
-        sessionStateManager.isFlashing(project)
+        _ = sessionStateRevision
+        return sessionStateManager.isFlashing(project)
     }
 
     func getProjectStatus(for project: Project) -> ProjectStatus? {
-        engine?.getProjectStatus(projectPath: project.path)
+        projectStatuses[project.path]
+    }
+
+    /// Batch-refresh project statuses from the Rust engine.
+    /// Called on the 2-second timer alongside session state refresh.
+    /// Replaces per-card FFI calls with a single batch update.
+    private func refreshProjectStatuses() {
+        guard let engine else { return }
+        var updated: [String: ProjectStatus] = [:]
+        for project in projects {
+            if let status = engine.getProjectStatus(projectPath: project.path) {
+                updated[project.path] = status
+            }
+        }
+        if updated != projectStatuses {
+            projectStatuses = updated
+        }
     }
 
     // MARK: - Terminal Operations
@@ -728,7 +775,6 @@ class AppState: ObservableObject {
         activeProjectResolver.setManualOverride(project)
         activeProjectResolver.resolve()
         terminalLauncher.launchTerminal(for: project, shellState: shellStateStore.state)
-        objectWillChange.send()
     }
 
     private func activeWorktreePathsForGuardrails() -> Set<String> {
@@ -754,17 +800,6 @@ class AppState: ObservableObject {
     func showProjectDetail(_ project: Project) {
         guard isProjectDetailsEnabled else { return }
         projectView = .detail(project)
-    }
-
-    func showAddProject(withPath path: String? = nil) {
-        if let path {
-            pendingProjectPath = path
-        }
-        projectView = .addLink
-    }
-
-    func showAddLink() {
-        projectView = .addLink
     }
 
     func showNewIdea() {
@@ -801,19 +836,98 @@ class AppState: ObservableObject {
     }
 
     private func loadProjectOrder() {
-        customProjectOrder = ProjectOrderStore.load()
+        activeProjectOrder = ProjectOrderStore.loadActive()
+        idleProjectOrder = ProjectOrderStore.loadIdle()
     }
 
-    private func saveProjectOrder() {
-        ProjectOrderStore.save(customProjectOrder)
+    private func saveActiveProjectOrder() {
+        ProjectOrderStore.saveActive(activeProjectOrder)
     }
 
+    private func saveIdleProjectOrder() {
+        ProjectOrderStore.saveIdle(idleProjectOrder)
+    }
+
+    /// Returns grouped projects: active first, then idle. Paused projects are excluded upstream.
+    func orderedGroupedProjects(_ projects: [Project]) -> (active: [Project], idle: [Project]) {
+        _ = sessionStateRevision
+        return ProjectOrdering.orderedGroupedProjects(
+            projects,
+            activeOrder: activeProjectOrder,
+            idleOrder: idleProjectOrder,
+            sessionStates: sessionStateManager.sessionStates,
+        )
+    }
+
+    /// Flat ordered list for backward compatibility (active then idle).
     func orderedProjects(_ projects: [Project]) -> [Project] {
-        ProjectOrdering.orderedProjects(projects, customOrder: customProjectOrder)
+        let grouped = orderedGroupedProjects(projects)
+        return grouped.active + grouped.idle
     }
 
-    func moveProject(from source: IndexSet, to destination: Int, in projectList: [Project]) {
-        customProjectOrder = ProjectOrdering.movedOrder(from: source, to: destination, in: projectList)
+    func moveProject(from source: IndexSet, to destination: Int, in projectList: [Project], group: ActivityGroup) {
+        let newOrder = ProjectOrdering.movedOrder(from: source, to: destination, in: projectList)
+        switch group {
+        case .active:
+            activeProjectOrder = newOrder
+        case .idle:
+            idleProjectOrder = newOrder
+        }
+    }
+
+    // MARK: - Activity Group Reconciliation
+
+    /// Detects projects that changed activity group and updates ordering lists accordingly.
+    /// Called after session state manager updates so we react to session changes.
+    private func reconcileProjectGroups() {
+        let states = sessionStateManager.sessionStates
+        let currentPaths = Set(projects.map(\.path))
+
+        // Work on local copies to avoid multiple didSet → UserDefaults writes
+        var newActive = activeProjectOrder
+        var newIdle = idleProjectOrder
+
+        for project in projects {
+            let path = project.path
+            // Skip paused projects — they're managed separately
+            guard !manuallyDormant.contains(path) else { continue }
+
+            let currentGroup: ActivityGroup = ProjectOrdering.isActive(path, sessionStates: states) ? .active : .idle
+            let previousGroup = previousActivityGroup[path]
+
+            if previousGroup != currentGroup {
+                switch (previousGroup, currentGroup) {
+                case (_, .active):
+                    // idle → active (or new → active)
+                    newIdle.removeAll { $0 == path }
+                    if !newActive.contains(path) {
+                        newActive.insert(path, at: 0)
+                    }
+                    // If already in activeProjectOrder, keep remembered position
+
+                case (_, .idle):
+                    // active → idle (or new → idle)
+                    // Keep in activeProjectOrder (remembers position for return)
+                    if !newIdle.contains(path) {
+                        newIdle.insert(path, at: 0)
+                    }
+                }
+
+                previousActivityGroup[path] = currentGroup
+            }
+        }
+
+        // Clean up removed projects
+        let removedPaths = Set(previousActivityGroup.keys).subtracting(currentPaths)
+        for path in removedPaths {
+            previousActivityGroup.removeValue(forKey: path)
+            newActive.removeAll { $0 == path }
+            newIdle.removeAll { $0 == path }
+        }
+
+        // Single assignment per list — triggers didSet at most once each
+        if newActive != activeProjectOrder { activeProjectOrder = newActive }
+        if newIdle != idleProjectOrder { idleProjectOrder = newIdle }
     }
 
     func moveToDormant(_ project: Project) {
@@ -841,9 +955,7 @@ class AppState: ObservableObject {
         guard isIdeaCaptureEnabled else {
             return .failure(AppFeatureError.ideaCaptureDisabled)
         }
-        let result = projectDetailsManager.captureIdea(for: project, text: text)
-        objectWillChange.send()
-        return result
+        return projectDetailsManager.captureIdea(for: project, text: text)
     }
 
     func checkIdeasFileChanges() {
@@ -868,13 +980,11 @@ class AppState: ObservableObject {
         } catch {
             self.error = "Failed to dismiss idea: \(error.localizedDescription)"
         }
-        objectWillChange.send()
     }
 
     func reorderIdeas(_ reorderedIdeas: [Idea], for project: Project) {
         guard isIdeaCaptureEnabled else { return }
         projectDetailsManager.reorderIdeas(reorderedIdeas, for: project)
-        objectWillChange.send()
     }
 
     // MARK: - Project Descriptions (delegating to ProjectDetailsManager)
@@ -943,7 +1053,7 @@ class AppState: ObservableObject {
     func startCreation(request: NewProjectRequest, projectPath: String) -> String {
         guard isIdeaCaptureEnabled else { return UUID().uuidString }
         let id = UUID().uuidString
-        let now = ISO8601DateFormatter().string(from: Date())
+        let now = ISO8601DateFormatter.shared.string(from: Date())
         let creation = ProjectCreation(
             id: id,
             name: request.name,
@@ -971,7 +1081,7 @@ class AppState: ObservableObject {
             activeCreations[index].error = error
         }
         if status == .completed || status == .failed || status == .cancelled {
-            activeCreations[index].completedAt = ISO8601DateFormatter().string(from: Date())
+            activeCreations[index].completedAt = ISO8601DateFormatter.shared.string(from: Date())
         }
         saveCreations()
     }

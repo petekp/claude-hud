@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct NewIdeaView: View {
-    @EnvironmentObject var appState: AppState
+    @Environment(AppState.self) var appState: AppState
     @Environment(\.floatingMode) private var floatingMode
 
     @State private var projectName = ""

@@ -20,7 +20,7 @@ struct ProjectCardView: View {
     @Environment(\.floatingMode) private var floatingMode
     @Environment(\.prefersReducedMotion) private var reduceMotion
     @AppStorage("playReadyChime") private var playReadyChime = true
-    @ObservedObject private var glassConfig = GlassConfig.shared
+    private let glassConfig = GlassConfig.shared
 
     @State private var isHovered = false
     @State private var isPressed = false

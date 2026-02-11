@@ -2,7 +2,7 @@ import AppKit
 import SwiftUI
 
 struct HeaderView: View {
-    @EnvironmentObject var appState: AppState
+    @Environment(AppState.self) var appState: AppState
     @Environment(\.floatingMode) private var floatingMode
 
     private var isOnListView: Bool {

@@ -4,7 +4,7 @@ import SwiftUI
 @main
 struct CapacitorApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
-    @StateObject private var appState = AppState()
+    @State private var appState = AppState()
     @StateObject private var updaterController = UpdaterController()
     @AppStorage("floatingMode") private var floatingMode = true
     @AppStorage("alwaysOnTop") private var alwaysOnTop = false
@@ -19,7 +19,7 @@ struct CapacitorApp: App {
             ZStack {
                 if setupComplete {
                     ContentView()
-                        .environmentObject(appState)
+                        .environment(appState)
                         .environment(\.floatingMode, floatingMode)
                         .environment(\.alwaysOnTop, alwaysOnTop)
                         .readReduceMotion()
@@ -181,8 +181,8 @@ struct CapacitorApp: App {
                                 appState.removeProject(project.path)
                             }
                         }
-                        Button("Navigate to Add Project View") {
-                            appState.showAddProject()
+                        Button("Connect Project via File Browser") {
+                            appState.connectProjectViaFileBrowser()
                         }
                     }
                 }
@@ -214,7 +214,7 @@ struct CapacitorApp: App {
 
             Window("Project Debug Panel", id: "project-debug-panel") {
                 DebugProjectListPanel()
-                    .environmentObject(appState)
+                    .environment(appState)
                     .preferredColorScheme(.dark)
             }
             .windowStyle(.hiddenTitleBar)

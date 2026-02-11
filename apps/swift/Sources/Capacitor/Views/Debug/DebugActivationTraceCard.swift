@@ -3,7 +3,7 @@ import SwiftUI
 
 #if DEBUG
     struct DebugActivationTraceCard: View {
-        @EnvironmentObject var appState: AppState
+        @Environment(AppState.self) var appState: AppState
 
         private func copyTrace(_ trace: String) {
             let pasteboard = NSPasteboard.general

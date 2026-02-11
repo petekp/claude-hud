@@ -40,7 +40,7 @@ private extension View {
 // MARK: - Footer View
 
 struct FooterView: View {
-    @EnvironmentObject var appState: AppState
+    @Environment(AppState.self) var appState: AppState
     @Environment(\.floatingMode) private var floatingMode
     @Environment(\.prefersReducedMotion) private var reduceMotion
     @Binding var isPinned: Bool
@@ -135,7 +135,7 @@ private struct ConnectProjectsCTAButton: View {
 }
 
 private struct AddProjectPillButton: View {
-    @EnvironmentObject var appState: AppState
+    @Environment(AppState.self) var appState: AppState
     @State private var isHovered = false
     @Environment(\.prefersReducedMotion) private var reduceMotion
 
@@ -175,7 +175,7 @@ private struct AddProjectPillButton: View {
 
 struct LogoView: View {
     #if DEBUG
-        @ObservedObject private var config = GlassConfig.shared
+        private let config = GlassConfig.shared
     #endif
 
     private let baseHeight: CGFloat = 14

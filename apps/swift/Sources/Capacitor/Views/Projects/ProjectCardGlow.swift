@@ -4,7 +4,7 @@ struct ReadyAmbientGlow: View {
     var layoutMode: LayoutMode = .vertical
     var animate: Bool = true
     @Environment(\.prefersReducedMotion) private var reduceMotion
-    @ObservedObject private var config = GlassConfig.shared
+    private let config = GlassConfig.shared
 
     var body: some View {
         if reduceMotion || !animate {
@@ -110,7 +110,7 @@ struct ReadyBorderGlow: View {
     var layoutMode: LayoutMode = .vertical
     var animate: Bool = true
     @Environment(\.prefersReducedMotion) private var reduceMotion
-    @ObservedObject private var config = GlassConfig.shared
+    private let config = GlassConfig.shared
 
     private var cornerRadius: CGFloat {
         config.cardCornerRadius(for: layoutMode)
@@ -291,7 +291,7 @@ struct WaitingAmbientPulse: View {
     var layoutMode: LayoutMode = .vertical
     var animate: Bool = true
     @Environment(\.prefersReducedMotion) private var reduceMotion
-    @ObservedObject private var config = GlassConfig.shared
+    private let config = GlassConfig.shared
 
     var body: some View {
         if reduceMotion || !animate {
@@ -432,7 +432,7 @@ struct WaitingBorderPulse: View {
     var layoutMode: LayoutMode = .vertical
     var animate: Bool = true
     @Environment(\.prefersReducedMotion) private var reduceMotion
-    @ObservedObject private var config = GlassConfig.shared
+    private let config = GlassConfig.shared
 
     private var cornerRadius: CGFloat {
         config.cardCornerRadius(for: layoutMode)
@@ -592,7 +592,7 @@ struct WorkingStripeOverlay: View {
     var layoutMode: LayoutMode = .vertical
     var animate: Bool = true
     @Environment(\.prefersReducedMotion) private var reduceMotion
-    @ObservedObject private var config = GlassConfig.shared
+    private let config = GlassConfig.shared
 
     var body: some View {
         if reduceMotion || !animate {
@@ -789,7 +789,7 @@ struct WorkingBorderGlow: View {
     var layoutMode: LayoutMode = .vertical
     var animate: Bool = true
     @Environment(\.prefersReducedMotion) private var reduceMotion
-    @ObservedObject private var config = GlassConfig.shared
+    private let config = GlassConfig.shared
 
     private var cornerRadius: CGFloat {
         config.cardCornerRadius(for: layoutMode)

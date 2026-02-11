@@ -3,34 +3,22 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 struct ProjectsView: View {
-    @EnvironmentObject var appState: AppState
+    @Environment(AppState.self) var appState: AppState
     @Environment(\.floatingMode) private var floatingMode
-    @ObservedObject private var glassConfig = GlassConfig.shared
+    private let glassConfig = GlassConfig.shared
     @State private var pausedCollapsed = true
     @State private var draggedProject: Project?
     #if DEBUG
         @AppStorage("debugShowProjectListDiagnostics") private var debugShowProjectListDiagnostics = true
     #endif
 
-    private var orderedProjects: [Project] {
-        appState.orderedProjects(appState.projects)
-    }
-
-    private var activeProjects: [Project] {
-        orderedProjects.filter { project in
-            !appState.isManuallyDormant(project)
-        }
+    private var nonPausedProjects: [Project] {
+        appState.projects.filter { !appState.isManuallyDormant($0) }
     }
 
     private var pausedProjects: [Project] {
-        orderedProjects.filter { project in
-            appState.isManuallyDormant(project)
-        }
-    }
-
-    private func isStale(_ project: Project) -> Bool {
-        let state = appState.getSessionState(for: project)
-        return SessionStaleness.isReadyStale(state: state?.state, stateChangedAt: state?.stateChangedAt)
+        let paused = appState.projects.filter { appState.isManuallyDormant($0) }
+        return ProjectOrdering.orderedProjects(paused, customOrder: appState.idleProjectOrder)
     }
 
     var body: some View {
@@ -91,20 +79,65 @@ struct ProjectsView: View {
                     } else if appState.projects.isEmpty {
                         EmptyProjectsView()
                     } else {
+                        let sessionStates = appState.sessionStateManager.sessionStates
+                        let grouped = ProjectOrdering.orderedGroupedProjects(
+                            nonPausedProjects,
+                            activeOrder: appState.activeProjectOrder,
+                            idleOrder: appState.idleProjectOrder,
+                            sessionStates: sessionStates,
+                        )
+                        let hasVisibleProjects = !grouped.active.isEmpty || !grouped.idle.isEmpty
+
                         if appState.isProjectCreationEnabled {
                             ActivityPanel()
                         }
 
-                        if !activeProjects.isEmpty {
+                        if hasVisibleProjects {
                             SectionHeader(
                                 title: "In Progress",
-                                count: activeProjects.count,
+                                count: grouped.active.count + grouped.idle.count,
                             )
                             .padding(.top, 4)
                             .transition(.opacity)
 
-                            ForEach(Array(activeProjects.enumerated()), id: \.element.path) { index, project in
-                                activeProjectCard(project: project, index: index)
+                            ForEach(Array(grouped.active.enumerated()), id: \.element.path) { index, project in
+                                let sessionState = appState.getSessionState(for: project)
+                                let projectStatus = appState.getProjectStatus(for: project)
+                                let flashState = appState.isFlashing(project)
+                                let isStale = SessionStaleness.isReadyStale(
+                                    state: sessionState?.state,
+                                    stateChangedAt: sessionState?.stateChangedAt,
+                                )
+                                activeProjectCard(
+                                    project: project,
+                                    sessionState: sessionState,
+                                    projectStatus: projectStatus,
+                                    flashState: flashState,
+                                    isStale: isStale,
+                                    index: index,
+                                    group: .active,
+                                    groupProjects: grouped.active,
+                                )
+                            }
+
+                            ForEach(Array(grouped.idle.enumerated()), id: \.element.path) { index, project in
+                                let sessionState = appState.getSessionState(for: project)
+                                let projectStatus = appState.getProjectStatus(for: project)
+                                let flashState = appState.isFlashing(project)
+                                let isStale = SessionStaleness.isReadyStale(
+                                    state: sessionState?.state,
+                                    stateChangedAt: sessionState?.stateChangedAt,
+                                )
+                                activeProjectCard(
+                                    project: project,
+                                    sessionState: sessionState,
+                                    projectStatus: projectStatus,
+                                    flashState: flashState,
+                                    isStale: isStale,
+                                    index: index,
+                                    group: .idle,
+                                    groupProjects: grouped.idle,
+                                )
                             }
                         }
 
@@ -126,7 +159,7 @@ struct ProjectsView: View {
                                     }
                                 },
                             )
-                            .padding(.top, activeProjects.isEmpty ? 4 : 12)
+                            .padding(.top, hasVisibleProjects ? 12 : 4)
                             .transition(.opacity)
 
                             if !pausedCollapsed {
@@ -192,16 +225,25 @@ struct ProjectsView: View {
     }
 
     @ViewBuilder
-    private func activeProjectCard(project: Project, index: Int) -> some View {
+    private func activeProjectCard(
+        project: Project,
+        sessionState: ProjectSessionState?,
+        projectStatus: ProjectStatus?,
+        flashState: SessionState?,
+        isStale: Bool,
+        index: Int,
+        group: ActivityGroup,
+        groupProjects: [Project],
+    ) -> some View {
         let canShowDetails = appState.isProjectDetailsEnabled
         let canCaptureIdeas = appState.isIdeaCaptureEnabled
 
         ProjectCardView(
             project: project,
-            sessionState: appState.getSessionState(for: project),
-            projectStatus: appState.getProjectStatus(for: project),
-            flashState: appState.isFlashing(project),
-            isStale: isStale(project),
+            sessionState: sessionState,
+            projectStatus: projectStatus,
+            flashState: flashState,
+            isStale: isStale,
             isActive: appState.activeProjectPath == project.path,
             onTap: {
                 appState.launchTerminal(for: project)
@@ -227,7 +269,8 @@ struct ProjectsView: View {
         .activeProjectCardModifiers(
             project: project,
             index: index,
-            activeProjects: activeProjects,
+            groupProjects: groupProjects,
+            group: group,
             draggedProject: $draggedProject,
             appState: appState,
             glassConfig: glassConfig,
@@ -267,19 +310,21 @@ private extension View {
     func activeProjectCardModifiers(
         project: Project,
         index: Int,
-        activeProjects: [Project],
+        groupProjects: [Project],
+        group: ActivityGroup,
         draggedProject: Binding<Project?>,
         appState: AppState,
         glassConfig: GlassConfig,
     ) -> some View {
         preventWindowDrag()
             .zIndex(draggedProject.wrappedValue?.path == project.path ? 999 : 0)
-            .id("active-\(project.path)")
+            .id("\(project.path)-\(appState.sessionStateRevision)")
             .onDrop(
                 of: [.text, .fileURL],
                 delegate: ProjectDropDelegate(
                     project: project,
-                    activeProjects: activeProjects,
+                    groupProjects: groupProjects,
+                    group: group,
                     draggedProject: draggedProject,
                     appState: appState,
                 ),
@@ -387,7 +432,7 @@ struct EmptyStateBorderGlow: View {
     @Environment(\.prefersReducedMotion) private var reduceMotion
 
     #if DEBUG
-        @ObservedObject private var config = GlassConfig.shared
+        private let config = GlassConfig.shared
     #endif
 
     private var cornerRadius: CGFloat {
@@ -551,7 +596,7 @@ struct EmptyStateBorderGlow: View {
 // MARK: - Empty Projects View
 
 struct EmptyProjectsView: View {
-    @EnvironmentObject var appState: AppState
+    @Environment(AppState.self) var appState: AppState
     @Environment(\.floatingMode) private var floatingMode
     @Environment(\.prefersReducedMotion) private var reduceMotion
     @State private var appeared = false
@@ -756,7 +801,8 @@ struct ProjectCardDragPreview: View {
 
 struct ProjectDropDelegate: DropDelegate {
     let project: Project
-    let activeProjects: [Project]
+    let groupProjects: [Project]
+    let group: ActivityGroup
     @Binding var draggedProject: Project?
     let appState: AppState
 
@@ -771,18 +817,19 @@ struct ProjectDropDelegate: DropDelegate {
             return
         }
 
-        // Internal card reorder
+        // Internal card reorder — only within same group
         guard let draggedProject,
               draggedProject.path != project.path,
-              let fromIndex = activeProjects.firstIndex(where: { $0.path == draggedProject.path }),
-              let toIndex = activeProjects.firstIndex(where: { $0.path == project.path })
+              let fromIndex = groupProjects.firstIndex(where: { $0.path == draggedProject.path }),
+              let toIndex = groupProjects.firstIndex(where: { $0.path == project.path })
         else { return }
 
         withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
             appState.moveProject(
                 from: IndexSet(integer: fromIndex),
                 to: toIndex > fromIndex ? toIndex + 1 : toIndex,
-                in: activeProjects,
+                in: groupProjects,
+                group: group,
             )
         }
     }

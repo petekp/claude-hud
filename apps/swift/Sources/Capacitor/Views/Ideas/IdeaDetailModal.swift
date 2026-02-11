@@ -91,32 +91,25 @@ struct IdeaDetailOverlay: View {
         }
     }
 
+    private static let mediumDateFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateStyle = .medium
+        f.timeStyle = .none
+        return f
+    }()
+
     private func formatRelativeDate(_ dateString: String) -> String {
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-
-        if let date = formatter.date(from: dateString) {
-            return relativeString(from: date)
+        guard let date = parseISO8601Date(dateString) else {
+            return dateString
         }
-
-        let fallbackFormatter = ISO8601DateFormatter()
-        if let date = fallbackFormatter.date(from: dateString) {
-            return relativeString(from: date)
-        }
-
-        return dateString
+        return relativeString(from: date)
     }
 
     private func relativeString(from date: Date) -> String {
-        let now = Date()
-        let calendar = Calendar.current
-        let components = calendar.dateComponents([.day, .hour, .minute], from: date, to: now)
+        let components = Calendar.current.dateComponents([.day, .hour, .minute], from: date, to: Date())
 
         if let days = components.day, days > 7 {
-            let formatter = DateFormatter()
-            formatter.dateStyle = .medium
-            formatter.timeStyle = .none
-            return formatter.string(from: date)
+            return Self.mediumDateFormatter.string(from: date)
         } else if let days = components.day, days > 0 {
             return "\(days)d ago"
         } else if let hours = components.hour, hours > 0 {

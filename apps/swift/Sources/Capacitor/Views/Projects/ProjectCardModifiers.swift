@@ -41,16 +41,21 @@ extension View {
         layoutMode: LayoutMode = .vertical,
         isPressed: Bool = false,
     ) -> some View {
-        // Single source of truth for corner radius
         let cornerRadius = GlassConfig.shared.cardCornerRadius(for: layoutMode)
+        let cfg = GlassConfig.shared
 
-        // Only animate effects for active, hovered, waiting, or working cards to reduce GPU load during scroll
+        // Only run TimelineView animations for cards that need them
         let shouldAnimate = CardEffectAnimationPolicy.shouldAnimate(
             isActive: isActive,
             isHovered: isHovered,
             isWaiting: isWaiting,
             isWorking: isWorking,
         )
+
+        // Shared cross-fade curves — symmetric easeInOut for smooth blending
+        let crossFade = Animation.easeInOut(duration: cfg.glowFadeDuration)
+        let borderCrossFade = Animation.easeInOut(duration: cfg.glowFadeDuration + cfg.glowBorderDelay)
+            .delay(cfg.glowBorderDelay)
 
         return background {
             ZStack {
@@ -61,16 +66,16 @@ extension View {
                     solidCardBackground
                 }
 
-                if isWorking {
-                    WorkingStripeOverlay(layoutMode: layoutMode, animate: shouldAnimate)
-                        .transition(.opacity.animation(.easeInOut(duration: GlassConfig.shared.glowFadeDuration)))
-                }
+                // Working stripes — always present, cross-fade via opacity
+                // Gate animate per-effect: only run TimelineView when this effect is visible
+                WorkingStripeOverlay(layoutMode: layoutMode, animate: shouldAnimate && isWorking)
+                    .opacity(isWorking ? 1 : 0)
+                    .animation(crossFade, value: isWorking)
             }
         }
         .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
         .overlay {
-            let config = GlassConfig.shared
-            let borderOpacity = isHovered ? config.cardHoverBorderOpacity : config.cardBorderOpacity
+            let borderOpacity = isHovered ? cfg.cardHoverBorderOpacity : cfg.cardBorderOpacity
             RoundedRectangle(cornerRadius: cornerRadius)
                 .strokeBorder(
                     LinearGradient(
@@ -107,42 +112,36 @@ extension View {
                 }
             }
         }
+        // Ready effects — always present, cross-fade via opacity
+        // Gate animate per-effect: only run TimelineView when this effect is visible
         .overlay {
-            let cfg = GlassConfig.shared
-            if isReady {
-                ReadyAmbientGlow(layoutMode: layoutMode, animate: shouldAnimate)
-                    .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
-                    .transition(.opacity.animation(.easeOut(duration: cfg.glowFadeDuration)))
-            }
+            ReadyAmbientGlow(layoutMode: layoutMode, animate: shouldAnimate && isReady)
+                .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
+                .opacity(isReady ? 1 : 0)
+                .animation(crossFade, value: isReady)
         }
         .overlay {
-            let cfg = GlassConfig.shared
-            if isReady {
-                ReadyBorderGlow(seed: animationSeed, layoutMode: layoutMode, animate: shouldAnimate)
-                    .transition(.opacity.animation(.easeOut(duration: cfg.glowFadeDuration + cfg.glowBorderDelay).delay(cfg.glowBorderDelay)))
-            }
+            ReadyBorderGlow(seed: animationSeed, layoutMode: layoutMode, animate: shouldAnimate && isReady)
+                .opacity(isReady ? 1 : 0)
+                .animation(borderCrossFade, value: isReady)
+        }
+        // Waiting effects — always present, cross-fade via opacity
+        .overlay {
+            WaitingAmbientPulse(layoutMode: layoutMode, animate: shouldAnimate && isWaiting)
+                .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
+                .opacity(isWaiting ? 1 : 0)
+                .animation(crossFade, value: isWaiting)
         }
         .overlay {
-            let cfg = GlassConfig.shared
-            if isWaiting {
-                WaitingAmbientPulse(layoutMode: layoutMode, animate: shouldAnimate)
-                    .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
-                    .transition(.opacity.animation(.easeOut(duration: cfg.glowFadeDuration)))
-            }
+            WaitingBorderPulse(seed: animationSeed, layoutMode: layoutMode, animate: shouldAnimate && isWaiting)
+                .opacity(isWaiting ? 1 : 0)
+                .animation(borderCrossFade, value: isWaiting)
         }
+        // Working border — always present, cross-fade via opacity
         .overlay {
-            let cfg = GlassConfig.shared
-            if isWaiting {
-                WaitingBorderPulse(seed: animationSeed, layoutMode: layoutMode, animate: shouldAnimate)
-                    .transition(.opacity.animation(.easeOut(duration: cfg.glowFadeDuration + cfg.glowBorderDelay).delay(cfg.glowBorderDelay)))
-            }
-        }
-        .overlay {
-            let cfg = GlassConfig.shared
-            if isWorking {
-                WorkingBorderGlow(seed: animationSeed, layoutMode: layoutMode, animate: shouldAnimate)
-                    .transition(.opacity.animation(.easeOut(duration: cfg.glowFadeDuration + cfg.glowBorderDelay).delay(cfg.glowBorderDelay)))
-            }
+            WorkingBorderGlow(seed: animationSeed, layoutMode: layoutMode, animate: shouldAnimate && isWorking)
+                .opacity(isWorking ? 1 : 0)
+                .animation(borderCrossFade, value: isWorking)
         }
         .shadow(
             color: .black.opacity(shadowOpacity(isHovered: isHovered, isPressed: isPressed, floatingMode: floatingMode, layoutMode: layoutMode)),
@@ -196,7 +195,7 @@ extension View {
         playReadyChime: Bool,
         glassConfig: GlassConfig?,
     ) -> some View {
-        animation(.easeOut(duration: GlassConfig.shared.stateTransitionDuration), value: currentState)
+        animation(.easeInOut(duration: GlassConfig.shared.stateTransitionDuration), value: currentState)
             .onChange(of: flashState) { _, newValue in
                 guard newValue != nil else { return }
                 withAnimation(.easeOut(duration: 0.1)) {

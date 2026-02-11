@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct ProjectDetailView: View {
-    @EnvironmentObject var appState: AppState
+    @Environment(AppState.self) var appState: AppState
     @Environment(\.floatingMode) private var floatingMode
     let project: Project
 

@@ -2,7 +2,7 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 struct ContentView: View {
-    @EnvironmentObject var appState: AppState
+    @Environment(AppState.self) var appState: AppState
     @Environment(\.floatingMode) private var floatingMode
     @AppStorage("alwaysOnTop") private var alwaysOnTopStorage = false
     @AppStorage("hasSeenDragDropTip") private var hasSeenDragDropTip = false
@@ -11,7 +11,7 @@ struct ContentView: View {
     @State private var showDragDropTip = false
 
     #if DEBUG
-        @ObservedObject private var glassConfig = GlassConfig.shared
+        private let glassConfig = GlassConfig.shared
     #endif
 
     private var isCaptureModalOpen: Bool {
@@ -21,6 +21,8 @@ struct ContentView: View {
     }
 
     var body: some View {
+        @Bindable var appState = appState
+
         GeometryReader { geometry in
             let containerSize = geometry.size
 
@@ -216,5 +218,5 @@ private struct MarchingAntsBorder: View {
 
 #Preview {
     ContentView()
-        .environmentObject(AppState())
+        .environment(AppState())
 }

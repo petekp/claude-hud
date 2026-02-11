@@ -9,8 +9,12 @@ enum DaemonService {
         static let throttleInterval: Int = 10
     }
 
-    static func ensureRunning() -> String? {
+    static func enableForCurrentProcess() {
         setenv(Constants.enabledEnv, "1", 1)
+    }
+
+    static func ensureRunning() -> String? {
+        enableForCurrentProcess()
         DebugLog.write("DaemonService.ensureRunning start enabled=1")
 
         if let installError = DaemonInstaller.installBundledBinary() {

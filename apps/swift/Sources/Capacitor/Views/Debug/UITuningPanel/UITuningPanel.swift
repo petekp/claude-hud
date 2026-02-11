@@ -89,7 +89,7 @@ import SwiftUI
 
     struct UITuningPanel: View {
         @Environment(\.dismissWindow) private var dismissWindow
-        @ObservedObject var config = GlassConfig.shared
+        private let config = GlassConfig.shared
         @State private var selectedCategory: TuningCategory = .projectCard
         @State private var selectedSubcategory: TuningSubcategory = .appearance
         @State private var panelSize: CGSize = .init(width: 580, height: 720)

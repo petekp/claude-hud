@@ -9,7 +9,7 @@ private enum SlidePosition: CGFloat {
 }
 
 struct NavigationContainer: View {
-    @EnvironmentObject var appState: AppState
+    @Environment(AppState.self) var appState: AppState
     @Environment(\.prefersReducedMotion) private var reduceMotion
     @Environment(\.floatingMode) private var floatingMode
 
@@ -17,17 +17,14 @@ struct NavigationContainer: View {
     // This ensures offsets scale correctly when window is resized
     @State private var listPosition: SlidePosition = .center
     @State private var detailPosition: SlidePosition = .right
-    @State private var addLinkPosition: SlidePosition = .right
     @State private var newIdeaPosition: SlidePosition = .right
 
     @State private var currentDetail: Project?
     @State private var showDetail = false
-    @State private var showAddLink = false
     @State private var showNewIdea = false
 
     @State private var listOpacity: Double = 1
     @State private var detailOpacity: Double = 0
-    @State private var addLinkOpacity: Double = 0
     @State private var newIdeaOpacity: Double = 0
 
     private let animationDuration: Double = 0.35
@@ -45,11 +42,6 @@ struct NavigationContainer: View {
 
     private var isDetailActive: Bool {
         if case .detail = appState.projectView { return true }
-        return false
-    }
-
-    private var isAddLinkActive: Bool {
-        if case .addLink = appState.projectView { return true }
         return false
     }
 
@@ -77,15 +69,6 @@ struct NavigationContainer: View {
                         .opacity(reduceMotion ? detailOpacity : 1)
                         .zIndex(isDetailActive ? 1 : 0)
                         .allowsHitTesting(isDetailActive)
-                }
-
-                if showAddLink {
-                    AddProjectView()
-                        .frame(width: width)
-                        .offset(x: reduceMotion ? 0 : addLinkPosition.rawValue * width)
-                        .opacity(reduceMotion ? addLinkOpacity : 1)
-                        .zIndex(isAddLinkActive ? 1 : 0)
-                        .allowsHitTesting(isAddLinkActive)
                 }
 
                 if appState.isProjectCreationEnabled, showNewIdea {
@@ -120,19 +103,16 @@ struct NavigationContainer: View {
                 if reduceMotion {
                     listOpacity = 1
                     detailOpacity = 0
-                    addLinkOpacity = 0
                     newIdeaOpacity = 0
                 } else {
                     listPosition = .center
                     detailPosition = .right
-                    addLinkPosition = .right
                     newIdeaPosition = .right
                 }
             }
             DispatchQueue.main.asyncAfter(deadline: .now() + animationDuration + 0.1) {
                 if case .list = appState.projectView {
                     showDetail = false
-                    showAddLink = false
                     showNewIdea = false
                     currentDetail = nil
                 }
@@ -156,12 +136,10 @@ struct NavigationContainer: View {
                     if reduceMotion {
                         listOpacity = 0
                         detailOpacity = 1
-                        addLinkOpacity = 0
                         newIdeaOpacity = 0
                     } else {
                         listPosition = .left
                         detailPosition = .center
-                        addLinkPosition = .right
                         newIdeaPosition = .right
                     }
                 }
@@ -170,41 +148,7 @@ struct NavigationContainer: View {
             // Clean up other views after animation
             DispatchQueue.main.asyncAfter(deadline: .now() + animationDuration + 0.1) {
                 if case .detail = appState.projectView {
-                    showAddLink = false
                     showNewIdea = false
-                }
-            }
-
-        case .addLink:
-            showAddLink = true
-            if reduceMotion {
-                addLinkOpacity = 0
-            } else {
-                addLinkPosition = .right
-            }
-
-            DispatchQueue.main.async {
-                withAnimation(navigationAnimation) {
-                    if reduceMotion {
-                        listOpacity = 0
-                        detailOpacity = 0
-                        addLinkOpacity = 1
-                        newIdeaOpacity = 0
-                    } else {
-                        listPosition = .left
-                        detailPosition = .right
-                        addLinkPosition = .center
-                        newIdeaPosition = .right
-                    }
-                }
-            }
-
-            // Clean up other views after animation
-            DispatchQueue.main.asyncAfter(deadline: .now() + animationDuration + 0.1) {
-                if case .addLink = appState.projectView {
-                    showDetail = false
-                    showNewIdea = false
-                    currentDetail = nil
                 }
             }
 
@@ -225,12 +169,10 @@ struct NavigationContainer: View {
                     if reduceMotion {
                         listOpacity = 0
                         detailOpacity = 0
-                        addLinkOpacity = 0
                         newIdeaOpacity = 1
                     } else {
                         listPosition = .left
                         detailPosition = .right
-                        addLinkPosition = .right
                         newIdeaPosition = .center
                     }
                 }
@@ -240,7 +182,6 @@ struct NavigationContainer: View {
             DispatchQueue.main.asyncAfter(deadline: .now() + animationDuration + 0.1) {
                 if case .newIdea = appState.projectView {
                     showDetail = false
-                    showAddLink = false
                     currentDetail = nil
                 }
             }

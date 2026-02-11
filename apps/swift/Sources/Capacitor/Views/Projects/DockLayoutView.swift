@@ -2,39 +2,60 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 struct DockLayoutView: View {
-    @EnvironmentObject var appState: AppState
+    @Environment(AppState.self) var appState: AppState
     @Environment(\.floatingMode) private var floatingMode
-    @ObservedObject private var glassConfig = GlassConfig.shared
+    private let glassConfig = GlassConfig.shared
     @State private var scrolledID: String?
     @State private var draggedProject: Project?
 
     private let cardWidth: CGFloat = 262
 
-    private var activeProjects: [Project] {
-        let ordered = appState.orderedProjects(appState.projects)
-        return ordered.filter { project in
-            !appState.isManuallyDormant(project)
-        }
+    private var nonPausedProjects: [Project] {
+        appState.projects.filter { !appState.isManuallyDormant($0) }
     }
 
     var body: some View {
         // Capture layout values once at body evaluation to avoid constraint loops
         let cardSpacing = glassConfig.dockCardSpacingRounded
         let horizontalPadding = glassConfig.dockHorizontalPaddingRounded
+        let sessionStates = appState.sessionStateManager.sessionStates
+        let grouped = ProjectOrdering.orderedGroupedProjects(
+            nonPausedProjects,
+            activeOrder: appState.activeProjectOrder,
+            idleOrder: appState.idleProjectOrder,
+            sessionStates: sessionStates,
+        )
+        let activePaths = Set(grouped.active.map(\.path))
+        let allProjects = grouped.active + grouped.idle
 
         GeometryReader { geometry in
             let cardsPerPage = calculateCardsPerPage(width: geometry.size.width, cardSpacing: cardSpacing, horizontalPadding: horizontalPadding)
-            let totalPages = max(1, Int(ceil(Double(activeProjects.count) / Double(cardsPerPage))))
-            let currentPage = calculateCurrentPage(cardsPerPage: cardsPerPage)
+            let totalPages = max(1, Int(ceil(Double(allProjects.count) / Double(cardsPerPage))))
+            let currentPage = calculateCurrentPage(cardsPerPage: cardsPerPage, in: allProjects)
 
             VStack(spacing: 8) {
-                if activeProjects.isEmpty {
+                if allProjects.isEmpty {
                     emptyState
                 } else {
                     ScrollView(.horizontal, showsIndicators: false) {
                         LazyHStack(spacing: cardSpacing) {
-                            ForEach(activeProjects, id: \.path) { project in
-                                projectCard(for: project)
+                            ForEach(allProjects, id: \.path) { project in
+                                let sessionState = appState.getSessionState(for: project)
+                                let projectStatus = appState.getProjectStatus(for: project)
+                                let flashState = appState.isFlashing(project)
+                                let isStale = SessionStaleness.isReadyStale(
+                                    state: sessionState?.state,
+                                    stateChangedAt: sessionState?.stateChangedAt,
+                                )
+                                projectCard(
+                                    for: project,
+                                    sessionState: sessionState,
+                                    projectStatus: projectStatus,
+                                    flashState: flashState,
+                                    isStale: isStale,
+                                    activePaths: activePaths,
+                                    grouped: grouped,
+                                )
                             }
                         }
                         .padding(.horizontal, horizontalPadding)
@@ -80,9 +101,9 @@ struct DockLayoutView: View {
         .frame(maxHeight: .infinity)
     }
 
-    private func calculateCurrentPage(cardsPerPage: Int) -> Int {
+    private func calculateCurrentPage(cardsPerPage: Int, in projects: [Project]) -> Int {
         guard let scrolledID,
-              let index = activeProjects.firstIndex(where: { $0.path == scrolledID })
+              let index = projects.firstIndex(where: { $0.path == scrolledID })
         else {
             return 0
         }
@@ -90,14 +111,20 @@ struct DockLayoutView: View {
     }
 
     @ViewBuilder
-    private func projectCard(for project: Project) -> some View {
-        let sessionState = appState.getSessionState(for: project)
-        let projectStatus = appState.getProjectStatus(for: project)
-        let flashState = appState.isFlashing(project)
-        let isStale = isProjectStale(project)
+    private func projectCard(
+        for project: Project,
+        sessionState: ProjectSessionState?,
+        projectStatus: ProjectStatus?,
+        flashState: SessionState?,
+        isStale: Bool,
+        activePaths: Set<String>,
+        grouped: (active: [Project], idle: [Project]),
+    ) -> some View {
         let isActive = appState.activeProjectPath == project.path
         let canShowDetails = appState.isProjectDetailsEnabled
         let canCaptureIdeas = appState.isIdeaCaptureEnabled
+        let group: ActivityGroup = activePaths.contains(project.path) ? .active : .idle
+        let groupProjects = group == .active ? grouped.active : grouped.idle
 
         DockProjectCard(
             project: project,
@@ -120,12 +147,14 @@ struct DockLayoutView: View {
             isDragging: draggedProject?.path == project.path,
         )
         .preventWindowDrag()
+        .id("\(project.path)-\(appState.sessionStateRevision)")
         .zIndex(draggedProject?.path == project.path ? 999 : 0)
         .onDrop(
             of: [.text, .fileURL],
             delegate: DockDropDelegate(
                 project: project,
-                activeProjects: activeProjects,
+                groupProjects: groupProjects,
+                group: group,
                 draggedProject: $draggedProject,
                 appState: appState,
             ),
@@ -141,11 +170,6 @@ struct DockLayoutView: View {
         let availableWidth = width - (horizontalPadding * 2)
         let cardWithSpacing = cardWidth + cardSpacing
         return max(1, Int(availableWidth / cardWithSpacing))
-    }
-
-    private func isProjectStale(_ project: Project) -> Bool {
-        let sessionState = appState.getSessionState(for: project)
-        return SessionStaleness.isReadyStale(state: sessionState?.state, stateChangedAt: sessionState?.stateChangedAt)
     }
 }
 
@@ -173,7 +197,8 @@ private struct PageIndicator: View {
 
 struct DockDropDelegate: DropDelegate {
     let project: Project
-    let activeProjects: [Project]
+    let groupProjects: [Project]
+    let group: ActivityGroup
     @Binding var draggedProject: Project?
     let appState: AppState
 
@@ -188,18 +213,19 @@ struct DockDropDelegate: DropDelegate {
             return
         }
 
-        // Internal card reorder
+        // Internal card reorder — only within same group
         guard let draggedProject,
               draggedProject.path != project.path,
-              let fromIndex = activeProjects.firstIndex(where: { $0.path == draggedProject.path }),
-              let toIndex = activeProjects.firstIndex(where: { $0.path == project.path })
+              let fromIndex = groupProjects.firstIndex(where: { $0.path == draggedProject.path }),
+              let toIndex = groupProjects.firstIndex(where: { $0.path == project.path })
         else { return }
 
         withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
             appState.moveProject(
                 from: IndexSet(integer: fromIndex),
                 to: toIndex > fromIndex ? toIndex + 1 : toIndex,
-                in: activeProjects,
+                in: groupProjects,
+                group: group,
             )
         }
     }
@@ -231,7 +257,7 @@ struct DockDropDelegate: DropDelegate {
 
 #Preview {
     DockLayoutView()
-        .environmentObject(AppState())
+        .environment(AppState())
         .frame(width: 800, height: 150)
         .preferredColorScheme(.dark)
 }

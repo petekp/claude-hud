@@ -5,7 +5,7 @@ import SwiftUI
     // MARK: - Card Appearance
 
     struct CardAppearanceSection: View {
-        @ObservedObject var config: GlassConfig
+        @Bindable var config: GlassConfig
 
         var body: some View {
             Group(content: {
@@ -46,7 +46,7 @@ import SwiftUI
     // MARK: - Card Material
 
     struct CardMaterialSection: View {
-        @ObservedObject var config: GlassConfig
+        @Bindable var config: GlassConfig
 
         var body: some View {
             Group(content: {
@@ -108,7 +108,7 @@ import SwiftUI
     // MARK: - Card Interactions
 
     struct CardInteractionsSection: View {
-        @ObservedObject var config: GlassConfig
+        @Bindable var config: GlassConfig
 
         var body: some View {
             Group(content: {
@@ -196,7 +196,7 @@ import SwiftUI
     // MARK: - State Transitions
 
     struct StateTransitionsSection: View {
-        @ObservedObject var config: GlassConfig
+        @Bindable var config: GlassConfig
 
         var body: some View {
             Group(content: {
@@ -251,7 +251,7 @@ import SwiftUI
     // MARK: - Card Layout
 
     struct CardLayoutSection: View {
-        @ObservedObject var config: GlassConfig
+        @Bindable var config: GlassConfig
 
         var body: some View {
             Group(content: {
@@ -289,7 +289,7 @@ import SwiftUI
     // MARK: - Card State Effects
 
     struct CardStateEffectsSection: View {
-        @ObservedObject var config: GlassConfig
+        @Bindable var config: GlassConfig
 
         var body: some View {
             StickySection(title: "Ready — Ripple", onReset: resetReady) {
@@ -473,7 +473,7 @@ import SwiftUI
     // MARK: - Panel Background
 
     struct PanelBackgroundSection: View {
-        @ObservedObject var config: GlassConfig
+        @Bindable var config: GlassConfig
 
         var body: some View {
             Group(content: {
@@ -512,7 +512,7 @@ import SwiftUI
     // MARK: - Panel Material
 
     struct PanelMaterialSection: View {
-        @ObservedObject var config: GlassConfig
+        @Bindable var config: GlassConfig
 
         var body: some View {
             Group(content: {
@@ -543,7 +543,7 @@ import SwiftUI
     // MARK: - Status Colors
 
     struct StatusColorsSection: View {
-        @ObservedObject var config: GlassConfig
+        @Bindable var config: GlassConfig
 
         var body: some View {
             Group(content: {
@@ -621,7 +621,7 @@ import SwiftUI
     // MARK: - Logo Appearance
 
     struct LogoAppearanceSection: View {
-        @ObservedObject var config: GlassConfig
+        @Bindable var config: GlassConfig
 
         var body: some View {
             Group(content: {
@@ -702,7 +702,7 @@ import SwiftUI
     // MARK: - Empty State Glow
 
     struct EmptyStateGlowSection: View {
-        @ObservedObject var config: GlassConfig
+        @Bindable var config: GlassConfig
 
         var body: some View {
             StickySection(title: "Border Glow", onReset: resetGlow) {

@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct ActivityPanel: View {
-    @EnvironmentObject var appState: AppState
+    @Environment(AppState.self) var appState: AppState
     @Environment(\.floatingMode) private var floatingMode
 
     private var visibleCreations: [ProjectCreation] {
@@ -49,7 +49,7 @@ struct ActivityPanel: View {
 
 struct CreationCard: View {
     let creation: ProjectCreation
-    @EnvironmentObject var appState: AppState
+    @Environment(AppState.self) var appState: AppState
     @State private var isHovered = false
     @State private var pulseAnimation = false
 
@@ -234,7 +234,7 @@ struct CreationCard: View {
 
 #Preview {
     ActivityPanel()
-        .environmentObject(AppState())
+        .environment(AppState())
         .frame(width: 300)
         .padding()
         .background(Color.hudBackground)

@@ -101,7 +101,7 @@ struct AnimatedCompactingText: View {
     @Environment(\.prefersReducedMotion) private var reduceMotion
 
     #if DEBUG
-        @ObservedObject private var config = GlassConfig.shared
+        private let config = GlassConfig.shared
     #endif
 
     var body: some View {

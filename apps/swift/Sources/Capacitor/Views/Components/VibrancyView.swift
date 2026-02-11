@@ -77,7 +77,7 @@ extension View {
 }
 
 struct DarkFrostedGlass: View {
-    @ObservedObject private var config = GlassConfig.shared
+    private let config = GlassConfig.shared
 
     private var selectedMaterial: NSVisualEffectView.Material {
         switch config.materialType {

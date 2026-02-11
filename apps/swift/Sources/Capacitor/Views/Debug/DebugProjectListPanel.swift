@@ -3,7 +3,7 @@ import SwiftUI
 #if DEBUG
     @MainActor
     struct DebugProjectListPanel: View {
-        @EnvironmentObject var appState: AppState
+        @Environment(AppState.self) var appState: AppState
         @AppStorage("debugShowProjectListDiagnostics") private var debugShowProjectListDiagnostics = true
         @State private var panelSize = CGSize(width: 360, height: 520)
 

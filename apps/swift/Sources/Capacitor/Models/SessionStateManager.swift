@@ -8,8 +8,9 @@ import Foundation
 /// - Provides state to views (direct passthrough)
 ///
 /// All state logic (staleness, lock detection, resolution) lives in Rust.
+@Observable
 @MainActor
-final class SessionStateManager: ObservableObject {
+final class SessionStateManager {
     private struct ProjectMatchInfo {
         let project: Project
         let normalizedPath: String
@@ -29,8 +30,22 @@ final class SessionStateManager: ObservableObject {
         static let flashDurationSeconds: TimeInterval = 1.4
     }
 
-    @Published private(set) var sessionStates: [String: ProjectSessionState] = [:]
-    @Published private(set) var flashingProjects: [String: SessionState] = [:]
+    @ObservationIgnored var onVisualStateChanged: (() -> Void)?
+
+    private(set) var sessionStates: [String: ProjectSessionState] = [:] {
+        didSet {
+            guard sessionStates != oldValue else { return }
+            onVisualStateChanged?()
+        }
+    }
+
+    private(set) var flashingProjects: [String: SessionState] = [:] {
+        didSet {
+            guard flashingProjects != oldValue else { return }
+            onVisualStateChanged?()
+        }
+    }
+
     private var previousSessionStates: [String: SessionState] = [:]
 
     private let daemonClient = DaemonClient.shared

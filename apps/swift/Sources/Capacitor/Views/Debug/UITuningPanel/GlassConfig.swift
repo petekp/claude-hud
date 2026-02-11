@@ -1,4 +1,3 @@
-import Combine
 import SwiftUI
 
 extension EnvironmentValues {
@@ -30,27 +29,13 @@ enum PreviewState: String, CaseIterable {
     case idle = "Idle"
 }
 
-class GlassConfig: ObservableObject {
+@Observable
+class GlassConfig {
     static let shared = GlassConfig()
-    private var cancellables = Set<AnyCancellable>()
 
-    @Published private(set) var refreshCounter: Int = 0
+    private(set) var refreshCounter: Int = 0
 
-    init() {
-        $useEmphasizedMaterial
-            .dropFirst()
-            .sink { [weak self] _ in
-                self?.refreshCounter += 1
-            }
-            .store(in: &cancellables)
-
-        $materialType
-            .dropFirst()
-            .sink { [weak self] _ in
-                self?.refreshCounter += 1
-            }
-            .store(in: &cancellables)
-    }
+    init() {}
 
     static let materialNames = ["HUD Window", "Popover", "Menu", "Sidebar", "Full Screen UI"]
 
@@ -73,227 +58,232 @@ class GlassConfig: ObservableObject {
     }
 
     // Panel background
-    @Published var panelTintOpacity: Double = 0.43
-    @Published var panelCornerRadius: Double = 18.87
-    @Published var panelBorderOpacity: Double = 0.14
-    @Published var panelHighlightOpacity: Double = 0.04
-    @Published var panelTopHighlightOpacity: Double = 0.19
-    @Published var panelShadowOpacity: Double = 0.00
-    @Published var panelShadowRadius: Double = 0
-    @Published var panelShadowY: Double = 0
+    var panelTintOpacity: Double = 0.34
+    var panelCornerRadius: Double = 13.99
+    var panelBorderOpacity: Double = 0.34
+    var panelHighlightOpacity: Double = 0.03
+    var panelTopHighlightOpacity: Double = 0.17
+    var panelShadowOpacity: Double = 0.00
+    var panelShadowRadius: Double = 0
+    var panelShadowY: Double = 0
 
     // Card background
-    @Published var cardTintOpacity: Double = 0.63
-    @Published var cardCornerRadius: Double = 12.95
-    @Published var cardBorderOpacity: Double = 0.16
-    @Published var cardHighlightOpacity: Double = 0.08
-    @Published var cardHoverBorderOpacity: Double = 0.49
-    @Published var cardHoverHighlightOpacity: Double = 0.00
+    var cardTintOpacity: Double = 0.63
+    var cardCornerRadius: Double = 12.95
+    var cardBorderOpacity: Double = 0.16
+    var cardHighlightOpacity: Double = 0.08
+    var cardHoverBorderOpacity: Double = 0.49
+    var cardHoverHighlightOpacity: Double = 0.00
 
     // Card material settings (NSVisualEffectView)
-    @Published var cardMaterialType: Int = 0 // 0=hudWindow, 1=popover, 2=menu, 3=sidebar, 4=fullScreenUI
-    @Published var cardBlendingMode: Int = 0 // 0=behindWindow, 1=withinWindow
-    @Published var cardEmphasized: Bool = true
-    @Published var cardForceDarkAppearance: Bool = true
+    var cardMaterialType: Int = 0 // 0=hudWindow, 1=popover, 2=menu, 3=sidebar, 4=fullScreenUI
+    var cardBlendingMode: Int = 0 // 0=behindWindow, 1=withinWindow
+    var cardEmphasized: Bool = true
+    var cardForceDarkAppearance: Bool = true
 
     /// Card SwiftUI blend mode for highlight overlay
-    @Published var cardSwiftUIBlendMode: Int = 3 // 0=normal, 1=plusLighter, 2=softLight, 3=overlay, 4=screen, 5=multiply
+    var cardSwiftUIBlendMode: Int = 3 // 0=normal, 1=plusLighter, 2=softLight, 3=overlay, 4=screen, 5=multiply
 
-    // Material settings
-    @Published var useEmphasizedMaterial: Bool = true
-    @Published var materialType: Int = 0 // 0=hudWindow, 1=popover, 2=menu, 3=sidebar, 4=fullScreenUI
+    /// Material settings
+    var useEmphasizedMaterial: Bool = true {
+        didSet { refreshCounter += 1 }
+    }
+
+    var materialType: Int = 0 { // 0=hudWindow, 1=popover, 2=menu, 3=sidebar, 4=fullScreenUI
+        didSet { refreshCounter += 1 }
+    }
 
     // MARK: - Logo Settings
 
-    @Published var logoScale: Double = 0.84
-    @Published var logoOpacity: Double = 0.22
+    var logoScale: Double = 0.84
+    var logoOpacity: Double = 0.22
 
     // Logo vibrancy (NSVisualEffectView)
-    @Published var logoUseVibrancy: Bool = true
-    @Published var logoMaterialType: Int = 2 // 0=hudWindow, 1=popover, 2=menu, 3=sidebar, 4=fullScreenUI
-    @Published var logoBlendingMode: Int = 0 // 0=behindWindow, 1=withinWindow
-    @Published var logoEmphasized: Bool = false
-    @Published var logoForceDarkAppearance: Bool = true
+    var logoUseVibrancy: Bool = true
+    var logoMaterialType: Int = 2 // 0=hudWindow, 1=popover, 2=menu, 3=sidebar, 4=fullScreenUI
+    var logoBlendingMode: Int = 0 // 0=behindWindow, 1=withinWindow
+    var logoEmphasized: Bool = false
+    var logoForceDarkAppearance: Bool = true
 
     /// Logo SwiftUI blend mode
-    @Published var logoSwiftUIBlendMode: Int = 3 // 0=normal, 1=plusLighter, 2=softLight, 3=overlay, 4=screen, 5=multiply, 6=difference
+    var logoSwiftUIBlendMode: Int = 3 // 0=normal, 1=plusLighter, 2=softLight, 3=overlay, 4=screen, 5=multiply, 6=difference
 
     // Status Colors - Ready (brand green, P3 approx in HSB)
-    @Published var statusReadyHue: Double = 0.369
-    @Published var statusReadySaturation: Double = 0.70
-    @Published var statusReadyBrightness: Double = 1.00
+    var statusReadyHue: Double = 0.369
+    var statusReadySaturation: Double = 0.70
+    var statusReadyBrightness: Double = 1.00
 
     // Status Colors - Working (yellow/orange)
-    @Published var statusWorkingHue: Double = 0.103
-    @Published var statusWorkingSaturation: Double = 1.00
-    @Published var statusWorkingBrightness: Double = 1.00
+    var statusWorkingHue: Double = 0.103
+    var statusWorkingSaturation: Double = 1.00
+    var statusWorkingBrightness: Double = 1.00
 
     // Status Colors - Waiting (coral/salmon)
-    @Published var statusWaitingHue: Double = 0.026
-    @Published var statusWaitingSaturation: Double = 0.58
-    @Published var statusWaitingBrightness: Double = 1.00
+    var statusWaitingHue: Double = 0.026
+    var statusWaitingSaturation: Double = 0.58
+    var statusWaitingBrightness: Double = 1.00
 
     // Status Colors - Compacting (purple/lavender)
-    @Published var statusCompactingHue: Double = 0.670
-    @Published var statusCompactingSaturation: Double = 0.50
-    @Published var statusCompactingBrightness: Double = 1.00
+    var statusCompactingHue: Double = 0.670
+    var statusCompactingSaturation: Double = 0.50
+    var statusCompactingBrightness: Double = 1.00
 
     /// Status Colors - Idle (gray)
-    @Published var statusIdleOpacity: Double = 0.40
+    var statusIdleOpacity: Double = 0.40
 
     // Ready ripple effect (continuous)
-    @Published var rippleSpeed: Double = 8.61
-    @Published var rippleCount: Int = 3
-    @Published var rippleMaxOpacity: Double = 1.00
-    @Published var rippleLineWidth: Double = 60.00
-    @Published var rippleBlurAmount: Double = 33.23
-    @Published var rippleOriginX: Double = 0.00
-    @Published var rippleOriginY: Double = 1.00
-    @Published var rippleFadeInZone: Double = 0.17
-    @Published var rippleFadeOutPower: Double = 3.10
+    var rippleSpeed: Double = 8.61
+    var rippleCount: Int = 3
+    var rippleMaxOpacity: Double = 1.00
+    var rippleLineWidth: Double = 60.00
+    var rippleBlurAmount: Double = 33.23
+    var rippleOriginX: Double = 0.00
+    var rippleOriginY: Double = 1.00
+    var rippleFadeInZone: Double = 0.17
+    var rippleFadeOutPower: Double = 3.10
 
     // Ready border glow effect
-    @Published var borderGlowInnerWidth: Double = 2.00
-    @Published var borderGlowOuterWidth: Double = 1.73
-    @Published var borderGlowInnerBlur: Double = 3.01
-    @Published var borderGlowOuterBlur: Double = 0.00
-    @Published var borderGlowBaseOpacity: Double = 0.45
-    @Published var borderGlowPulseIntensity: Double = 1.00
-    @Published var borderGlowRotationMultiplier: Double = 0.50
+    var borderGlowInnerWidth: Double = 2.00
+    var borderGlowOuterWidth: Double = 1.73
+    var borderGlowInnerBlur: Double = 3.01
+    var borderGlowOuterBlur: Double = 0.00
+    var borderGlowBaseOpacity: Double = 0.45
+    var borderGlowPulseIntensity: Double = 1.00
+    var borderGlowRotationMultiplier: Double = 0.50
 
     // MARK: - Waiting Pulse Effect
 
-    @Published var waitingCycleLength: Double = 1.68
-    @Published var waitingFirstPulseDuration: Double = 0.17
-    @Published var waitingFirstPulseFadeOut: Double = 0.17
-    @Published var waitingSecondPulseDelay: Double = 0.00
-    @Published var waitingSecondPulseDuration: Double = 0.17
-    @Published var waitingSecondPulseFadeOut: Double = 0.48
-    @Published var waitingFirstPulseIntensity: Double = 0.34
-    @Published var waitingSecondPulseIntensity: Double = 0.47
-    @Published var waitingMaxOpacity: Double = 0.34
-    @Published var waitingBlurAmount: Double = 0.0
-    @Published var waitingPulseScale: Double = 2.22
-    @Published var waitingScaleAmount: Double = 0.30
-    @Published var waitingSpringDamping: Double = 1.69
-    @Published var waitingSpringOmega: Double = 3.3
-    @Published var waitingOriginX: Double = 1.00
-    @Published var waitingOriginY: Double = 0.00
+    var waitingCycleLength: Double = 1.68
+    var waitingFirstPulseDuration: Double = 0.17
+    var waitingFirstPulseFadeOut: Double = 0.17
+    var waitingSecondPulseDelay: Double = 0.00
+    var waitingSecondPulseDuration: Double = 0.17
+    var waitingSecondPulseFadeOut: Double = 0.48
+    var waitingFirstPulseIntensity: Double = 0.34
+    var waitingSecondPulseIntensity: Double = 0.47
+    var waitingMaxOpacity: Double = 0.34
+    var waitingBlurAmount: Double = 0.0
+    var waitingPulseScale: Double = 2.22
+    var waitingScaleAmount: Double = 0.30
+    var waitingSpringDamping: Double = 1.69
+    var waitingSpringOmega: Double = 3.3
+    var waitingOriginX: Double = 1.00
+    var waitingOriginY: Double = 0.00
 
     // Waiting border glow
-    @Published var waitingBorderBaseOpacity: Double = 0.12
-    @Published var waitingBorderPulseOpacity: Double = 0.37
-    @Published var waitingBorderInnerWidth: Double = 0.50
-    @Published var waitingBorderOuterWidth: Double = 1.86
-    @Published var waitingBorderOuterBlur: Double = 0.8
+    var waitingBorderBaseOpacity: Double = 0.12
+    var waitingBorderPulseOpacity: Double = 0.37
+    var waitingBorderInnerWidth: Double = 0.50
+    var waitingBorderOuterWidth: Double = 1.86
+    var waitingBorderOuterBlur: Double = 0.8
 
     // MARK: - Working Stripe Effect (tuned defaults)
 
-    @Published var workingStripeWidth: Double = 24.0
-    @Published var workingStripeSpacing: Double = 38.49
-    @Published var workingStripeAngle: Double = 41.30
-    @Published var workingScrollSpeed: Double = 4.81
-    @Published var workingStripeOpacity: Double = 0.50
-    @Published var workingGlowIntensity: Double = 1.50
-    @Published var workingGlowBlurRadius: Double = 11.46
-    @Published var workingCoreBrightness: Double = 0.71
-    @Published var workingGradientFalloff: Double = 0.32
-    @Published var workingVignetteInnerRadius: Double = 0.02
-    @Published var workingVignetteOuterRadius: Double = 0.48
-    @Published var workingVignetteCenterOpacity: Double = 0.03
+    var workingStripeWidth: Double = 24.0
+    var workingStripeSpacing: Double = 38.49
+    var workingStripeAngle: Double = 41.30
+    var workingScrollSpeed: Double = 4.81
+    var workingStripeOpacity: Double = 0.50
+    var workingGlowIntensity: Double = 1.50
+    var workingGlowBlurRadius: Double = 11.46
+    var workingCoreBrightness: Double = 0.71
+    var workingGradientFalloff: Double = 0.32
+    var workingVignetteInnerRadius: Double = 0.02
+    var workingVignetteOuterRadius: Double = 0.48
+    var workingVignetteCenterOpacity: Double = 0.03
     // Note: Cannot use .statusWorking here as it would cause circular initialization
-    @Published var workingVignetteColor: Color = .init(hue: 0.05, saturation: 0.67, brightness: 0.39)
-    @Published var workingVignetteColorIntensity: Double = 0.47
-    @Published var workingVignetteBlendMode: BlendMode = .plusLighter
-    @Published var workingVignetteColorHue: Double = 0.05
-    @Published var workingVignetteColorSaturation: Double = 0.67
-    @Published var workingVignetteColorBrightness: Double = 0.39
+    var workingVignetteColor: Color = .init(hue: 0.05, saturation: 0.67, brightness: 0.39)
+    var workingVignetteColorIntensity: Double = 0.47
+    var workingVignetteBlendMode: BlendMode = .plusLighter
+    var workingVignetteColorHue: Double = 0.05
+    var workingVignetteColorSaturation: Double = 0.67
+    var workingVignetteColorBrightness: Double = 0.39
 
     // Working border glow (tuned defaults)
-    @Published var workingBorderWidth: Double = 1.0
-    @Published var workingBorderBaseOpacity: Double = 0.35
-    @Published var workingBorderPulseIntensity: Double = 0.50
-    @Published var workingBorderPulseSpeed: Double = 2.21
-    @Published var workingBorderBlurAmount: Double = 8.0
+    var workingBorderWidth: Double = 1.0
+    var workingBorderBaseOpacity: Double = 0.35
+    var workingBorderPulseIntensity: Double = 0.50
+    var workingBorderPulseSpeed: Double = 2.21
+    var workingBorderBlurAmount: Double = 8.0
 
     // MARK: - Empty State Border Glow
 
-    @Published var emptyGlowSpeed: Double = 3.21
-    @Published var emptyGlowPulseCount: Int = 4
-    @Published var emptyGlowBaseOpacity: Double = 0.11
-    @Published var emptyGlowPulseRange: Double = 0.59
-    @Published var emptyGlowInnerWidth: Double = 0.91
-    @Published var emptyGlowOuterWidth: Double = 1.21
-    @Published var emptyGlowInnerBlur: Double = 0.27
-    @Published var emptyGlowOuterBlur: Double = 4.19
-    @Published var emptyGlowFadeInZone: Double = 0.15
-    @Published var emptyGlowFadeOutPower: Double = 1.0
+    var emptyGlowSpeed: Double = 3.21
+    var emptyGlowPulseCount: Int = 4
+    var emptyGlowBaseOpacity: Double = 0.11
+    var emptyGlowPulseRange: Double = 0.59
+    var emptyGlowInnerWidth: Double = 0.91
+    var emptyGlowOuterWidth: Double = 1.21
+    var emptyGlowInnerBlur: Double = 0.27
+    var emptyGlowOuterBlur: Double = 4.19
+    var emptyGlowFadeInZone: Double = 0.15
+    var emptyGlowFadeOutPower: Double = 1.0
 
     // MARK: - Card Interaction (Per-Pointer-Event, tuned)
 
     // Idle state
-    @Published var cardIdleScale: Double = 1.0
-    @Published var cardIdleShadowOpacity: Double = 0.17
-    @Published var cardIdleShadowRadius: Double = 8.07
-    @Published var cardIdleShadowY: Double = 3.89
+    var cardIdleScale: Double = 1.0
+    var cardIdleShadowOpacity: Double = 0.17
+    var cardIdleShadowRadius: Double = 8.07
+    var cardIdleShadowY: Double = 3.89
 
     // Hover state
-    @Published var cardHoverScale: Double = 1.01
-    @Published var cardHoverSpringResponse: Double = 0.26
-    @Published var cardHoverSpringDamping: Double = 0.90
-    @Published var cardHoverShadowOpacity: Double = 0.2
-    @Published var cardHoverShadowRadius: Double = 12.0
-    @Published var cardHoverShadowY: Double = 4.0
+    var cardHoverScale: Double = 1.01
+    var cardHoverSpringResponse: Double = 0.26
+    var cardHoverSpringDamping: Double = 0.90
+    var cardHoverShadowOpacity: Double = 0.2
+    var cardHoverShadowRadius: Double = 12.0
+    var cardHoverShadowY: Double = 4.0
 
     // Pressed state
-    @Published var cardPressedScale: Double = 1.00
-    @Published var cardPressedSpringResponse: Double = 0.09
-    @Published var cardPressedSpringDamping: Double = 0.64
-    @Published var cardPressedShadowOpacity: Double = 0.12
-    @Published var cardPressedShadowRadius: Double = 2.0
-    @Published var cardPressedShadowY: Double = 1.0
+    var cardPressedScale: Double = 1.00
+    var cardPressedSpringResponse: Double = 0.09
+    var cardPressedSpringDamping: Double = 0.64
+    var cardPressedShadowOpacity: Double = 0.12
+    var cardPressedShadowRadius: Double = 2.0
+    var cardPressedShadowY: Double = 1.0
 
     // MARK: - Compacting Text Animation
 
-    @Published var compactingCycleLength: Double = 1.8
-    @Published var compactingMinTracking: Double = 0.0
-    @Published var compactingMaxTracking: Double = 2.1
-    @Published var compactingCompressDuration: Double = 0.26
-    @Published var compactingHoldDuration: Double = 0.50
-    @Published var compactingExpandDuration: Double = 1.0
+    var compactingCycleLength: Double = 1.8
+    var compactingMinTracking: Double = 0.0
+    var compactingMaxTracking: Double = 2.1
+    var compactingCompressDuration: Double = 0.26
+    var compactingHoldDuration: Double = 0.50
+    var compactingExpandDuration: Double = 1.0
     // Spring parameters for compress phase
-    @Published var compactingCompressDamping: Double = 0.3
-    @Published var compactingCompressOmega: Double = 16.0
+    var compactingCompressDamping: Double = 0.3
+    var compactingCompressOmega: Double = 16.0
     // Spring parameters for expand phase
-    @Published var compactingExpandDamping: Double = 0.8
-    @Published var compactingExpandOmega: Double = 4.0
+    var compactingExpandDamping: Double = 0.8
+    var compactingExpandOmega: Double = 4.0
 
     // MARK: - State Transition Animations
 
-    @Published var stateTransitionDuration: Double = 0.18 // Duration for state change animations
-    @Published var glowFadeDuration: Double = 0.15 // Duration for glow effect fade in/out
-    @Published var glowBorderDelay: Double = 0.03 // Stagger delay for border glow after ambient
-    @Published var hoverTransitionDuration: Double = 0.12 // Duration for hover state changes
-    @Published var cardInsertStagger: Double = 0.04 // Per-card stagger delay on insert
-    @Published var cardRemovalDuration: Double = 0.15 // Duration for card removal animation
-    @Published var cardInsertSpringResponse: Double = 0.25 // Spring response for card insertion
-    @Published var cardInsertSpringDamping: Double = 0.8 // Spring damping for card insertion
-    @Published var pausedCardStagger: Double = 0.025 // Per-card stagger for paused section
-    @Published var sectionToggleSpringResponse: Double = 0.18 // Spring response for section collapse/expand
+    var stateTransitionDuration: Double = 0.35 // Duration for state change animations
+    var glowFadeDuration: Double = 0.5 // Duration for glow effect cross-fade
+    var glowBorderDelay: Double = 0.08 // Stagger delay for border glow after ambient
+    var hoverTransitionDuration: Double = 0.12 // Duration for hover state changes
+    var cardInsertStagger: Double = 0.04 // Per-card stagger delay on insert
+    var cardRemovalDuration: Double = 0.15 // Duration for card removal animation
+    var cardInsertSpringResponse: Double = 0.25 // Spring response for card insertion
+    var cardInsertSpringDamping: Double = 0.8 // Spring damping for card insertion
+    var pausedCardStagger: Double = 0.025 // Per-card stagger for paused section
+    var sectionToggleSpringResponse: Double = 0.18 // Spring response for section collapse/expand
 
     // MARK: - Layout Settings (Card List)
 
-    @Published var cardListSpacing: Double = 7.89 // Gap between cards in vertical list
-    @Published var cardPaddingHorizontal: Double = 14.56 // Horizontal internal padding for vertical cards
-    @Published var cardPaddingVertical: Double = 12.0 // Vertical internal padding for vertical cards
-    @Published var listHorizontalPadding: Double = 12.16 // Horizontal padding for list container
+    var cardListSpacing: Double = 7.89 // Gap between cards in vertical list
+    var cardPaddingHorizontal: Double = 14.56 // Horizontal internal padding for vertical cards
+    var cardPaddingVertical: Double = 12.0 // Vertical internal padding for vertical cards
+    var listHorizontalPadding: Double = 12.16 // Horizontal padding for list container
 
     // MARK: - Layout Settings (Dock)
 
-    @Published var dockCardSpacing: Double = 14.52 // Gap between cards in horizontal dock
-    @Published var dockCardPaddingHorizontal: Double = 14.51 // Horizontal internal padding for dock cards
-    @Published var dockCardPaddingVertical: Double = 14.0 // Vertical internal padding for dock cards
-    @Published var dockHorizontalPadding: Double = 16.0 // Horizontal padding for dock container
+    var dockCardSpacing: Double = 14.52 // Gap between cards in horizontal dock
+    var dockCardPaddingHorizontal: Double = 14.51 // Horizontal internal padding for dock cards
+    var dockCardPaddingVertical: Double = 14.0 // Vertical internal padding for dock cards
+    var dockHorizontalPadding: Double = 16.0 // Horizontal padding for dock container
 
     // MARK: - Layout Rounded Accessors (whole pixels)
 
@@ -330,7 +320,7 @@ class GlassConfig: ObservableObject {
     }
 
     /// State Preview
-    @Published var previewState: PreviewState = .none
+    var previewState: PreviewState = .none
 
     // MARK: - Layout-Aware Accessors (unified - layout param kept for API compatibility)
 
@@ -610,11 +600,11 @@ class GlassConfig: ObservableObject {
     }
 
     func reset() {
-        panelTintOpacity = 0.43
-        panelCornerRadius = 18.87
-        panelBorderOpacity = 0.14
-        panelHighlightOpacity = 0.04
-        panelTopHighlightOpacity = 0.19
+        panelTintOpacity = 0.34
+        panelCornerRadius = 13.99
+        panelBorderOpacity = 0.34
+        panelHighlightOpacity = 0.03
+        panelTopHighlightOpacity = 0.17
         panelShadowOpacity = 0.00
         panelShadowRadius = 0
         panelShadowY = 0
@@ -746,9 +736,9 @@ class GlassConfig: ObservableObject {
         compactingExpandOmega = 4.0
 
         // State Transition Animations
-        stateTransitionDuration = 0.18
-        glowFadeDuration = 0.15
-        glowBorderDelay = 0.03
+        stateTransitionDuration = 0.35
+        glowFadeDuration = 0.5
+        glowBorderDelay = 0.08
         hoverTransitionDuration = 0.12
         cardInsertStagger = 0.04
         cardRemovalDuration = 0.15
@@ -773,11 +763,11 @@ class GlassConfig: ObservableObject {
     func exportForLLM() -> String {
         let allParams: [(String, String, Double, Double)] = [
             // Panel Background
-            ("Panel", "panelTintOpacity", 0.43, panelTintOpacity),
-            ("Panel", "panelCornerRadius", 18.87, panelCornerRadius),
-            ("Panel", "panelBorderOpacity", 0.14, panelBorderOpacity),
-            ("Panel", "panelHighlightOpacity", 0.04, panelHighlightOpacity),
-            ("Panel", "panelTopHighlightOpacity", 0.19, panelTopHighlightOpacity),
+            ("Panel", "panelTintOpacity", 0.34, panelTintOpacity),
+            ("Panel", "panelCornerRadius", 13.99, panelCornerRadius),
+            ("Panel", "panelBorderOpacity", 0.34, panelBorderOpacity),
+            ("Panel", "panelHighlightOpacity", 0.03, panelHighlightOpacity),
+            ("Panel", "panelTopHighlightOpacity", 0.17, panelTopHighlightOpacity),
             ("Panel", "panelShadowOpacity", 0.00, panelShadowOpacity),
             ("Panel", "panelShadowRadius", 0, panelShadowRadius),
             ("Panel", "panelShadowY", 0, panelShadowY),
@@ -925,9 +915,9 @@ class GlassConfig: ObservableObject {
             ("Card Pressed", "cardPressedShadowRadius", 2.0, cardPressedShadowRadius),
             ("Card Pressed", "cardPressedShadowY", 1.0, cardPressedShadowY),
             // State Transitions
-            ("State Transitions", "stateTransitionDuration", 0.18, stateTransitionDuration),
-            ("State Transitions", "glowFadeDuration", 0.15, glowFadeDuration),
-            ("State Transitions", "glowBorderDelay", 0.03, glowBorderDelay),
+            ("State Transitions", "stateTransitionDuration", 0.35, stateTransitionDuration),
+            ("State Transitions", "glowFadeDuration", 0.5, glowFadeDuration),
+            ("State Transitions", "glowBorderDelay", 0.08, glowBorderDelay),
             ("State Transitions", "hoverTransitionDuration", 0.12, hoverTransitionDuration),
             ("State Transitions", "cardInsertStagger", 0.04, cardInsertStagger),
             ("State Transitions", "cardRemovalDuration", 0.15, cardRemovalDuration),

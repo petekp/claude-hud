@@ -2,6 +2,18 @@
 import XCTest
 
 final class DaemonServiceTests: XCTestCase {
+    func testEnableForCurrentProcessSetsEnabledEnv() {
+        unsetenv("CAPACITOR_DAEMON_ENABLED")
+        defer { unsetenv("CAPACITOR_DAEMON_ENABLED") }
+
+        XCTAssertNil(getenv("CAPACITOR_DAEMON_ENABLED"))
+
+        DaemonService.enableForCurrentProcess()
+
+        let value = String(cString: getenv("CAPACITOR_DAEMON_ENABLED"))
+        XCTAssertEqual(value, "1")
+    }
+
     func testLaunchAgentInstallDoesNotRestartWhenAlreadyRunningAndNoPlistChanges() throws {
         let homeDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: homeDir, withIntermediateDirectories: true)
