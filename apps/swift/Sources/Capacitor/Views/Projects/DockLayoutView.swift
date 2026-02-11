@@ -18,13 +18,7 @@ struct DockLayoutView: View {
         // Capture layout values once at body evaluation to avoid constraint loops
         let cardSpacing = glassConfig.dockCardSpacingRounded
         let horizontalPadding = glassConfig.dockHorizontalPaddingRounded
-        let sessionStates = appState.sessionStateManager.sessionStates
-        let grouped = ProjectOrdering.orderedGroupedProjects(
-            nonPausedProjects,
-            activeOrder: appState.activeProjectOrder,
-            idleOrder: appState.idleProjectOrder,
-            sessionStates: sessionStates,
-        )
+        let grouped = appState.orderedGroupedProjects(nonPausedProjects)
         let activePaths = Set(grouped.active.map(\.path))
         let allProjects = grouped.active + grouped.idle
 

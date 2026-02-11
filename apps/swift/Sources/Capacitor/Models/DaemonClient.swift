@@ -122,16 +122,22 @@ final class DaemonClient {
 
     private let queue = DispatchQueue(label: "com.capacitor.daemon.client")
     private let transportOverride: Transport?
+    private let isEnabledOverride: Bool?
 
-    init(transport: @escaping Transport) {
+    init(transport: @escaping Transport, isEnabled: Bool = true) {
         transportOverride = transport
+        isEnabledOverride = isEnabled
     }
 
     private init() {
         transportOverride = nil
+        isEnabledOverride = nil
     }
 
     var isEnabled: Bool {
+        if let isEnabledOverride {
+            return isEnabledOverride
+        }
         guard let raw = getenv(Constants.enabledEnv) else {
             return false
         }

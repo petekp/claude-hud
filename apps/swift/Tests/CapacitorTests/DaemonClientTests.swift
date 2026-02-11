@@ -28,22 +28,10 @@ final class DaemonClientTests: XCTestCase {
     }
 
     func testEmptyResponseThrowsInvalidResponse() async throws {
-        setenv("CAPACITOR_DAEMON_ENABLED", "1", 1)
-        defer { unsetenv("CAPACITOR_DAEMON_ENABLED") }
-
-        let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
-        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
-        let socketPath = tempDir.appendingPathComponent("daemon.sock").path
-
-        let server = try UnixSocketServer(path: socketPath)
-        defer { server.stop() }
-        server.start(response: Data())
-
-        setenv("CAPACITOR_DAEMON_SOCKET", socketPath, 1)
-        defer { unsetenv("CAPACITOR_DAEMON_SOCKET") }
+        let client = DaemonClient(transport: { _ in Data() })
 
         do {
-            _ = try await DaemonClient.shared.fetchProjectStates()
+            _ = try await client.fetchProjectStates()
             XCTFail("Expected error")
         } catch let error as DaemonClientError {
             switch error {

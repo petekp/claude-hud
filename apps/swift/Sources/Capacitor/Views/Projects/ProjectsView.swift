@@ -79,13 +79,7 @@ struct ProjectsView: View {
                     } else if appState.projects.isEmpty {
                         EmptyProjectsView()
                     } else {
-                        let sessionStates = appState.sessionStateManager.sessionStates
-                        let grouped = ProjectOrdering.orderedGroupedProjects(
-                            nonPausedProjects,
-                            activeOrder: appState.activeProjectOrder,
-                            idleOrder: appState.idleProjectOrder,
-                            sessionStates: sessionStates,
-                        )
+                        let grouped = appState.orderedGroupedProjects(nonPausedProjects)
                         let hasVisibleProjects = !grouped.active.isEmpty || !grouped.idle.isEmpty
 
                         if appState.isProjectCreationEnabled {
