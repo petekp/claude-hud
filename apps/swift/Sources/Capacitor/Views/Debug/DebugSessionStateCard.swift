@@ -1,7 +1,7 @@
 import Combine
 import SwiftUI
 
-/* 
+/*
  * TRANSPARENT-UI DEBUG TOOL
  *
  * Temporary debugging visualization for session state detection. Remove when no longer needed:

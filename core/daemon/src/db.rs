@@ -83,6 +83,46 @@ impl Db {
         })
     }
 
+    pub fn list_session_affecting_events_since(
+        &self,
+        since: Option<DateTime<Utc>>,
+    ) -> Result<Vec<EventEnvelope>, String> {
+        self.with_connection(|conn| {
+            let since_param = since.map(|value| value.to_rfc3339());
+            let mut stmt = conn
+                .prepare(
+                    "SELECT payload FROM events \
+                     WHERE session_id IS NOT NULL \
+                       AND event_type NOT IN ('shell_cwd', 'subagent_start', 'subagent_stop', 'teammate_idle') \
+                       AND (?1 IS NULL OR julianday(recorded_at) >= julianday(?1)) \
+                     ORDER BY recorded_at ASC, id ASC",
+                )
+                .map_err(|err| {
+                    format!(
+                        "Failed to prepare session-affecting events query: {}",
+                        err
+                    )
+                })?;
+
+            let rows = stmt
+                .query_map(params![since_param], |row| row.get::<_, String>(0))
+                .map_err(|err| {
+                    format!("Failed to read session-affecting event rows: {}", err)
+                })?;
+
+            let mut events = Vec::new();
+            for row in rows {
+                let payload = row
+                    .map_err(|err| format!("Failed to decode session event row: {}", err))?;
+                let event: EventEnvelope = serde_json::from_str(&payload)
+                    .map_err(|err| format!("Failed to parse session event payload: {}", err))?;
+                events.push(event);
+            }
+
+            Ok(events)
+        })
+    }
+
     pub fn has_events(&self) -> Result<bool, String> {
         let count = self.with_connection(|conn| {
             conn.query_row("SELECT COUNT(*) FROM events", [], |row| {
@@ -93,16 +133,24 @@ impl Db {
         Ok(count > 0)
     }
 
-    pub fn latest_event_time(&self) -> Result<Option<DateTime<Utc>>, String> {
+    pub fn latest_session_affecting_event_time(&self) -> Result<Option<DateTime<Utc>>, String> {
         self.with_connection(|conn| {
             let recorded_at: Option<String> = conn
                 .query_row(
-                    "SELECT recorded_at FROM events ORDER BY recorded_at DESC, id DESC LIMIT 1",
+                    "SELECT recorded_at FROM events \
+                     WHERE session_id IS NOT NULL \
+                       AND event_type NOT IN ('shell_cwd', 'subagent_start', 'subagent_stop', 'teammate_idle') \
+                     ORDER BY recorded_at DESC, id DESC LIMIT 1",
                     [],
                     |row| row.get(0),
                 )
                 .optional()
-                .map_err(|err| format!("Failed to query latest event timestamp: {}", err))?;
+                .map_err(|err| {
+                    format!(
+                        "Failed to query latest session-affecting event timestamp: {}",
+                        err
+                    )
+                })?;
             Ok(recorded_at.and_then(parse_rfc3339))
         })
     }

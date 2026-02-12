@@ -26,6 +26,16 @@ final class SessionStateManager {
         let workspaceId: String
     }
 
+    private enum MatchPriority: Int {
+        case repoFallback = 0
+        case direct = 1
+    }
+
+    private struct BestProjectState {
+        let state: DaemonProjectState
+        let priority: MatchPriority
+    }
+
     private enum Constants {
         static let flashDurationSeconds: TimeInterval = 1.4
     }
@@ -144,7 +154,12 @@ final class SessionStateManager {
     // MARK: - State Retrieval
 
     func getSessionState(for project: Project) -> ProjectSessionState? {
-        sessionStates[project.path]
+        if let direct = sessionStates[project.path] {
+            return direct
+        }
+
+        let normalizedPath = PathNormalizer.normalize(project.path)
+        return sessionStates.first(where: { PathNormalizer.normalize($0.key) == normalizedPath })?.value
     }
 
     private nonisolated func mergeDaemonProjectStates(
@@ -193,7 +208,7 @@ final class SessionStateManager {
             pinnedProjectsByRepoKey[repoKey, default: []].append(info)
         }
 
-        var bestStates: [String: DaemonProjectState] = [:]
+        var bestStates: [String: BestProjectState] = [:]
         var unmatched: [DaemonProjectState] = []
 
         for state in states {
@@ -223,12 +238,13 @@ final class SessionStateManager {
                 {
                     for candidate in candidates {
                         let projectPath = candidate.project.path
+                        let candidateBest = BestProjectState(state: state, priority: .repoFallback)
                         if let existing = bestStates[projectPath] {
-                            if isMoreRecent(state, than: existing) {
-                                bestStates[projectPath] = state
+                            if shouldReplace(existing: existing, with: candidateBest) {
+                                bestStates[projectPath] = candidateBest
                             }
                         } else {
-                            bestStates[projectPath] = state
+                            bestStates[projectPath] = candidateBest
                         }
                     }
                     continue
@@ -239,12 +255,13 @@ final class SessionStateManager {
             }
 
             let projectPath = match.project.path
+            let candidateBest = BestProjectState(state: state, priority: .direct)
             if let existing = bestStates[projectPath] {
-                if isMoreRecent(state, than: existing) {
-                    bestStates[projectPath] = state
+                if shouldReplace(existing: existing, with: candidateBest) {
+                    bestStates[projectPath] = candidateBest
                 }
             } else {
-                bestStates[projectPath] = state
+                bestStates[projectPath] = candidateBest
             }
         }
 
@@ -254,7 +271,8 @@ final class SessionStateManager {
         }
 
         var merged: [String: ProjectSessionState] = [:]
-        for (projectPath, state) in bestStates {
+        for (projectPath, best) in bestStates {
+            let state = best.state
             let mappedState = mapDaemonState(state.state)
             let sessionState = ProjectSessionState(
                 state: mappedState,
@@ -332,6 +350,13 @@ final class SessionStateManager {
         default:
             return false
         }
+    }
+
+    private nonisolated func shouldReplace(existing: BestProjectState, with candidate: BestProjectState) -> Bool {
+        if candidate.priority != existing.priority {
+            return candidate.priority.rawValue > existing.priority.rawValue
+        }
+        return isMoreRecent(candidate.state, than: existing.state)
     }
 
     private nonisolated func mapDaemonState(_ state: String) -> SessionState {

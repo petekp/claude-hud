@@ -2,6 +2,7 @@ use crate::activity::reduce_activity;
 use crate::db::Db;
 use crate::reducer::SessionUpdate;
 use crate::session_store::handle_session_event;
+use chrono::{DateTime, Utc};
 
 pub fn rebuild_from_events(db: &Db) -> Result<(), String> {
     db.clear_sessions()?;
@@ -9,7 +10,18 @@ pub fn rebuild_from_events(db: &Db) -> Result<(), String> {
     db.clear_tombstones()?;
 
     let events = db.list_events()?;
+    apply_events(db, events)
+}
 
+pub fn catch_up_sessions_from_events(db: &Db, since: Option<DateTime<Utc>>) -> Result<(), String> {
+    let events = db.list_session_affecting_events_since(since)?;
+    apply_events(db, events)
+}
+
+fn apply_events(
+    db: &Db,
+    events: Vec<capacitor_daemon_protocol::EventEnvelope>,
+) -> Result<(), String> {
     for event in events {
         let current = match event.session_id.as_ref() {
             Some(session_id) => db.get_session(session_id)?,

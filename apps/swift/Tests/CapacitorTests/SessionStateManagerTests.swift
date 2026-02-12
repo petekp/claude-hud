@@ -407,6 +407,151 @@ final class SessionStateManagerTests: XCTestCase {
         }
     }
 
+    func testSessionStatePrefersNewestStateWhenTimestampsUseMicroseconds() async throws {
+        setenv("CAPACITOR_DAEMON_ENABLED", "1", 1)
+        defer { unsetenv("CAPACITOR_DAEMON_ENABLED") }
+
+        let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+        let socketPath = tempDir.appendingPathComponent("daemon.sock").path
+
+        let projectPath = "/Users/pete/Code/writing"
+        // Send an older state first, then a newer state for the same project.
+        // SessionStateManager must pick the newest based on updated_at/state_changed_at.
+        let fixtures: [ProjectStateFixture] = [
+            .init(
+                projectPath: projectPath,
+                state: "idle",
+                updatedAt: "2026-02-11T20:19:03.104550+00:00",
+                stateChangedAt: "2026-02-11T20:19:03.104550+00:00",
+                sessionId: "session-old",
+            ),
+            .init(
+                projectPath: projectPath,
+                state: "working",
+                updatedAt: "2026-02-11T20:19:03.204550+00:00",
+                stateChangedAt: "2026-02-11T20:19:03.204550+00:00",
+                sessionId: "session-new",
+            ),
+        ]
+
+        let server = try UnixSocketServer(path: socketPath)
+        defer { server.stop() }
+        server.start(response: makeProjectStatesResponse(fixtures))
+
+        setenv("CAPACITOR_DAEMON_SOCKET", socketPath, 1)
+        defer { unsetenv("CAPACITOR_DAEMON_SOCKET") }
+
+        let manager = SessionStateManager()
+        let project = makeProject("writing", path: projectPath)
+
+        manager.refreshSessionStates(for: [project])
+        let state = await waitForSessionState(manager, project: project)
+
+        XCTAssertNotNil(state)
+        XCTAssertEqual(state?.state, .working)
+        XCTAssertEqual(state?.sessionId, "session-new")
+    }
+
+    func testRepoFallbackDoesNotOverrideDirectWorkspaceMatch() async throws {
+        setenv("CAPACITOR_DAEMON_ENABLED", "1", 1)
+        defer { unsetenv("CAPACITOR_DAEMON_ENABLED") }
+
+        let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+
+        let repoRoot = tempDir.appendingPathComponent("monorepo")
+        let repoGit = repoRoot.appendingPathComponent(".git")
+        let pinnedA = repoRoot.appendingPathComponent("apps/a")
+        let pinnedB = repoRoot.appendingPathComponent("apps/b")
+        let unmatchedSameRepo = repoRoot.appendingPathComponent("packages/unpinned")
+
+        try FileManager.default.createDirectory(at: repoGit, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: pinnedA, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: pinnedB, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: unmatchedSameRepo, withIntermediateDirectories: true)
+
+        let socketPath = tempDir.appendingPathComponent("daemon.sock").path
+        let server = try UnixSocketServer(path: socketPath)
+        defer { server.stop() }
+        server.start(response: makeProjectStatesResponse([
+            // Unmatched path in same repo (fallback candidate): newer + working
+            .init(
+                projectPath: unmatchedSameRepo.path,
+                state: "working",
+                updatedAt: "2026-02-11T20:30:00Z",
+                stateChangedAt: "2026-02-11T20:30:00Z",
+                sessionId: "session-fallback",
+            ),
+            // Direct workspace match for pinnedB: older + ready
+            .init(
+                projectPath: pinnedB.path,
+                state: "ready",
+                updatedAt: "2026-02-11T20:29:00Z",
+                stateChangedAt: "2026-02-11T20:29:00Z",
+                sessionId: "session-direct",
+            ),
+        ]), maxConnections: 4)
+
+        setenv("CAPACITOR_DAEMON_SOCKET", socketPath, 1)
+        defer { unsetenv("CAPACITOR_DAEMON_SOCKET") }
+
+        let manager = SessionStateManager()
+        let projectA = makeProject("app-a", path: pinnedA.path)
+        let projectB = makeProject("app-b", path: pinnedB.path)
+
+        manager.refreshSessionStates(for: [projectA, projectB])
+        let stateA = await waitForSessionState(manager, project: projectA)
+        let stateB = await waitForSessionState(manager, project: projectB)
+
+        XCTAssertEqual(stateA?.state, .working, "Fallback activity should still light up pinned workspaces without direct states.")
+        XCTAssertEqual(stateB?.state, .ready, "Direct workspace state must not be overwritten by fallback state from another path in the same repo.")
+        XCTAssertEqual(stateB?.sessionId, "session-direct")
+    }
+
+    func testGetSessionStateFallsBackToNormalizedPathLookup() throws {
+        let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+
+        let realProjectPath = tempDir.appendingPathComponent("workspace")
+        let symlinkPath = tempDir.appendingPathComponent("workspace-link")
+        try FileManager.default.createDirectory(at: realProjectPath, withIntermediateDirectories: true)
+        try FileManager.default.createSymbolicLink(atPath: symlinkPath.path, withDestinationPath: realProjectPath.path)
+
+        let manager = SessionStateManager()
+        manager.setSessionStatesForTesting([
+            symlinkPath.path + "/": makeSessionState(state: .ready, sessionId: "session-symlink"),
+        ])
+
+        let project = makeProject("workspace", path: realProjectPath.path.uppercased())
+        let state = manager.getSessionState(for: project)
+
+        XCTAssertNotNil(state, "Equivalent normalized paths should resolve to existing session state.")
+        XCTAssertEqual(state?.sessionId, "session-symlink")
+    }
+
+    func testGetSessionStateDirectLookupHasPriorityOverNormalizedFallback() throws {
+        let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+
+        let realProjectPath = tempDir.appendingPathComponent("workspace")
+        let symlinkPath = tempDir.appendingPathComponent("workspace-link")
+        try FileManager.default.createDirectory(at: realProjectPath, withIntermediateDirectories: true)
+        try FileManager.default.createSymbolicLink(atPath: symlinkPath.path, withDestinationPath: realProjectPath.path)
+
+        let manager = SessionStateManager()
+        manager.setSessionStatesForTesting([
+            symlinkPath.path + "/": makeSessionState(state: .ready, sessionId: "session-fallback"),
+            realProjectPath.path: makeSessionState(state: .working, sessionId: "session-direct"),
+        ])
+
+        let project = makeProject("workspace", path: realProjectPath.path)
+        let state = manager.getSessionState(for: project)
+
+        XCTAssertEqual(state?.sessionId, "session-direct")
+        XCTAssertEqual(state?.state, .working)
+    }
+
     private func waitForSessionState(
         _ manager: SessionStateManager,
         project: Project,
@@ -428,6 +573,19 @@ final class SessionStateManagerTests: XCTestCase {
         let updatedAt: String
         let stateChangedAt: String
         let sessionId: String?
+    }
+
+    private func makeSessionState(state: SessionState, sessionId: String?) -> ProjectSessionState {
+        ProjectSessionState(
+            state: state,
+            stateChangedAt: nil,
+            updatedAt: nil,
+            sessionId: sessionId,
+            workingOn: nil,
+            context: nil,
+            thinking: nil,
+            hasSession: true,
+        )
     }
 
     private func makeProject(_ name: String, path: String) -> Project {

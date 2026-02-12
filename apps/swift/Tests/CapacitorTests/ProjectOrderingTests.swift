@@ -103,6 +103,23 @@ final class ProjectOrderingTests: XCTestCase {
         XCTAssertFalse(ProjectOrdering.isActive("/tmp/a", sessionStates: states))
     }
 
+    func testIsActiveUsesNormalizedPathFallback() {
+        let states: [String: ProjectSessionState] = [
+            "/tmp/../tmp/a/": makeSessionState(.working),
+        ]
+
+        XCTAssertTrue(ProjectOrdering.isActive("/TMP/a", sessionStates: states))
+    }
+
+    func testIsActivePrefersDirectLookupOverNormalizedFallback() {
+        let states: [String: ProjectSessionState] = [
+            "/tmp/a": makeSessionState(.idle),
+            "/tmp/../tmp/A/": makeSessionState(.working),
+        ]
+
+        XCTAssertFalse(ProjectOrdering.isActive("/tmp/a", sessionStates: states))
+    }
+
     // MARK: - orderedGroupedProjects
 
     func testGroupedProjectsSplitsActiveAndIdle() {

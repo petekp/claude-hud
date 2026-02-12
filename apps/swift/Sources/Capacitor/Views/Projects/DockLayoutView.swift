@@ -15,12 +15,29 @@ struct DockLayoutView: View {
     }
 
     var body: some View {
+        // Bridge nested session-state updates into this view's observation graph.
+        let _ = appState.sessionStateRevision
+        // Snapshot session state directly so this body observes per-project changes.
+        let sessionStates = appState.sessionStateManager.sessionStates
+
         // Capture layout values once at body evaluation to avoid constraint loops
         let cardSpacing = glassConfig.dockCardSpacingRounded
         let horizontalPadding = glassConfig.dockHorizontalPaddingRounded
-        let grouped = appState.orderedGroupedProjects(nonPausedProjects)
+        let grouped = ProjectOrdering.orderedGroupedProjects(
+            nonPausedProjects,
+            activeOrder: appState.activeProjectOrder,
+            idleOrder: appState.idleProjectOrder,
+            sessionStates: sessionStates,
+        )
         let activePaths = Set(grouped.active.map(\.path))
         let allProjects = grouped.active + grouped.idle
+        #if DEBUG
+            let renderSummary = DockLayoutRenderTelemetry.summary(
+                for: allProjects,
+                sessionStates: sessionStates,
+            )
+            let _ = DockLayoutRenderTelemetry.logIfChanged(renderSummary)
+        #endif
 
         GeometryReader { geometry in
             let cardsPerPage = calculateCardsPerPage(width: geometry.size.width, cardSpacing: cardSpacing, horizontalPadding: horizontalPadding)
@@ -34,7 +51,7 @@ struct DockLayoutView: View {
                     ScrollView(.horizontal, showsIndicators: false) {
                         LazyHStack(spacing: cardSpacing) {
                             ForEach(allProjects, id: \.path) { project in
-                                let sessionState = appState.getSessionState(for: project)
+                                let sessionState = ProjectOrdering.sessionState(for: project.path, sessionStates: sessionStates)
                                 let projectStatus = appState.getProjectStatus(for: project)
                                 let flashState = appState.isFlashing(project)
                                 let isStale = SessionStaleness.isReadyStale(
@@ -141,7 +158,7 @@ struct DockLayoutView: View {
             isDragging: draggedProject?.path == project.path,
         )
         .preventWindowDrag()
-        .id("\(project.path)-\(appState.sessionStateRevision)")
+        .id(ProjectOrdering.cardIdentityKey(projectPath: project.path, sessionState: sessionState))
         .zIndex(draggedProject?.path == project.path ? 999 : 0)
         .onDrop(
             of: [.text, .fileURL],
@@ -166,6 +183,55 @@ struct DockLayoutView: View {
         return max(1, Int(availableWidth / cardWithSpacing))
     }
 }
+
+#if DEBUG
+    @MainActor
+    private enum DockLayoutRenderTelemetry {
+        private static var lastSummary: String?
+
+        static func summary(
+            for projects: [Project],
+            sessionStates: [String: ProjectSessionState],
+        ) -> String {
+            if projects.isEmpty {
+                return "<no-cards>"
+            }
+
+            return projects
+                .map { project in
+                    let sessionState = ProjectOrdering.sessionState(
+                        for: project.path,
+                        sessionStates: sessionStates,
+                    )
+                    return "\(project.name):\(stateLabel(sessionState?.state))"
+                }
+                .joined(separator: " | ")
+        }
+
+        static func logIfChanged(_ summary: String) {
+            guard summary != lastSummary else { return }
+            lastSummary = summary
+            DebugLog.write("[DEBUG][DockLayoutView][ResolvedCardStates] \(summary)")
+        }
+
+        private static func stateLabel(_ state: SessionState?) -> String {
+            guard let state else { return "nil" }
+
+            switch state {
+            case .working:
+                return "Working"
+            case .ready:
+                return "Ready"
+            case .idle:
+                return "Idle"
+            case .compacting:
+                return "Compacting"
+            case .waiting:
+                return "Waiting"
+            }
+        }
+    }
+#endif
 
 private struct PageIndicator: View {
     let currentPage: Int

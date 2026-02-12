@@ -36,13 +36,30 @@ enum ProjectOrdering {
     }
 
     /// Classifies a project as active if it has a session with a non-idle state.
+    static func sessionState(for path: String, sessionStates: [String: ProjectSessionState]) -> ProjectSessionState? {
+        if let session = sessionStates[path] {
+            return session
+        }
+
+        let normalizedPath = PathNormalizer.normalize(path)
+        return sessionStates.first(where: { PathNormalizer.normalize($0.key) == normalizedPath })?.value
+    }
+
+    /// Classifies a project as active if it has a session with a non-idle state.
     static func isActive(_ path: String, sessionStates: [String: ProjectSessionState]) -> Bool {
-        guard let session = sessionStates[path] else { return false }
+        guard let session = sessionState(for: path, sessionStates: sessionStates) else {
+            return false
+        }
+
+        return isActive(session)
+    }
+
+    private static func isActive(_ session: ProjectSessionState) -> Bool {
         switch session.state {
         case .working, .waiting, .compacting, .ready:
-            return true
+            true
         case .idle:
-            return false
+            false
         }
     }
 
@@ -66,6 +83,30 @@ enum ProjectOrdering {
         var paths = projectList.map(\.path)
         paths.move(fromOffsets: source, toOffset: destination)
         return paths
+    }
+
+    /// Stable per-card identity that refreshes a row only when its own session presentation changes.
+    static func cardIdentityKey(projectPath: String, sessionState: ProjectSessionState?) -> String {
+        guard let sessionState else {
+            return "\(projectPath)#none"
+        }
+
+        return "\(projectPath)#\(sessionLabel(sessionState.state))#\(sessionState.sessionId ?? "-")#\(sessionState.hasSession ? "1" : "0")"
+    }
+
+    private static func sessionLabel(_ state: SessionState) -> String {
+        switch state {
+        case .working:
+            "working"
+        case .ready:
+            "ready"
+        case .idle:
+            "idle"
+        case .compacting:
+            "compacting"
+        case .waiting:
+            "waiting"
+        }
     }
 }
 

@@ -98,25 +98,29 @@ final class UnixSocketServer {
         }
     }
 
-    func start(response: Data) {
+    func start(response: Data, maxConnections: Int = 1) {
         let work = DispatchWorkItem { [fd] in
-            var addr = sockaddr()
-            var len = socklen_t(MemoryLayout<sockaddr>.size)
-            let client = accept(fd, &addr, &len)
-            if client < 0 {
-                return
-            }
-            defer { close(client) }
+            var served = 0
+            while served < maxConnections {
+                var addr = sockaddr()
+                var len = socklen_t(MemoryLayout<sockaddr>.size)
+                let client = accept(fd, &addr, &len)
+                if client < 0 {
+                    return
+                }
 
-            var buffer = [UInt8](repeating: 0, count: 1024)
-            while true {
-                let n = read(client, &buffer, buffer.count)
-                if n <= 0 { break }
-                if buffer.prefix(n).contains(0x0A) { break }
-            }
-            response.withUnsafeBytes { bytes in
-                guard let base = bytes.baseAddress else { return }
-                _ = write(client, base, response.count)
+                var buffer = [UInt8](repeating: 0, count: 1024)
+                while true {
+                    let n = read(client, &buffer, buffer.count)
+                    if n <= 0 { break }
+                    if buffer.prefix(n).contains(0x0A) { break }
+                }
+                response.withUnsafeBytes { bytes in
+                    guard let base = bytes.baseAddress else { return }
+                    _ = write(client, base, response.count)
+                }
+                close(client)
+                served += 1
             }
         }
         workItem = work

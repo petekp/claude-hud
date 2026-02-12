@@ -36,9 +36,12 @@ struct StatusIndicator: View {
                         .font(.system(.callout, design: .monospaced).weight(.semibold))
                         .tracking(0.5)
                         .foregroundStyle(isActive ? statusColor : statusColor.opacity(0.55))
-                        .contentTransition(reduceMotion ? .identity : .numericText())
+                        .contentTransition(reduceMotion ? .identity : .opacity)
                 }
             }
+            // Force view identity to follow logical session state so rapid daemon transitions
+            // cannot retain stale label rendering across animation boundaries.
+            .id(state)
             .transition(.opacity)
 
             if state == .working {

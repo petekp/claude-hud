@@ -33,14 +33,7 @@ struct ProjectCardView: View {
     // MARK: - Computed Properties
 
     private var currentState: SessionState {
-        switch glassConfig.previewState {
-        case .none: sessionState?.state ?? .idle
-        case .ready: .ready
-        case .working: .working
-        case .waiting: .waiting
-        case .compacting: .compacting
-        case .idle: .idle
-        }
+        sessionState?.state ?? .idle
     }
 
     private var isReady: Bool {
@@ -90,6 +83,15 @@ struct ProjectCardView: View {
     // MARK: - Body
 
     var body: some View {
+        #if DEBUG
+            let _ = ProjectCardRenderTelemetry.logIfChanged(
+                path: project.path,
+                name: project.name,
+                state: sessionState?.state,
+                source: "ProjectCardView",
+            )
+        #endif
+
         // Capture layout values once at body evaluation to avoid constraint loops
         let paddingH = glassConfig.cardPaddingH
         let paddingV = glassConfig.cardPaddingV
@@ -248,6 +250,32 @@ struct ProjectCardView: View {
         }
     }
 }
+
+#if DEBUG
+    @MainActor
+    private enum ProjectCardRenderTelemetry {
+        private static var lastByPath: [String: String] = [:]
+
+        static func logIfChanged(path: String, name: String, state: SessionState?, source: String) {
+            let label = if let state {
+                switch state {
+                case .working: "Working"
+                case .ready: "Ready"
+                case .idle: "Idle"
+                case .compacting: "Compacting"
+                case .waiting: "Waiting"
+                }
+            } else {
+                "nil"
+            }
+
+            let summary = "\(name):\(label)"
+            guard lastByPath[path] != summary else { return }
+            lastByPath[path] = summary
+            DebugLog.write("[DEBUG][\(source)][CardState] \(summary) path=\(path)")
+        }
+    }
+#endif
 
 // MARK: - Card Header Component
 

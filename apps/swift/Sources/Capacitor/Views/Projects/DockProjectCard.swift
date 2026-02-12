@@ -77,6 +77,14 @@ struct DockProjectCard: View {
     }
 
     var body: some View {
+        #if DEBUG
+            let _ = DockProjectCardRenderTelemetry.logIfChanged(
+                path: project.path,
+                name: project.name,
+                state: sessionState?.state,
+            )
+        #endif
+
         // Capture layout values once at body evaluation to avoid constraint loops
         let dockPaddingH = glassConfig.dockCardPaddingH
         let dockPaddingV = glassConfig.dockCardPaddingV
@@ -231,6 +239,32 @@ struct DockProjectCard: View {
         }
     }
 }
+
+#if DEBUG
+    @MainActor
+    private enum DockProjectCardRenderTelemetry {
+        private static var lastByPath: [String: String] = [:]
+
+        static func logIfChanged(path: String, name: String, state: SessionState?) {
+            let label = if let state {
+                switch state {
+                case .working: "Working"
+                case .ready: "Ready"
+                case .idle: "Idle"
+                case .compacting: "Compacting"
+                case .waiting: "Waiting"
+                }
+            } else {
+                "nil"
+            }
+
+            let summary = "\(name):\(label)"
+            guard lastByPath[path] != summary else { return }
+            lastByPath[path] = summary
+            DebugLog.write("[DEBUG][DockProjectCard][CardState] \(summary) path=\(path)")
+        }
+    }
+#endif
 
 // Note: DockStatusIndicator, DockBlockerBadge, DockStaleBadge have been replaced
 // with shared components from ProjectCardComponents.swift:

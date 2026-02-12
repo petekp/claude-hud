@@ -22,6 +22,19 @@ struct ProjectsView: View {
     }
 
     var body: some View {
+        // Bridge nested session-state updates into this view's observation graph.
+        let _ = appState.sessionStateRevision
+        // Snapshot session state directly so this body observes per-project changes.
+        let sessionStates = appState.sessionStateManager.sessionStates
+        #if DEBUG
+            let renderedProjectsForDebug = debugRenderedProjects(sessionStates: sessionStates)
+            let renderSummary = ProjectsViewRenderTelemetry.summary(
+                for: renderedProjectsForDebug,
+                sessionStates: sessionStates,
+            )
+            let _ = ProjectsViewRenderTelemetry.logIfChanged(renderSummary)
+        #endif
+
         // Capture layout values once at body evaluation to avoid constraint loops
         // (same pattern as DockLayoutView crash fix)
         let cardListSpacing = glassConfig.cardListSpacingRounded
@@ -79,7 +92,12 @@ struct ProjectsView: View {
                     } else if appState.projects.isEmpty {
                         EmptyProjectsView()
                     } else {
-                        let grouped = appState.orderedGroupedProjects(nonPausedProjects)
+                        let grouped = ProjectOrdering.orderedGroupedProjects(
+                            nonPausedProjects,
+                            activeOrder: appState.activeProjectOrder,
+                            idleOrder: appState.idleProjectOrder,
+                            sessionStates: sessionStates,
+                        )
                         let hasVisibleProjects = !grouped.active.isEmpty || !grouped.idle.isEmpty
 
                         if appState.isProjectCreationEnabled {
@@ -95,7 +113,7 @@ struct ProjectsView: View {
                             .transition(.opacity)
 
                             ForEach(Array(grouped.active.enumerated()), id: \.element.path) { index, project in
-                                let sessionState = appState.getSessionState(for: project)
+                                let sessionState = ProjectOrdering.sessionState(for: project.path, sessionStates: sessionStates)
                                 let projectStatus = appState.getProjectStatus(for: project)
                                 let flashState = appState.isFlashing(project)
                                 let isStale = SessionStaleness.isReadyStale(
@@ -115,7 +133,7 @@ struct ProjectsView: View {
                             }
 
                             ForEach(Array(grouped.idle.enumerated()), id: \.element.path) { index, project in
-                                let sessionState = appState.getSessionState(for: project)
+                                let sessionState = ProjectOrdering.sessionState(for: project.path, sessionStates: sessionStates)
                                 let projectStatus = appState.getProjectStatus(for: project)
                                 let flashState = appState.isFlashing(project)
                                 let isStale = SessionStaleness.isReadyStale(
@@ -262,6 +280,7 @@ struct ProjectsView: View {
         )
         .activeProjectCardModifiers(
             project: project,
+            sessionState: sessionState,
             index: index,
             groupProjects: groupProjects,
             group: group,
@@ -296,13 +315,79 @@ struct ProjectsView: View {
             glassConfig: glassConfig,
         )
     }
+
+    #if DEBUG
+        private func debugRenderedProjects(sessionStates: [String: ProjectSessionState]) -> [Project] {
+            guard !appState.isLoading, !appState.projects.isEmpty else {
+                return []
+            }
+
+            let grouped = ProjectOrdering.orderedGroupedProjects(
+                nonPausedProjects,
+                activeOrder: appState.activeProjectOrder,
+                idleOrder: appState.idleProjectOrder,
+                sessionStates: sessionStates,
+            )
+            return grouped.active + grouped.idle
+        }
+    #endif
 }
+
+#if DEBUG
+    @MainActor
+    private enum ProjectsViewRenderTelemetry {
+        private static var lastSummary: String?
+
+        static func summary(
+            for projects: [Project],
+            sessionStates: [String: ProjectSessionState],
+        ) -> String {
+            if projects.isEmpty {
+                return "<no-cards>"
+            }
+
+            return projects
+                .map { project in
+                    let sessionState = ProjectOrdering.sessionState(
+                        for: project.path,
+                        sessionStates: sessionStates,
+                    )
+                    return "\(project.name):\(stateLabel(sessionState?.state))"
+                }
+                .joined(separator: " | ")
+        }
+
+        static func logIfChanged(_ summary: String) {
+            guard summary != lastSummary else { return }
+            lastSummary = summary
+            DebugLog.write("[DEBUG][ProjectsView][ResolvedCardStates] \(summary)")
+        }
+
+        private static func stateLabel(_ state: SessionState?) -> String {
+            guard let state else { return "nil" }
+
+            switch state {
+            case .working:
+                return "Working"
+            case .ready:
+                return "Ready"
+            case .idle:
+                return "Idle"
+            case .compacting:
+                return "Compacting"
+            case .waiting:
+                return "Waiting"
+            }
+        }
+    }
+#endif
 
 // MARK: - Card Modifier Extensions (extracted for type-checker)
 
 private extension View {
     func activeProjectCardModifiers(
         project: Project,
+        sessionState: ProjectSessionState?,
         index: Int,
         groupProjects: [Project],
         group: ActivityGroup,
@@ -312,7 +397,7 @@ private extension View {
     ) -> some View {
         preventWindowDrag()
             .zIndex(draggedProject.wrappedValue?.path == project.path ? 999 : 0)
-            .id("\(project.path)-\(appState.sessionStateRevision)")
+            .id(ProjectOrdering.cardIdentityKey(projectPath: project.path, sessionState: sessionState))
             .onDrop(
                 of: [.text, .fileURL],
                 delegate: ProjectDropDelegate(

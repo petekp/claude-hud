@@ -206,8 +206,6 @@ extension View {
                 }
             }
             .onChange(of: sessionState?.state) { oldValue, newValue in
-                if let preview = glassConfig?.previewState, preview != .none { return }
-
                 let now = Date()
                 if ReadyChimePolicy.shouldPlay(
                     playReadyChime: playReadyChime,

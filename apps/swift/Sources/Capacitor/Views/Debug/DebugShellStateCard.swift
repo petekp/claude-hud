@@ -3,7 +3,7 @@ import Darwin
 import Foundation
 import SwiftUI
 
-/* 
+/*
  * TRANSPARENT-UI DEBUG TOOL
  *
  * Temporary debugging visualization for shell state detection. Remove when no longer needed:

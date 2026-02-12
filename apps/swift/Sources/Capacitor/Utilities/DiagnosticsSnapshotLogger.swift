@@ -1,6 +1,6 @@
 import Foundation
 
-/* 
+/*
  * TRANSPARENT-UI DEBUG TOOL
  *
  * Automatic diagnostic snapshots for stuck session detection.
