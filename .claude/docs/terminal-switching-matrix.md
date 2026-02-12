@@ -2,6 +2,8 @@
 
 This document maps out all scenarios for the "click project → activate terminal" feature.
 
+> **Alpha scope note (2026-02):** Public alpha officially supports **Ghostty, iTerm2, and Terminal.app**. Other terminal rows are historical/experimental reference and should not be treated as release requirements.
+
 > **Daemon-only note (2026-02):** Any references to `shell-cwd.json (legacy)` are historical. In daemon-only mode, use daemon IPC shell state.
 
 ## Quick Reference: Tab Selection Support
@@ -10,7 +12,7 @@ This document maps out all scenarios for the "click project → activate termina
 |----------|--------------|--------|-------|
 | iTerm2 | ✅ Full | AppleScript | Query sessions by TTY, select window/tab |
 | Terminal.app | ✅ Full | AppleScript | Query by TTY, select tab |
-| kitty | ✅ Full | `kitty @` | Requires `allow_remote_control yes` |
+| kitty | ⚠️ Historical (non-alpha) | `kitty @` | Not in public alpha support matrix |
 | Ghostty | ❌ None | — | No external API (as of 2026-02) |
 | Warp | ❌ None | — | No AppleScript/CLI API |
 | Alacritty | N/A | — | No tabs, windows only |
@@ -50,7 +52,7 @@ This document maps out all scenarios for the "click project → activate termina
 | 2 | Direct shell | 2+ tabs, project in tab 2 | nil | Activate iTerm, select tab 2 | ✅ | |
 | 3 | Direct shell | 2+ tabs, project in tab 2 | "iTerm2" | Activate iTerm, select tab 2 | ❓ | |
 | 4 | tmux session | 1 tab | "tmux" | Activate iTerm w/ tmux | 🔄 | Phase 2: Uses tmux_client_tty for host terminal discovery |
-| 5 | tmux session | 2+ tabs | "tmux" | Activate iTerm, switch tmux session | 🔄 | Phase 2: Runs `tmux switch-client -t <session>` |
+| 5 | tmux session | 2+ tabs | "tmux" | Activate iTerm, switch tmux session | 🔄 | Phase 2: Runs `tmux switch-client -c <client_tty> -t <session>` |
 | 6 | tmux + direct | 2 tabs (1 tmux, 1 direct) | mixed | Prefer tmux shell when client attached | ✅ | Tmux preferred only when a client is attached |
 
 ### Ghostty
@@ -69,8 +71,8 @@ This document maps out all scenarios for the "click project → activate termina
 | 8 | Direct shell | 1 | "Ghostty" | Activate Ghostty | ✅ | |
 | 9 | Direct shell | 2+ | nil | Activate Ghostty (may be wrong window) | ⚠️ | No window selection - activates app, may be wrong window |
 | 10 | Direct shell | 2+ | "Ghostty" | Activate Ghostty (may be wrong window) | ⚠️ | No window selection - activates app, may be wrong window |
-| 11 | tmux session | 1 | "tmux" | Activate Ghostty, switch session | ✅ | Window count = 1, activate + tmux switch-client |
-| 11b | tmux session | 2+ | "tmux" | Launch new terminal | ✅ | Window count > 1, launch new to guarantee correct session |
+| 11 | tmux session | 1 | "tmux" | Activate Ghostty, switch session | ✅ | Uses client TTY-targeted switch + TTY-owner foreground |
+| 11b | tmux session | 2+ | "tmux" | Focus owning Ghostty window, then switch session | 🔄 | Should focus by client TTY ownership; fallback heuristics may still misfocus and should be debugged |
 
 ### Terminal.app
 
@@ -211,9 +213,9 @@ Based on matrix analysis:
    - Depends on Ghostty's AppleScript/API support
    - Status: Not addressable until Ghostty exposes tab API
 
-4. ✅ **Add tab selection for kitty** (#21)
-   - Fix: Phase 3 — `kitty @ focus-window --match pid:<shell_pid>`
-   - Status: **Implemented** — Needs manual testing (requires `allow_remote_control yes`)
+4. N/A **kitty remote-control path (non-alpha)** (#21)
+   - Historical path: `kitty @ focus-window --match pid:<shell_pid>`
+   - Status: Not part of public alpha support requirements
 
 ### Medium-High Impact (Growing use case)
 5. ✅ **IDE integrated terminal support** (#41-50)
@@ -236,13 +238,12 @@ Based on matrix analysis:
 **Phase 2: Tmux Session Support** — ✅ Complete
 - Added `tmux_session` and `tmux_client_tty` fields to `ShellEntry` (Rust + Swift)
 - Hook detects tmux context via `tmux display-message -p '#S'` and `tmux list-clients`
-- `TerminalLauncher` uses `tmux_client_tty` for host terminal discovery
-- Runs `tmux switch-client -t <session>` after activating host terminal
+- `TerminalLauncher` resolves current client TTY (`tmux display-message -p '#{client_tty}'`) for host-terminal discovery
+- Runs `tmux switch-client -c <client_tty> -t <session>` and then foregrounds terminal ownership by that TTY
 
-**Phase 3: kitty Remote Control** — ✅ Complete
-- Added `activateKittyWindow(shellPid:)` in `TerminalLauncher.swift`
-- Uses `kitty @ focus-window --match pid:<pid>` for tab selection
-- Requires user to have `allow_remote_control yes` in kitty config
+**Phase 3: kitty Remote Control** — Historical (non-alpha)
+- Any prior kitty-specific activation is not part of the current public alpha support matrix.
+- Keep this as historical reference only; do not prioritize for alpha regressions.
 
 **Phase 3b: Ghostty Window-Count Strategy** — ✅ Complete
 - Ghostty has no API for window/tab selection (confirmed as of 2026-02)

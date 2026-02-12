@@ -144,12 +144,12 @@ Color.clear
 |----------|--------------|-------|
 | iTerm2 | ✅ Full | AppleScript API |
 | Terminal.app | ✅ Full | AppleScript API |
-| kitty | ✅ Full | Requires `allow_remote_control yes` |
-| **Ghostty** | **❌ None** | No external API |
+| kitty | ⚠️ Non-alpha | Historical path; not in public alpha support scope |
+| **Ghostty** | **⚠️ Partial** | No external tab API; tmux path should focus via client-TTY ownership |
 | **Warp** | **❌ None** | No AppleScript/CLI API |
 | Alacritty | N/A | No tabs, windows only |
 
-If the user is using Ghostty or Warp with multiple windows, **this is a known limitation, not a bug**. The system cannot select a specific window—only activate the app.
+If the user is using Warp with multiple windows, this remains a known limitation. For Ghostty, tmux flows should usually foreground the owning window via client TTY; persistent misfocus is a debugging signal.
 
 **Debugging methodology (layered systems):**
 
@@ -491,17 +491,18 @@ Log shows: Rust decision: ActivateByTty (not ActivateHostThenSwitchTmux)
 ```
 Log shows: tmux switch-client result: exit 1
 ```
-→ Run `tmux switch-client -t <session>` manually
+→ Resolve client TTY: `tmux display-message -p '#{client_tty}'`
+→ Run `tmux switch-client -c <client_tty> -t <session>` manually
 → Check if session name has special characters
 → Verify client is attached
 
 **Pattern 3: Ghostty activates wrong window**
 ```
-Log shows: Multiple Ghostty windows (3) → activating and switching tmux
+Log shows: tmux switch succeeded, but foreground app/window is not the client TTY owner
 ```
-→ This is expected behavior (Ghostty has no window selection API)
-→ User must manually switch to correct Ghostty window
-→ Tmux session switch should still succeed
+→ Verify execution used client-tty switch form (`switch-client -c <tty>`)
+→ Verify TTY-owner activation path ran (look for TTY discovery + Ghostty owner PID logs)
+→ If resolver/execution followed both and still misfocused, treat as bug and capture telemetry snapshot
 
 ### Adding New Telemetry
 

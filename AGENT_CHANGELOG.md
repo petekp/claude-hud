@@ -1,11 +1,11 @@
 # Agent Changelog
 
 > This file helps coding agents understand project evolution, key decisions,
-> and deprecated patterns. Updated: 2026-02-09 (UI polish sprint)
+> and deprecated patterns. Updated: 2026-02-12 (session-state + tmux activation hardening)
 
 ## Current State Summary
 
-Capacitor is a native macOS SwiftUI app (Apple Silicon, macOS 14+) that acts as a sidecar dashboard for Claude Code. The architecture uses a Rust core (`hud-core`) with UniFFI bindings to Swift plus a **Rust daemon (`capacitor-daemon`) that is the canonical source of truth** for session, shell, activity, and process-liveness state. Hooks emit events to the daemon over a Unix socket (`~/.capacitor/daemon.sock`), and Swift reads daemon snapshots (shell state + project aggregation); file-based JSON fallbacks are removed in daemon-only mode. Workstreams (managed git worktrees) are now first-class with create/open/destroy UX and slug-prefixed naming; activation matching avoids crossing repo cards with managed worktree tmux panes. The Transparent UI tooling (`docs/transparent-ui/` + `scripts/transparent-ui-server.mjs`) is the debug hub with live activation traces, daemon snapshots, and structured telemetry/agent briefing endpoints. Terminal activation uses a Rust-only decision path (Swift executes macOS APIs) and is intentionally limited to Ghostty, iTerm2, and Terminal.app for the public alpha. Build channel + alpha gating are runtime via `AppConfig` (env/Info.plist/config file), not compile-time flags; release versioning is centralized in `VERSION` (current alpha: `0.2.0-alpha.1`).
+Capacitor is a native macOS SwiftUI app (Apple Silicon, macOS 14+) that acts as a sidecar dashboard for Claude Code. The architecture uses a Rust core (`hud-core`) with UniFFI bindings to Swift plus a **Rust daemon (`capacitor-daemon`) that is the canonical source of truth** for session, shell, activity, and process-liveness state. Hooks emit events to the daemon over a Unix socket (`~/.capacitor/daemon.sock`), and Swift reads daemon snapshots (shell state + project aggregation); file-based JSON fallbacks are removed in daemon-only mode. Workstreams (managed git worktrees) are first-class with create/open/destroy UX and slug-prefixed naming; activation matching avoids crossing repo cards with managed worktree tmux panes. Project-card rendering now depends on per-card session fingerprints plus normalized path fallback, reducing stale card state drift. Terminal activation uses a Rust resolver plus Swift execution, now explicitly targeting the attached tmux client TTY (`switch-client -c <tty>`) and then foregrounding the terminal window that owns that TTY. Build channel + alpha gating are runtime via `AppConfig` (env/Info.plist/config file), not compile-time flags; release versioning is centralized in `VERSION` (current alpha: `0.2.0-alpha.1`).
 
 > **Historical note:** Timeline entries below may reference pre-daemon artifacts (locks, `sessions.json`, `shell-cwd.json`). Treat them as historical context only; they are not current behavior.
 
@@ -13,8 +13,64 @@ Capacitor is a native macOS SwiftUI app (Apple Silicon, macOS 14+) that acts as 
 
 | Location | States | Reality | Since |
 |----------|--------|---------|-------|
+| `.claude/docs/terminal-switching-matrix.md:53,240` | tmux switching uses `tmux switch-client -t <session>` after host activation | Switching now targets the attached client explicitly: `tmux switch-client -c <client_tty> -t <session>`; foreground should follow client TTY ownership | 2026-02-11 |
+| `.claude/docs/debugging-guide.md:494-504` | Ghostty wrong-window focus is expected/manual after tmux switch | Current behavior attempts PID-based Ghostty foregrounding from the client TTY owner; persistent wrong-window focus is a bug signal | 2026-02-11 |
+| `.claude/docs/terminal-switching-matrix.md:242-245` | Phase 3 says kitty support is complete | Public alpha supports only Ghostty, iTerm2, and Terminal.app (`README.md`) | 2026-02-08 |
 
 ## Timeline
+
+### 2026-02-11 — Stop→Ready Drift Fix + Tmux Foreground Accuracy (Completed)
+
+**What changed:**
+- Session reducer stop gating now skips only explicit hook/subagent stops (`stop_hook_active=true` or `metadata.agent_id`), and no longer skips valid stop events just because `last_activity_at` is newer.
+- Added reducer regression tests to preserve the intended split:
+  - valid stop with future activity timestamp still transitions to Ready
+  - genuinely stale stop events are still skipped via stale-order protection
+- Rust activation resolver now prefers tmux-session actions when a tmux session at path matches the clicked project, including `unknown`-parent shell records with attached tmux clients.
+- Swift `TerminalLauncher` now:
+  - resolves current tmux client TTY (`tmux display-message -p '#{client_tty}'`)
+  - switches with explicit client targeting (`tmux switch-client -c <tty> -t <session>`)
+  - foregrounds terminal by TTY ownership (including Ghostty owner PID resolution).
+- Hardened script-output handling to avoid deadlock risk on large stdout captures.
+
+**Why:**
+- Real incidents showed Stop events being received without a corresponding Ready upsert, leaving cards stuck in Working.
+- Tmux switching could succeed in the background while the wrong Ghostty window was foregrounded.
+
+**Agent impact:**
+- Do not reintroduce a `last_activity_at > stop.recorded_at` skip in stop gating.
+- For tmux activation debugging, inspect client TTY and verify `switch-client -c` usage before blaming resolver ranking.
+- Treat "switched tmux session but wrong foreground window" as a focus-path issue, not a session-resolution success.
+
+**Commits:** `74a0e4f`, `8a6dac5`
+
+---
+
+### 2026-02-11 — Project-Card State Resolution + Daemon Startup Catch-up Hardening (Completed)
+
+**What changed:**
+- Project-card state resolution now uses normalized path fallback with direct-match priority, and repo-fallback states no longer overwrite direct workspace matches.
+- List and dock rendering now key row identity by per-card session fingerprint (`ProjectOrdering.cardIdentityKey`) instead of global revision-only IDs.
+- Card state rendering/animations were stabilized:
+  - status labels keyed by state
+  - preview-state overrides removed from runtime state transitions
+  - regression tests added for identity, observation, and state-resolution behavior.
+- Daemon startup moved from broad replay triggers to bounded catch-up over **session-affecting events** only.
+- Catch-up queries exclude non-session-mutating noise (`shell_cwd`, `subagent_start`, `subagent_stop`, `teammate_idle`) and use a bounded time window.
+- Added startup catch-up tests and adjusted one test to use relative timestamps (time-stable across execution dates).
+
+**Why:**
+- Card UI could drift from actual daemon state due to stale row identity and path mismatch edge cases.
+- Startup replay based on "latest event > latest session" could be triggered by irrelevant events and produce incorrect session rebuild behavior.
+
+**Agent impact:**
+- For project-card regressions, start with `SessionStateManager` merge priority + `ProjectOrdering.cardIdentityKey` before touching visual components.
+- Keep daemon catch-up scoped to session-affecting events; avoid widening it to all event types.
+- Use relative timestamps in catch-up tests to avoid date-window flakiness.
+
+**Commits:** `375dd10`, `8192c82`
+
+---
 
 ### 2026-02-09 — UI Polish Sprint: Empty State, Brand Color, Full-Bleed Dropzone (Completed)
 
@@ -1321,6 +1377,9 @@ Fixed terminal activation to check the daemon shell snapshot BEFORE tmux session
 
 | Don't | Do Instead | Deprecated Since |
 |-------|------------|------------------|
+| Use `tmux switch-client -t <session>` when a client TTY is known | Resolve `#{client_tty}` and use `tmux switch-client -c <client_tty> -t <session>` | 2026-02-11 |
+| Key project-card view identity with global `sessionStateRevision` only | Key by per-card fingerprint via `ProjectOrdering.cardIdentityKey(...)` | 2026-02-11 |
+| Skip Stop events because `last_activity_at > stop.recorded_at` | Keep stop gating limited to hook/subagent semantics; rely on stale-order guard for truly stale events | 2026-02-11 |
 | Use `TimelineView(.animation)` near material blur | Use `@State` + `withAnimation(.repeatForever)` (Core Animation, no view re-eval) | 2026-02-09 |
 | Use `Color.hudAccent` for brand-touch UI | Use `Color.brand` (Display P3 green) | 2026-02-09 |
 | Use `#if ALPHA` compile-time feature gating | Use runtime `AppConfig` + `FeatureFlags` (env/Info.plist/config) | 2026-02-08 |
@@ -1375,47 +1434,13 @@ Fixed terminal activation to check the daemon shell snapshot BEFORE tmux session
 
 ## Trajectory
 
-Current near-term focus (2026-02-09):
+Current near-term focus (2026-02-12):
 
-1. **UI polish sprint** — empty state onboarding, brand color system, full-bleed dropzone, and trackless scrollbars are shipped. Next: iterate on card visuals, populated-state UX, and dock layout refinements.
-2. **Transparent UI rollout** — implement IA plan panels (state machine, policy table, candidate trace) and keep telemetry/briefing endpoints as the agent-facing hub.
-3. **Alpha release readiness** — drive `ACTIVE-alpha-release-checklist.md` and `ACTIVE-task3-ux-architecture-design.md` to completion.
-4. **Workstreams polish** — continue refining managed worktree UX and activation matching edge cases as they surface.
+1. **Manual validation on fresh sessions** — keep validating `Working -> Ready` transitions after Stop in real runtime flows (not only reducer/unit tests), with daemon log/DB correlation.
+2. **Transparent UI as first debugger** — continue routing activation/session investigations through telemetry + agent briefing endpoints before ad-hoc log spelunking.
+3. **Docs convergence** — align terminal switching/debug docs with current client-TTY-targeted activation path and alpha support scope.
+4. **Alpha stability hardening** — continue reducing state drift and activation edge-case regressions while preserving deterministic tests.
 
-Previously planned trajectory (largely complete):
+Overall trajectory:
 
-1. **Daemon-only cutover** — remove legacy JSON fallbacks and finalize lock deprecation.
-2. **Session state heuristics** — eliminate stuck Working/Ready states with daemon-side TTL + liveness.
-3. **UI responsiveness** — reduce polling/jank and avoid redundant UI refreshes during daemon reads.
-4. **Debug build stability** — harden Sparkle/dylib bundling and app launch workflow to prevent crashes.
-    - Added regression test for format detection
-
-13. **Terminal activation priority** — ✅ Fixed (2026-01-27)
-    - Shell-cwd.json now checked before tmux sessions
-    - Fixes issue where clicking project opened new tmux window instead of focusing existing terminal
-
-14. **Terminal activation security/reliability** — ✅ All Phases Complete (2026-01-27)
-    - Phase 1: Shell injection prevention, tmux exit codes, IDE CLI errors, multi-client tmux fix
-    - Phase 2: Tmux re-verification, AppleScript error checking, subdirectory matching, `is_live` flag, TTY-first Ghostty
-    - Phase 3: Chrono timestamp parsing, Ghostty cache size limit, `pathsMatch` UniFFI export
-    - Plan doc: `.claude/plans/DONE-terminal-activation-fixes.md`
-
-15. **Plan housekeeping** — ✅ Complete (2026-01-28)
-    - All ACTIVE plans marked DONE: bulletproof-hooks, terminal-shell-test-expansion
-    - Terminal test expansion P1 gaps were already fixed during terminal activation hardening
-    - Manual test matrix already documented at `.claude/docs/terminal-test-matrix.md`
-    - Only DRAFT plan remaining: `activation-config-rust-migration.md` (deferred until second client needed)
-
-16. **Terminal activation hardening validated** — ✅ Complete (2026-01-28)
-    - v0.1.25 released with shell selection and client detection fixes
-    - Test matrix validated: 15 scenarios pass (A1-A4, B1-B3, C1, D1-D3, E1, E3)
-    - Test matrix doc: `.claude/docs/terminal-activation-test-matrix.md` (status columns updated)
-    - Gotchas added: tmux priority, ANY-client detection
-
-17. **Post v0.1.25 activation fixes** — ✅ Complete (2026-01-28)
-    - Stale TTY fix: Query fresh client TTY at activation time (shell records become stale on tmux reconnect)
-    - HOME exclusion: Exclude HOME from parent-directory matching (HOME matched everything)
-    - OSLog limitation documented: Use stderr telemetry for debug builds
-    - 4 new unit tests for HOME exclusion behavior
-
-The core sidecar architecture is stable and validated. The 12-session side-effects audit confirmed all major subsystems work correctly; the few issues found have been remediated. Terminal activation has been hardened with comprehensive test coverage (15 scenarios validated). Current focus is the transparent UI/telemetry hub and alpha-release readiness, with ongoing polish to workstreams + activation matching. Focus areas remain: lock reliability (session-based, self-healing, fail-safe error handling), exact-match path resolution for monorepos, terminal integration, and documentation accuracy.
+The project has shifted from broad architecture migration into reliability hardening loops: reproduce incidents, lock behavior with regression tests, and then patch reducer/resolver/runtime code paths with minimal blast radius. Current direction favors correctness and observability over feature expansion until alpha session-state and terminal activation behavior are consistently predictable.
