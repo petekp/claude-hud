@@ -1,23 +1,45 @@
 # Agent Changelog
 
 > This file helps coding agents understand project evolution, key decisions,
-> and deprecated patterns. Updated: 2026-02-12 (session-state + tmux activation hardening)
+> and deprecated patterns. Updated: 2026-02-12 (project-card transition invariants + docs convergence)
 
 ## Current State Summary
 
-Capacitor is a native macOS SwiftUI app (Apple Silicon, macOS 14+) that acts as a sidecar dashboard for Claude Code. The architecture uses a Rust core (`hud-core`) with UniFFI bindings to Swift plus a **Rust daemon (`capacitor-daemon`) that is the canonical source of truth** for session, shell, activity, and process-liveness state. Hooks emit events to the daemon over a Unix socket (`~/.capacitor/daemon.sock`), and Swift reads daemon snapshots (shell state + project aggregation); file-based JSON fallbacks are removed in daemon-only mode. Workstreams (managed git worktrees) are first-class with create/open/destroy UX and slug-prefixed naming; activation matching avoids crossing repo cards with managed worktree tmux panes. Project-card rendering now depends on per-card session fingerprints plus normalized path fallback, reducing stale card state drift. Terminal activation uses a Rust resolver plus Swift execution, now explicitly targeting the attached tmux client TTY (`switch-client -c <tty>`) and then foregrounding the terminal window that owns that TTY. Build channel + alpha gating are runtime via `AppConfig` (env/Info.plist/config file), not compile-time flags; release versioning is centralized in `VERSION` (current alpha: `0.2.0-alpha.1`).
+Capacitor is a native macOS SwiftUI app (Apple Silicon, macOS 14+) that acts as a sidecar dashboard for Claude Code. The architecture uses a Rust core (`hud-core`) with UniFFI bindings to Swift plus a **Rust daemon (`capacitor-daemon`) that is the canonical source of truth** for session, shell, activity, and process-liveness state. Hooks emit events to the daemon over a Unix socket (`~/.capacitor/daemon.sock`), and Swift reads daemon snapshots (shell state + project aggregation); file-based JSON fallbacks are removed in daemon-only mode. Workstreams (managed git worktrees) are first-class with create/open/destroy UX and slug-prefixed naming; activation matching avoids crossing repo cards with managed worktree tmux panes. Project-card rendering now uses a **single unified active+idle row pipeline**, **stable outer identity by project path**, and **in-place status/effect animations** (no card-root remount invalidation), with status text using SwiftUI `numericText` content transitions. Terminal activation uses a Rust resolver plus Swift execution, explicitly targeting the attached tmux client TTY (`switch-client -c <tty>`) and then foregrounding the terminal window that owns that TTY. Build channel + alpha gating are runtime via `AppConfig` (env/Info.plist/config file), not compile-time flags; release versioning is centralized in `VERSION` (current alpha: `0.2.0-alpha.1`).
 
 > **Historical note:** Timeline entries below may reference pre-daemon artifacts (locks, `sessions.json`, `shell-cwd.json`). Treat them as historical context only; they are not current behavior.
 
 ## Stale Information Detected
 
-| Location | States | Reality | Since |
-|----------|--------|---------|-------|
-| `.claude/docs/terminal-switching-matrix.md:53,240` | tmux switching uses `tmux switch-client -t <session>` after host activation | Switching now targets the attached client explicitly: `tmux switch-client -c <client_tty> -t <session>`; foreground should follow client TTY ownership | 2026-02-11 |
-| `.claude/docs/debugging-guide.md:494-504` | Ghostty wrong-window focus is expected/manual after tmux switch | Current behavior attempts PID-based Ghostty foregrounding from the client TTY owner; persistent wrong-window focus is a bug signal | 2026-02-11 |
-| `.claude/docs/terminal-switching-matrix.md:242-245` | Phase 3 says kitty support is complete | Public alpha supports only Ghostty, iTerm2, and Terminal.app (`README.md`) | 2026-02-08 |
+No active high-confidence contradictions are currently confirmed across `CLAUDE.md` and `.claude/docs/*` after the 2026-02-12 docs convergence updates.
 
 ## Timeline
+
+### 2026-02-12 — Project Card Transition Invariants + In-Place Status Text Transitions (Completed)
+
+**What changed:**
+- Replaced split active/idle rendering loops in `ProjectsView` with a single unified `rows = grouped.active + grouped.idle` pipeline and one `ForEach`.
+- Kept card row identity stable by path and removed card-root invalidation hooks (`.id(ProjectOrdering.cardContentStateFingerprint(...))`) from list and dock cards.
+- Kept status/effect updates in-place: removed status identity resets (`.id(state)`) and restored SwiftUI status text transition path to `.contentTransition(... .numericText())`.
+- Expanded regression guardrails:
+  - list/dock must not remount cards for state updates
+  - list must use unified rows loop
+  - status indicator must use `numericText` and avoid forced identity resets
+  - session observation hooks remain required.
+- Aligned terminal/debug documentation with current client-TTY-targeted tmux switching semantics and public alpha terminal support scope.
+- Documented these invariants in `.claude/docs/ui-refresh-contract.md` and `CLAUDE.md`.
+
+**Why:**
+- Repeated regressions occurred whenever animation work crossed the identity/update boundary, causing either `Idle`-stuck cards (under-invalidation) or hard-cut transitions (over-invalidation/remount).
+
+**Agent impact:**
+- Do not use card-root `.id(...)` state fingerprints to force visual refresh.
+- Keep outer row identity stable and animate only internal status/effect layers.
+- Treat unified row rendering and session observation hooks as hard invariants for state correctness.
+
+**Commits:** `350d20d`, `67c7cae`, `213b341`
+
+---
 
 ### 2026-02-11 — Stop→Ready Drift Fix + Tmux Foreground Accuracy (Completed)
 
@@ -1378,7 +1400,9 @@ Fixed terminal activation to check the daemon shell snapshot BEFORE tmux session
 | Don't | Do Instead | Deprecated Since |
 |-------|------------|------------------|
 | Use `tmux switch-client -t <session>` when a client TTY is known | Resolve `#{client_tty}` and use `tmux switch-client -c <client_tty> -t <session>` | 2026-02-11 |
-| Key project-card view identity with global `sessionStateRevision` only | Key by per-card fingerprint via `ProjectOrdering.cardIdentityKey(...)` | 2026-02-11 |
+| Key project-card rows by global `sessionStateRevision` or state-dependent row IDs | Keep row identity stable by `project.path` / `ProjectOrdering.cardIdentityKey(...)` | 2026-02-12 |
+| Force card refresh by remounting card roots (`.id(ProjectOrdering.cardContentStateFingerprint(...))`) | Keep card shell mounted; animate only status/effect sublayers in place | 2026-02-12 |
+| Force status text identity resets (`.id(state)`) to show transitions | Keep stable status identity and use SwiftUI `.contentTransition(... .numericText())` | 2026-02-12 |
 | Skip Stop events because `last_activity_at > stop.recorded_at` | Keep stop gating limited to hook/subagent semantics; rely on stale-order guard for truly stale events | 2026-02-11 |
 | Use `TimelineView(.animation)` near material blur | Use `@State` + `withAnimation(.repeatForever)` (Core Animation, no view re-eval) | 2026-02-09 |
 | Use `Color.hudAccent` for brand-touch UI | Use `Color.brand` (Display P3 green) | 2026-02-09 |
@@ -1438,7 +1462,7 @@ Current near-term focus (2026-02-12):
 
 1. **Manual validation on fresh sessions** — keep validating `Working -> Ready` transitions after Stop in real runtime flows (not only reducer/unit tests), with daemon log/DB correlation.
 2. **Transparent UI as first debugger** — continue routing activation/session investigations through telemetry + agent briefing endpoints before ad-hoc log spelunking.
-3. **Docs convergence** — align terminal switching/debug docs with current client-TTY-targeted activation path and alpha support scope.
+3. **Transition polish on locked invariants** — improve perceived smoothness of status/effect transitions without changing row identity boundaries or list pipeline shape.
 4. **Alpha stability hardening** — continue reducing state drift and activation edge-case regressions while preserving deterministic tests.
 
 Overall trajectory:
