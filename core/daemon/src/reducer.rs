@@ -134,7 +134,7 @@ pub fn reduce_session(current: Option<&SessionRecord>, event: &EventEnvelope) ->
             SessionUpdate::Skip
         }
         EventType::Stop => {
-            if should_skip_stop(current, event) {
+            if should_skip_stop(event) {
                 SessionUpdate::Skip
             } else {
                 upsert_session(
@@ -168,22 +168,9 @@ fn has_agent_id_metadata(event: &EventEnvelope) -> bool {
         .unwrap_or(false)
 }
 
-fn should_skip_stop(current: Option<&SessionRecord>, event: &EventEnvelope) -> bool {
+fn should_skip_stop(event: &EventEnvelope) -> bool {
     if event.stop_hook_active == Some(true) || has_agent_id_metadata(event) {
         return true;
-    }
-
-    if let Some(current) = current {
-        if let Some(activity_at) = current.last_activity_at.as_deref() {
-            if let (Some(activity_time), Some(event_time)) = (
-                parse_rfc3339(activity_at),
-                parse_rfc3339(&event.recorded_at),
-            ) {
-                if activity_time > event_time {
-                    return true;
-                }
-            }
-        }
     }
 
     false
@@ -1069,7 +1056,7 @@ mod tests {
     }
 
     #[test]
-    fn stop_skips_when_activity_timestamp_is_in_future() {
+    fn stop_allows_ready_when_activity_timestamp_is_in_future() {
         let mut event = event_base(EventType::Stop);
         event.stop_hook_active = Some(false);
         event.recorded_at = "2026-01-31T00:00:05Z".to_string();
@@ -1077,6 +1064,36 @@ mod tests {
         let mut current = record_with_state(SessionState::Working, "2026-01-31T00:00:00Z");
         current.tools_in_flight = 0;
         current.last_activity_at = Some("2026-01-31T00:00:08Z".to_string());
+
+        let update = reduce_session(Some(&current), &event);
+        match update {
+            SessionUpdate::Upsert(record) => {
+                assert_eq!(record.state, SessionState::Ready);
+                assert_eq!(record.ready_reason, Some("stop_gate".to_string()));
+            }
+            _ => panic!("expected upsert"),
+        }
+    }
+
+    #[test]
+    fn stale_stop_is_skipped() {
+        let mut event = event_base(EventType::Stop);
+        event.stop_hook_active = Some(false);
+        event.recorded_at = "2026-01-31T00:00:00Z".to_string();
+        let current = SessionRecord {
+            session_id: "session-1".to_string(),
+            pid: 1234,
+            state: SessionState::Working,
+            cwd: "/repo".to_string(),
+            project_id: "/repo/.git".to_string(),
+            project_path: "/repo".to_string(),
+            updated_at: "2026-01-31T00:00:10Z".to_string(),
+            state_changed_at: "2026-01-31T00:00:10Z".to_string(),
+            last_event: Some("user_prompt_submit".to_string()),
+            last_activity_at: Some("2026-01-31T00:00:10Z".to_string()),
+            tools_in_flight: 0,
+            ready_reason: None,
+        };
 
         let update = reduce_session(Some(&current), &event);
         assert_eq!(update, SessionUpdate::Skip);

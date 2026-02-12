@@ -36,14 +36,21 @@ final class TerminalLauncherTests: XCTestCase {
             projectPath: "/Users/pete/Code/writing",
             runScript: { script in
                 scripts.append(script)
+                if script.contains("display-message") {
+                    return (0, "/dev/ttys010\n")
+                }
                 return (0, nil)
             },
-            activateTerminal: { activateCalls += 1 },
+            activateTerminal: { _ in
+                activateCalls += 1
+                return true
+            },
         )
 
         XCTAssertTrue(result)
         XCTAssertEqual(activateCalls, 1)
-        XCTAssertTrue(scripts.first?.contains("tmux switch-client") == true)
+        XCTAssertTrue(scripts.contains { $0.contains("display-message -p '#{client_tty}'") })
+        XCTAssertTrue(scripts.contains { $0.contains("tmux switch-client -c '/dev/ttys010' -t 'writing'") })
     }
 
     func testEnsureTmuxSessionCreatesThenActivates() async {
@@ -53,15 +60,21 @@ final class TerminalLauncherTests: XCTestCase {
         let result = await TerminalLauncher.performEnsureTmuxSession(
             sessionName: "newproj",
             projectPath: "/Users/pete/Code/newproj",
-            runScript: { _ in
+            runScript: { script in
                 defer { callCount += 1 }
+                if script.contains("display-message") {
+                    return (0, "/dev/ttys022\n")
+                }
                 switch callCount {
                 case 0: return (1, "switch failed")
                 case 1: return (0, "created")
                 default: return (0, "switched")
                 }
             },
-            activateTerminal: { activateCalls += 1 },
+            activateTerminal: { _ in
+                activateCalls += 1
+                return true
+            },
         )
 
         XCTAssertTrue(result)
@@ -74,14 +87,65 @@ final class TerminalLauncherTests: XCTestCase {
         let result = await TerminalLauncher.performSwitchTmuxSession(
             sessionName: "broken",
             projectPath: "/Users/pete/Code/broken",
-            runScript: { _ in
-                (1, "switch failed")
+            runScript: { script in
+                if script.contains("display-message") {
+                    return (0, "/dev/ttys044\n")
+                }
+                return (1, "switch failed")
             },
-            activateTerminal: { activateCalls += 1 },
+            activateTerminal: { _ in
+                activateCalls += 1
+                return true
+            },
         )
 
         XCTAssertFalse(result)
         XCTAssertEqual(activateCalls, 0)
+    }
+
+    func testSwitchTmuxSessionUsesExplicitClientTTYWhenAvailable() async {
+        var scripts: [String] = []
+        var activateCalls = 0
+
+        let result = await TerminalLauncher.performSwitchTmuxSession(
+            sessionName: "capacitor",
+            projectPath: "/Users/pete/Code/capacitor",
+            runScript: { script in
+                scripts.append(script)
+                if script.contains("display-message") {
+                    return (0, "/dev/ttys072\n")
+                }
+                return (0, nil)
+            },
+            activateTerminal: { _ in
+                activateCalls += 1
+                return true
+            },
+        )
+
+        XCTAssertTrue(result)
+        XCTAssertEqual(activateCalls, 1)
+        XCTAssertTrue(
+            scripts.contains { $0.contains("display-message -p '#{client_tty}'") },
+            "Expected tmux client tty lookup before switch, got scripts: \(scripts)",
+        )
+        XCTAssertTrue(
+            scripts.contains { $0.contains("tmux switch-client -c '/dev/ttys072' -t 'capacitor'") },
+            "Expected explicit client tty switch target, got scripts: \(scripts)",
+        )
+    }
+
+    func testGhosttyOwnerPidForTTYFromProcessSnapshot() {
+        let snapshot = """
+         75868 75866 ttys072 tmux new-session -A -s writing -c /Users/pete/Code/writing
+         75866 75864 ttys072 /usr/bin/login -flp pete sh -c tmux new-session -A -s writing
+         75864 1 ?? /Applications/Ghostty.app/Contents/MacOS/ghostty -e sh -c tmux new-session -A -s writing
+         62940 62939 ttys031 /usr/bin/login -flp pete /bin/bash --noprofile --norc -c exec -l /bin/zsh
+         62939 1 ?? /Applications/Ghostty.app/Contents/MacOS/ghostty
+        """
+
+        let owner = TerminalLauncher.ghosttyOwnerPid(forTTY: "/dev/ttys072", processSnapshot: snapshot)
+        XCTAssertEqual(owner, 75864)
     }
 
     func testActivateByTtyReturnsFalseWhenAppleScriptFails() async {
@@ -167,5 +231,17 @@ final class TerminalLauncherTests: XCTestCase {
         )
 
         XCTAssertNil(session)
+    }
+
+    func testRunBashScriptWithResultHandlesLargeOutputWithoutDeadlock() {
+        let exp = expectation(description: "runBashScriptWithResult completes")
+        _Concurrency.Task {
+            let result = await TerminalLauncher.runBashScriptWithResult("yes x | head -n 200000")
+            XCTAssertEqual(result.exitCode, 0)
+            XCTAssertNotNil(result.output)
+            XCTAssertGreaterThan(result.output?.count ?? 0, 100_000)
+            exp.fulfill()
+        }
+        wait(for: [exp], timeout: 5.0)
     }
 }

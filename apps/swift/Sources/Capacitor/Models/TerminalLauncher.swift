@@ -284,13 +284,20 @@ final class TerminalLauncher: ActivationActionDependencies {
         sessionName: String,
         projectPath _: String,
         runScript: (String) async -> (exitCode: Int32, output: String?),
-        activateTerminal: () -> Void,
+        activateTerminal: (String?) async -> Bool,
     ) async -> Bool {
+        let clientTty = await resolveAttachedTmuxClientTty(runScript: runScript)
         let escapedSession = shellEscape(sessionName)
-        let switchResult = await runScript("tmux switch-client -t \(escapedSession) 2>&1")
+        let switchCommand: String
+        if let clientTty, !clientTty.isEmpty {
+            let escapedClientTty = shellEscape(clientTty)
+            switchCommand = "tmux switch-client -c \(escapedClientTty) -t \(escapedSession) 2>&1"
+        } else {
+            switchCommand = "tmux switch-client -t \(escapedSession) 2>&1"
+        }
+        let switchResult = await runScript(switchCommand)
         if switchResult.exitCode == 0 {
-            activateTerminal()
-            return true
+            return await activateTerminal(clientTty)
         }
         return false
     }
@@ -299,13 +306,20 @@ final class TerminalLauncher: ActivationActionDependencies {
         sessionName: String,
         projectPath: String,
         runScript: (String) async -> (exitCode: Int32, output: String?),
-        activateTerminal: () -> Void,
+        activateTerminal: (String?) async -> Bool,
     ) async -> Bool {
+        let clientTty = await resolveAttachedTmuxClientTty(runScript: runScript)
         let escapedSession = shellEscape(sessionName)
-        let switchResult = await runScript("tmux switch-client -t \(escapedSession) 2>&1")
+        let switchCommand: String
+        if let clientTty, !clientTty.isEmpty {
+            let escapedClientTty = shellEscape(clientTty)
+            switchCommand = "tmux switch-client -c \(escapedClientTty) -t \(escapedSession) 2>&1"
+        } else {
+            switchCommand = "tmux switch-client -t \(escapedSession) 2>&1"
+        }
+        let switchResult = await runScript(switchCommand)
         if switchResult.exitCode == 0 {
-            activateTerminal()
-            return true
+            return await activateTerminal(clientTty)
         }
 
         let escapedPath = shellEscape(projectPath)
@@ -316,13 +330,74 @@ final class TerminalLauncher: ActivationActionDependencies {
             return false
         }
 
-        let retryResult = await runScript("tmux switch-client -t \(escapedSession) 2>&1")
+        let retryResult = await runScript(switchCommand)
         if retryResult.exitCode == 0 {
-            activateTerminal()
-            return true
+            return await activateTerminal(clientTty)
         }
 
         return false
+    }
+
+    static func resolveAttachedTmuxClientTty(
+        runScript: (String) async -> (exitCode: Int32, output: String?),
+    ) async -> String? {
+        let result = await runScript("tmux display-message -p '#{client_tty}' 2>/dev/null")
+        guard result.exitCode == 0,
+              let output = result.output?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !output.isEmpty
+        else {
+            return nil
+        }
+        return output
+    }
+
+    nonisolated static func ghosttyOwnerPid(forTTY tty: String, processSnapshot: String) -> Int32? {
+        struct ProcRow {
+            let pid: Int32
+            let ppid: Int32
+            let tty: String
+            let command: String
+        }
+
+        let normalizedTTY = tty
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(of: "/dev/", with: "")
+        guard !normalizedTTY.isEmpty else { return nil }
+
+        var rowsByPid: [Int32: ProcRow] = [:]
+        for rawLine in processSnapshot.split(separator: "\n") {
+            let line = rawLine.trimmingCharacters(in: .whitespaces)
+            if line.isEmpty { continue }
+
+            let parts = line.split(maxSplits: 3, whereSeparator: \.isWhitespace).map(String.init)
+            guard parts.count == 4,
+                  let pid = Int32(parts[0]),
+                  let ppid = Int32(parts[1])
+            else {
+                continue
+            }
+
+            rowsByPid[pid] = ProcRow(pid: pid, ppid: ppid, tty: parts[2], command: parts[3])
+        }
+
+        let candidatePids = rowsByPid.values
+            .filter { $0.tty == normalizedTTY }
+            .map(\.pid)
+
+        for candidate in candidatePids {
+            var current: Int32? = candidate
+            var hops = 0
+            while let pid = current, hops < 64 {
+                guard let row = rowsByPid[pid] else { break }
+                if row.command.contains("/Applications/Ghostty.app/Contents/MacOS/ghostty") {
+                    return row.pid
+                }
+                current = row.ppid > 1 ? row.ppid : nil
+                hops += 1
+            }
+        }
+
+        return nil
     }
 
     static func ghosttyWindowDecision(windowCount _: Int, anyClientAttached: Bool) -> GhosttyWindowDecision {
@@ -545,7 +620,7 @@ final class TerminalLauncher: ActivationActionDependencies {
             sessionName: sessionName,
             projectPath: projectPath,
             runScript: { await runBashScriptWithResultAsync($0) },
-            activateTerminal: { self.activateTerminalApp() },
+            activateTerminal: { tty in await self.activateTerminalAfterTmuxSwitch(clientTty: tty) },
         )
         if !succeeded {
             logger.warning("  ▸ tmux switch failed for session '\(sessionName)'")
@@ -563,7 +638,7 @@ final class TerminalLauncher: ActivationActionDependencies {
             sessionName: sessionName,
             projectPath: projectPath,
             runScript: { await runBashScriptWithResultAsync($0) },
-            activateTerminal: { self.activateTerminalApp() },
+            activateTerminal: { tty in await self.activateTerminalAfterTmuxSwitch(clientTty: tty) },
         )
         if !succeeded {
             logger.warning("  ▸ tmux ensure/create failed for session '\(sessionName)'")
@@ -1044,6 +1119,12 @@ final class TerminalLauncher: ActivationActionDependencies {
 
     @discardableResult
     private func activateTerminalByTTYDiscovery(tty: String) async -> Bool {
+        if await activateGhosttyProcessOwningTTY(tty: tty) {
+            logger.debug("    TTY discovery focused Ghostty process for tty=\(tty)")
+            debugLog("activateTerminalByTTYDiscovery focused ghostty process tty=\(tty)")
+            return true
+        }
+
         if let owningTerminal = await discoverTerminalOwningTTY(tty: tty) {
             logger.debug("    TTY discovery found: \(owningTerminal.displayName) for tty=\(tty)")
             debugLog("activateTerminalByTTYDiscovery found terminal=\(owningTerminal.displayName) tty=\(tty)")
@@ -1060,6 +1141,29 @@ final class TerminalLauncher: ActivationActionDependencies {
             debugLog("activateTerminalByTTYDiscovery no terminal found tty=\(tty)")
             return false
         }
+    }
+
+    private func activateTerminalAfterTmuxSwitch(clientTty: String?) async -> Bool {
+        if let clientTty, !clientTty.isEmpty {
+            let focused = await activateTerminalByTTYDiscovery(tty: clientTty)
+            if focused {
+                return true
+            }
+        }
+        activateTerminalApp()
+        return true
+    }
+
+    private func activateGhosttyProcessOwningTTY(tty: String) async -> Bool {
+        let result = await runBashScriptWithResultAsync("ps -Ao pid=,ppid=,tty=,command=")
+        guard result.exitCode == 0,
+              let snapshot = result.output,
+              let pid = Self.ghosttyOwnerPid(forTTY: tty, processSnapshot: snapshot),
+              let app = NSRunningApplication(processIdentifier: pid_t(pid))
+        else {
+            return false
+        }
+        return app.activate()
     }
 
     private func discoverTerminalOwningTTY(tty: String) async -> ParentApp? {
@@ -1299,6 +1403,10 @@ final class TerminalLauncher: ActivationActionDependencies {
     }
 
     private func runBashScriptWithResultAsync(_ script: String) async -> (exitCode: Int32, output: String?) {
+        await Self.runBashScriptWithResult(script)
+    }
+
+    static func runBashScriptWithResult(_ script: String) async -> (exitCode: Int32, output: String?) {
         await withCheckedContinuation { continuation in
             DispatchQueue.global(qos: .userInitiated).async {
                 let process = Process()
@@ -1315,8 +1423,8 @@ final class TerminalLauncher: ActivationActionDependencies {
 
                 do {
                     try process.run()
-                    process.waitUntilExit()
                     let data = pipe.fileHandleForReading.readDataToEndOfFile()
+                    process.waitUntilExit()
                     let output = String(data: data, encoding: .utf8)
                     continuation.resume(returning: (process.terminationStatus, output))
                 } catch {

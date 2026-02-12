@@ -262,6 +262,22 @@ fn resolve_activation_internal(
         }
 
         if let Some(best) = best_live {
+            if let Some(session_name) = &tmux_context.session_at_path {
+                if should_prefer_tmux_session(best.shell, &action_path, session_name) {
+                    let mut decision = resolve_for_tmux_session(
+                        session_name,
+                        tmux_context.has_attached_client,
+                        &action_path,
+                    );
+                    decision.reason = format!(
+                        "Tmux session '{}' matches project; preferring tmux over non-tmux shell (pid={})",
+                        session_name, best.pid
+                    );
+                    decision.trace = trace;
+                    return decision;
+                }
+            }
+
             let mut decision =
                 resolve_for_existing_shell(best.pid, best.shell, tmux_context, &action_path);
             decision.trace = trace;
@@ -557,6 +573,33 @@ fn resolve_for_existing_shell(
         };
     }
 
+    // Unknown parent with attached tmux client: prefer tmux session.
+    if tmux_context.has_attached_client {
+        let session_name = tmux_context.session_at_path.clone().unwrap_or_else(|| {
+            project_path
+                .rsplit('/')
+                .next()
+                .unwrap_or(project_path)
+                .to_string()
+        });
+
+        return ActivationDecision {
+            primary: ActivationAction::EnsureTmuxSession {
+                session_name: session_name.clone(),
+                project_path: project_path.to_string(),
+            },
+            fallback: Some(ActivationAction::ActivateByTty {
+                tty: shell.tty.clone(),
+                terminal_type: TerminalType::Unknown,
+            }),
+            reason: format!(
+                "Found shell (pid={}) with unknown parent and attached tmux client, ensuring session '{}'",
+                pid, session_name
+            ),
+            trace: None,
+        };
+    }
+
     // Unknown parent: Try TTY discovery with a launch fallback.
     let fallback = if tmux_context.has_attached_client {
         let session_name = tmux_context.session_at_path.clone().unwrap_or_else(|| {
@@ -599,6 +642,20 @@ fn resolve_for_existing_shell(
         ),
         trace: None,
     }
+}
+
+fn should_prefer_tmux_session(
+    shell: &ShellEntryFfi,
+    project_path: &str,
+    session_name: &str,
+) -> bool {
+    if shell.tmux_session.is_some() || shell.parent_app.is_ide() {
+        return false;
+    }
+
+    let project_name = project_path.rsplit('/').next().unwrap_or(project_path);
+
+    session_name == project_name
 }
 
 /// Resolve activation when a tmux session exists but no shell in state.
@@ -1057,14 +1114,14 @@ mod tests {
 
         assert!(
             matches!(
-                decision.fallback,
-                Some(ActivationAction::LaunchTerminalWithTmux {
+                decision.primary,
+                ActivationAction::LaunchTerminalWithTmux {
                     ref session_name,
                     ref project_path
-                }) if session_name == "myproject" && project_path == "/Users/pete/Code/myproject"
+                } if session_name == "myproject" && project_path == "/Users/pete/Code/myproject"
             ),
-            "Expected LaunchTerminalWithTmux fallback when tmux session exists, got {:?}",
-            decision.fallback
+            "Expected LaunchTerminalWithTmux primary when tmux session exists, got {:?}",
+            decision.primary
         );
     }
 
@@ -1423,14 +1480,14 @@ mod tests {
 
         assert!(
             matches!(
-                decision.fallback,
-                Some(ActivationAction::LaunchTerminalWithTmux {
+                decision.primary,
+                ActivationAction::LaunchTerminalWithTmux {
                     ref session_name,
                     ref project_path,
-                }) if session_name == "myproject" && project_path == "/Users/pete/Code/myproject"
+                } if session_name == "myproject" && project_path == "/Users/pete/Code/myproject"
             ),
-            "Expected LaunchTerminalWithTmux fallback when tmux session exists, got {:?}",
-            decision.fallback
+            "Expected LaunchTerminalWithTmux primary when tmux session exists, got {:?}",
+            decision.primary
         );
     }
 
@@ -1454,13 +1511,24 @@ mod tests {
 
         assert!(
             matches!(
-                decision.fallback,
-                Some(ActivationAction::EnsureTmuxSession {
+                decision.primary,
+                ActivationAction::EnsureTmuxSession {
                     ref session_name,
                     ref project_path,
-                }) if session_name == "myproject" && project_path == "/Users/pete/Code/myproject"
+                } if session_name == "myproject" && project_path == "/Users/pete/Code/myproject"
             ),
-            "Expected EnsureTmuxSession fallback when tmux client attached, got {:?}",
+            "Expected EnsureTmuxSession primary when tmux client attached, got {:?}",
+            decision.primary
+        );
+        assert!(
+            matches!(
+                decision.fallback,
+                Some(ActivationAction::ActivateByTty {
+                    terminal_type: TerminalType::Unknown,
+                    ..
+                })
+            ),
+            "Expected ActivateByTty fallback when tmux ensure fails, got {:?}",
             decision.fallback
         );
     }
@@ -1720,7 +1788,7 @@ mod tests {
     // ─────────────────────────────────────────────────────────────────────────────
 
     #[test]
-    fn test_non_tmux_shell_selected_even_when_tmux_client_attached() {
+    fn test_non_tmux_shell_prefers_matching_tmux_session_when_client_attached() {
         let state = make_shell_state(vec![(
             "12345",
             make_shell_entry(
@@ -1738,8 +1806,11 @@ mod tests {
         );
 
         assert!(
-            matches!(decision.primary, ActivationAction::ActivateApp { ref app_name } if app_name == "Ghostty"),
-            "Expected ActivateApp(Ghostty) to avoid masking direct shells, got {:?}",
+            matches!(
+                decision.primary,
+                ActivationAction::SwitchTmuxSession { ref session_name } if session_name == "myproject"
+            ),
+            "Expected SwitchTmuxSession(myproject), got {:?}",
             decision.primary
         );
     }
