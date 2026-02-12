@@ -33,6 +33,7 @@ const SESSION_CATCH_UP_MAX_AGE_SECS: i64 = SESSION_TTL_READY_SECS + (5 * 60); //
 pub struct SharedState {
     db: Db,
     shell_state: Mutex<ShellState>,
+    dead_session_reconcile: Mutex<HashMap<String, DeadSessionReconcileMetrics>>,
 }
 
 impl SharedState {
@@ -138,10 +139,20 @@ impl SharedState {
             tracing::info!(count, "Pruned dead shells at startup (process not running)");
         }
 
-        Self {
+        let shared = Self {
             db,
             shell_state: Mutex::new(shell_state),
+            dead_session_reconcile: Mutex::new(HashMap::new()),
+        };
+
+        if let Err(err) = shared.reconcile_dead_non_idle_sessions("startup") {
+            tracing::warn!(
+                error = %err,
+                "Failed to reconcile dead non-idle sessions at startup"
+            );
         }
+
+        shared
     }
 
     pub fn update_from_event(&self, event: &EventEnvelope) {
@@ -320,6 +331,50 @@ impl SharedState {
         Ok(enriched)
     }
 
+    pub fn reconcile_dead_non_idle_sessions(&self, source: &str) -> Result<usize, String> {
+        let mut sessions = self.db.list_sessions()?;
+        let now = Utc::now().to_rfc3339();
+        let marker = format!("dead_pid_reconcile_{}", source);
+        let mut repaired = 0usize;
+
+        for record in &mut sessions {
+            if record.state == crate::reducer::SessionState::Idle {
+                continue;
+            }
+            if self.session_is_alive(record.pid) != Some(false) {
+                continue;
+            }
+
+            record.state = crate::reducer::SessionState::Idle;
+            record.updated_at = now.clone();
+            record.state_changed_at = now.clone();
+            record.last_event = Some(marker.clone());
+            record.tools_in_flight = 0;
+            record.ready_reason = None;
+            self.db.upsert_session(record)?;
+            repaired += 1;
+        }
+
+        if repaired > 0 {
+            tracing::info!(
+                count = repaired,
+                source = %source,
+                "Reconciled dead non-idle sessions to idle"
+            );
+        }
+
+        self.record_dead_session_reconcile(source, repaired as u64, &now);
+
+        Ok(repaired)
+    }
+
+    pub fn dead_session_reconcile_snapshot(&self) -> HashMap<String, DeadSessionReconcileMetrics> {
+        self.dead_session_reconcile
+            .lock()
+            .map(|metrics| metrics.clone())
+            .unwrap_or_default()
+    }
+
     fn session_is_alive(&self, pid: u32) -> Option<bool> {
         if pid == 0 {
             return None;
@@ -355,7 +410,8 @@ impl SharedState {
                 continue;
             }
 
-            let effective_state = effective_session_state(&record, now);
+            let is_alive = self.session_is_alive(record.pid);
+            let effective_state = effective_session_state(&record, now, is_alive);
             let session_time = session_timestamp(&record).unwrap_or(now);
             let priority = session_state_priority(&effective_state);
             let is_active = session_state_is_active(&effective_state);
@@ -510,6 +566,32 @@ impl SharedState {
             );
         }
     }
+
+    fn record_dead_session_reconcile(&self, source: &str, repaired: u64, now: &str) {
+        if let Ok(mut metrics) = self.dead_session_reconcile.lock() {
+            let entry = metrics
+                .entry(source.to_string())
+                .or_insert_with(DeadSessionReconcileMetrics::default);
+            entry.runs = entry.runs.saturating_add(1);
+            entry.last_run_at = Some(now.to_string());
+            if repaired > 0 {
+                entry.repaired_sessions = entry.repaired_sessions.saturating_add(repaired);
+                entry.last_repair_at = Some(now.to_string());
+            }
+        } else {
+            tracing::warn!("Failed to record dead-session reconciliation metrics (poisoned lock)");
+        }
+    }
+}
+
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct DeadSessionReconcileMetrics {
+    pub runs: u64,
+    pub repaired_sessions: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub last_run_at: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub last_repair_at: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -585,7 +667,12 @@ fn session_state_is_active(state: &crate::reducer::SessionState) -> bool {
 fn effective_session_state(
     record: &SessionRecord,
     now: DateTime<Utc>,
+    is_alive: Option<bool>,
 ) -> crate::reducer::SessionState {
+    if matches!(record.state, crate::reducer::SessionState::Ready) && is_alive == Some(false) {
+        return crate::reducer::SessionState::Idle;
+    }
+
     if let Some(state) = inactivity_fallback_state(record, now) {
         return state;
     }
@@ -998,7 +1085,7 @@ mod tests {
             recorded_at: newer_stop_at,
             event_type: EventType::Stop,
             session_id: Some("session-stale".to_string()),
-            pid: Some(1234),
+            pid: Some(std::process::id()),
             cwd: Some("/Users/petepetrash/Code/writing".to_string()),
             tool: None,
             file_path: None,
@@ -1069,6 +1156,130 @@ mod tests {
         assert_eq!(projects.len(), 1);
         assert_eq!(projects[0].project_path, "/Users/petepetrash/Code/writing");
         assert_eq!(projects[0].state, SessionState::Working);
+    }
+
+    #[test]
+    fn project_states_demote_ready_to_idle_when_pid_not_alive() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let db_path = temp_dir.path().join("state.db");
+        let db = Db::new(db_path).expect("db init");
+        let state = SharedState::new(db);
+
+        let mut record = make_record(
+            "session-dead-ready",
+            "/Users/petepetrash/Code/pete-2025",
+            SessionState::Ready,
+            Utc::now().to_rfc3339(),
+        );
+        record.pid = 999_999;
+        state.db.upsert_session(&record).expect("insert session");
+
+        let projects = state.project_states_snapshot().expect("project states");
+        assert_eq!(projects.len(), 1);
+        assert_eq!(
+            projects[0].project_path,
+            "/Users/petepetrash/Code/pete-2025"
+        );
+        assert_eq!(projects[0].state, SessionState::Idle);
+        assert!(!projects[0].has_session);
+    }
+
+    #[test]
+    fn project_states_keep_ready_when_pid_unknown() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let db_path = temp_dir.path().join("state.db");
+        let db = Db::new(db_path).expect("db init");
+        let state = SharedState::new(db);
+
+        let record = make_record(
+            "session-ready-unknown-pid",
+            "/Users/petepetrash/Code/unknown-pid",
+            SessionState::Ready,
+            Utc::now().to_rfc3339(),
+        );
+        state.db.upsert_session(&record).expect("insert session");
+
+        let projects = state.project_states_snapshot().expect("project states");
+        assert_eq!(projects.len(), 1);
+        assert_eq!(
+            projects[0].project_path,
+            "/Users/petepetrash/Code/unknown-pid"
+        );
+        assert_eq!(projects[0].state, SessionState::Ready);
+        assert!(projects[0].has_session);
+    }
+
+    #[test]
+    fn startup_repairs_dead_ready_sessions_to_idle_in_store() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let db_path = temp_dir.path().join("state.db");
+        let db = Db::new(db_path).expect("db init");
+
+        let mut record = make_record(
+            "session-dead-ready-startup",
+            "/Users/petepetrash/Code/pete-2025",
+            SessionState::Ready,
+            Utc::now().to_rfc3339(),
+        );
+        record.pid = 999_999;
+        db.upsert_session(&record).expect("insert session");
+
+        let state = SharedState::new(db);
+        let sessions = state.db.list_sessions().expect("list sessions");
+        assert_eq!(sessions.len(), 1);
+        assert_eq!(sessions[0].state, SessionState::Idle);
+        assert_eq!(
+            sessions[0].last_event.as_deref(),
+            Some("dead_pid_reconcile_startup")
+        );
+
+        let metrics = state.dead_session_reconcile_snapshot();
+        let startup = metrics.get("startup").expect("startup metrics");
+        assert_eq!(startup.runs, 1);
+        assert_eq!(startup.repaired_sessions, 1);
+        assert!(startup.last_run_at.is_some());
+        assert!(startup.last_repair_at.is_some());
+    }
+
+    #[test]
+    fn periodic_reconcile_demotes_dead_working_sessions_to_idle() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let db_path = temp_dir.path().join("state.db");
+        let db = Db::new(db_path).expect("db init");
+        let state = SharedState::new(db);
+
+        let mut record = make_record(
+            "session-dead-working-periodic",
+            "/Users/petepetrash/Code/pete-2025",
+            SessionState::Working,
+            Utc::now().to_rfc3339(),
+        );
+        record.pid = 999_999;
+        record.tools_in_flight = 2;
+        state.db.upsert_session(&record).expect("insert session");
+
+        let repaired = state
+            .reconcile_dead_non_idle_sessions("periodic")
+            .expect("reconcile");
+        assert_eq!(repaired, 1);
+
+        let sessions = state.db.list_sessions().expect("list sessions");
+        assert_eq!(sessions.len(), 1);
+        assert_eq!(sessions[0].state, SessionState::Idle);
+        assert_eq!(
+            sessions[0].last_event.as_deref(),
+            Some("dead_pid_reconcile_periodic")
+        );
+        assert_eq!(sessions[0].tools_in_flight, 0);
+
+        let metrics = state.dead_session_reconcile_snapshot();
+        let startup = metrics.get("startup").expect("startup metrics");
+        assert_eq!(startup.runs, 1);
+        let periodic = metrics.get("periodic").expect("periodic metrics");
+        assert_eq!(periodic.runs, 1);
+        assert_eq!(periodic.repaired_sessions, 1);
+        assert!(periodic.last_run_at.is_some());
+        assert!(periodic.last_repair_at.is_some());
     }
 
     #[test]

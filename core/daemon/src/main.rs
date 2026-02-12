@@ -38,6 +38,7 @@ use state::SharedState;
 const SOCKET_NAME: &str = "daemon.sock";
 const READ_TIMEOUT_SECS: u64 = 2;
 const READ_CHUNK_SIZE: usize = 4096;
+const DEAD_SESSION_RECONCILE_INTERVAL_SECS: u64 = 15;
 
 fn main() {
     init_logging();
@@ -93,6 +94,7 @@ fn main() {
     };
 
     let shared_state = Arc::new(SharedState::new(db));
+    spawn_dead_session_reconciler(Arc::clone(&shared_state));
 
     for stream in listener.incoming() {
         match stream {
@@ -105,6 +107,18 @@ fn main() {
             }
         }
     }
+}
+
+fn spawn_dead_session_reconciler(state: Arc<SharedState>) {
+    thread::spawn(move || loop {
+        thread::sleep(Duration::from_secs(DEAD_SESSION_RECONCILE_INTERVAL_SECS));
+        if let Err(err) = state.reconcile_dead_non_idle_sessions("periodic") {
+            warn!(
+                error = %err,
+                "Periodic dead-session reconciliation failed"
+            );
+        }
+    });
 }
 
 fn init_logging() {
@@ -247,7 +261,11 @@ fn handle_request(request: Request, state: Arc<SharedState>) -> Response {
                 "pid": std::process::id(),
                 "version": env!("CARGO_PKG_VERSION"),
                 "protocol_version": PROTOCOL_VERSION,
+                "dead_session_reconcile_interval_secs": DEAD_SESSION_RECONCILE_INTERVAL_SECS,
             });
+            if let Ok(value) = serde_json::to_value(state.dead_session_reconcile_snapshot()) {
+                data["dead_session_reconcile"] = value;
+            }
             if let Ok(path) = daemon_backoff_path() {
                 if let Some(snapshot) = backoff::snapshot(&path) {
                     if let Ok(value) = serde_json::to_value(snapshot) {

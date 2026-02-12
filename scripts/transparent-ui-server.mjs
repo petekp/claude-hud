@@ -319,10 +319,11 @@ async function startTail() {
 
 async function buildSnapshot(options = {}) {
   try {
-    const [sessions, projectStates, shellState] = await Promise.all([
+    const [sessions, projectStates, shellState, health] = await Promise.all([
       requestDaemon("get_sessions"),
       requestDaemon("get_project_states"),
-      requestDaemon("get_shell_state")
+      requestDaemon("get_shell_state"),
+      requestDaemon("get_health")
     ]);
     const shellData = shellState && shellState.ok ? shellState.data : { version: 1, shells: {} };
     const normalizedShellState = normalizeShellState(shellData, {
@@ -334,7 +335,8 @@ async function buildSnapshot(options = {}) {
       timestamp: new Date().toISOString(),
       sessions: sessions && sessions.ok ? sessions.data : [],
       project_states: projectStates && projectStates.ok ? projectStates.data : [],
-      shell_state: normalizedShellState
+      shell_state: normalizedShellState,
+      health: health && health.ok ? health.data : null
     };
   } catch (error) {
     return {
@@ -359,6 +361,7 @@ async function buildBriefing(options = {}) {
   const sessions = Array.isArray(snapshot.sessions) ? snapshot.sessions : [];
   const projects = Array.isArray(snapshot.project_states) ? snapshot.project_states : [];
   const shellState = snapshot.shell_state || {};
+  const health = snapshot.health && typeof snapshot.health === "object" ? snapshot.health : null;
   const totalShells = Number.isFinite(shellState.total_count) ? shellState.total_count : 0;
   const recentShells = Number.isFinite(shellState.recent_count) ? shellState.recent_count : 0;
   const telemetry = telemetryEvents.slice(0, limit);
@@ -375,6 +378,11 @@ async function buildBriefing(options = {}) {
         recent: recentShells,
         mode: shellState.selection || shellsMode,
         limit: shellState.selection_limit || shellLimit
+      },
+      daemon: {
+        status: health && typeof health.status === "string" ? health.status : "unknown",
+        pid: health && Number.isFinite(health.pid) ? health.pid : null,
+        version: health && typeof health.version === "string" ? health.version : null
       },
       telemetry: { count: telemetry.length, limit }
     },

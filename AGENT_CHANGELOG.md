@@ -1,11 +1,11 @@
 # Agent Changelog
 
 > This file helps coding agents understand project evolution, key decisions,
-> and deprecated patterns. Updated: 2026-02-12 (project-card transition invariants + docs convergence)
+> and deprecated patterns. Updated: 2026-02-12 (project-card invariants + dead-session reconciliation telemetry)
 
 ## Current State Summary
 
-Capacitor is a native macOS SwiftUI app (Apple Silicon, macOS 14+) that acts as a sidecar dashboard for Claude Code. The architecture uses a Rust core (`hud-core`) with UniFFI bindings to Swift plus a **Rust daemon (`capacitor-daemon`) that is the canonical source of truth** for session, shell, activity, and process-liveness state. Hooks emit events to the daemon over a Unix socket (`~/.capacitor/daemon.sock`), and Swift reads daemon snapshots (shell state + project aggregation); file-based JSON fallbacks are removed in daemon-only mode. Workstreams (managed git worktrees) are first-class with create/open/destroy UX and slug-prefixed naming; activation matching avoids crossing repo cards with managed worktree tmux panes. Project-card rendering now uses a **single unified active+idle row pipeline**, **stable outer identity by project path**, and **in-place status/effect animations** (no card-root remount invalidation), with status text using SwiftUI `numericText` content transitions. Terminal activation uses a Rust resolver plus Swift execution, explicitly targeting the attached tmux client TTY (`switch-client -c <tty>`) and then foregrounding the terminal window that owns that TTY. Build channel + alpha gating are runtime via `AppConfig` (env/Info.plist/config file), not compile-time flags; release versioning is centralized in `VERSION` (current alpha: `0.2.0-alpha.1`).
+Capacitor is a native macOS SwiftUI app (Apple Silicon, macOS 14+) that acts as a sidecar dashboard for Claude Code. The architecture uses a Rust core (`hud-core`) with UniFFI bindings to Swift plus a **Rust daemon (`capacitor-daemon`) that is the canonical source of truth** for session, shell, activity, and process-liveness state. Hooks emit events to the daemon over a Unix socket (`~/.capacitor/daemon.sock`), and Swift reads daemon snapshots (shell state + project aggregation); file-based JSON fallbacks are removed in daemon-only mode. Workstreams (managed git worktrees) are first-class with create/open/destroy UX and slug-prefixed naming; activation matching avoids crossing repo cards with managed worktree tmux panes. Project-card rendering now uses a **single unified active+idle row pipeline**, **stable outer identity by project path**, and **in-place status/effect animations** (no card-root remount invalidation), with status text using SwiftUI `numericText` content transitions. Terminal activation uses a Rust resolver plus Swift execution, explicitly targeting the attached tmux client TTY (`switch-client -c <tty>`) and then foregrounding the terminal window that owns that TTY. Build channel + alpha gating are runtime via `AppConfig` (env/Info.plist/config file), not compile-time flags; release versioning is centralized in `VERSION` (current alpha: `0.2.0-alpha.1`). Daemon startup and steady-state now include dead-session reconciliation plus health-exposed reconcile telemetry, demoting dead non-idle sessions to `Idle` without waiting for TTL or manual cleanup.
 
 > **Historical note:** Timeline entries below may reference pre-daemon artifacts (locks, `sessions.json`, `shell-cwd.json`). Treat them as historical context only; they are not current behavior.
 
@@ -38,6 +38,36 @@ No active high-confidence contradictions are currently confirmed across `CLAUDE.
 - Treat unified row rendering and session observation hooks as hard invariants for state correctness.
 
 **Commits:** `350d20d`, `67c7cae`, `213b341`
+
+---
+
+### 2026-02-12 — Dead Session Self-Healing (Startup + Periodic Reconciliation) (Unreleased)
+
+**What changed:**
+- Daemon project aggregation now demotes `Ready` to `Idle` when session process liveness is explicitly false (`is_alive == Some(false)`), preventing dead sessions from rendering as active cards.
+- Added daemon-level reconciliation API (`SharedState::reconcile_dead_non_idle_sessions`) that rewrites dead non-idle sessions to `Idle`, resets `tools_in_flight`, clears `ready_reason`, and stamps `last_event` with `dead_pid_reconcile_<source>`.
+- Added startup repair pass (`source=startup`) so stale persisted sessions are corrected immediately on daemon boot.
+- Added periodic background repair loop in daemon main (`source=periodic`, every 15s) so missed `SessionEnd` paths self-heal during runtime.
+- Added reconcile telemetry counters by source (`startup`, `periodic`) with run/repair totals + last-run timestamps, exposed on daemon `get_health` as `dead_session_reconcile` and `dead_session_reconcile_interval_secs`.
+- Transparent UI telemetry server now includes daemon `get_health` in `/daemon-snapshot`, and the Interface Explorer Live panel renders reconcile telemetry under a new "Daemon Health" section.
+- Added regression coverage for:
+  - dead-ready demotion in project snapshots
+  - unknown-pid (`pid=0`) non-demotion
+  - startup repair of persisted dead-ready sessions
+  - periodic repair of dead working sessions
+  - daemon health contract includes reconcile telemetry.
+
+**Why:**
+- Real-world failure mode: killed/abruptly terminated Claude sessions can miss `SessionEnd`, leaving a persisted non-idle session row that keeps project cards stuck in `Ready`.
+- Relying only on TTL or ideal hook completion delays recovery and leaks stale state into UI.
+
+**Agent impact:**
+- Treat `SessionEnd` as best-effort, not guaranteed. For stuck non-idle cards, inspect daemon `sessions.last_event` for `dead_pid_reconcile_startup|periodic`.
+- Do not infer activity from `Ready` alone; PID liveness reconciliation can force `Ready` → `Idle`.
+- Keep `pid=0` behavior unchanged (`is_alive=None`): unknown PID does not auto-demote.
+- For production monitoring, poll `get_health` and track `dead_session_reconcile.startup|periodic` counters over time.
+
+**Commits:** `5b2643a`
 
 ---
 

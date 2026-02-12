@@ -133,6 +133,32 @@ fn daemon_ipc_health_and_liveness_smoke() {
         .and_then(|value| value.as_str())
         .unwrap_or("missing");
     assert_eq!(status, "ok");
+    let reconcile = health
+        .data
+        .as_ref()
+        .and_then(|data| data.get("dead_session_reconcile"))
+        .and_then(|value| value.as_object())
+        .expect("dead_session_reconcile object");
+    let startup = reconcile
+        .get("startup")
+        .and_then(|value| value.as_object())
+        .expect("startup metrics");
+    let startup_runs = startup
+        .get("runs")
+        .and_then(|value| value.as_u64())
+        .unwrap_or(0);
+    assert!(
+        startup_runs >= 1,
+        "expected startup reconcile runs >= 1, got {}",
+        startup_runs
+    );
+    let interval = health
+        .data
+        .as_ref()
+        .and_then(|data| data.get("dead_session_reconcile_interval_secs"))
+        .and_then(|value| value.as_u64())
+        .unwrap_or(0);
+    assert_eq!(interval, 15);
 
     let repo_root = home.path().join("repo");
     let src_dir = repo_root.join("src");

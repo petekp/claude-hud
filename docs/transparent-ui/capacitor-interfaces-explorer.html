@@ -999,7 +999,7 @@ const nodes = [
   { id: "daemon", title: "capacitor-daemon", subtitle: "single writer + reducer", x: 540, y: 162, tag: "core/daemon", layer: "daemon", purpose: "Validates events, reduces them into sessions/activity, and serves snapshots over IPC.",
     exposes: ["get_sessions / get_project_states / get_shell_state / get_process_liveness", "event ingestion with strict validation"],
     derivedFrom: ["Replays event log on startup if sessions table is missing or stale", "Rebuilds shell_state from events if table is empty"],
-    rules: ["Working → Ready after ~60s tool inactivity (last_event in post_tool_use/post_tool_use_failure/task_completed, tools_in_flight=0)", "Session TTLs: Working/Waiting/Compacting 20m, Ready 30m, Idle 10m", "Sessions pruned if process liveness fails"],
+    rules: ["Working → Ready after ~60s tool inactivity (last_event in post_tool_use/post_tool_use_failure/task_completed, tools_in_flight=0)", "Session TTLs: Working/Waiting/Compacting 20m, Ready 30m, Idle 10m", "Dead non-idle sessions reconcile to Idle when PID liveness fails (startup + periodic)"],
     notes: ["Single-writer; clients are read-only via IPC snapshots", "Event types: session_start, user_prompt_submit, pre_tool_use, post_tool_use, post_tool_use_failure, permission_request, pre_compact, notification, stop, task_completed, subagent_start, subagent_stop, teammate_idle, session_end, shell_cwd (subagent/teammate events ignored by reducer)"],
     stateMachine: { name: "SessionState FSM", states: ["Working", "Ready", "Idle", "Compacting", "Waiting"],
       transitions: [
@@ -1149,7 +1149,7 @@ const contracts = [
   { title: "State DB (state.db)", summary: "Single-writer SQLite store backing daemon snapshots.",
     bullets: ["Tables: events, sessions, activity, shell_state, process_liveness, tombstones", "events are append-only; sessions/activity/shell_state are materialized for fast reads", "WAL enabled; daemon is the only writer; clients read via IPC"] },
   { title: "Session Lifecycle + Replay", summary: "Daemon replays and prunes to keep state accurate across restarts.",
-    bullets: ["Replays events if sessions table missing or stale", "Rebuilds shell_state from events if table is empty", "Active → Ready after ~8s inactivity; TTLs: Active 20m, Ready 30m, Idle 10m", "Process liveness rows pruned after 24h"] },
+    bullets: ["Replays events if sessions table missing or stale", "Rebuilds shell_state from events if table is empty", "Working → Ready after ~60s inactivity (event-guarded); TTLs: Active 20m, Ready 30m, Idle 10m", "Dead non-idle sessions reconcile to Idle at startup and every ~15s", "Process liveness rows pruned after 24h"] },
   { title: "Swift <-> Rust (UniFFI)", summary: "HudEngine is the stable facade. Rust returns typed DTOs/enums, Swift executes UI/platform behavior.",
     bullets: ["Boundary owner: core/hud-core/src/engine.rs", "Bindings: apps/swift/Sources/Capacitor/Bridge/hud_core.swift", "Important call: resolveActivation(projectPath, shellState, tmuxContext)", "Design: Rust decides, Swift executes side effects"] },
   { title: "Activation Adapter Layer", summary: "ActivationActionExecutor isolates orchestration from concrete terminal/system calls.",
@@ -1806,12 +1806,14 @@ function renderLiveState(data) {
   var projects = Array.isArray(data.project_states) ? data.project_states : [];
   var shellsMap = data.shell_state && data.shell_state.shells ? data.shell_state.shells : {};
   var shells = Object.entries(shellsMap).map(function(pair) { return Object.assign({ pid: pair[0] }, pair[1]); });
+  var health = data.health && typeof data.health === "object" ? data.health : null;
   sessionsEl.textContent = sessions.length;
   var activeProj = projects.find(function(p) { return p.state === "Active"; });
   projectEl.textContent = activeProj ? (activeProj.project_path || "").split("/").pop() : (projects.length ? projects[0].project_path.split("/").pop() : "--");
   shellsEl.textContent = shells.length;
-  daemonEl.textContent = "OK";
-  daemonEl.className = "kpi-value healthy";
+  var daemonHealthy = Boolean(health && String(health.status || "").toLowerCase() === "ok");
+  daemonEl.textContent = daemonHealthy ? "OK" : (health && health.status ? String(health.status).toUpperCase() : "UNK");
+  daemonEl.className = "kpi-value " + (daemonHealthy ? "healthy" : "unhealthy");
 
   var html = '';
   // Sessions section
@@ -1832,6 +1834,31 @@ function renderLiveState(data) {
     html += '<div class="snapshot-item">' + formatPayload({ pid: s.pid, cwd: s.cwd || "--", parent: s.parent_app || s.parentApp || "--" }) + '</div>';
   });
   html += '</div>';
+  // Daemon health + reconcile telemetry
+  if (health) {
+    var reconcile = health.dead_session_reconcile && typeof health.dead_session_reconcile === "object"
+      ? health.dead_session_reconcile
+      : {};
+    html += '<div class="data-section-header collapsed">Daemon Health</div><div class="data-section-body">';
+    html += '<div class="snapshot-item">' + formatPayload({
+      status: health.status || "--",
+      pid: health.pid || "--",
+      version: health.version || "--",
+      protocol_version: health.protocol_version || "--",
+      reconcile_interval_secs: health.dead_session_reconcile_interval_secs || "--"
+    }) + '</div>';
+    Object.keys(reconcile).sort().forEach(function(source) {
+      var metrics = reconcile[source] || {};
+      html += '<div class="snapshot-item">' + formatPayload({
+        source: source,
+        runs: metrics.runs || 0,
+        repaired_sessions: metrics.repaired_sessions || 0,
+        last_run: metrics.last_run_at ? relativeTime(metrics.last_run_at) : "never",
+        last_repair: metrics.last_repair_at ? relativeTime(metrics.last_repair_at) : "never"
+      }) + '</div>';
+    });
+    html += '</div>';
+  }
   sectionsEl.innerHTML = html;
   // Wire up collapsible headers
   sectionsEl.querySelectorAll(".data-section-header").forEach(function(header) {
