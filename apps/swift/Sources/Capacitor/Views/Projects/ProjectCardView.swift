@@ -36,18 +36,6 @@ struct ProjectCardView: View {
         sessionState?.state ?? .idle
     }
 
-    private var isReady: Bool {
-        currentState == .ready
-    }
-
-    private var isWaiting: Bool {
-        currentState == .waiting
-    }
-
-    private var isWorking: Bool {
-        currentState == .working
-    }
-
     private var nameColor: Color {
         project.isMissing ? .white.opacity(0.5) : .white.opacity(0.9)
     }
@@ -101,9 +89,7 @@ struct ProjectCardView: View {
             .padding(.vertical, paddingV)
             .cardStyling(
                 isHovered: isHovered,
-                isReady: isReady,
-                isWaiting: isWaiting,
-                isWorking: isWorking,
+                currentState: currentState,
                 isActive: isActive,
                 flashState: flashState,
                 flashOpacity: flashOpacity,

@@ -7,6 +7,79 @@ enum CardEffectAnimationPolicy {
     }
 }
 
+struct CardLayerOpacities: Equatable {
+    let readyAmbient: Double
+    let readyBorder: Double
+    let waitingAmbient: Double
+    let waitingBorder: Double
+    let workingStripe: Double
+    let workingBorder: Double
+    let activeRing: Double
+    let baseBorderBoost: Double
+}
+
+enum CardLayerOpacityPolicy {
+    static func opacities(for state: SessionState) -> CardLayerOpacities {
+        switch state {
+        case .idle:
+            CardLayerOpacities(
+                readyAmbient: 0,
+                readyBorder: 0,
+                waitingAmbient: 0,
+                waitingBorder: 0,
+                workingStripe: 0,
+                workingBorder: 0,
+                activeRing: 0,
+                baseBorderBoost: 0,
+            )
+        case .ready:
+            CardLayerOpacities(
+                readyAmbient: 1.0,
+                readyBorder: 1.0,
+                waitingAmbient: 0,
+                waitingBorder: 0,
+                workingStripe: 0.16,
+                workingBorder: 0.2,
+                activeRing: 0.5,
+                baseBorderBoost: 0.06,
+            )
+        case .working:
+            CardLayerOpacities(
+                readyAmbient: 0,
+                readyBorder: 0,
+                waitingAmbient: 0.24,
+                waitingBorder: 0.18,
+                workingStripe: 1.0,
+                workingBorder: 1.0,
+                activeRing: 0.72,
+                baseBorderBoost: 0.13,
+            )
+        case .waiting:
+            CardLayerOpacities(
+                readyAmbient: 0,
+                readyBorder: 0,
+                waitingAmbient: 1.0,
+                waitingBorder: 1.0,
+                workingStripe: 0.22,
+                workingBorder: 0.3,
+                activeRing: 0.62,
+                baseBorderBoost: 0.1,
+            )
+        case .compacting:
+            CardLayerOpacities(
+                readyAmbient: 0,
+                readyBorder: 0,
+                waitingAmbient: 0.46,
+                waitingBorder: 0.56,
+                workingStripe: 0.56,
+                workingBorder: 0.5,
+                activeRing: 0.55,
+                baseBorderBoost: 0.09,
+            )
+        }
+    }
+}
+
 enum ReadyChimePolicy {
     static func shouldPlay(
         playReadyChime: Bool,
@@ -28,9 +101,7 @@ enum ReadyChimePolicy {
 extension View {
     func cardStyling(
         isHovered: Bool,
-        isReady: Bool,
-        isWaiting: Bool = false,
-        isWorking: Bool = false,
+        currentState: SessionState,
         isActive: Bool,
         flashState: SessionState?,
         flashOpacity: Double,
@@ -43,19 +114,21 @@ extension View {
     ) -> some View {
         let cornerRadius = GlassConfig.shared.cardCornerRadius(for: layoutMode)
         let cfg = GlassConfig.shared
+        let layerOpacities = CardLayerOpacityPolicy.opacities(for: currentState)
 
         // Only run TimelineView animations for cards that need them
         let shouldAnimate = CardEffectAnimationPolicy.shouldAnimate(
             isActive: isActive,
             isHovered: isHovered,
-            isWaiting: isWaiting,
-            isWorking: isWorking,
+            isWaiting: layerOpacities.waitingAmbient > 0 || layerOpacities.waitingBorder > 0,
+            isWorking: layerOpacities.workingStripe > 0 || layerOpacities.workingBorder > 0,
         )
 
-        // Shared cross-fade curves — symmetric easeInOut for smooth blending
-        let crossFade = Animation.easeInOut(duration: cfg.glowFadeDuration)
+        // Layer-specific timing keeps transitions smooth while preserving in-place identity.
+        let ambientCrossFade = Animation.easeInOut(duration: cfg.glowFadeDuration)
         let borderCrossFade = Animation.easeInOut(duration: cfg.glowFadeDuration + cfg.glowBorderDelay)
             .delay(cfg.glowBorderDelay)
+        let trailFade = Animation.easeOut(duration: cfg.glowFadeDuration * 1.25)
 
         return background {
             ZStack {
@@ -68,20 +141,21 @@ extension View {
 
                 // Working stripes — always present, cross-fade via opacity
                 // Gate animate per-effect: only run TimelineView when this effect is visible
-                WorkingStripeOverlay(layoutMode: layoutMode, animate: shouldAnimate && isWorking)
-                    .opacity(isWorking ? 1 : 0)
-                    .animation(crossFade, value: isWorking)
+                WorkingStripeOverlay(layoutMode: layoutMode, animate: shouldAnimate && layerOpacities.workingStripe > 0)
+                    .opacity(layerOpacities.workingStripe)
+                    .animation(trailFade, value: layerOpacities.workingStripe)
             }
         }
         .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
         .overlay {
             let borderOpacity = isHovered ? cfg.cardHoverBorderOpacity : cfg.cardBorderOpacity
+            let boostedBorderOpacity = min(1.0, borderOpacity + layerOpacities.baseBorderBoost)
             RoundedRectangle(cornerRadius: cornerRadius)
                 .strokeBorder(
                     LinearGradient(
                         colors: [
-                            .white.opacity(borderOpacity),
-                            .white.opacity(borderOpacity * 0.4),
+                            .white.opacity(boostedBorderOpacity),
+                            .white.opacity(boostedBorderOpacity * 0.4),
                         ],
                         startPoint: .topLeading,
                         endPoint: .bottomTrailing,
@@ -95,53 +169,54 @@ extension View {
                 .opacity(flashOpacity),
         )
         .overlay {
+            let activeRingOpacity = isActive ? layerOpacities.activeRing : 0
             ZStack {
-                if isActive {
-                    RoundedRectangle(cornerRadius: cornerRadius)
-                        .strokeBorder(
-                            Color.white.opacity(0.3),
-                            lineWidth: 3,
-                        )
-                        .blur(radius: 4)
+                RoundedRectangle(cornerRadius: cornerRadius)
+                    .strokeBorder(
+                        Color.white.opacity(0.3),
+                        lineWidth: 3,
+                    )
+                    .blur(radius: 4)
 
-                    RoundedRectangle(cornerRadius: cornerRadius)
-                        .strokeBorder(
-                            Color.white.opacity(0.8),
-                            lineWidth: 1.5,
-                        )
-                }
+                RoundedRectangle(cornerRadius: cornerRadius)
+                    .strokeBorder(
+                        Color.white.opacity(0.8),
+                        lineWidth: 1.5,
+                    )
             }
+            .opacity(activeRingOpacity)
+            .animation(borderCrossFade, value: activeRingOpacity)
         }
         // Ready effects — always present, cross-fade via opacity
         // Gate animate per-effect: only run TimelineView when this effect is visible
         .overlay {
-            ReadyAmbientGlow(layoutMode: layoutMode, animate: shouldAnimate && isReady)
+            ReadyAmbientGlow(layoutMode: layoutMode, animate: shouldAnimate && layerOpacities.readyAmbient > 0)
                 .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
-                .opacity(isReady ? 1 : 0)
-                .animation(crossFade, value: isReady)
+                .opacity(layerOpacities.readyAmbient)
+                .animation(ambientCrossFade, value: layerOpacities.readyAmbient)
         }
         .overlay {
-            ReadyBorderGlow(seed: animationSeed, layoutMode: layoutMode, animate: shouldAnimate && isReady)
-                .opacity(isReady ? 1 : 0)
-                .animation(borderCrossFade, value: isReady)
+            ReadyBorderGlow(seed: animationSeed, layoutMode: layoutMode, animate: shouldAnimate && layerOpacities.readyBorder > 0)
+                .opacity(layerOpacities.readyBorder)
+                .animation(borderCrossFade, value: layerOpacities.readyBorder)
         }
         // Waiting effects — always present, cross-fade via opacity
         .overlay {
-            WaitingAmbientPulse(layoutMode: layoutMode, animate: shouldAnimate && isWaiting)
+            WaitingAmbientPulse(layoutMode: layoutMode, animate: shouldAnimate && layerOpacities.waitingAmbient > 0)
                 .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
-                .opacity(isWaiting ? 1 : 0)
-                .animation(crossFade, value: isWaiting)
+                .opacity(layerOpacities.waitingAmbient)
+                .animation(ambientCrossFade, value: layerOpacities.waitingAmbient)
         }
         .overlay {
-            WaitingBorderPulse(seed: animationSeed, layoutMode: layoutMode, animate: shouldAnimate && isWaiting)
-                .opacity(isWaiting ? 1 : 0)
-                .animation(borderCrossFade, value: isWaiting)
+            WaitingBorderPulse(seed: animationSeed, layoutMode: layoutMode, animate: shouldAnimate && layerOpacities.waitingBorder > 0)
+                .opacity(layerOpacities.waitingBorder)
+                .animation(borderCrossFade, value: layerOpacities.waitingBorder)
         }
         // Working border — always present, cross-fade via opacity
         .overlay {
-            WorkingBorderGlow(seed: animationSeed, layoutMode: layoutMode, animate: shouldAnimate && isWorking)
-                .opacity(isWorking ? 1 : 0)
-                .animation(borderCrossFade, value: isWorking)
+            WorkingBorderGlow(seed: animationSeed, layoutMode: layoutMode, animate: shouldAnimate && layerOpacities.workingBorder > 0)
+                .opacity(layerOpacities.workingBorder)
+                .animation(borderCrossFade, value: layerOpacities.workingBorder)
         }
         .shadow(
             color: .black.opacity(shadowOpacity(isHovered: isHovered, isPressed: isPressed, floatingMode: floatingMode, layoutMode: layoutMode)),

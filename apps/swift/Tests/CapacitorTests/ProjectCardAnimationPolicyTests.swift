@@ -35,6 +35,50 @@ final class ProjectCardAnimationPolicyTests: XCTestCase {
         XCTAssertTrue(shouldAnimate)
     }
 
+    func testLayerOpacitiesForIdleDisableAllDynamicLayers() {
+        let opacities = CardLayerOpacityPolicy.opacities(for: .idle)
+
+        XCTAssertEqual(opacities.readyAmbient, 0)
+        XCTAssertEqual(opacities.readyBorder, 0)
+        XCTAssertEqual(opacities.waitingAmbient, 0)
+        XCTAssertEqual(opacities.waitingBorder, 0)
+        XCTAssertEqual(opacities.workingStripe, 0)
+        XCTAssertEqual(opacities.workingBorder, 0)
+    }
+
+    func testLayerOpacitiesForWorkingKeepResidualWaitingPulse() {
+        let opacities = CardLayerOpacityPolicy.opacities(for: .working)
+
+        XCTAssertEqual(opacities.workingStripe, 1.0)
+        XCTAssertEqual(opacities.workingBorder, 1.0)
+        XCTAssertGreaterThan(opacities.waitingAmbient, 0.0)
+        XCTAssertGreaterThan(opacities.waitingBorder, 0.0)
+        XCTAssertEqual(opacities.readyAmbient, 0.0)
+        XCTAssertEqual(opacities.readyBorder, 0.0)
+    }
+
+    func testLayerOpacitiesForReadyPreserveSubtleWorkingTrail() {
+        let opacities = CardLayerOpacityPolicy.opacities(for: .ready)
+
+        XCTAssertEqual(opacities.readyAmbient, 1.0)
+        XCTAssertEqual(opacities.readyBorder, 1.0)
+        XCTAssertGreaterThan(opacities.workingStripe, 0.0)
+        XCTAssertGreaterThan(opacities.workingBorder, 0.0)
+        XCTAssertEqual(opacities.waitingAmbient, 0.0)
+        XCTAssertEqual(opacities.waitingBorder, 0.0)
+    }
+
+    func testLayerOpacitiesForCompactingBlendWaitingAndWorking() {
+        let opacities = CardLayerOpacityPolicy.opacities(for: .compacting)
+
+        XCTAssertGreaterThan(opacities.waitingAmbient, 0.0)
+        XCTAssertGreaterThan(opacities.waitingBorder, 0.0)
+        XCTAssertGreaterThan(opacities.workingStripe, 0.0)
+        XCTAssertGreaterThan(opacities.workingBorder, 0.0)
+        XCTAssertEqual(opacities.readyAmbient, 0.0)
+        XCTAssertEqual(opacities.readyBorder, 0.0)
+    }
+
     func testReadyChimeRespectsUserSetting() {
         let shouldPlay = ReadyChimePolicy.shouldPlay(
             playReadyChime: false,

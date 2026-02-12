@@ -272,4 +272,38 @@ final class ProjectOrderingTests: XCTestCase {
 
         defaults.removePersistentDomain(forName: suiteName)
     }
+
+    // MARK: - Card identity
+
+    func testCardIdentityKeyRemainsStableAcrossSessionStateTransitions() {
+        let workingKey = ProjectOrdering.cardIdentityKey(
+            projectPath: "/tmp/a",
+            sessionState: makeSessionState(.working),
+        )
+        let readyKey = ProjectOrdering.cardIdentityKey(
+            projectPath: "/tmp/a",
+            sessionState: makeSessionState(.ready),
+        )
+
+        XCTAssertEqual(
+            workingKey,
+            readyKey,
+            "Card container identity must stay stable across daemon state changes to prevent remount fade/scale artifacts.",
+        )
+    }
+
+    func testCardContentStateFingerprintChangesAcrossSessionStateTransitions() {
+        let workingFingerprint = ProjectOrdering.cardContentStateFingerprint(
+            sessionState: makeSessionState(.working),
+        )
+        let readyFingerprint = ProjectOrdering.cardContentStateFingerprint(
+            sessionState: makeSessionState(.ready),
+        )
+
+        XCTAssertNotEqual(
+            workingFingerprint,
+            readyFingerprint,
+            "Card content fingerprint should change across daemon states so inner card content refreshes without remounting the outer row.",
+        )
+    }
 }

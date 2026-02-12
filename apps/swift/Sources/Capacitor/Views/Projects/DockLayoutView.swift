@@ -170,11 +170,6 @@ struct DockLayoutView: View {
                 appState: appState,
             ),
         )
-        .scrollTransition { content, phase in
-            content
-                .opacity(phase.isIdentity ? 1 : 0.8)
-                .scaleEffect(phase.isIdentity ? 1 : 0.95)
-        }
     }
 
     private func calculateCardsPerPage(width: CGFloat, cardSpacing: CGFloat, horizontalPadding: CGFloat) -> Int {

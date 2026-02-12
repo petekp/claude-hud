@@ -98,6 +98,8 @@ struct ProjectsView: View {
                             idleOrder: appState.idleProjectOrder,
                             sessionStates: sessionStates,
                         )
+                        let activePaths = Set(grouped.active.map(\.path))
+                        let rows = grouped.active + grouped.idle
                         let hasVisibleProjects = !grouped.active.isEmpty || !grouped.idle.isEmpty
 
                         if appState.isProjectCreationEnabled {
@@ -112,7 +114,7 @@ struct ProjectsView: View {
                             .padding(.top, 4)
                             .transition(.opacity)
 
-                            ForEach(Array(grouped.active.enumerated()), id: \.element.path) { index, project in
+                            ForEach(Array(rows.enumerated()), id: \.element.path) { index, project in
                                 let sessionState = ProjectOrdering.sessionState(for: project.path, sessionStates: sessionStates)
                                 let projectStatus = appState.getProjectStatus(for: project)
                                 let flashState = appState.isFlashing(project)
@@ -120,6 +122,8 @@ struct ProjectsView: View {
                                     state: sessionState?.state,
                                     stateChangedAt: sessionState?.stateChangedAt,
                                 )
+                                let group: ActivityGroup = activePaths.contains(project.path) ? .active : .idle
+                                let groupProjects = group == .active ? grouped.active : grouped.idle
                                 activeProjectCard(
                                     project: project,
                                     sessionState: sessionState,
@@ -127,28 +131,8 @@ struct ProjectsView: View {
                                     flashState: flashState,
                                     isStale: isStale,
                                     index: index,
-                                    group: .active,
-                                    groupProjects: grouped.active,
-                                )
-                            }
-
-                            ForEach(Array(grouped.idle.enumerated()), id: \.element.path) { index, project in
-                                let sessionState = ProjectOrdering.sessionState(for: project.path, sessionStates: sessionStates)
-                                let projectStatus = appState.getProjectStatus(for: project)
-                                let flashState = appState.isFlashing(project)
-                                let isStale = SessionStaleness.isReadyStale(
-                                    state: sessionState?.state,
-                                    stateChangedAt: sessionState?.stateChangedAt,
-                                )
-                                activeProjectCard(
-                                    project: project,
-                                    sessionState: sessionState,
-                                    projectStatus: projectStatus,
-                                    flashState: flashState,
-                                    isStale: isStale,
-                                    index: index,
-                                    group: .idle,
-                                    groupProjects: grouped.idle,
+                                    group: group,
+                                    groupProjects: groupProjects,
                                 )
                             }
                         }

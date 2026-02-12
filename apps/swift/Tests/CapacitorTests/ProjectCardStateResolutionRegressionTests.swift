@@ -29,21 +29,30 @@ final class ProjectCardStateResolutionRegressionTests: XCTestCase {
         )
     }
 
-    func testStatusIndicatorDoesNotUseNumericTextTransitionForStatusLabels() throws {
-        let source = try loadProjectViewSource(named: "ProjectCardComponents.swift")
-
-        XCTAssertFalse(
-            source.contains(".numericText()"),
-            "Status labels are non-numeric and should not use .numericText() transitions, which can cause stale visual text after identity stabilization.",
-        )
-    }
-
-    func testStatusIndicatorTextIsKeyedByStateForDeterministicRedraw() throws {
+    func testStatusIndicatorUsesNumericTextTransitionForStatusLabels() throws {
         let source = try loadProjectViewSource(named: "ProjectCardComponents.swift")
 
         XCTAssertTrue(
+            source.contains(".contentTransition(reduceMotion ? .identity : .numericText())"),
+            "StatusIndicator should use the numericText content transition path used in the recent alpha baseline for animated status text changes.",
+        )
+    }
+
+    func testStatusIndicatorDoesNotUseInterpolatingTransitionForStateText() throws {
+        let source = try loadProjectViewSource(named: "ProjectCardComponents.swift")
+
+        XCTAssertFalse(
+            source.contains(".contentTransition(reduceMotion ? .identity : .interpolate)"),
+            "StatusIndicator should prefer the numericText transition configuration from the recent alpha baseline instead of interpolate.",
+        )
+    }
+
+    func testStatusIndicatorDoesNotForceIdentityResetOnStateChanges() throws {
+        let source = try loadProjectViewSource(named: "ProjectCardComponents.swift")
+
+        XCTAssertFalse(
             source.contains(".id(state)"),
-            "StatusIndicator text should be keyed by state to force deterministic redraw when daemon state transitions (e.g. Idle -> Working) occur rapidly.",
+            "StatusIndicator should keep stable identity and animate text/color in place. Forcing identity resets can short-circuit interpolate transitions.",
         )
     }
 

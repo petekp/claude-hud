@@ -85,13 +85,22 @@ enum ProjectOrdering {
         return paths
     }
 
-    /// Stable per-card identity that refreshes a row only when its own session presentation changes.
+    /// Stable per-card container identity.
+    /// Session-state transitions must not change this key, otherwise SwiftUI remounts card rows and
+    /// replays insertion/removal transitions (visible fade/scale artifacts).
     static func cardIdentityKey(projectPath: String, sessionState: ProjectSessionState?) -> String {
+        _ = sessionState
+        return projectPath
+    }
+
+    /// Session-sensitive fingerprint for in-place card content refresh.
+    /// Use this for inner content invalidation while keeping outer row identity stable.
+    static func cardContentStateFingerprint(sessionState: ProjectSessionState?) -> String {
         guard let sessionState else {
-            return "\(projectPath)#none"
+            return "none"
         }
 
-        return "\(projectPath)#\(sessionLabel(sessionState.state))#\(sessionState.sessionId ?? "-")#\(sessionState.hasSession ? "1" : "0")"
+        return "\(sessionLabel(sessionState.state))#\(sessionState.sessionId ?? "-")#\(sessionState.hasSession ? "1" : "0")#\(sessionState.stateChangedAt ?? "-")"
     }
 
     private static func sessionLabel(_ state: SessionState) -> String {

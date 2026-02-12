@@ -36,18 +36,6 @@ struct DockProjectCard: View {
         sessionState?.state ?? .idle
     }
 
-    private var isReady: Bool {
-        currentState == .ready
-    }
-
-    private var isWaiting: Bool {
-        currentState == .waiting
-    }
-
-    private var isWorking: Bool {
-        currentState == .working
-    }
-
     private var glassConfigForHandlers: GlassConfig? {
         glassConfig
     }
@@ -95,9 +83,7 @@ struct DockProjectCard: View {
             .frame(width: 262)
             .cardStyling(
                 isHovered: isHovered,
-                isReady: isReady,
-                isWaiting: isWaiting,
-                isWorking: isWorking,
+                currentState: currentState,
                 isActive: isActive,
                 flashState: flashState,
                 flashOpacity: flashOpacity,

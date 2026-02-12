@@ -19,21 +19,65 @@ final class ProjectCardIdentityRegressionTests: XCTestCase {
         )
     }
 
-    func testProjectsViewCardIdentityUsesPerCardSessionFingerprint() throws {
+    func testProjectsViewCardIdentityUsesStablePathKey() throws {
         let source = try loadSourceFile(named: "ProjectsView.swift")
 
         XCTAssertTrue(
             source.contains(".id(ProjectOrdering.cardIdentityKey("),
-            "ProjectsView card identity should include a per-card session fingerprint so rows refresh when that project's session state changes.",
+            "ProjectsView should derive card identity from a stable path key helper, not a state-dependent id expression.",
         )
     }
 
-    func testDockLayoutCardIdentityUsesPerCardSessionFingerprint() throws {
+    func testDockLayoutCardIdentityUsesStablePathKey() throws {
         let source = try loadSourceFile(named: "DockLayoutView.swift")
 
         XCTAssertTrue(
             source.contains(".id(ProjectOrdering.cardIdentityKey("),
-            "DockLayoutView card identity should include a per-card session fingerprint so rows refresh when that project's session state changes.",
+            "DockLayoutView should derive card identity from a stable path key helper, not a state-dependent id expression.",
+        )
+    }
+
+    func testProjectsViewDoesNotInvalidateWholeCardViaContentStateFingerprint() throws {
+        let source = try loadSourceFile(named: "ProjectsView.swift")
+
+        XCTAssertFalse(
+            source.contains(".id(ProjectOrdering.cardContentStateFingerprint(sessionState: sessionState))"),
+            "ProjectsView should not remount whole card content for state changes. Only effect/status sublayers should animate in place.",
+        )
+    }
+
+    func testDockLayoutDoesNotInvalidateWholeCardViaContentStateFingerprint() throws {
+        let source = try loadSourceFile(named: "DockLayoutView.swift")
+
+        XCTAssertFalse(
+            source.contains(".id(ProjectOrdering.cardContentStateFingerprint(sessionState: sessionState))"),
+            "DockLayoutView should not remount whole dock card content for state changes. Only effect/status sublayers should animate in place.",
+        )
+    }
+
+    func testDockLayoutDoesNotApplyScrollTransitionToProjectCards() throws {
+        let source = try loadSourceFile(named: "DockLayoutView.swift")
+
+        XCTAssertFalse(
+            source.contains(".scrollTransition {"),
+            "Dock project cards should not apply scrollTransition scale/opacity effects. State changes must preserve card visibility and avoid perceived remount artifacts.",
+        )
+    }
+
+    func testProjectsViewUsesUnifiedRowsForEachAndNotSplitGroupedLoops() throws {
+        let source = try loadSourceFile(named: "ProjectsView.swift")
+
+        XCTAssertTrue(
+            source.contains("let rows = grouped.active + grouped.idle"),
+            "ProjectsView should render active+idle cards through one unified rows list to avoid cross-section update stalls.",
+        )
+        XCTAssertFalse(
+            source.contains("ForEach(Array(grouped.active.enumerated())"),
+            "ProjectsView should not use a dedicated grouped.active loop for card rows.",
+        )
+        XCTAssertFalse(
+            source.contains("ForEach(Array(grouped.idle.enumerated())"),
+            "ProjectsView should not use a dedicated grouped.idle loop for card rows.",
         )
     }
 
