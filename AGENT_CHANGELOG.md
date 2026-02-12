@@ -1,19 +1,58 @@
 # Agent Changelog
 
 > This file helps coding agents understand project evolution, key decisions,
-> and deprecated patterns. Updated: 2026-02-12 (project-card invariants + dead-session reconciliation telemetry)
+> and deprecated patterns. Updated: 2026-02-12 (holistic project-card ordering stabilization + daemon empty-snapshot guard)
 
 ## Current State Summary
 
-Capacitor is a native macOS SwiftUI app (Apple Silicon, macOS 14+) that acts as a sidecar dashboard for Claude Code. The architecture uses a Rust core (`hud-core`) with UniFFI bindings to Swift plus a **Rust daemon (`capacitor-daemon`) that is the canonical source of truth** for session, shell, activity, and process-liveness state. Hooks emit events to the daemon over a Unix socket (`~/.capacitor/daemon.sock`), and Swift reads daemon snapshots (shell state + project aggregation); file-based JSON fallbacks are removed in daemon-only mode. Workstreams (managed git worktrees) are first-class with create/open/destroy UX and slug-prefixed naming; activation matching avoids crossing repo cards with managed worktree tmux panes. Project-card rendering now uses a **single unified active+idle row pipeline**, **stable outer identity by project path**, and **in-place status/effect animations** (no card-root remount invalidation), with status text using SwiftUI `numericText` content transitions. Terminal activation uses a Rust resolver plus Swift execution, explicitly targeting the attached tmux client TTY (`switch-client -c <tty>`) and then foregrounding the terminal window that owns that TTY. Build channel + alpha gating are runtime via `AppConfig` (env/Info.plist/config file), not compile-time flags; release versioning is centralized in `VERSION` (current alpha: `0.2.0-alpha.1`). Daemon startup and steady-state now include dead-session reconciliation plus health-exposed reconcile telemetry, demoting dead non-idle sessions to `Idle` without waiting for TTL or manual cleanup.
+Capacitor is a native macOS SwiftUI app (Apple Silicon, macOS 14+) that acts as a sidecar dashboard for Claude Code. The architecture uses a Rust core (`hud-core`) with UniFFI bindings to Swift plus a **Rust daemon (`capacitor-daemon`) that is the canonical source of truth** for session, shell, activity, and process-liveness state. Hooks emit events to the daemon over a Unix socket (`~/.capacitor/daemon.sock`), and Swift reads daemon snapshots (shell state + project aggregation); file-based JSON fallbacks are removed in daemon-only mode. Workstreams (managed git worktrees) are first-class with create/open/destroy UX and slug-prefixed naming; activation matching avoids crossing repo cards with managed worktree tmux panes. Project-card rendering now uses a **single unified active+idle row pipeline**, **stable outer identity by project path**, and **in-place status/effect animations** (no card-root remount invalidation), with status text using SwiftUI `numericText` content transitions. Manual ordering now persists as one global list (`projectOrder`) and active/idle groups are projections over that list with hysteresis bands (`active`/`cooling`/`idle`) to reduce Ready/Idle thrash. Daemon empty project snapshots are also quality-gated in Swift: one empty snapshot is held as transient noise, and clearing applies on consecutive empties. Terminal activation uses a Rust resolver plus Swift execution, explicitly targeting the attached tmux client TTY (`switch-client -c <tty>`) and then foregrounding the terminal window that owns that TTY. Build channel + alpha gating are runtime via `AppConfig` (env/Info.plist/config file), not compile-time flags; release versioning is centralized in `VERSION` (current alpha: `0.2.0-alpha.1`). Daemon startup and steady-state now include dead-session reconciliation plus health-exposed reconcile telemetry, demoting dead non-idle sessions to `Idle` without waiting for TTL or manual cleanup.
 
 > **Historical note:** Timeline entries below may reference pre-daemon artifacts (locks, `sessions.json`, `shell-cwd.json`). Treat them as historical context only; they are not current behavior.
 
 ## Stale Information Detected
 
-No active high-confidence contradictions are currently confirmed across `CLAUDE.md` and `.claude/docs/*` after the 2026-02-12 docs convergence updates.
+| Location | States | Reality | Since |
+|----------|--------|---------|-------|
+| `AGENT_CHANGELOG.md` (2026-02-11 "Project-Card State Resolution + Daemon Startup Catch-up Hardening") | "List and dock rendering now key row identity by per-card session fingerprint (`ProjectOrdering.cardIdentityKey`)..." | `ProjectOrdering.cardIdentityKey` currently returns stable `project.path` only; session-state-based row-key coupling is intentionally removed | 2026-02-12 |
 
 ## Timeline
+
+### 2026-02-12 — Holistic Project-Card Ordering Stabilization (In Progress / Uncommitted)
+
+**What changed:**
+- Replaced dual persisted ordering lists (`activeProjectOrder`, `idleProjectOrder`) with a single persisted global manual order (`projectOrder`) in Swift state and storage.
+- Updated list and dock ordering to derive active/idle projections from one order source while keeping unified rendering (`grouped.active + grouped.idle`) and stable row identity.
+- Added explicit activity hysteresis bands in `ProjectOrdering`:
+  - `active` (`Working`, `Ready`, `Waiting`, `Compacting`)
+  - `cooling` (recently `Idle`, within demotion grace)
+  - `idle` (steady idle / no session)
+- Added `movedGlobalOrder(...)` so drag reorder inside one visible group rewrites only those subset positions in the global order, preserving other cards' relative placement.
+- Reworked `reconcileProjectGroups()` to maintain global-order hygiene (dedupe/missing/removed cleanup) instead of shuffling between dual lists; emits order telemetry.
+- Added daemon snapshot quality guard in `SessionStateManager`: hold first empty `get_project_states` merge as transient; clear after consecutive empties.
+- Added telemetry for ordering and snapshot decisions:
+  - `project_order_changed`
+  - `project_order_anomaly`
+  - `session_state_empty_snapshot`
+- Expanded regression coverage for global-order transitions, cooling-band classification, and empty-snapshot hold/commit behavior.
+
+**Why:**
+- Ready/Idle flapping and intermittent daemon empty snapshots were causing cards to jump off-screen/on-screen and reorder unexpectedly.
+- A single global order plus hysteresis and snapshot-quality gating reduces visual thrash while preserving user intent.
+
+**Agent impact:**
+- Use `projectOrder` as the only persisted manual order source; do not reintroduce split active/idle order persistence.
+- Preserve group projection semantics (active first visually), but keep relative ordering anchored to global order.
+- Treat a single empty daemon project-state snapshot as likely transient transport/snapshot noise; avoid immediate UI demotion/clear behavior.
+- For ordering regressions, inspect telemetry events above before changing view identity/animation code.
+
+**Evidence / tests:**
+- Swift tests pass with new coverage in:
+  - `ProjectOrderingTests`
+  - `ProjectOrderStoreTests`
+  - `SessionStateManagerTests`
+  - `DaemonClientTests` (sequential test socket responses).
+
+---
 
 ### 2026-02-12 — Project Card Transition Invariants + In-Place Status Text Transitions (Completed)
 
@@ -1429,6 +1468,8 @@ Fixed terminal activation to check the daemon shell snapshot BEFORE tmux session
 
 | Don't | Do Instead | Deprecated Since |
 |-------|------------|------------------|
+| Persist separate active/idle manual order lists (`activeProjectOrder` / `idleProjectOrder`) | Persist one global `projectOrder` and derive active/idle projections from that single sequence | 2026-02-12 |
+| Clear session state immediately on first empty daemon `get_project_states` snapshot | Hold first empty snapshot as transient; clear after consecutive empties | 2026-02-12 |
 | Use `tmux switch-client -t <session>` when a client TTY is known | Resolve `#{client_tty}` and use `tmux switch-client -c <client_tty> -t <session>` | 2026-02-11 |
 | Key project-card rows by global `sessionStateRevision` or state-dependent row IDs | Keep row identity stable by `project.path` / `ProjectOrdering.cardIdentityKey(...)` | 2026-02-12 |
 | Force card refresh by remounting card roots (`.id(ProjectOrdering.cardContentStateFingerprint(...))`) | Keep card shell mounted; animate only status/effect sublayers in place | 2026-02-12 |

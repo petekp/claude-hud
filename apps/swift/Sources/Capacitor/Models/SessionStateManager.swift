@@ -38,6 +38,7 @@ final class SessionStateManager {
 
     private enum Constants {
         static let flashDurationSeconds: TimeInterval = 1.4
+        static let emptySnapshotCommitThreshold = 2
     }
 
     @ObservationIgnored var onVisualStateChanged: (() -> Void)?
@@ -57,6 +58,7 @@ final class SessionStateManager {
     }
 
     private var previousSessionStates: [String: SessionState] = [:]
+    private var consecutiveEmptySnapshotCount = 0
 
     private let daemonClient = DaemonClient.shared
     private var daemonRefreshTask: _Concurrency.Task<Void, Never>?
@@ -69,6 +71,7 @@ final class SessionStateManager {
 
         guard daemonEnabled else {
             DebugLog.write("SessionStateManager.refresh daemonEnabled=false clearingStates")
+            consecutiveEmptySnapshotCount = 0
             sessionStates = [:]
             pruneCachedStates()
             return
@@ -86,6 +89,7 @@ final class SessionStateManager {
                 let daemonProjects = try await daemonClient.fetchProjectStates()
                 let merged = mergeDaemonProjectStates(daemonProjects, projects: projects)
                 await MainActor.run {
+                    let stabilized = self.stabilizeEmptyDaemonSnapshotIfNeeded(merged)
                     DebugLog.write("SessionStateManager.fetchProjectStates success count=\(daemonProjects.count)")
                     if !merged.isEmpty {
                         let summary = merged
@@ -96,13 +100,13 @@ final class SessionStateManager {
                     } else {
                         DebugLog.write("SessionStateManager.merge summary=empty")
                     }
-                    let didChange = merged != self.sessionStates
+                    let didChange = stabilized != self.sessionStates
                     if didChange {
-                        self.sessionStates = merged
+                        self.sessionStates = stabilized
                     }
                     self.pruneCachedStates()
                     #if DEBUG
-                        DiagnosticsSnapshotLogger.maybeCaptureStuckSessions(sessionStates: merged)
+                        DiagnosticsSnapshotLogger.maybeCaptureStuckSessions(sessionStates: stabilized)
                     #endif
                     if didChange {
                         self.checkForStateChanges()
@@ -115,6 +119,73 @@ final class SessionStateManager {
                 return
             }
         }
+    }
+
+    private func stabilizeEmptyDaemonSnapshotIfNeeded(
+        _ merged: [String: ProjectSessionState],
+    ) -> [String: ProjectSessionState] {
+        if merged.isEmpty {
+            guard !sessionStates.isEmpty else {
+                consecutiveEmptySnapshotCount = 0
+                logEmptySnapshotDecision(
+                    decision: "commit_empty_no_existing_state",
+                    mergedCount: merged.count,
+                    stabilizedCount: merged.count,
+                )
+                return merged
+            }
+
+            consecutiveEmptySnapshotCount += 1
+            if consecutiveEmptySnapshotCount < Constants.emptySnapshotCommitThreshold {
+                logEmptySnapshotDecision(
+                    decision: "hold_empty_snapshot",
+                    mergedCount: merged.count,
+                    stabilizedCount: sessionStates.count,
+                )
+                return sessionStates
+            }
+
+            logEmptySnapshotDecision(
+                decision: "commit_empty_snapshot",
+                mergedCount: merged.count,
+                stabilizedCount: merged.count,
+            )
+            consecutiveEmptySnapshotCount = 0
+            return merged
+        }
+
+        let hadPendingEmptyHold = consecutiveEmptySnapshotCount > 0
+        consecutiveEmptySnapshotCount = 0
+        if hadPendingEmptyHold {
+            logEmptySnapshotDecision(
+                decision: "commit_non_empty_reset_hold",
+                mergedCount: merged.count,
+                stabilizedCount: merged.count,
+            )
+        }
+        return merged
+    }
+
+    private func logEmptySnapshotDecision(
+        decision: String,
+        mergedCount: Int,
+        stabilizedCount: Int,
+    ) {
+        let existingCount = sessionStates.count
+        DebugLog.write(
+            "SessionStateManager.emptySnapshot decision=\(decision) consecutiveEmpty=\(consecutiveEmptySnapshotCount) mergedCount=\(mergedCount) existingCount=\(existingCount) appliedCount=\(stabilizedCount)",
+        )
+        Telemetry.emit(
+            "session_state_empty_snapshot",
+            decision,
+            payload: [
+                "decision": decision,
+                "consecutive_empty_count": consecutiveEmptySnapshotCount,
+                "merged_count": mergedCount,
+                "existing_count": existingCount,
+                "applied_count": stabilizedCount,
+            ],
+        )
     }
 
     // MARK: - Flash Animation

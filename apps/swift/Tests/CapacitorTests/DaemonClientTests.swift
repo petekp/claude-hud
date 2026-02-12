@@ -99,9 +99,19 @@ final class UnixSocketServer {
     }
 
     func start(response: Data, maxConnections: Int = 1) {
+        start(
+            responses: Array(repeating: response, count: maxConnections),
+            maxConnections: maxConnections,
+        )
+    }
+
+    func start(responses: [Data], maxConnections: Int? = nil) {
+        let connectionLimit = maxConnections ?? responses.count
+        guard connectionLimit > 0 else { return }
+        let fallbackResponse = responses.last ?? Data()
         let work = DispatchWorkItem { [fd] in
             var served = 0
-            while served < maxConnections {
+            while served < connectionLimit {
                 var addr = sockaddr()
                 var len = socklen_t(MemoryLayout<sockaddr>.size)
                 let client = accept(fd, &addr, &len)
@@ -114,6 +124,13 @@ final class UnixSocketServer {
                     let n = read(client, &buffer, buffer.count)
                     if n <= 0 { break }
                     if buffer.prefix(n).contains(0x0A) { break }
+                }
+                let response: Data
+                if responses.isEmpty {
+                    response = fallbackResponse
+                } else {
+                    let responseIndex = min(served, responses.count - 1)
+                    response = responses[responseIndex]
                 }
                 response.withUnsafeBytes { bytes in
                     guard let base = bytes.baseAddress else { return }

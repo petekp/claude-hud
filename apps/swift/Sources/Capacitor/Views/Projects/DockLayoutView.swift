@@ -25,8 +25,7 @@ struct DockLayoutView: View {
         let horizontalPadding = glassConfig.dockHorizontalPaddingRounded
         let grouped = ProjectOrdering.orderedGroupedProjects(
             nonPausedProjects,
-            activeOrder: appState.activeProjectOrder,
-            idleOrder: appState.idleProjectOrder,
+            order: appState.projectOrder,
             sessionStates: sessionStates,
         )
         let activePaths = Set(grouped.active.map(\.path))

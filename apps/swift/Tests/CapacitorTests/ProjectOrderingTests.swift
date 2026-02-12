@@ -19,10 +19,10 @@ final class ProjectOrderingTests: XCTestCase {
         )
     }
 
-    private func makeSessionState(_ state: SessionState) -> ProjectSessionState {
+    private func makeSessionState(_ state: SessionState, stateChangedAt: String? = nil) -> ProjectSessionState {
         ProjectSessionState(
             state: state,
-            stateChangedAt: nil,
+            stateChangedAt: stateChangedAt,
             updatedAt: nil,
             sessionId: nil,
             workingOn: nil,
@@ -98,6 +98,39 @@ final class ProjectOrderingTests: XCTestCase {
         XCTAssertFalse(ProjectOrdering.isActive("/tmp/a", sessionStates: states))
     }
 
+    func testIsActiveReturnsTrueForRecentlyIdleSessionWithinGraceWindow() {
+        let now = Date()
+        let justNow = ISO8601DateFormatter.shared.string(from: now.addingTimeInterval(-3))
+        let states: [String: ProjectSessionState] = [
+            "/tmp/a": makeSessionState(.idle, stateChangedAt: justNow),
+        ]
+
+        XCTAssertTrue(ProjectOrdering.isActive("/tmp/a", sessionStates: states, now: now))
+    }
+
+    func testIsActiveReturnsFalseForIdleSessionOutsideGraceWindow() {
+        let now = Date()
+        let old = ISO8601DateFormatter.shared.string(from: now.addingTimeInterval(-15))
+        let states: [String: ProjectSessionState] = [
+            "/tmp/a": makeSessionState(.idle, stateChangedAt: old),
+        ]
+
+        XCTAssertFalse(ProjectOrdering.isActive("/tmp/a", sessionStates: states, now: now))
+    }
+
+    func testActivityBandReturnsCoolingForRecentlyIdleSession() {
+        let now = Date()
+        let recentIdle = ISO8601DateFormatter.shared.string(from: now.addingTimeInterval(-2))
+        let states: [String: ProjectSessionState] = [
+            "/tmp/a": makeSessionState(.idle, stateChangedAt: recentIdle),
+        ]
+
+        XCTAssertEqual(
+            ProjectOrdering.activityBand("/tmp/a", sessionStates: states, now: now),
+            .cooling,
+        )
+    }
+
     func testIsActiveReturnsFalseForNoSession() {
         let states: [String: ProjectSessionState] = [:]
         XCTAssertFalse(ProjectOrdering.isActive("/tmp/a", sessionStates: states))
@@ -134,8 +167,7 @@ final class ProjectOrderingTests: XCTestCase {
 
         let result = ProjectOrdering.orderedGroupedProjects(
             [projectA, projectB, projectC],
-            activeOrder: ["/tmp/c", "/tmp/a"],
-            idleOrder: ["/tmp/b"],
+            order: ["/tmp/c", "/tmp/a", "/tmp/b"],
             sessionStates: states,
         )
 
@@ -156,15 +188,37 @@ final class ProjectOrderingTests: XCTestCase {
 
         let result = ProjectOrdering.orderedGroupedProjects(
             [projectA, projectB, projectC, projectD],
-            activeOrder: ["/tmp/d", "/tmp/a"],
-            idleOrder: ["/tmp/c", "/tmp/b"],
+            order: ["/tmp/d", "/tmp/a", "/tmp/c", "/tmp/b"],
             sessionStates: states,
         )
 
-        // Active: D before A (per activeOrder)
+        // Active: D before A (per global order)
         XCTAssertEqual(result.active.map(\.path), ["/tmp/d", "/tmp/a"])
-        // Idle: C before B (per idleOrder)
+        // Idle: C before B (per global order)
         XCTAssertEqual(result.idle.map(\.path), ["/tmp/c", "/tmp/b"])
+    }
+
+    func testGroupedProjectsKeepsRecentlyIdleProjectInActiveBucketDuringGraceWindow() {
+        let now = Date()
+        let recentIdle = ISO8601DateFormatter.shared.string(from: now.addingTimeInterval(-2))
+
+        let projectA = makeProject("A", path: "/tmp/a")
+        let projectB = makeProject("B", path: "/tmp/b")
+        let projectC = makeProject("C", path: "/tmp/c")
+
+        let states: [String: ProjectSessionState] = [
+            "/tmp/a": makeSessionState(.idle, stateChangedAt: recentIdle),
+            "/tmp/b": makeSessionState(.working),
+        ]
+
+        let result = ProjectOrdering.orderedGroupedProjects(
+            [projectA, projectB, projectC],
+            order: ["/tmp/a", "/tmp/b", "/tmp/c"],
+            sessionStates: states,
+        )
+
+        XCTAssertEqual(result.active.map(\.path), ["/tmp/a", "/tmp/b"])
+        XCTAssertEqual(result.idle.map(\.path), ["/tmp/c"])
     }
 
     func testGroupedProjectsAllIdle() {
@@ -173,8 +227,7 @@ final class ProjectOrderingTests: XCTestCase {
 
         let result = ProjectOrdering.orderedGroupedProjects(
             [projectA, projectB],
-            activeOrder: [],
-            idleOrder: ["/tmp/b", "/tmp/a"],
+            order: ["/tmp/b", "/tmp/a"],
             sessionStates: [:],
         )
 
@@ -193,8 +246,7 @@ final class ProjectOrderingTests: XCTestCase {
 
         let result = ProjectOrdering.orderedGroupedProjects(
             [projectA, projectB],
-            activeOrder: ["/tmp/a", "/tmp/b"],
-            idleOrder: [],
+            order: ["/tmp/a", "/tmp/b"],
             sessionStates: states,
         )
 
@@ -202,21 +254,77 @@ final class ProjectOrderingTests: XCTestCase {
         XCTAssertTrue(result.idle.isEmpty)
     }
 
+    // MARK: - Global order model
+
+    func testGroupedProjectsUsesSingleGlobalOrderAcrossActivityTransitions() {
+        let projectA = makeProject("A", path: "/tmp/a")
+        let projectB = makeProject("B", path: "/tmp/b")
+        let projectC = makeProject("C", path: "/tmp/c")
+        let all = [projectA, projectB, projectC]
+        let order = ["/tmp/b", "/tmp/a", "/tmp/c"]
+
+        let initialStates: [String: ProjectSessionState] = [
+            "/tmp/b": makeSessionState(.working),
+            "/tmp/c": makeSessionState(.ready),
+            "/tmp/a": makeSessionState(.idle),
+        ]
+        let initial = ProjectOrdering.orderedGroupedProjects(
+            all,
+            order: order,
+            sessionStates: initialStates,
+        )
+        XCTAssertEqual(initial.active.map(\.path), ["/tmp/b", "/tmp/c"])
+        XCTAssertEqual(initial.idle.map(\.path), ["/tmp/a"])
+
+        let transitionedStates: [String: ProjectSessionState] = [
+            "/tmp/a": makeSessionState(.working),
+            "/tmp/c": makeSessionState(.ready),
+            "/tmp/b": makeSessionState(.idle),
+        ]
+        let transitioned = ProjectOrdering.orderedGroupedProjects(
+            all,
+            order: order,
+            sessionStates: transitionedStates,
+            now: Date().addingTimeInterval(20),
+        )
+        XCTAssertEqual(transitioned.active.map(\.path), ["/tmp/a", "/tmp/c"])
+        XCTAssertEqual(transitioned.idle.map(\.path), ["/tmp/b"])
+    }
+
+    func testMoveWithinGroupUpdatesGlobalOrderWithoutPerturbingOtherGroup() {
+        let projectA = makeProject("A", path: "/tmp/a")
+        let projectB = makeProject("B", path: "/tmp/b")
+        let projectC = makeProject("C", path: "/tmp/c")
+        let projectD = makeProject("D", path: "/tmp/d")
+
+        let globalOrder = ["/tmp/a", "/tmp/b", "/tmp/c", "/tmp/d"]
+        let activeGroup = [projectA, projectC]
+        let allProjects = [projectA, projectB, projectC, projectD]
+
+        let moved = ProjectOrdering.movedGlobalOrder(
+            from: IndexSet(integer: 1),
+            to: 0,
+            in: activeGroup,
+            globalOrder: globalOrder,
+            allProjects: allProjects,
+        )
+
+        XCTAssertEqual(moved, ["/tmp/c", "/tmp/b", "/tmp/a", "/tmp/d"])
+    }
+
     // MARK: - Migration
 
-    func testMigrateIfNeededCopiesLegacyOrderToActive() throws {
+    func testMigrateIfNeededCopiesLegacyOrderToGlobal() throws {
         let suiteName = "test-migration-\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
         defaults.set(["/tmp/a", "/tmp/b", "/tmp/c"], forKey: "customProjectOrder")
 
         ProjectOrderStore.migrateIfNeeded(from: defaults)
 
-        let activeOrder = defaults.array(forKey: "projectOrder.active") as? [String] ?? []
-        let idleOrder = defaults.array(forKey: "projectOrder.idle") as? [String] ?? []
-        let migrated = defaults.bool(forKey: "projectOrder.migrated.v2")
+        let globalOrder = defaults.array(forKey: "projectOrder.global") as? [String] ?? []
+        let migrated = defaults.bool(forKey: "projectOrder.migrated.v3")
 
-        XCTAssertEqual(activeOrder, ["/tmp/a", "/tmp/b", "/tmp/c"])
-        XCTAssertEqual(idleOrder, [])
+        XCTAssertEqual(globalOrder, ["/tmp/a", "/tmp/b", "/tmp/c"])
         XCTAssertTrue(migrated)
 
         defaults.removePersistentDomain(forName: suiteName)
@@ -229,14 +337,14 @@ final class ProjectOrderingTests: XCTestCase {
 
         ProjectOrderStore.migrateIfNeeded(from: defaults)
 
-        // Change active order after migration
-        defaults.set(["/tmp/z"], forKey: "projectOrder.active")
+        // Change global order after migration
+        defaults.set(["/tmp/z"], forKey: "projectOrder.global")
 
         // Run migration again — should be no-op
         ProjectOrderStore.migrateIfNeeded(from: defaults)
 
-        let activeOrder = defaults.array(forKey: "projectOrder.active") as? [String] ?? []
-        XCTAssertEqual(activeOrder, ["/tmp/z"], "Migration should not overwrite after first run")
+        let globalOrder = defaults.array(forKey: "projectOrder.global") as? [String] ?? []
+        XCTAssertEqual(globalOrder, ["/tmp/z"], "Migration should not overwrite after first run")
 
         defaults.removePersistentDomain(forName: suiteName)
     }
@@ -248,11 +356,11 @@ final class ProjectOrderingTests: XCTestCase {
 
         ProjectOrderStore.migrateIfNeeded(from: defaults)
 
-        let activeOrder = defaults.array(forKey: "projectOrder.active") as? [String]
-        let migrated = defaults.bool(forKey: "projectOrder.migrated.v2")
+        let globalOrder = defaults.array(forKey: "projectOrder.global") as? [String]
+        let migrated = defaults.bool(forKey: "projectOrder.migrated.v3")
 
-        // No active order set (legacy was empty), but migration flag should be set
-        XCTAssertNil(activeOrder)
+        // No global order set (legacy was empty), but migration flag should be set
+        XCTAssertNil(globalOrder)
         XCTAssertTrue(migrated)
 
         defaults.removePersistentDomain(forName: suiteName)
@@ -260,15 +368,13 @@ final class ProjectOrderingTests: XCTestCase {
 
     // MARK: - Store load/save
 
-    func testStoreLoadAndSaveDualLists() throws {
+    func testStoreLoadAndSaveGlobalOrder() throws {
         let suiteName = "test-store-\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
 
-        ProjectOrderStore.saveActive(["/tmp/a", "/tmp/b"], to: defaults)
-        ProjectOrderStore.saveIdle(["/tmp/c"], to: defaults)
+        ProjectOrderStore.save(["/tmp/a", "/tmp/b", "/tmp/c"], to: defaults)
 
-        XCTAssertEqual(ProjectOrderStore.loadActive(from: defaults), ["/tmp/a", "/tmp/b"])
-        XCTAssertEqual(ProjectOrderStore.loadIdle(from: defaults), ["/tmp/c"])
+        XCTAssertEqual(ProjectOrderStore.load(from: defaults), ["/tmp/a", "/tmp/b", "/tmp/c"])
 
         defaults.removePersistentDomain(forName: suiteName)
     }

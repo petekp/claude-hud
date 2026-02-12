@@ -453,6 +453,90 @@ final class SessionStateManagerTests: XCTestCase {
         XCTAssertEqual(state?.sessionId, "session-new")
     }
 
+    func testSingleEmptySnapshotDoesNotImmediatelyClearSessionStates() async throws {
+        setenv("CAPACITOR_DAEMON_ENABLED", "1", 1)
+        defer { unsetenv("CAPACITOR_DAEMON_ENABLED") }
+
+        let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+        let socketPath = tempDir.appendingPathComponent("daemon.sock").path
+
+        let nonEmptyResponse = makeProjectStatesResponse([
+            .init(
+                projectPath: "/Users/pete/Code/writing",
+                state: "working",
+                updatedAt: "2026-02-12T10:00:00Z",
+                stateChangedAt: "2026-02-12T10:00:00Z",
+                sessionId: "session-live",
+            ),
+        ])
+        let emptyResponse = makeProjectStatesResponse([])
+
+        let server = try UnixSocketServer(path: socketPath)
+        defer { server.stop() }
+        server.start(responses: [nonEmptyResponse, emptyResponse], maxConnections: 2)
+
+        setenv("CAPACITOR_DAEMON_SOCKET", socketPath, 1)
+        defer { unsetenv("CAPACITOR_DAEMON_SOCKET") }
+
+        let manager = SessionStateManager()
+        let project = makeProject("writing", path: "/Users/pete/Code/writing")
+
+        manager.refreshSessionStates(for: [project])
+        let initial = await waitForSessionState(manager, project: project)
+        XCTAssertEqual(initial?.state, .working)
+
+        manager.refreshSessionStates(for: [project])
+        try? await _Concurrency.Task.sleep(nanoseconds: 120_000_000)
+        let held = manager.getSessionState(for: project)
+
+        XCTAssertEqual(held?.state, .working, "First empty snapshot should be treated as transient and held.")
+    }
+
+    func testConsecutiveEmptySnapshotsEventuallyClearHeldSessionStates() async throws {
+        setenv("CAPACITOR_DAEMON_ENABLED", "1", 1)
+        defer { unsetenv("CAPACITOR_DAEMON_ENABLED") }
+
+        let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+        let socketPath = tempDir.appendingPathComponent("daemon.sock").path
+
+        let nonEmptyResponse = makeProjectStatesResponse([
+            .init(
+                projectPath: "/Users/pete/Code/writing",
+                state: "ready",
+                updatedAt: "2026-02-12T10:00:00Z",
+                stateChangedAt: "2026-02-12T10:00:00Z",
+                sessionId: "session-live",
+            ),
+        ])
+        let emptyResponse = makeProjectStatesResponse([])
+
+        let server = try UnixSocketServer(path: socketPath)
+        defer { server.stop() }
+        server.start(
+            responses: [nonEmptyResponse, emptyResponse, emptyResponse],
+            maxConnections: 3,
+        )
+
+        setenv("CAPACITOR_DAEMON_SOCKET", socketPath, 1)
+        defer { unsetenv("CAPACITOR_DAEMON_SOCKET") }
+
+        let manager = SessionStateManager()
+        let project = makeProject("writing", path: "/Users/pete/Code/writing")
+
+        manager.refreshSessionStates(for: [project])
+        _ = await waitForSessionState(manager, project: project)
+
+        manager.refreshSessionStates(for: [project])
+        try? await _Concurrency.Task.sleep(nanoseconds: 120_000_000)
+        XCTAssertNotNil(manager.getSessionState(for: project))
+
+        manager.refreshSessionStates(for: [project])
+        try? await _Concurrency.Task.sleep(nanoseconds: 120_000_000)
+        XCTAssertNil(manager.getSessionState(for: project))
+    }
+
     func testRepoFallbackDoesNotOverrideDirectWorkspaceMatch() async throws {
         setenv("CAPACITOR_DAEMON_ENABLED", "1", 1)
         defer { unsetenv("CAPACITOR_DAEMON_ENABLED") }

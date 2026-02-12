@@ -123,14 +123,10 @@ class AppState {
         didSet { saveDormantOverrides() }
     }
 
-    // MARK: - Custom project ordering (dual-list: active/idle)
+    // MARK: - Custom project ordering (single global order)
 
-    var activeProjectOrder: [String] = [] {
-        didSet { saveActiveProjectOrder() }
-    }
-
-    var idleProjectOrder: [String] = [] {
-        didSet { saveIdleProjectOrder() }
+    var projectOrder: [String] = [] {
+        didSet { saveProjectOrder() }
     }
 
     /// Tracks last-known activity group per project path for transition detection.
@@ -510,15 +506,14 @@ class AppState {
     }
 
     private func prependToProjectOrder(_ path: String) {
-        var newActive = activeProjectOrder
-        newActive.removeAll { $0 == path }
-        newActive.insert(path, at: 0)
-        activeProjectOrder = newActive
-
-        var newIdle = idleProjectOrder
-        newIdle.removeAll { $0 == path }
-        newIdle.insert(path, at: 0)
-        idleProjectOrder = newIdle
+        var newOrder = projectOrder
+        newOrder.removeAll { $0 == path }
+        newOrder.insert(path, at: 0)
+        setProjectOrder(
+            newOrder,
+            reason: "project_added",
+            extraPayload: ["path": path],
+        )
     }
 
     func connectProjectViaFileBrowser() {
@@ -704,12 +699,13 @@ class AppState {
         guard let engine else { return }
         do {
             try engine.removeProject(path: path)
-            var newActive = activeProjectOrder
-            var newIdle = idleProjectOrder
-            newActive.removeAll { $0 == path }
-            newIdle.removeAll { $0 == path }
-            activeProjectOrder = newActive
-            idleProjectOrder = newIdle
+            var newOrder = projectOrder
+            newOrder.removeAll { $0 == path }
+            setProjectOrder(
+                newOrder,
+                reason: "project_removed",
+                extraPayload: ["path": path],
+            )
             previousActivityGroup.removeValue(forKey: path)
             manuallyDormant.remove(path)
             loadDashboard()
@@ -836,16 +832,11 @@ class AppState {
     }
 
     private func loadProjectOrder() {
-        activeProjectOrder = ProjectOrderStore.loadActive()
-        idleProjectOrder = ProjectOrderStore.loadIdle()
+        projectOrder = ProjectOrderStore.load()
     }
 
-    private func saveActiveProjectOrder() {
-        ProjectOrderStore.saveActive(activeProjectOrder)
-    }
-
-    private func saveIdleProjectOrder() {
-        ProjectOrderStore.saveIdle(idleProjectOrder)
+    private func saveProjectOrder() {
+        ProjectOrderStore.save(projectOrder)
     }
 
     /// Returns grouped projects: active first, then idle. Paused projects are excluded upstream.
@@ -853,8 +844,7 @@ class AppState {
         _ = sessionStateRevision
         return ProjectOrdering.orderedGroupedProjects(
             projects,
-            activeOrder: activeProjectOrder,
-            idleOrder: idleProjectOrder,
+            order: projectOrder,
             sessionStates: sessionStateManager.sessionStates,
         )
     }
@@ -866,26 +856,33 @@ class AppState {
     }
 
     func moveProject(from source: IndexSet, to destination: Int, in projectList: [Project], group: ActivityGroup) {
-        let newOrder = ProjectOrdering.movedOrder(from: source, to: destination, in: projectList)
-        switch group {
-        case .active:
-            activeProjectOrder = newOrder
-        case .idle:
-            idleProjectOrder = newOrder
-        }
+        let visibleProjects = projects.filter { !manuallyDormant.contains($0.path) }
+        let newOrder = ProjectOrdering.movedGlobalOrder(
+            from: source,
+            to: destination,
+            in: projectList,
+            globalOrder: projectOrder,
+            allProjects: visibleProjects,
+        )
+        setProjectOrder(
+            newOrder,
+            reason: group == .active ? "drag_reorder_active" : "drag_reorder_idle",
+            extraPayload: [
+                "groupSize": projectList.count,
+                "sourceIndexes": source.map(String.init).joined(separator: ","),
+                "destination": destination,
+            ],
+        )
     }
 
     // MARK: - Activity Group Reconciliation
 
-    /// Detects projects that changed activity group and updates ordering lists accordingly.
-    /// Called after session state manager updates so we react to session changes.
+    /// Tracks activity transitions and keeps persisted global order clean.
     private func reconcileProjectGroups() {
         let states = sessionStateManager.sessionStates
-        let currentPaths = Set(projects.map(\.path))
-
-        // Work on local copies to avoid multiple didSet → UserDefaults writes
-        var newActive = activeProjectOrder
-        var newIdle = idleProjectOrder
+        let currentProjectPaths = projects.map(\.path)
+        let currentPathSet = Set(currentProjectPaths)
+        var transitionCount = 0
 
         for project in projects {
             let path = project.path
@@ -896,38 +893,89 @@ class AppState {
             let previousGroup = previousActivityGroup[path]
 
             if previousGroup != currentGroup {
-                switch (previousGroup, currentGroup) {
-                case (_, .active):
-                    // idle → active (or new → active)
-                    newIdle.removeAll { $0 == path }
-                    if !newActive.contains(path) {
-                        newActive.insert(path, at: 0)
-                    }
-                    // If already in activeProjectOrder, keep remembered position
-
-                case (_, .idle):
-                    // active → idle (or new → idle)
-                    // Keep in activeProjectOrder (remembers position for return)
-                    if !newIdle.contains(path) {
-                        newIdle.insert(path, at: 0)
-                    }
-                }
-
+                transitionCount += 1
                 previousActivityGroup[path] = currentGroup
             }
         }
 
         // Clean up removed projects
-        let removedPaths = Set(previousActivityGroup.keys).subtracting(currentPaths)
+        let removedPaths = Set(previousActivityGroup.keys).subtracting(currentPathSet)
         for path in removedPaths {
             previousActivityGroup.removeValue(forKey: path)
-            newActive.removeAll { $0 == path }
-            newIdle.removeAll { $0 == path }
         }
 
-        // Single assignment per list — triggers didSet at most once each
-        if newActive != activeProjectOrder { activeProjectOrder = newActive }
-        if newIdle != idleProjectOrder { idleProjectOrder = newIdle }
+        var reconciledOrder = uniquePaths(projectOrder).filter { currentPathSet.contains($0) }
+        let missingPaths = currentProjectPaths.filter { !reconciledOrder.contains($0) }
+        reconciledOrder.append(contentsOf: missingPaths)
+
+        var payload: [String: Any] = [
+            "transitionCount": transitionCount,
+            "removedPathCount": removedPaths.count,
+            "missingPathCount": missingPaths.count,
+        ]
+        if !missingPaths.isEmpty {
+            payload["missingPaths"] = missingPaths
+        }
+        if !removedPaths.isEmpty {
+            payload["removedPaths"] = Array(removedPaths)
+        }
+
+        let hadDuplicates = uniquePaths(projectOrder).count != projectOrder.count
+        if hadDuplicates {
+            emitProjectOrderAnomaly(
+                "Deduplicated project order during session reconcile",
+                payload: ["reason": "duplicate_paths_detected"],
+            )
+        }
+        if !missingPaths.isEmpty {
+            emitProjectOrderAnomaly(
+                "Appended missing project paths to persisted order",
+                payload: [
+                    "reason": "missing_paths",
+                    "missingPathCount": missingPaths.count,
+                ],
+            )
+        }
+
+        setProjectOrder(
+            reconciledOrder,
+            reason: "session_reconcile",
+            extraPayload: payload,
+        )
+    }
+
+    private func setProjectOrder(
+        _ newOrder: [String],
+        reason: String,
+        extraPayload: [String: Any] = [:],
+    ) {
+        let normalizedOrder = uniquePaths(newOrder)
+        let oldOrder = projectOrder
+        guard normalizedOrder != oldOrder else { return }
+
+        projectOrder = normalizedOrder
+
+        var payload = extraPayload
+        payload["reason"] = reason
+        payload["oldCount"] = oldOrder.count
+        payload["newCount"] = normalizedOrder.count
+        payload["changedPathCount"] = Set(oldOrder).symmetricDifference(Set(normalizedOrder)).count
+        Telemetry.emit("project_order_changed", "Project order updated", payload: payload)
+    }
+
+    private func emitProjectOrderAnomaly(_ message: String, payload: [String: Any]) {
+        Telemetry.emit("project_order_anomaly", message, payload: payload)
+    }
+
+    private func uniquePaths(_ paths: [String]) -> [String] {
+        var seen: Set<String> = []
+        var result: [String] = []
+        result.reserveCapacity(paths.count)
+        for path in paths where !seen.contains(path) {
+            seen.insert(path)
+            result.append(path)
+        }
+        return result
     }
 
     func moveToDormant(_ project: Project) {

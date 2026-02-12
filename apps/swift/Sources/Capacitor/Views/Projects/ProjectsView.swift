@@ -18,7 +18,7 @@ struct ProjectsView: View {
 
     private var pausedProjects: [Project] {
         let paused = appState.projects.filter { appState.isManuallyDormant($0) }
-        return ProjectOrdering.orderedProjects(paused, customOrder: appState.idleProjectOrder)
+        return ProjectOrdering.orderedProjects(paused, customOrder: appState.projectOrder)
     }
 
     var body: some View {
@@ -94,8 +94,7 @@ struct ProjectsView: View {
                     } else {
                         let grouped = ProjectOrdering.orderedGroupedProjects(
                             nonPausedProjects,
-                            activeOrder: appState.activeProjectOrder,
-                            idleOrder: appState.idleProjectOrder,
+                            order: appState.projectOrder,
                             sessionStates: sessionStates,
                         )
                         let activePaths = Set(grouped.active.map(\.path))
@@ -308,8 +307,7 @@ struct ProjectsView: View {
 
             let grouped = ProjectOrdering.orderedGroupedProjects(
                 nonPausedProjects,
-                activeOrder: appState.activeProjectOrder,
-                idleOrder: appState.idleProjectOrder,
+                order: appState.projectOrder,
                 sessionStates: sessionStates,
             )
             return grouped.active + grouped.idle

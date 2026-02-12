@@ -10,29 +10,58 @@ enum ActivityGroup: String {
 // MARK: - Ordering
 
 enum ProjectOrdering {
-    /// Returns projects split into (active, idle) groups, each sorted by their respective custom order.
-    /// Active projects come first, idle projects follow — seamless, no section headers.
+    enum ActivityBand {
+        case active
+        case cooling
+        case idle
+    }
+
+    private enum Constants {
+        /// Keep newly-idle cards in the active ordering bucket briefly to avoid
+        /// oscillating off-screen/on-screen movement when daemon state flaps.
+        static let idleDemotionGraceSeconds: TimeInterval = 8
+    }
+
+    /// Returns projects split into (active, idle) groups using one global persisted order.
+    /// Active projects always render first, while preserving relative order from `order`.
     static func orderedGroupedProjects(
         _ projects: [Project],
-        activeOrder: [String],
-        idleOrder: [String],
+        order: [String],
         sessionStates: [String: ProjectSessionState],
+        now: Date = Date(),
     ) -> (active: [Project], idle: [Project]) {
+        let globallyOrdered = orderedProjects(projects, customOrder: order)
+
         var activeProjects: [Project] = []
         var idleProjects: [Project] = []
+        activeProjects.reserveCapacity(globallyOrdered.count)
+        idleProjects.reserveCapacity(globallyOrdered.count)
 
-        for project in projects {
-            if isActive(project.path, sessionStates: sessionStates) {
+        for project in globallyOrdered {
+            if isActive(project.path, sessionStates: sessionStates, now: now) {
                 activeProjects.append(project)
             } else {
                 idleProjects.append(project)
             }
         }
 
-        activeProjects = orderedProjects(activeProjects, customOrder: activeOrder)
-        idleProjects = orderedProjects(idleProjects, customOrder: idleOrder)
-
         return (active: activeProjects, idle: idleProjects)
+    }
+
+    /// Backward-compat shim for legacy dual-order callers.
+    static func orderedGroupedProjects(
+        _ projects: [Project],
+        activeOrder: [String],
+        idleOrder: [String],
+        sessionStates: [String: ProjectSessionState],
+        now: Date = Date(),
+    ) -> (active: [Project], idle: [Project]) {
+        orderedGroupedProjects(
+            projects,
+            order: uniquePaths(activeOrder + idleOrder),
+            sessionStates: sessionStates,
+            now: now,
+        )
     }
 
     /// Classifies a project as active if it has a session with a non-idle state.
@@ -45,21 +74,45 @@ enum ProjectOrdering {
         return sessionStates.first(where: { PathNormalizer.normalize($0.key) == normalizedPath })?.value
     }
 
-    /// Classifies a project as active if it has a session with a non-idle state.
-    static func isActive(_ path: String, sessionStates: [String: ProjectSessionState]) -> Bool {
+    /// Classifies a project as active for ordering purposes.
+    /// Idle states are held in active briefly after transition to reduce list jitter.
+    static func isActive(
+        _ path: String,
+        sessionStates: [String: ProjectSessionState],
+        now: Date = Date(),
+    ) -> Bool {
         guard let session = sessionState(for: path, sessionStates: sessionStates) else {
             return false
         }
 
-        return isActive(session)
+        return activityBand(session, now: now) != .idle
     }
 
-    private static func isActive(_ session: ProjectSessionState) -> Bool {
+    static func activityBand(
+        _ path: String,
+        sessionStates: [String: ProjectSessionState],
+        now: Date = Date(),
+    ) -> ActivityBand {
+        guard let session = sessionState(for: path, sessionStates: sessionStates) else {
+            return .idle
+        }
+
+        return activityBand(session, now: now)
+    }
+
+    private static func activityBand(_ session: ProjectSessionState, now: Date) -> ActivityBand {
         switch session.state {
         case .working, .waiting, .compacting, .ready:
-            true
+            return .active
         case .idle:
-            false
+            guard
+                let stateChangedAt = session.stateChangedAt,
+                let changedAt = DaemonDateParser.parse(stateChangedAt)
+            else {
+                return .idle
+            }
+
+            return now.timeIntervalSince(changedAt) < Constants.idleDemotionGraceSeconds ? .cooling : .idle
         }
     }
 
@@ -79,10 +132,46 @@ enum ProjectOrdering {
         return result
     }
 
+    static func movedGlobalOrder(
+        from source: IndexSet,
+        to destination: Int,
+        in projectList: [Project],
+        globalOrder: [String],
+        allProjects: [Project],
+    ) -> [String] {
+        guard !projectList.isEmpty else {
+            return uniquePaths(globalOrder)
+        }
+
+        var movedGroupPaths = projectList.map(\.path)
+        movedGroupPaths.move(fromOffsets: source, toOffset: destination)
+
+        let groupSet = Set(projectList.map(\.path))
+        let knownProjectPaths = allProjects.map(\.path)
+        var result = uniquePaths(globalOrder)
+
+        for path in knownProjectPaths where !result.contains(path) {
+            result.append(path)
+        }
+
+        var replacementIndex = 0
+        for index in result.indices where groupSet.contains(result[index]) {
+            if replacementIndex >= movedGroupPaths.count { break }
+            result[index] = movedGroupPaths[replacementIndex]
+            replacementIndex += 1
+        }
+
+        return result
+    }
+
     static func movedOrder(from source: IndexSet, to destination: Int, in projectList: [Project]) -> [String] {
-        var paths = projectList.map(\.path)
-        paths.move(fromOffsets: source, toOffset: destination)
-        return paths
+        movedGlobalOrder(
+            from: source,
+            to: destination,
+            in: projectList,
+            globalOrder: projectList.map(\.path),
+            allProjects: projectList,
+        )
     }
 
     /// Stable per-card container identity.
@@ -117,46 +206,89 @@ enum ProjectOrdering {
             "waiting"
         }
     }
+
+    private static func uniquePaths(_ paths: [String]) -> [String] {
+        var seen: Set<String> = []
+        var result: [String] = []
+        result.reserveCapacity(paths.count)
+        for path in paths where !seen.contains(path) {
+            seen.insert(path)
+            result.append(path)
+        }
+        return result
+    }
 }
 
 // MARK: - Persistence
 
 enum ProjectOrderStore {
-    private static let activeOrderKey = "projectOrder.active"
-    private static let idleOrderKey = "projectOrder.idle"
-    private static let migrationKey = "projectOrder.migrated.v2"
+    private static let globalOrderKey = "projectOrder.global"
+    private static let migrationKey = "projectOrder.migrated.v3"
 
     /// Legacy key (pre-v2)
     private static let legacyOrderKey = "customProjectOrder"
+    private static let legacyActiveOrderKey = "projectOrder.active"
+    private static let legacyIdleOrderKey = "projectOrder.idle"
+    private static let legacyMigrationKey = "projectOrder.migrated.v2"
 
-    static func loadActive(from defaults: UserDefaults = .standard) -> [String] {
-        defaults.array(forKey: activeOrderKey) as? [String] ?? []
+    static func load(from defaults: UserDefaults = .standard) -> [String] {
+        if let global = defaults.array(forKey: globalOrderKey) as? [String] {
+            return uniquePaths(global)
+        }
+
+        let legacyActive = defaults.array(forKey: legacyActiveOrderKey) as? [String] ?? []
+        let legacyIdle = defaults.array(forKey: legacyIdleOrderKey) as? [String] ?? []
+        if !legacyActive.isEmpty || !legacyIdle.isEmpty {
+            return uniquePaths(legacyActive + legacyIdle)
+        }
+
+        let legacyOrder = defaults.array(forKey: legacyOrderKey) as? [String] ?? []
+        return uniquePaths(legacyOrder)
     }
 
-    static func loadIdle(from defaults: UserDefaults = .standard) -> [String] {
-        defaults.array(forKey: idleOrderKey) as? [String] ?? []
+    static func save(_ order: [String], to defaults: UserDefaults = .standard) {
+        defaults.set(uniquePaths(order), forKey: globalOrderKey)
     }
 
-    static func saveActive(_ order: [String], to defaults: UserDefaults = .standard) {
-        defaults.set(order, forKey: activeOrderKey)
-    }
-
-    static func saveIdle(_ order: [String], to defaults: UserDefaults = .standard) {
-        defaults.set(order, forKey: idleOrderKey)
-    }
-
-    /// Migrates from single `customProjectOrder` to dual active/idle lists.
-    /// The first reconciliation cycle after migration classifies idle projects.
+    /// Migrates from pre-v3 keys to single global order.
     static func migrateIfNeeded(from defaults: UserDefaults = .standard) {
         guard !defaults.bool(forKey: migrationKey) else { return }
 
-        let legacyOrder = defaults.array(forKey: legacyOrderKey) as? [String] ?? []
-        if !legacyOrder.isEmpty {
-            defaults.set(legacyOrder, forKey: activeOrderKey)
-            // Idle starts empty — first reconcileProjectGroups() populates it
-            defaults.set([String](), forKey: idleOrderKey)
+        let migratedOrder = load(from: defaults)
+        if !migratedOrder.isEmpty {
+            save(migratedOrder, to: defaults)
         }
 
         defaults.set(true, forKey: migrationKey)
+        defaults.set(true, forKey: legacyMigrationKey)
+    }
+
+    /// Backward-compat shims for legacy callers/tests.
+    static func loadActive(from defaults: UserDefaults = .standard) -> [String] {
+        load(from: defaults)
+    }
+
+    static func loadIdle(from _: UserDefaults = .standard) -> [String] {
+        []
+    }
+
+    static func saveActive(_ order: [String], to defaults: UserDefaults = .standard) {
+        save(order, to: defaults)
+    }
+
+    static func saveIdle(_ order: [String], to defaults: UserDefaults = .standard) {
+        let merged = uniquePaths(load(from: defaults) + order)
+        save(merged, to: defaults)
+    }
+
+    private static func uniquePaths(_ paths: [String]) -> [String] {
+        var seen: Set<String> = []
+        var result: [String] = []
+        result.reserveCapacity(paths.count)
+        for path in paths where !seen.contains(path) {
+            seen.insert(path)
+            result.append(path)
+        }
+        return result
     }
 }

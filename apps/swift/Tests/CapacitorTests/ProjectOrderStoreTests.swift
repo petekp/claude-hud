@@ -2,30 +2,32 @@
 import XCTest
 
 final class ProjectOrderStoreTests: XCTestCase {
-    func testSaveAndLoadActiveOrder() throws {
-        let suiteName = "ProjectOrderStoreTests-active-\(UUID().uuidString)"
+    func testSaveAndLoadGlobalOrder() throws {
+        let suiteName = "ProjectOrderStoreTests-global-\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
         defer {
             defaults.removePersistentDomain(forName: suiteName)
         }
 
-        ProjectOrderStore.saveActive(["/tmp/a", "/tmp/b"], to: defaults)
-        let loaded = ProjectOrderStore.loadActive(from: defaults)
+        ProjectOrderStore.save(["/tmp/a", "/tmp/b"], to: defaults)
+        let loaded = ProjectOrderStore.load(from: defaults)
 
         XCTAssertEqual(loaded, ["/tmp/a", "/tmp/b"])
     }
 
-    func testSaveAndLoadIdleOrder() throws {
-        let suiteName = "ProjectOrderStoreTests-idle-\(UUID().uuidString)"
+    func testLoadFallsBackToLegacySplitOrder() throws {
+        let suiteName = "ProjectOrderStoreTests-legacy-split-\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
         defer {
             defaults.removePersistentDomain(forName: suiteName)
         }
 
-        ProjectOrderStore.saveIdle(["/tmp/c", "/tmp/d"], to: defaults)
-        let loaded = ProjectOrderStore.loadIdle(from: defaults)
+        defaults.set(["/tmp/a", "/tmp/b"], forKey: "projectOrder.active")
+        defaults.set(["/tmp/c", "/tmp/b"], forKey: "projectOrder.idle")
 
-        XCTAssertEqual(loaded, ["/tmp/c", "/tmp/d"])
+        let loaded = ProjectOrderStore.load(from: defaults)
+
+        XCTAssertEqual(loaded, ["/tmp/a", "/tmp/b", "/tmp/c"])
     }
 
     func testLoadReturnsEmptyArrayByDefault() throws {
@@ -35,7 +37,6 @@ final class ProjectOrderStoreTests: XCTestCase {
             defaults.removePersistentDomain(forName: suiteName)
         }
 
-        XCTAssertEqual(ProjectOrderStore.loadActive(from: defaults), [])
-        XCTAssertEqual(ProjectOrderStore.loadIdle(from: defaults), [])
+        XCTAssertEqual(ProjectOrderStore.load(from: defaults), [])
     }
 }
