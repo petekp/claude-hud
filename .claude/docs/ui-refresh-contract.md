@@ -38,6 +38,32 @@ project/session state is sourced exclusively from the daemon.
 - Shell focus resolution uses daemon shell snapshots filtered by staleness.
 - No file-based state is read for session/project state.
 
+## Project Card Transition Invariants (2026-02-12)
+
+### Problem
+Project cards regressed to visual `Idle`/`nil` while daemon state was `Ready`/`Working` when animation work changed list structure or identity boundaries.
+
+### Cause
+- Splitting card rendering into separate `grouped.active` and `grouped.idle` loops caused cross-section update stalls.
+- Invalidating at card-root scope (for example `.id(ProjectOrdering.cardContentStateFingerprint(...))`) remounted card content and disrupted in-place state transitions.
+- Forcing status text identity resets (for example `.id(state)`) broke continuity for SwiftUI text transitions.
+
+### Solution
+- Keep one unified row pipeline in `ProjectsView`: `rows = grouped.active + grouped.idle`, rendered by a single `ForEach`.
+- Keep outer card identity stable (`project.path` / `ProjectOrdering.cardIdentityKey`), independent of session state.
+- Do not remount whole card content for state transitions; animate only internal status/effect layers.
+- Keep status text on SwiftUI content transitions (`.contentTransition(... .numericText())`) without identity resets.
+- Ensure views observe both `appState.sessionStateRevision` and `appState.sessionStateManager.sessionStates`.
+
+### Prevention
+- Guard with regression tests:
+  - `ProjectCardIdentityRegressionTests`
+  - `ProjectCardSessionObservationRegressionTests`
+  - `ProjectCardStateResolutionRegressionTests`
+- Manual verification loop for transition changes:
+  - `./scripts/dev/restart-app.sh --channel alpha`
+  - Correlate daemon and view telemetry (`SessionStateManager.merge`, `ProjectsView ResolvedCardStates`, `ProjectCardView CardState`).
+
 ## Change Control
 
 Any changes to polling intervals or refresh triggers should update this doc and
