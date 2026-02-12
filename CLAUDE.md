@@ -93,6 +93,8 @@ Server runs on `http://localhost:9133` by default. See `docs/transparent-ui/READ
 - **OSLog invisible for debug builds** — Use `FileHandle.standardError.write()` for telemetry; capture with `./Capacitor 2> /tmp/log.log &`
 - **Alpha gating is runtime** — Channel resolves env → Info.plist → `~/.capacitor/config.json` → default (`.dev` for debug, `.prod` for release). `swift run` ignores Info.plist, so set `CAPACITOR_CHANNEL=alpha` (or use `./scripts/dev/restart-app.sh --channel alpha`) when testing alpha gating. Feature overrides exist via `CAPACITOR_FEATURES_ENABLED` / `CAPACITOR_FEATURES_DISABLED`.
 - **Terminal activation prefers known parent apps** — If the newest shell entry has `parent_app=unknown` (missing `TERM_PROGRAM`), Ghostty activation can fail. The resolver should prefer shells with known `parent_app` before timestamp tie‑breakers.
+- **Swift app links release Rust core** — `apps/swift/Package.swift` links `../../target/release/libhud_core.dylib`. Running Rust tests or debug builds is not enough for app behavior changes. After any `core/hud-core` resolver change, run `cargo build -p hud-core --release` before `CAPACITOR_CHANNEL=alpha swift run`.
+- **Tmux switch must target client TTY** — For multi-window Ghostty, generic app activation can foreground the wrong window even when `tmux switch-client` succeeds. Prefer `tmux display-message -p '#{client_tty}'` + `tmux switch-client -c <client_tty> -t <session>` and then focus the terminal owning that TTY.
 
 **Full gotchas reference:** `.claude/docs/gotchas.md`
 

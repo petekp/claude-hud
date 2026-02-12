@@ -228,6 +228,21 @@ tmux display-message -p "#S"
 
 **The fix (already applied):** The hook now uses `display-message -p "#S\t#{client_tty}"` which returns the TTY of the client that invoked the command, not an arbitrary client from the list.
 
+**Additional guardrail (2026-02):** Even with correct tmux session switching, foreground can still be wrong in Ghostty multi-window setups.
+
+**Required execution pattern:**
+1. Resolve current client TTY:
+```bash
+tmux display-message -p '#{client_tty}'
+```
+2. Switch that specific client:
+```bash
+tmux switch-client -c <client_tty> -t <session>
+```
+3. Foreground the terminal process that owns `<client_tty>` (not generic `activate app`).
+
+If step 3 uses generic app activation, tmux can switch in one window while a different Ghostty window is brought to front.
+
 **If still failing:** Check the daemon shell snapshot for the recorded `tmux_client_tty`:
 ```bash
 printf '{"protocol_version":1,"method":"get_shell_state","id":"shell","params":null}\n' | nc -U ~/.capacitor/daemon.sock | jq '.data.shells | to_entries[] | select(.value.tmux_session != null) | {pid: .key, session: .value.tmux_session, tty: .value.tmux_client_tty}'
