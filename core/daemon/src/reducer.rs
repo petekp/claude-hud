@@ -95,8 +95,19 @@ pub fn reduce_session(current: Option<&SessionRecord>, event: &EventEnvelope) ->
         EventType::UserPromptSubmit => {
             upsert_session(current, event, session_id, SessionState::Working, None)
         }
-        EventType::PreToolUse | EventType::PostToolUse | EventType::PostToolUseFailure => {
+        EventType::PreToolUse => {
             upsert_session(current, event, session_id, SessionState::Working, None)
+        }
+        EventType::PostToolUse | EventType::PostToolUseFailure => {
+            let state = if current
+                .map(|record| record.state == SessionState::Compacting)
+                .unwrap_or(false)
+            {
+                SessionState::Compacting
+            } else {
+                SessionState::Working
+            };
+            upsert_session(current, event, session_id, state, None)
         }
         EventType::PermissionRequest => {
             upsert_session(current, event, session_id, SessionState::Waiting, None)
@@ -681,6 +692,33 @@ mod tests {
 
         let update = reduce_session(Some(&after_compact), &stop);
         assert_eq!(update, SessionUpdate::Skip);
+    }
+
+    #[test]
+    fn post_tool_use_after_pre_compact_keeps_compacting() {
+        let mut pre_compact = event_base(EventType::PreCompact);
+        pre_compact.recorded_at = "2026-01-31T00:00:10Z".to_string();
+
+        let mut current = record_with_state(SessionState::Working, "2026-01-31T00:00:00Z");
+        current.tools_in_flight = 1;
+
+        let after_compact = match reduce_session(Some(&current), &pre_compact) {
+            SessionUpdate::Upsert(record) => record,
+            _ => panic!("expected upsert"),
+        };
+        assert_eq!(after_compact.state, SessionState::Compacting);
+
+        let mut post_tool = event_base(EventType::PostToolUse);
+        post_tool.recorded_at = "2026-01-31T00:00:11Z".to_string();
+
+        let update = reduce_session(Some(&after_compact), &post_tool);
+        match update {
+            SessionUpdate::Upsert(record) => {
+                assert_eq!(record.state, SessionState::Compacting);
+                assert_eq!(record.tools_in_flight, 0);
+            }
+            _ => panic!("expected upsert"),
+        }
     }
 
     #[test]
