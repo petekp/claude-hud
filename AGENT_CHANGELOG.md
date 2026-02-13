@@ -1,11 +1,11 @@
 # Agent Changelog
 
 > This file helps coding agents understand project evolution, key decisions,
-> and deprecated patterns. Updated: 2026-02-13 (quick feedback MVP with privacy controls + hybrid transport)
+> and deprecated patterns. Updated: 2026-02-13 (compacting lifecycle hardening + quick feedback + release guardrails)
 
 ## Current State Summary
 
-Capacitor is a native macOS SwiftUI app (Apple Silicon, macOS 14+) that acts as a sidecar dashboard for Claude Code. The architecture uses a Rust core (`hud-core`) with UniFFI bindings to Swift plus a **Rust daemon (`capacitor-daemon`) that is the canonical source of truth** for session, shell, activity, and process-liveness state. Hooks emit events to the daemon over a Unix socket (`~/.capacitor/daemon.sock`), and Swift reads daemon snapshots (shell state + project aggregation); file-based JSON fallbacks are removed in daemon-only mode. Workstreams (managed git worktrees) are first-class with create/open/destroy UX and slug-prefixed naming; activation matching avoids crossing repo cards with managed worktree tmux panes. Project-card rendering now uses a **single unified active+idle row pipeline**, **stable outer identity by project path**, and **in-place status/effect animations** (no card-root remount invalidation), with status text using SwiftUI `numericText` content transitions. Manual ordering now persists as one global list (`projectOrder`) and active/idle groups are projections over that list with hysteresis bands (`active`/`cooling`/`idle`) to reduce Ready/Idle thrash. Daemon empty project snapshots are also quality-gated in Swift: one empty snapshot is held as transient noise, and clearing applies on consecutive empties. Terminal activation uses a Rust resolver plus Swift execution, explicitly targeting the attached tmux client TTY (`switch-client -c <tty>`) and then foregrounding the terminal window that owns that TTY. Build channel + alpha gating are runtime via `AppConfig` (env/Info.plist/config file), not compile-time flags; release versioning is centralized in `VERSION` (current alpha: `0.2.0-alpha.1`). **Release packaging defaults are now alpha-safe by script guardrail** (`build-distribution.sh` defaults to channel `alpha`, and `release.sh` forwards channel explicitly), reducing risk of shipping prod-channel feature flags in alpha artifacts. Daemon startup and steady-state now include dead-session reconciliation plus health-exposed reconcile telemetry, demoting dead non-idle sessions to `Idle` without waiting for TTL or manual cleanup.
+Capacitor is a native macOS SwiftUI app (Apple Silicon, macOS 14+) that acts as a sidecar dashboard for Claude Code. The architecture uses a Rust core (`hud-core`) with UniFFI bindings to Swift plus a **Rust daemon (`capacitor-daemon`) that is the canonical source of truth** for session, shell, activity, and process-liveness state. Hooks emit events to the daemon over a Unix socket (`~/.capacitor/daemon.sock`), and Swift reads daemon snapshots (shell state + project aggregation); file-based JSON fallbacks are removed in daemon-only mode. Workstreams (managed git worktrees) are first-class with create/open/destroy UX and slug-prefixed naming; activation matching avoids crossing repo cards with managed worktree tmux panes. Project-card rendering now uses a **single unified active+idle row pipeline**, **stable outer identity by project path**, and **in-place status/effect animations** (no card-root remount invalidation), with status text using SwiftUI `numericText` content transitions. Manual ordering now persists as one global list (`projectOrder`) and active/idle groups are projections over that list with hysteresis bands (`active`/`cooling`/`idle`) to reduce Ready/Idle thrash. Daemon empty project snapshots are also quality-gated in Swift: one empty snapshot is held as transient noise, and clearing applies on consecutive empties. Compacting lifecycle is now hard-gated: stop events are skipped while compacting, and compacting no longer inactivity-falls back to ready, preventing premature ready flicker during longer compactions. Terminal activation uses a Rust resolver plus Swift execution, explicitly targeting the attached tmux client TTY (`switch-client -c <tty>`) and then foregrounding the terminal window that owns that TTY. Build channel + alpha gating are runtime via `AppConfig` (env/Info.plist/config file), not compile-time flags; release versioning is centralized in `VERSION` (current alpha: `0.2.0-alpha.1`). **Release packaging defaults are now alpha-safe by script guardrail** (`build-distribution.sh` defaults to channel `alpha`, and `release.sh` forwards channel explicitly), reducing risk of shipping prod-channel feature flags in alpha artifacts. Daemon startup and steady-state now include dead-session reconciliation plus health-exposed reconcile telemetry, demoting dead non-idle sessions to `Idle` without waiting for TTL or manual cleanup.
 
 > **Historical note:** Timeline entries below may reference pre-daemon artifacts (locks, `sessions.json`, `shell-cwd.json`). Treat them as historical context only; they are not current behavior.
 
@@ -13,12 +13,41 @@ Capacitor is a native macOS SwiftUI app (Apple Silicon, macOS 14+) that acts as 
 
 | Location | States | Reality | Since |
 |----------|--------|---------|-------|
+| `README.md` (opening scope statement) | "observe-only sidecar: no workstreams, no idea capture, no project details." | This is alpha shipping scope, not full codebase capability. Workstreams and related flows still exist in source and are runtime-gated by channel/feature flags. | 2026-02-08 |
 | `AGENT_CHANGELOG.md` (2026-02-11 "Project-Card State Resolution + Daemon Startup Catch-up Hardening") | "List and dock rendering now key row identity by per-card session fingerprint (`ProjectOrdering.cardIdentityKey`)..." | `ProjectOrdering.cardIdentityKey` currently returns stable `project.path` only; session-state-based row-key coupling is intentionally removed | 2026-02-12 |
 | `.claude/plans/ACTIVE-alpha-release-checklist.md` ("Build & Signing" block) | `App is code-signed`, `App is notarized`, and `DMG or ZIP artifact for download` remain unchecked | Local release verification now demonstrates successful code signing, notarized DMG acceptance (`spctl`), and generated ZIP/DMG artifacts for `0.2.0-alpha.1`; checklist needs manual status refresh | 2026-02-12 |
 
 ## Timeline
 
-### 2026-02-13 — Quick Feedback MVP (Hybrid GitHub + Optional API) (Completed / Uncommitted)
+### 2026-02-13 — Card State-Bleed Fix + Compacting Lifecycle Hardening (Completed)
+
+**What changed:**
+- Refined project-card rendering polish and reduced update noise by removing unnecessary `GeometryReader` usage in working-stripe overlays and fixing cross-state stripe bleed.
+- Tuned glass/timing defaults and added dock-mode layout controls in the debug tuning panel to reduce ad-hoc visual drift between list/dock renderers.
+- Hardened daemon compacting lifecycle behavior:
+  - `Stop` is skipped while a session is in `Compacting` (`reducer.rs`), preventing premature `Compacting -> Ready`.
+  - compacting inactivity fallback to `Ready` was removed (`state.rs`), so compaction only exits via explicit lifecycle events.
+- Updated debug runtime channel default behavior via `AppConfig` and aligned local restart tooling with daemon binary sync expectations.
+
+**Why:**
+- Real sessions could transition `Compacting -> Ready` before compaction completed, causing false "ready" states and visual trust erosion.
+- Visual state bleed across card layers made status transitions harder to read and increased tuning churn.
+
+**Agent impact:**
+- Do not reintroduce inactivity-based `Compacting -> Ready` transitions.
+- Treat compacting completion as event-driven (`Stop`/`TaskCompleted`/subsequent lifecycle), not timer-driven.
+- For compacting regressions, start from reducer stop gating + state inactivity fallback policy before touching UI.
+
+**Evidence / tests:**
+- `state::tests::project_states_keep_compacting_after_inactive_compacting`
+- `reducer::tests::stop_after_pre_compact_is_skipped`
+- `cargo test -p capacitor-daemon` passes.
+
+**Commits:** `7c0d750`
+
+---
+
+### 2026-02-13 — Quick Feedback MVP (Hybrid GitHub + Optional API) (Completed)
 
 **What changed:**
 - Added new quick feedback pipeline in Swift (`Utilities/QuickFeedback.swift`) with:
@@ -62,9 +91,11 @@ Capacitor is a native macOS SwiftUI app (Apple Silicon, macOS 14+) that acts as 
 - `swift test --filter QuickFeedbackSubmitterTests` passes (4 tests).
 - Includes payload redaction, path opt-in, endpoint+GitHub submission, and telemetry-disabled behavior.
 
+**Commits:** `3f1c1c4`
+
 ---
 
-### 2026-02-12 — Alpha Release Pipeline Guardrails + Clippy Dead-Code Hygiene (Completed / Uncommitted)
+### 2026-02-12 — Alpha Release Pipeline Guardrails + Clippy Dead-Code Hygiene (Completed)
 
 **What changed:**
 - Release distribution defaults now target alpha channel by default (`scripts/release/build-distribution.sh` sets `CHANNEL="alpha"`).
@@ -98,9 +129,11 @@ Capacitor is a native macOS SwiftUI app (Apple Silicon, macOS 14+) that acts as 
 - `./scripts/release/verify-app-bundle.sh` exits 0 (warning-only path no longer aborts).
 - `./scripts/release/build-distribution.sh --skip-notarization` now emits artifacts with `CapacitorChannel=alpha` in bundled `Info.plist`.
 
+**Commits:** `5a0bbbe`
+
 ---
 
-### 2026-02-12 — Holistic Project-Card Ordering Stabilization (In Progress / Uncommitted)
+### 2026-02-12 — Holistic Project-Card Ordering Stabilization (Completed)
 
 **What changed:**
 - Replaced dual persisted ordering lists (`activeProjectOrder`, `idleProjectOrder`) with a single persisted global manual order (`projectOrder`) in Swift state and storage.
@@ -135,6 +168,8 @@ Capacitor is a native macOS SwiftUI app (Apple Silicon, macOS 14+) that acts as 
   - `SessionStateManagerTests`
   - `DaemonClientTests` (sequential test socket responses).
 
+**Commits:** `9acbd97`
+
 ---
 
 ### 2026-02-12 — Project Card Transition Invariants + In-Place Status Text Transitions (Completed)
@@ -163,7 +198,7 @@ Capacitor is a native macOS SwiftUI app (Apple Silicon, macOS 14+) that acts as 
 
 ---
 
-### 2026-02-12 — Dead Session Self-Healing (Startup + Periodic Reconciliation) (Unreleased)
+### 2026-02-12 — Dead Session Self-Healing (Startup + Periodic Reconciliation) (Completed)
 
 **What changed:**
 - Daemon project aggregation now demotes `Ready` to `Idle` when session process liveness is explicitly false (`is_alive == Some(false)`), preventing dead sessions from rendering as active cards.
@@ -189,7 +224,7 @@ Capacitor is a native macOS SwiftUI app (Apple Silicon, macOS 14+) that acts as 
 - Keep `pid=0` behavior unchanged (`is_alive=None`): unknown PID does not auto-demote.
 - For production monitoring, poll `get_health` and track `dead_session_reconcile.startup|periodic` counters over time.
 
-**Commits:** `5b2643a`
+**Commits:** `c3a5ed8`
 
 ---
 
