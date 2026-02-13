@@ -114,7 +114,7 @@ struct AppConfig: Equatable {
 
     static var defaultChannel: AppChannel {
         #if DEBUG
-            return .dev
+            return .alpha
         #else
             return .prod
         #endif

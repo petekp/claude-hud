@@ -34,7 +34,7 @@ struct StatusIndicator: View {
                 } else {
                     Text(statusText.uppercased())
                         .font(.system(.callout, design: .monospaced).weight(.semibold))
-                        .tracking(0.5)
+                        .tracking(1.2)
                         .foregroundStyle(isActive ? statusColor : statusColor.opacity(0.55))
                         .contentTransition(reduceMotion ? .identity : .numericText())
                 }
@@ -115,7 +115,7 @@ struct AnimatedCompactingText: View {
     private var staticText: some View {
         Text("COMPACTING")
             .font(.system(.callout, design: .monospaced).weight(.semibold))
-            .tracking(0.5)
+            .tracking(1.2)
             .foregroundStyle(color)
     }
 

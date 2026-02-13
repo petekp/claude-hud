@@ -58,25 +58,25 @@ class GlassConfig {
     }
 
     // Panel background
-    var panelTintOpacity: Double = 0.34
+    var panelTintOpacity: Double = 0.46
     var panelCornerRadius: Double = 13.99
-    var panelBorderOpacity: Double = 0.34
-    var panelHighlightOpacity: Double = 0.03
-    var panelTopHighlightOpacity: Double = 0.17
+    var panelBorderOpacity: Double = 0.42
+    var panelHighlightOpacity: Double = 0.00
+    var panelTopHighlightOpacity: Double = 0.11
     var panelShadowOpacity: Double = 0.00
     var panelShadowRadius: Double = 0
     var panelShadowY: Double = 0
 
     // Card background
-    var cardTintOpacity: Double = 0.63
-    var cardCornerRadius: Double = 12.95
-    var cardBorderOpacity: Double = 0.16
-    var cardHighlightOpacity: Double = 0.08
-    var cardHoverBorderOpacity: Double = 0.49
+    var cardTintOpacity: Double = 0.74
+    var cardCornerRadius: Double = 15.15
+    var cardBorderOpacity: Double = 0.19
+    var cardHighlightOpacity: Double = 0.00
+    var cardHoverBorderOpacity: Double = 0.47
     var cardHoverHighlightOpacity: Double = 0.00
 
     // Card material settings (NSVisualEffectView)
-    var cardMaterialType: Int = 0 // 0=hudWindow, 1=popover, 2=menu, 3=sidebar, 4=fullScreenUI
+    var cardMaterialType: Int = 1 // 0=hudWindow, 1=popover, 2=menu, 3=sidebar, 4=fullScreenUI
     var cardBlendingMode: Int = 0 // 0=behindWindow, 1=withinWindow
     var cardEmphasized: Bool = true
     var cardForceDarkAppearance: Bool = true
@@ -132,22 +132,22 @@ class GlassConfig {
     var statusIdleOpacity: Double = 0.40
 
     // Ready ripple effect (continuous)
-    var rippleSpeed: Double = 8.61
+    var rippleSpeed: Double = 7.13
     var rippleCount: Int = 3
     var rippleMaxOpacity: Double = 1.00
     var rippleLineWidth: Double = 60.00
-    var rippleBlurAmount: Double = 33.23
-    var rippleOriginX: Double = 0.00
-    var rippleOriginY: Double = 1.00
-    var rippleFadeInZone: Double = 0.17
-    var rippleFadeOutPower: Double = 3.10
+    var rippleBlurAmount: Double = 35.73
+    var rippleOriginX: Double = 0.05
+    var rippleOriginY: Double = 0.00
+    var rippleFadeInZone: Double = 0.20
+    var rippleFadeOutPower: Double = 2.37
 
     // Ready border glow effect
     var borderGlowInnerWidth: Double = 2.00
     var borderGlowOuterWidth: Double = 1.73
     var borderGlowInnerBlur: Double = 3.01
     var borderGlowOuterBlur: Double = 0.00
-    var borderGlowBaseOpacity: Double = 0.45
+    var borderGlowBaseOpacity: Double = 0.74
     var borderGlowPulseIntensity: Double = 1.00
     var borderGlowRotationMultiplier: Double = 0.50
 
@@ -182,17 +182,20 @@ class GlassConfig {
     var workingStripeWidth: Double = 24.0
     var workingStripeSpacing: Double = 38.49
     var workingStripeAngle: Double = 41.30
-    var workingScrollSpeed: Double = 4.81
-    var workingStripeOpacity: Double = 0.50
-    var workingGlowIntensity: Double = 1.50
-    var workingGlowBlurRadius: Double = 11.46
-    var workingCoreBrightness: Double = 0.71
-    var workingGradientFalloff: Double = 0.32
-    var workingVignetteInnerRadius: Double = 0.02
-    var workingVignetteOuterRadius: Double = 0.48
-    var workingVignetteCenterOpacity: Double = 0.03
-    // Note: Cannot use .statusWorking here as it would cause circular initialization
-    var workingVignetteColor: Color = .init(hue: 0.05, saturation: 0.67, brightness: 0.39)
+    var workingScrollSpeed: Double = 3.68
+    var workingStripeOpacity: Double = 0.22
+    var workingGlowIntensity: Double = 2.40
+    var workingGlowBlurRadius: Double = 13.13
+    var workingCoreBrightness: Double = 0.91
+    var workingGradientFalloff: Double = 0.39
+    var workingVignetteInnerRadius: Double = 0.03
+    var workingVignetteOuterRadius: Double = 0.00
+    var workingVignetteCenterOpacity: Double = 0.05
+    /// Derived from HSB values below so tuning panel changes propagate to the renderer
+    var workingVignetteColor: Color {
+        Color(hue: workingVignetteColorHue, saturation: workingVignetteColorSaturation, brightness: workingVignetteColorBrightness)
+    }
+
     var workingVignetteColorIntensity: Double = 0.47
     var workingVignetteBlendMode: BlendMode = .plusLighter
     var workingVignetteColorHue: Double = 0.05
@@ -210,7 +213,7 @@ class GlassConfig {
 
     var emptyGlowSpeed: Double = 3.21
     var emptyGlowPulseCount: Int = 4
-    var emptyGlowBaseOpacity: Double = 0.11
+    var emptyGlowBaseOpacity: Double = 0.09
     var emptyGlowPulseRange: Double = 0.59
     var emptyGlowInnerWidth: Double = 0.91
     var emptyGlowOuterWidth: Double = 1.21
@@ -229,8 +232,8 @@ class GlassConfig {
 
     // Hover state
     var cardHoverScale: Double = 1.01
-    var cardHoverSpringResponse: Double = 0.26
-    var cardHoverSpringDamping: Double = 0.90
+    var cardHoverSpringResponse: Double = 0.16
+    var cardHoverSpringDamping: Double = 0.68
     var cardHoverShadowOpacity: Double = 0.2
     var cardHoverShadowRadius: Double = 12.0
     var cardHoverShadowY: Double = 4.0
@@ -238,7 +241,7 @@ class GlassConfig {
     // Pressed state
     var cardPressedScale: Double = 1.00
     var cardPressedSpringResponse: Double = 0.09
-    var cardPressedSpringDamping: Double = 0.64
+    var cardPressedSpringDamping: Double = 0.34
     var cardPressedShadowOpacity: Double = 0.12
     var cardPressedShadowRadius: Double = 2.0
     var cardPressedShadowY: Double = 1.0
@@ -273,17 +276,21 @@ class GlassConfig {
 
     // MARK: - Layout Settings (Card List)
 
-    var cardListSpacing: Double = 7.89 // Gap between cards in vertical list
-    var cardPaddingHorizontal: Double = 14.56 // Horizontal internal padding for vertical cards
-    var cardPaddingVertical: Double = 12.0 // Vertical internal padding for vertical cards
-    var listHorizontalPadding: Double = 12.16 // Horizontal padding for list container
+    var cardListSpacing: Double = 4.98 // Gap between cards in vertical list
+    var cardPaddingHorizontal: Double = 15.07 // Horizontal internal padding for vertical cards
+    var cardPaddingVertical: Double = 11.40 // Vertical internal padding for vertical cards
+    var listHorizontalPadding: Double = 11.60 // Horizontal padding for list container
 
     // MARK: - Layout Settings (Dock)
 
-    var dockCardSpacing: Double = 14.52 // Gap between cards in horizontal dock
-    var dockCardPaddingHorizontal: Double = 14.51 // Horizontal internal padding for dock cards
-    var dockCardPaddingVertical: Double = 14.0 // Vertical internal padding for dock cards
-    var dockHorizontalPadding: Double = 16.0 // Horizontal padding for dock container
+    var dockCardSpacing: Double = 10.00 // Gap between cards in horizontal dock
+    var dockCardPaddingHorizontal: Double = 15.82 // Horizontal internal padding for dock cards
+    var dockCardPaddingVertical: Double = 13.53 // Vertical internal padding for dock cards
+    var dockHorizontalPadding: Double = 19.96 // Horizontal padding for dock container
+    var dockCardWidth: Double = 262.0 // Fixed width of each dock card
+    var dockCardMinHeight: Double = 0.0 // Minimum height (0 = auto)
+    var dockCardContentSpacing: Double = 10.0 // HStack spacing inside card
+    var dockChipTopPadding: Double = 4.0 // Padding above status chips row
 
     // MARK: - Layout Rounded Accessors (whole pixels)
 
@@ -317,6 +324,22 @@ class GlassConfig {
 
     var dockHorizontalPaddingRounded: CGFloat {
         round(dockHorizontalPadding)
+    }
+
+    var dockCardWidthRounded: CGFloat {
+        round(dockCardWidth)
+    }
+
+    var dockCardMinHeightRounded: CGFloat {
+        round(dockCardMinHeight)
+    }
+
+    var dockCardContentSpacingRounded: CGFloat {
+        round(dockCardContentSpacing)
+    }
+
+    var dockChipTopPaddingRounded: CGFloat {
+        round(dockChipTopPadding)
     }
 
     /// State Preview
@@ -600,23 +623,23 @@ class GlassConfig {
     }
 
     func reset() {
-        panelTintOpacity = 0.34
+        panelTintOpacity = 0.46
         panelCornerRadius = 13.99
-        panelBorderOpacity = 0.34
-        panelHighlightOpacity = 0.03
-        panelTopHighlightOpacity = 0.17
+        panelBorderOpacity = 0.42
+        panelHighlightOpacity = 0.00
+        panelTopHighlightOpacity = 0.11
         panelShadowOpacity = 0.00
         panelShadowRadius = 0
         panelShadowY = 0
 
-        cardTintOpacity = 0.63
-        cardCornerRadius = 12.95
-        cardBorderOpacity = 0.16
-        cardHighlightOpacity = 0.08
-        cardHoverBorderOpacity = 0.49
+        cardTintOpacity = 0.74
+        cardCornerRadius = 15.15
+        cardBorderOpacity = 0.19
+        cardHighlightOpacity = 0.00
+        cardHoverBorderOpacity = 0.47
         cardHoverHighlightOpacity = 0.00
 
-        cardMaterialType = 0
+        cardMaterialType = 1
         cardBlendingMode = 0
         cardEmphasized = true
         cardForceDarkAppearance = true
@@ -652,21 +675,21 @@ class GlassConfig {
 
         statusIdleOpacity = 0.40
 
-        rippleSpeed = 8.61
+        rippleSpeed = 7.13
         rippleCount = 3
         rippleMaxOpacity = 1.00
         rippleLineWidth = 60.00
-        rippleBlurAmount = 33.23
-        rippleOriginX = 0.00
-        rippleOriginY = 1.00
-        rippleFadeInZone = 0.17
-        rippleFadeOutPower = 3.10
+        rippleBlurAmount = 35.73
+        rippleOriginX = 0.05
+        rippleOriginY = 0.00
+        rippleFadeInZone = 0.20
+        rippleFadeOutPower = 2.37
 
         borderGlowInnerWidth = 2.00
         borderGlowOuterWidth = 1.73
         borderGlowInnerBlur = 3.01
         borderGlowOuterBlur = 0.00
-        borderGlowBaseOpacity = 0.45
+        borderGlowBaseOpacity = 0.74
         borderGlowPulseIntensity = 1.00
         borderGlowRotationMultiplier = 0.50
 
@@ -696,7 +719,7 @@ class GlassConfig {
         // Empty state border glow
         emptyGlowSpeed = 3.21
         emptyGlowPulseCount = 4
-        emptyGlowBaseOpacity = 0.11
+        emptyGlowBaseOpacity = 0.09
         emptyGlowPulseRange = 0.59
         emptyGlowInnerWidth = 0.91
         emptyGlowOuterWidth = 1.21
@@ -711,14 +734,14 @@ class GlassConfig {
         cardIdleShadowRadius = 8.07
         cardIdleShadowY = 3.89
         cardHoverScale = 1.01
-        cardHoverSpringResponse = 0.26
-        cardHoverSpringDamping = 0.90
+        cardHoverSpringResponse = 0.16
+        cardHoverSpringDamping = 0.68
         cardHoverShadowOpacity = 0.2
         cardHoverShadowRadius = 12.0
         cardHoverShadowY = 4.0
         cardPressedScale = 1.00
         cardPressedSpringResponse = 0.09
-        cardPressedSpringDamping = 0.64
+        cardPressedSpringDamping = 0.34
         cardPressedShadowOpacity = 0.12
         cardPressedShadowRadius = 2.0
         cardPressedShadowY = 1.0
@@ -748,14 +771,18 @@ class GlassConfig {
         sectionToggleSpringResponse = 0.18
 
         // Layout
-        cardListSpacing = 7.89
-        cardPaddingHorizontal = 14.56
-        cardPaddingVertical = 12.0
-        listHorizontalPadding = 12.16
-        dockCardSpacing = 14.52
-        dockCardPaddingHorizontal = 14.51
-        dockCardPaddingVertical = 14.0
-        dockHorizontalPadding = 16.0
+        cardListSpacing = 4.98
+        cardPaddingHorizontal = 15.07
+        cardPaddingVertical = 11.40
+        listHorizontalPadding = 11.60
+        dockCardSpacing = 10.00
+        dockCardPaddingHorizontal = 15.82
+        dockCardPaddingVertical = 13.53
+        dockHorizontalPadding = 19.96
+        dockCardWidth = 262.0
+        dockCardMinHeight = 0.0
+        dockCardContentSpacing = 10.0
+        dockChipTopPadding = 4.0
 
         previewState = .none
     }
@@ -763,23 +790,23 @@ class GlassConfig {
     func exportForLLM() -> String {
         let allParams: [(String, String, Double, Double)] = [
             // Panel Background
-            ("Panel", "panelTintOpacity", 0.34, panelTintOpacity),
+            ("Panel", "panelTintOpacity", 0.46, panelTintOpacity),
             ("Panel", "panelCornerRadius", 13.99, panelCornerRadius),
-            ("Panel", "panelBorderOpacity", 0.34, panelBorderOpacity),
-            ("Panel", "panelHighlightOpacity", 0.03, panelHighlightOpacity),
-            ("Panel", "panelTopHighlightOpacity", 0.17, panelTopHighlightOpacity),
+            ("Panel", "panelBorderOpacity", 0.42, panelBorderOpacity),
+            ("Panel", "panelHighlightOpacity", 0.00, panelHighlightOpacity),
+            ("Panel", "panelTopHighlightOpacity", 0.11, panelTopHighlightOpacity),
             ("Panel", "panelShadowOpacity", 0.00, panelShadowOpacity),
             ("Panel", "panelShadowRadius", 0, panelShadowRadius),
             ("Panel", "panelShadowY", 0, panelShadowY),
             // Card Background
-            ("Card", "cardTintOpacity", 0.63, cardTintOpacity),
-            ("Card", "cardCornerRadius", 12.95, cardCornerRadius),
-            ("Card", "cardBorderOpacity", 0.16, cardBorderOpacity),
-            ("Card", "cardHighlightOpacity", 0.08, cardHighlightOpacity),
-            ("Card", "cardHoverBorderOpacity", 0.49, cardHoverBorderOpacity),
+            ("Card", "cardTintOpacity", 0.74, cardTintOpacity),
+            ("Card", "cardCornerRadius", 15.15, cardCornerRadius),
+            ("Card", "cardBorderOpacity", 0.19, cardBorderOpacity),
+            ("Card", "cardHighlightOpacity", 0.00, cardHighlightOpacity),
+            ("Card", "cardHoverBorderOpacity", 0.47, cardHoverBorderOpacity),
             ("Card", "cardHoverHighlightOpacity", 0.00, cardHoverHighlightOpacity),
             // Card Material
-            ("Card Material", "cardMaterialType", 0, Double(cardMaterialType)),
+            ("Card Material", "cardMaterialType", 1, Double(cardMaterialType)),
             ("Card Material", "cardBlendingMode", 0, Double(cardBlendingMode)),
             ("Card Material", "cardEmphasized", 1, cardEmphasized ? 1.0 : 0.0),
             ("Card Material", "cardForceDarkAppearance", 1.0, cardForceDarkAppearance ? 1.0 : 0.0),
@@ -812,21 +839,21 @@ class GlassConfig {
             // Status Colors - Idle
             ("Status Idle", "statusIdleOpacity", 0.40, statusIdleOpacity),
             // Ready Ripple
-            ("Ready Ripple", "rippleSpeed", 8.61, rippleSpeed),
+            ("Ready Ripple", "rippleSpeed", 7.13, rippleSpeed),
             ("Ready Ripple", "rippleCount", 3, Double(rippleCount)),
             ("Ready Ripple", "rippleMaxOpacity", 1.00, rippleMaxOpacity),
             ("Ready Ripple", "rippleLineWidth", 60.00, rippleLineWidth),
-            ("Ready Ripple", "rippleBlurAmount", 33.23, rippleBlurAmount),
-            ("Ready Ripple", "rippleOriginX", 0.00, rippleOriginX),
-            ("Ready Ripple", "rippleOriginY", 1.00, rippleOriginY),
-            ("Ready Ripple", "rippleFadeInZone", 0.17, rippleFadeInZone),
-            ("Ready Ripple", "rippleFadeOutPower", 3.10, rippleFadeOutPower),
+            ("Ready Ripple", "rippleBlurAmount", 35.73, rippleBlurAmount),
+            ("Ready Ripple", "rippleOriginX", 0.05, rippleOriginX),
+            ("Ready Ripple", "rippleOriginY", 0.00, rippleOriginY),
+            ("Ready Ripple", "rippleFadeInZone", 0.20, rippleFadeInZone),
+            ("Ready Ripple", "rippleFadeOutPower", 2.37, rippleFadeOutPower),
             // Border Glow
             ("Border Glow", "borderGlowInnerWidth", 2.00, borderGlowInnerWidth),
             ("Border Glow", "borderGlowOuterWidth", 1.73, borderGlowOuterWidth),
             ("Border Glow", "borderGlowInnerBlur", 3.01, borderGlowInnerBlur),
             ("Border Glow", "borderGlowOuterBlur", 0.00, borderGlowOuterBlur),
-            ("Border Glow", "borderGlowBaseOpacity", 0.45, borderGlowBaseOpacity),
+            ("Border Glow", "borderGlowBaseOpacity", 0.74, borderGlowBaseOpacity),
             ("Border Glow", "borderGlowPulseIntensity", 1.00, borderGlowPulseIntensity),
             ("Border Glow", "borderGlowRotationMultiplier", 0.50, borderGlowRotationMultiplier),
             // Waiting Pulse
@@ -856,15 +883,15 @@ class GlassConfig {
             ("Working Stripes", "workingStripeWidth", 24.0, workingStripeWidth),
             ("Working Stripes", "workingStripeSpacing", 38.49, workingStripeSpacing),
             ("Working Stripes", "workingStripeAngle", 41.30, workingStripeAngle),
-            ("Working Stripes", "workingScrollSpeed", 4.81, workingScrollSpeed),
-            ("Working Stripes", "workingStripeOpacity", 0.50, workingStripeOpacity),
-            ("Working Stripes", "workingGlowIntensity", 1.50, workingGlowIntensity),
-            ("Working Stripes", "workingGlowBlurRadius", 11.46, workingGlowBlurRadius),
-            ("Working Stripes", "workingCoreBrightness", 0.71, workingCoreBrightness),
-            ("Working Stripes", "workingGradientFalloff", 0.32, workingGradientFalloff),
-            ("Working Stripes", "workingVignetteInnerRadius", 0.02, workingVignetteInnerRadius),
-            ("Working Stripes", "workingVignetteOuterRadius", 0.48, workingVignetteOuterRadius),
-            ("Working Stripes", "workingVignetteCenterOpacity", 0.03, workingVignetteCenterOpacity),
+            ("Working Stripes", "workingScrollSpeed", 3.68, workingScrollSpeed),
+            ("Working Stripes", "workingStripeOpacity", 0.22, workingStripeOpacity),
+            ("Working Stripes", "workingGlowIntensity", 2.40, workingGlowIntensity),
+            ("Working Stripes", "workingGlowBlurRadius", 13.13, workingGlowBlurRadius),
+            ("Working Stripes", "workingCoreBrightness", 0.91, workingCoreBrightness),
+            ("Working Stripes", "workingGradientFalloff", 0.39, workingGradientFalloff),
+            ("Working Stripes", "workingVignetteInnerRadius", 0.03, workingVignetteInnerRadius),
+            ("Working Stripes", "workingVignetteOuterRadius", 0.00, workingVignetteOuterRadius),
+            ("Working Stripes", "workingVignetteCenterOpacity", 0.05, workingVignetteCenterOpacity),
             ("Working Stripes", "workingVignetteColorHue", 0.05, workingVignetteColorHue),
             ("Working Stripes", "workingVignetteColorSaturation", 0.67, workingVignetteColorSaturation),
             ("Working Stripes", "workingVignetteColorBrightness", 0.39, workingVignetteColorBrightness),
@@ -889,7 +916,7 @@ class GlassConfig {
             // Empty State Glow
             ("Empty Glow", "emptyGlowSpeed", 3.21, emptyGlowSpeed),
             ("Empty Glow", "emptyGlowPulseCount", 4, Double(emptyGlowPulseCount)),
-            ("Empty Glow", "emptyGlowBaseOpacity", 0.11, emptyGlowBaseOpacity),
+            ("Empty Glow", "emptyGlowBaseOpacity", 0.09, emptyGlowBaseOpacity),
             ("Empty Glow", "emptyGlowPulseRange", 0.59, emptyGlowPulseRange),
             ("Empty Glow", "emptyGlowInnerWidth", 0.91, emptyGlowInnerWidth),
             ("Empty Glow", "emptyGlowOuterWidth", 1.21, emptyGlowOuterWidth),
@@ -903,14 +930,14 @@ class GlassConfig {
             ("Card Idle", "cardIdleShadowRadius", 8.07, cardIdleShadowRadius),
             ("Card Idle", "cardIdleShadowY", 3.89, cardIdleShadowY),
             ("Card Hover", "cardHoverScale", 1.01, cardHoverScale),
-            ("Card Hover", "cardHoverSpringResponse", 0.26, cardHoverSpringResponse),
-            ("Card Hover", "cardHoverSpringDamping", 0.90, cardHoverSpringDamping),
+            ("Card Hover", "cardHoverSpringResponse", 0.16, cardHoverSpringResponse),
+            ("Card Hover", "cardHoverSpringDamping", 0.68, cardHoverSpringDamping),
             ("Card Hover", "cardHoverShadowOpacity", 0.2, cardHoverShadowOpacity),
             ("Card Hover", "cardHoverShadowRadius", 12.0, cardHoverShadowRadius),
             ("Card Hover", "cardHoverShadowY", 4.0, cardHoverShadowY),
             ("Card Pressed", "cardPressedScale", 1.00, cardPressedScale),
             ("Card Pressed", "cardPressedSpringResponse", 0.09, cardPressedSpringResponse),
-            ("Card Pressed", "cardPressedSpringDamping", 0.64, cardPressedSpringDamping),
+            ("Card Pressed", "cardPressedSpringDamping", 0.34, cardPressedSpringDamping),
             ("Card Pressed", "cardPressedShadowOpacity", 0.12, cardPressedShadowOpacity),
             ("Card Pressed", "cardPressedShadowRadius", 2.0, cardPressedShadowRadius),
             ("Card Pressed", "cardPressedShadowY", 1.0, cardPressedShadowY),
@@ -926,15 +953,19 @@ class GlassConfig {
             ("State Transitions", "pausedCardStagger", 0.025, pausedCardStagger),
             ("State Transitions", "sectionToggleSpringResponse", 0.18, sectionToggleSpringResponse),
             // Layout - List
-            ("Layout List", "cardListSpacing", 7.89, cardListSpacing),
-            ("Layout List", "cardPaddingHorizontal", 14.56, cardPaddingHorizontal),
-            ("Layout List", "cardPaddingVertical", 12.0, cardPaddingVertical),
-            ("Layout List", "listHorizontalPadding", 12.16, listHorizontalPadding),
+            ("Layout List", "cardListSpacing", 4.98, cardListSpacing),
+            ("Layout List", "cardPaddingHorizontal", 15.07, cardPaddingHorizontal),
+            ("Layout List", "cardPaddingVertical", 11.40, cardPaddingVertical),
+            ("Layout List", "listHorizontalPadding", 11.60, listHorizontalPadding),
             // Layout - Dock
-            ("Layout Dock", "dockCardSpacing", 14.52, dockCardSpacing),
-            ("Layout Dock", "dockCardPaddingHorizontal", 14.51, dockCardPaddingHorizontal),
-            ("Layout Dock", "dockCardPaddingVertical", 14.0, dockCardPaddingVertical),
-            ("Layout Dock", "dockHorizontalPadding", 16.0, dockHorizontalPadding),
+            ("Layout Dock", "dockCardSpacing", 10.00, dockCardSpacing),
+            ("Layout Dock", "dockCardPaddingHorizontal", 15.82, dockCardPaddingHorizontal),
+            ("Layout Dock", "dockCardPaddingVertical", 13.53, dockCardPaddingVertical),
+            ("Layout Dock", "dockHorizontalPadding", 19.96, dockHorizontalPadding),
+            ("Layout Dock", "dockCardWidth", 262.0, dockCardWidth),
+            ("Layout Dock", "dockCardMinHeight", 0.0, dockCardMinHeight),
+            ("Layout Dock", "dockCardContentSpacing", 10.0, dockCardContentSpacing),
+            ("Layout Dock", "dockChipTopPadding", 4.0, dockChipTopPadding),
         ]
 
         let changed = allParams.filter { abs($0.2 - $0.3) > 0.001 }

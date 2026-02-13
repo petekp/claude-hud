@@ -8,7 +8,7 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 # Parse flags
 FORCE_REBUILD=false
 SWIFT_ONLY=false
-CHANNEL="dev"
+CHANNEL="alpha"
 while [[ $# -gt 0 ]]; do
     case $1 in
         --force|-f)

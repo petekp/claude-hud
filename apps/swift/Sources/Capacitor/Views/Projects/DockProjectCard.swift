@@ -77,10 +77,14 @@ struct DockProjectCard: View {
         let dockPaddingH = glassConfig.dockCardPaddingH
         let dockPaddingV = glassConfig.dockCardPaddingV
 
+        let dockWidth = glassConfig.dockCardWidthRounded
+        let dockMinHeight = glassConfig.dockCardMinHeightRounded
+
         cardContent
             .padding(.horizontal, dockPaddingH)
             .padding(.vertical, dockPaddingV)
-            .frame(width: 262)
+            .frame(width: dockWidth)
+            .frame(minHeight: dockMinHeight > 0 ? dockMinHeight : nil)
             .cardStyling(
                 isHovered: isHovered,
                 currentState: currentState,
@@ -142,7 +146,7 @@ struct DockProjectCard: View {
     }
 
     private var cardContent: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: glassConfig.dockCardContentSpacingRounded) {
             VStack(alignment: .leading, spacing: 0) {
                 HStack(spacing: 6) {
                     if let onInfoTap {
@@ -166,7 +170,7 @@ struct DockProjectCard: View {
                 }
 
                 StatusChipsRow(sessionState: sessionState, isStale: isStale, style: .compact)
-                    .padding(.top, 4)
+                    .padding(.top, glassConfig.dockChipTopPaddingRounded)
 
                 Spacer(minLength: 0)
 

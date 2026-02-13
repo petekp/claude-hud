@@ -4,8 +4,8 @@ import SwiftUI
 #if DEBUG
 
     enum TuningCategory: String, CaseIterable, Identifiable {
-        case projectCard = "Project Card"
         case panel = "Panel"
+        case projectCard = "Project Card"
         case logo = "Logo"
         case statusColors = "Status Colors"
 
@@ -15,8 +15,8 @@ import SwiftUI
 
         var icon: String {
             switch self {
-            case .projectCard: "rectangle.on.rectangle"
             case .panel: "rectangle"
+            case .projectCard: "rectangle.on.rectangle"
             case .logo: "textformat"
             case .statusColors: "paintpalette"
             }
@@ -24,10 +24,10 @@ import SwiftUI
 
         var subcategories: [TuningSubcategory] {
             switch self {
-            case .projectCard:
-                [.appearance, .cardMaterial, .layout, .interactions, .stateTransitions, .stateEffects]
             case .panel:
                 [.panelBackground, .panelMaterial, .emptyStateGlow]
+            case .projectCard:
+                [.appearance, .cardMaterial, .layout, .interactions, .stateTransitions, .stateEffects]
             case .logo:
                 [.logoAppearance]
             case .statusColors:
@@ -90,8 +90,8 @@ import SwiftUI
     struct UITuningPanel: View {
         @Environment(\.dismissWindow) private var dismissWindow
         private let config = GlassConfig.shared
-        @State private var selectedCategory: TuningCategory = .projectCard
-        @State private var selectedSubcategory: TuningSubcategory = .appearance
+        @State private var selectedCategory: TuningCategory = .panel
+        @State private var selectedSubcategory: TuningSubcategory = .panelBackground
         @State private var panelSize: CGSize = .init(width: 580, height: 720)
         @State private var copiedToClipboard = false
 

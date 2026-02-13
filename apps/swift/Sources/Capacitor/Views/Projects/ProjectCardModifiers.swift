@@ -38,8 +38,8 @@ enum CardLayerOpacityPolicy {
                 readyBorder: 1.0,
                 waitingAmbient: 0,
                 waitingBorder: 0,
-                workingStripe: 0.16,
-                workingBorder: 0.2,
+                workingStripe: 0,
+                workingBorder: 0,
                 activeRing: 0.5,
                 baseBorderBoost: 0.06,
             )
@@ -60,8 +60,8 @@ enum CardLayerOpacityPolicy {
                 readyBorder: 0,
                 waitingAmbient: 1.0,
                 waitingBorder: 1.0,
-                workingStripe: 0.22,
-                workingBorder: 0.3,
+                workingStripe: 0,
+                workingBorder: 0,
                 activeRing: 0.62,
                 baseBorderBoost: 0.1,
             )
@@ -71,8 +71,8 @@ enum CardLayerOpacityPolicy {
                 readyBorder: 0,
                 waitingAmbient: 0.46,
                 waitingBorder: 0.56,
-                workingStripe: 0.56,
-                workingBorder: 0.5,
+                workingStripe: 0,
+                workingBorder: 0,
                 activeRing: 0.55,
                 baseBorderBoost: 0.09,
             )

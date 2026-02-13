@@ -72,7 +72,6 @@ import SwiftUI
                         ],
                     )
 
-                    TuningToggleRow(label: "Emphasized", isOn: $config.cardEmphasized)
                     TuningToggleRow(label: "Force Dark", isOn: $config.cardForceDarkAppearance)
                 }
 
@@ -263,10 +262,21 @@ import SwiftUI
                 }
 
                 StickySection(title: "Dock Layout", onReset: resetDock) {
+                    TuningRow(label: "Card Width", value: $config.dockCardWidth, range: 140 ... 400, step: 1, format: "%.0f")
+                    TuningRow(label: "Card Min Height", value: $config.dockCardMinHeight, range: 0 ... 200, step: 1, format: "%.0f")
                     TuningRow(label: "Card Spacing", value: $config.dockCardSpacing, range: 0 ... 32, step: 1, format: "%.0f")
                     TuningRow(label: "Card Padding H", value: $config.dockCardPaddingHorizontal, range: 4 ... 24, step: 1, format: "%.0f")
                     TuningRow(label: "Card Padding V", value: $config.dockCardPaddingVertical, range: 4 ... 24, step: 1, format: "%.0f")
                     TuningRow(label: "Dock Padding H", value: $config.dockHorizontalPadding, range: 0 ... 32, step: 1, format: "%.0f")
+
+                    SectionDivider()
+
+                    Text("Card Content")
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundColor(.white.opacity(0.5))
+
+                    TuningRow(label: "Content Spacing", value: $config.dockCardContentSpacing, range: 0 ... 20, step: 1, format: "%.0f")
+                    TuningRow(label: "Chip Top Padding", value: $config.dockChipTopPadding, range: 0 ... 16, step: 1, format: "%.0f")
                 }
             })
         }
@@ -279,10 +289,14 @@ import SwiftUI
         }
 
         private func resetDock() {
-            config.dockCardSpacing = 14.0
-            config.dockCardPaddingHorizontal = 14.0
-            config.dockCardPaddingVertical = 14.0
-            config.dockHorizontalPadding = 16.0
+            config.dockCardWidth = 262.0
+            config.dockCardMinHeight = 0.0
+            config.dockCardSpacing = 9.25
+            config.dockCardPaddingHorizontal = 10.74
+            config.dockCardPaddingVertical = 13.53
+            config.dockHorizontalPadding = 13.98
+            config.dockCardContentSpacing = 10.0
+            config.dockChipTopPadding = 4.0
         }
     }
 
@@ -517,8 +531,6 @@ import SwiftUI
         var body: some View {
             Group(content: {
                 StickySection(title: "Material Settings", onReset: resetMaterial) {
-                    TuningToggleRow(label: "Emphasized Material", isOn: $config.useEmphasizedMaterial)
-
                     TuningPickerRow(
                         label: "Material Type",
                         selection: $config.materialType,
@@ -674,7 +686,6 @@ import SwiftUI
                             ],
                         )
 
-                        TuningToggleRow(label: "Emphasized", isOn: $config.logoEmphasized)
                         TuningToggleRow(label: "Force Dark", isOn: $config.logoForceDarkAppearance)
                     }
                 }

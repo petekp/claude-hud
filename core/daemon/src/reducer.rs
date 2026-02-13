@@ -134,7 +134,7 @@ pub fn reduce_session(current: Option<&SessionRecord>, event: &EventEnvelope) ->
             SessionUpdate::Skip
         }
         EventType::Stop => {
-            if should_skip_stop(event) {
+            if should_skip_stop(current, event) {
                 SessionUpdate::Skip
             } else {
                 upsert_session(
@@ -168,7 +168,14 @@ fn has_agent_id_metadata(event: &EventEnvelope) -> bool {
         .unwrap_or(false)
 }
 
-fn should_skip_stop(event: &EventEnvelope) -> bool {
+fn should_skip_stop(current: Option<&SessionRecord>, event: &EventEnvelope) -> bool {
+    if current
+        .map(|record| record.state == SessionState::Compacting)
+        .unwrap_or(false)
+    {
+        return true;
+    }
+
     if event.stop_hook_active == Some(true) || has_agent_id_metadata(event) {
         return true;
     }
@@ -656,7 +663,7 @@ mod tests {
     }
 
     #[test]
-    fn stop_after_pre_compact_can_ready() {
+    fn stop_after_pre_compact_is_skipped() {
         let mut pre_compact = event_base(EventType::PreCompact);
         pre_compact.recorded_at = "2026-01-31T00:00:10Z".to_string();
 
@@ -673,13 +680,7 @@ mod tests {
         stop.recorded_at = "2026-01-31T00:00:20Z".to_string();
 
         let update = reduce_session(Some(&after_compact), &stop);
-        match update {
-            SessionUpdate::Upsert(record) => {
-                assert_eq!(record.state, SessionState::Ready);
-                assert_eq!(record.ready_reason, Some("stop_gate".to_string()));
-            }
-            _ => panic!("expected upsert"),
-        }
+        assert_eq!(update, SessionUpdate::Skip);
     }
 
     #[test]

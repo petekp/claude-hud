@@ -696,7 +696,6 @@ fn session_timestamp(record: &SessionRecord) -> Option<DateTime<Utc>> {
 #[derive(Clone, Copy)]
 enum InactivityFallbackGuard {
     RequireLastEvent(&'static [&'static str]),
-    InactivityOnly,
 }
 
 fn inactivity_fallback_policy(
@@ -706,10 +705,6 @@ fn inactivity_fallback_policy(
         crate::reducer::SessionState::Working => Some((
             crate::reducer::SessionState::Ready,
             InactivityFallbackGuard::RequireLastEvent(&["task_completed"]),
-        )),
-        crate::reducer::SessionState::Compacting => Some((
-            crate::reducer::SessionState::Ready,
-            InactivityFallbackGuard::InactivityOnly,
         )),
         _ => None,
     }
@@ -731,17 +726,13 @@ fn should_apply_inactivity_fallback(
     fallback_guard: InactivityFallbackGuard,
     now: DateTime<Utc>,
 ) -> bool {
-    match fallback_guard {
-        InactivityFallbackGuard::RequireLastEvent(expected_events) => {
-            let last_event = record.last_event.as_deref().unwrap_or_default();
-            // Working auto-ready should only run after an explicit completion marker.
-            // PostToolUse can occur repeatedly during an active working session and
-            // causes false Ready transitions when activity is sparse.
-            if !expected_events.contains(&last_event) {
-                return false;
-            }
-        }
-        InactivityFallbackGuard::InactivityOnly => {}
+    let InactivityFallbackGuard::RequireLastEvent(expected_events) = fallback_guard;
+    let last_event = record.last_event.as_deref().unwrap_or_default();
+    // Working auto-ready should only run after an explicit completion marker.
+    // PostToolUse can occur repeatedly during an active working session and
+    // causes false Ready transitions when activity is sparse.
+    if !expected_events.contains(&last_event) {
+        return false;
     }
 
     if record.tools_in_flight > 0 {
@@ -926,7 +917,7 @@ mod tests {
     }
 
     #[test]
-    fn project_states_auto_ready_after_inactive_compacting() {
+    fn project_states_keep_compacting_after_inactive_compacting() {
         let temp_dir = tempfile::tempdir().expect("temp dir");
         let db_path = temp_dir.path().join("state.db");
         let db = Db::new(db_path).expect("db init");
@@ -946,7 +937,7 @@ mod tests {
 
         let aggregates = state.project_states_snapshot().expect("project states");
         assert_eq!(aggregates.len(), 1);
-        assert_eq!(aggregates[0].state, SessionState::Ready);
+        assert_eq!(aggregates[0].state, SessionState::Compacting);
     }
 
     #[test]

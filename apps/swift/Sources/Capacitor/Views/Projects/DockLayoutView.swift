@@ -8,7 +8,9 @@ struct DockLayoutView: View {
     @State private var scrolledID: String?
     @State private var draggedProject: Project?
 
-    private let cardWidth: CGFloat = 262
+    private var cardWidth: CGFloat {
+        glassConfig.dockCardWidthRounded
+    }
 
     private var nonPausedProjects: [Project] {
         appState.projects.filter { !appState.isManuallyDormant($0) }

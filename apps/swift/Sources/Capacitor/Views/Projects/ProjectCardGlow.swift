@@ -610,19 +610,15 @@ struct WorkingStripeOverlay: View {
 
             // Stripe layers masked to show at edges
             ZStack {
-                GeometryReader { _ in
-                    Canvas { context, size in
-                        drawGlowStripes(context: context, size: size, phase: 0, params: params)
-                    }
+                Canvas { context, size in
+                    drawGlowStripes(context: context, size: size, phase: 0, params: params)
                 }
                 .blur(radius: params.glowBlurRadius)
                 .opacity(params.glowIntensity)
                 .blendMode(.plusLighter)
 
-                GeometryReader { _ in
-                    Canvas { context, size in
-                        drawCoreStripes(context: context, size: size, phase: 0, params: params)
-                    }
+                Canvas { context, size in
+                    drawCoreStripes(context: context, size: size, phase: 0, params: params)
                 }
                 .blendMode(.plusLighter)
             }
@@ -643,19 +639,15 @@ struct WorkingStripeOverlay: View {
 
                 // Stripe layers masked to show at edges
                 ZStack {
-                    GeometryReader { _ in
-                        Canvas { context, size in
-                            drawGlowStripes(context: context, size: size, phase: phase, params: params)
-                        }
+                    Canvas { context, size in
+                        drawGlowStripes(context: context, size: size, phase: phase, params: params)
                     }
                     .blur(radius: params.glowBlurRadius)
                     .opacity(params.glowIntensity)
                     .blendMode(.plusLighter)
 
-                    GeometryReader { _ in
-                        Canvas { context, size in
-                            drawCoreStripes(context: context, size: size, phase: phase, params: params)
-                        }
+                    Canvas { context, size in
+                        drawCoreStripes(context: context, size: size, phase: phase, params: params)
                     }
                     .blendMode(.plusLighter)
                 }
@@ -689,14 +681,10 @@ struct WorkingStripeOverlay: View {
     }
 
     private func vignetteBackground(params: WorkingStripeParameters) -> some View {
-        GeometryReader { _ in
-            let cornerRadius = config.cardCornerRadius(for: layoutMode)
-
-            RoundedRectangle(cornerRadius: cornerRadius)
-                .fill(params.vignetteColor)
-                .opacity(params.vignetteColorIntensity)
-                .blendMode(params.vignetteBlendMode)
-        }
+        RoundedRectangle(cornerRadius: config.cardCornerRadius(for: layoutMode))
+            .fill(params.vignetteColor)
+            .opacity(params.vignetteColorIntensity)
+            .blendMode(params.vignetteBlendMode)
     }
 
     private func drawGlowStripes(context: GraphicsContext, size: CGSize, phase: Double, params: WorkingStripeParameters) {
