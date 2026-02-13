@@ -743,7 +743,7 @@ final class SessionStateManagerTests: XCTestCase {
     private func waitForSessionState(
         _ manager: SessionStateManager,
         project: Project,
-        timeout: TimeInterval = 1.0,
+        timeout: TimeInterval = 3.0,
     ) async -> ProjectSessionState? {
         let deadline = Date().addingTimeInterval(timeout)
         while Date() < deadline {

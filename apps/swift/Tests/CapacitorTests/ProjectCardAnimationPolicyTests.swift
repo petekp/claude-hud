@@ -57,24 +57,24 @@ final class ProjectCardAnimationPolicyTests: XCTestCase {
         XCTAssertEqual(opacities.readyBorder, 0.0)
     }
 
-    func testLayerOpacitiesForReadyPreserveSubtleWorkingTrail() {
+    func testLayerOpacitiesForReadyShowOnlyReadyLayers() {
         let opacities = CardLayerOpacityPolicy.opacities(for: .ready)
 
         XCTAssertEqual(opacities.readyAmbient, 1.0)
         XCTAssertEqual(opacities.readyBorder, 1.0)
-        XCTAssertGreaterThan(opacities.workingStripe, 0.0)
-        XCTAssertGreaterThan(opacities.workingBorder, 0.0)
+        XCTAssertEqual(opacities.workingStripe, 0.0)
+        XCTAssertEqual(opacities.workingBorder, 0.0)
         XCTAssertEqual(opacities.waitingAmbient, 0.0)
         XCTAssertEqual(opacities.waitingBorder, 0.0)
     }
 
-    func testLayerOpacitiesForCompactingBlendWaitingAndWorking() {
+    func testLayerOpacitiesForCompactingShowOnlyWaitingLayers() {
         let opacities = CardLayerOpacityPolicy.opacities(for: .compacting)
 
         XCTAssertGreaterThan(opacities.waitingAmbient, 0.0)
         XCTAssertGreaterThan(opacities.waitingBorder, 0.0)
-        XCTAssertGreaterThan(opacities.workingStripe, 0.0)
-        XCTAssertGreaterThan(opacities.workingBorder, 0.0)
+        XCTAssertEqual(opacities.workingStripe, 0.0)
+        XCTAssertEqual(opacities.workingBorder, 0.0)
         XCTAssertEqual(opacities.readyAmbient, 0.0)
         XCTAssertEqual(opacities.readyBorder, 0.0)
     }
