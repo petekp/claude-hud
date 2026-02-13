@@ -787,7 +787,7 @@ struct EmptyProjectsView: View {
                 appState.refreshSuggestedProjects()
             }
             if !reduceMotion {
-                withAnimation(.spring(response: 0.6, dampingFraction: 0.8).delay(0.1)) {
+                withAnimation(.spring(response: 0.6, dampingFraction: 0.8)) {
                     appeared = true
                 }
             } else {

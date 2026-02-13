@@ -216,24 +216,28 @@ class AppState {
             }
         }
 
-        do {
-            engine = try HudEngine()
+        // Phase 2: Defer FFI work past first SwiftUI render
+        _Concurrency.Task { @MainActor [weak self] in
+            guard let self else { return }
+            do {
+                engine = try HudEngine()
 
-            ensureDaemonRunning()
-            let cleanupStats = engine!.runStartupCleanup()
-            if !cleanupStats.errors.isEmpty {
-                DebugLog.write("[Startup] Cleanup errors: \(cleanupStats.errors.joined(separator: "; "))")
+                ensureDaemonRunning()
+                let cleanupStats = engine!.runStartupCleanup()
+                if !cleanupStats.errors.isEmpty {
+                    DebugLog.write("[Startup] Cleanup errors: \(cleanupStats.errors.joined(separator: "; "))")
+                }
+
+                projectDetailsManager.configure(engine: engine)
+                loadDashboard()
+                checkHookDiagnostic()
+                checkDaemonHealth()
+                setupStalenessTimer()
+                startShellTracking()
+            } catch {
+                self.error = error.localizedDescription
+                isLoading = false
             }
-
-            projectDetailsManager.configure(engine: engine)
-            loadDashboard()
-            checkHookDiagnostic()
-            checkDaemonHealth()
-            setupStalenessTimer()
-            startShellTracking()
-        } catch {
-            self.error = error.localizedDescription
-            isLoading = false
         }
     }
 
