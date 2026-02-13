@@ -135,14 +135,26 @@ struct ProjectsView: View {
                         }
 
                         if hasVisibleProjects {
-                            SectionHeader(
-                                title: "In Progress",
-                                count: grouped.active.count + grouped.idle.count,
-                            )
-                            .padding(.top, 4)
-                            .transition(.opacity)
+                            if !grouped.active.isEmpty {
+                                SectionHeader(
+                                    title: "In Progress",
+                                    count: grouped.active.count,
+                                )
+                                .padding(.top, 4)
+                                .transition(.opacity)
+                            }
 
                             ForEach(Array(rows.enumerated()), id: \.element.path) { index, project in
+                                if index == grouped.active.count, !grouped.idle.isEmpty {
+                                    SectionHeader(
+                                        title: "Idle",
+                                        count: grouped.idle.count,
+                                    )
+                                    .padding(.top, grouped.active.isEmpty ? 4 : 8)
+                                    .id("idle-section-header")
+                                    .transition(.opacity)
+                                }
+
                                 let sessionState = ProjectOrdering.sessionState(for: project.path, sessionStates: sessionStates)
                                 let projectStatus = appState.getProjectStatus(for: project)
                                 let flashState = appState.isFlashing(project)
@@ -866,30 +878,6 @@ struct EmptyProjectsView: View {
                 hoveredPath = hovering ? suggestion.path : nil
             }
         }
-    }
-}
-
-struct ProjectCardDragPreview: View {
-    let project: Project
-
-    var body: some View {
-        HStack(spacing: 8) {
-            Image(systemName: "line.3.horizontal")
-                .font(AppTypography.labelMedium)
-                .foregroundColor(.white.opacity(0.5))
-            Text(project.name)
-                .font(AppTypography.bodyMedium)
-                .foregroundColor(.white)
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
-        .background(Color.hudCard)
-        .clipShape(RoundedRectangle(cornerRadius: 8))
-        .overlay(
-            RoundedRectangle(cornerRadius: 8)
-                .stroke(Color.hudAccent.opacity(0.5), lineWidth: 1),
-        )
-        .shadow(color: .black.opacity(0.3), radius: 8, y: 4)
     }
 }
 

@@ -188,7 +188,6 @@ struct ProjectCardView: View {
                 isHovered: $isHovered,
                 onTap: onTap,
                 onDragStarted: onDragStarted,
-                dragPreview: AnyView(ProjectCardDragPreview(project: project)),
             )
             .cardLifecycleHandlers(
                 flashState: flashState,

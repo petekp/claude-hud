@@ -231,10 +231,8 @@ extension View {
         isHovered: Binding<Bool>,
         onTap: @escaping () -> Void,
         onDragStarted: (() -> NSItemProvider)?,
-        dragPreview: AnyView? = nil,
     ) -> some View {
-        let preview = dragPreview ?? AnyView(Color.clear.frame(width: 1, height: 1))
-        return contentShape(Rectangle())
+        contentShape(Rectangle())
             .onTapGesture(perform: onTap)
             .accessibilityAddTraits(.isButton)
             .accessibilityAction { onTap() }
@@ -257,7 +255,7 @@ extension View {
                 _ = onDragStarted?()
                 return NSItemProvider(object: "" as NSString)
             } preview: {
-                preview
+                Color.clear.frame(width: 1, height: 1)
             }
     }
 
