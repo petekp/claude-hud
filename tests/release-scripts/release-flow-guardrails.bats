@@ -9,16 +9,16 @@ setup() {
 }
 
 @test "build-distribution defaults to alpha channel" {
-    run rg -n '^CHANNEL="alpha"$' "$PROJECT_ROOT/scripts/release/build-distribution.sh"
+    run grep -En '^CHANNEL="alpha"$' "$PROJECT_ROOT/scripts/release/build-distribution.sh"
     [ "$status" -eq 0 ]
 }
 
 @test "release workflow forwards channel explicitly to build-distribution" {
-    run rg -n 'BUILD_ARGS\+=\(--channel "\$CHANNEL"\)' "$PROJECT_ROOT/scripts/release/release.sh"
+    run grep -En 'BUILD_ARGS\+=\(--channel "\$CHANNEL"\)' "$PROJECT_ROOT/scripts/release/release.sh"
     [ "$status" -eq 0 ]
 }
 
 @test "verify-app-bundle does not use post-increment in fail/warn helpers" {
-    run rg -n 'ERRORS\+\+|WARNINGS\+\+' "$PROJECT_ROOT/scripts/release/verify-app-bundle.sh"
+    run grep -En 'ERRORS\+\+|WARNINGS\+\+' "$PROJECT_ROOT/scripts/release/verify-app-bundle.sh"
     [ "$status" -eq 1 ]
 }
