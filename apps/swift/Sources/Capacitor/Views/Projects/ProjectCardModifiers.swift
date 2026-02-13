@@ -189,11 +189,13 @@ extension View {
         }
         // Ready effects — always present, cross-fade via opacity
         // Gate animate per-effect: only run TimelineView when this effect is visible
+        // Suppress ambient ripple on hover for non-focused cards (border glow only)
         .overlay {
-            ReadyAmbientGlow(layoutMode: layoutMode, animate: shouldAnimate && layerOpacities.readyAmbient > 0)
+            let effectiveReadyAmbient = (isHovered && !isActive) ? 0.0 : layerOpacities.readyAmbient
+            ReadyAmbientGlow(layoutMode: layoutMode, animate: shouldAnimate && effectiveReadyAmbient > 0)
                 .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
-                .opacity(layerOpacities.readyAmbient)
-                .animation(ambientCrossFade, value: layerOpacities.readyAmbient)
+                .opacity(effectiveReadyAmbient)
+                .animation(ambientCrossFade, value: effectiveReadyAmbient)
         }
         .overlay {
             ReadyBorderGlow(seed: animationSeed, layoutMode: layoutMode, animate: shouldAnimate && layerOpacities.readyBorder > 0)
