@@ -4,7 +4,7 @@ This directory contains the standalone debug UI and a local telemetry server tha
 
 The UI has two tabs:
 - **Learn** — Architecture graph walkthrough with flow walkthroughs (Realtime, Dashboard, Activation)
-- **Live** — Real-time debugging with daemon snapshot, unified event timeline, and activation trace scoring
+- **Live** — Real-time debugging with daemon snapshot, unified event timeline, activation trace scoring, and an interactive session-state machine panel (project/session filters + timeline scrubber + guard visualization)
 
 ## Quick Start
 
@@ -24,7 +24,7 @@ Base URL (default): `http://localhost:9133`
 Streams activation decision traces parsed from `~/.capacitor/daemon/app-debug.log`.
 
 ### `GET /daemon-snapshot`
-Returns live daemon state snapshots (sessions, project_states, shell_state) by querying `~/.capacitor/daemon.sock`.
+Returns live daemon state snapshots (sessions, project_states, activity, shell_state, health) by querying `~/.capacitor/daemon.sock`.
 
 ### `GET /telemetry?limit=50`
 Returns the most recent telemetry events stored in memory.

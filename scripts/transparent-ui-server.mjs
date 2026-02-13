@@ -319,11 +319,12 @@ async function startTail() {
 
 async function buildSnapshot(options = {}) {
   try {
-    const [sessions, projectStates, shellState, health] = await Promise.all([
+    const [sessions, projectStates, shellState, health, activity] = await Promise.all([
       requestDaemon("get_sessions"),
       requestDaemon("get_project_states"),
       requestDaemon("get_shell_state"),
-      requestDaemon("get_health")
+      requestDaemon("get_health"),
+      requestDaemon("get_activity", { limit: 120 })
     ]);
     const shellData = shellState && shellState.ok ? shellState.data : { version: 1, shells: {} };
     const normalizedShellState = normalizeShellState(shellData, {
@@ -335,6 +336,7 @@ async function buildSnapshot(options = {}) {
       timestamp: new Date().toISOString(),
       sessions: sessions && sessions.ok ? sessions.data : [],
       project_states: projectStates && projectStates.ok ? projectStates.data : [],
+      activity: activity && activity.ok ? activity.data : [],
       shell_state: normalizedShellState,
       health: health && health.ok ? health.data : null
     };

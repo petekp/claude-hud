@@ -61,11 +61,17 @@ body {
 .header {
   display: flex;
   align-items: center;
-  gap: 12px;
+  justify-content: space-between;
+  gap: 16px;
   padding: 8px 16px;
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
   background: var(--surface);
+}
+.header-left {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
 }
 .header h1 {
   font-size: 14px;
@@ -84,27 +90,30 @@ body {
 .tab-bar {
   display: flex;
   gap: 2px;
-  padding: 0 16px;
-  border-bottom: 1px solid var(--border);
-  background: var(--surface);
   flex-shrink: 0;
 }
+.top-tabs {
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
 .tab-btn {
-  padding: 8px 20px;
+  padding: 5px 12px;
   background: none;
-  border: none;
-  border-bottom: 2px solid transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
   color: var(--muted);
   font: inherit;
   font-size: 12px;
   font-weight: 500;
   cursor: pointer;
-  transition: color 0.15s, border-color 0.15s;
+  transition: color 0.15s, border-color 0.15s, background 0.15s;
 }
 .tab-btn:hover { color: var(--text); }
 .tab-btn.active {
   color: var(--accent);
-  border-bottom-color: var(--accent);
+  border-color: var(--accent);
+  background: var(--accent-dim);
 }
 
 /* ═══════════════════════════════════════════════
@@ -163,6 +172,44 @@ body {
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
   flex-wrap: wrap;
+}
+.live-subnav {
+  display: flex;
+  gap: 6px;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+  flex-shrink: 0;
+}
+.live-subtab-btn {
+  padding: 5px 12px;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  color: var(--muted);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s, background 0.15s;
+}
+.live-subtab-btn:hover {
+  color: var(--text);
+  border-color: var(--accent-dim);
+}
+.live-subtab-btn.active {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: var(--accent-dim);
+}
+.live-subtab-content {
+  display: none;
+  flex: 1;
+  min-height: 0;
+}
+.live-subtab-content.active {
+  display: flex;
+  flex-direction: column;
 }
 .live-main {
   display: grid;
@@ -864,6 +911,266 @@ body {
 .rank-arrow { color: var(--muted); margin: 0 2px; font-size: 9px; }
 
 /* ═══════════════════════════════════════════════
+   LIVE TAB: SESSION MACHINE
+   ═══════════════════════════════════════════════ */
+.live-machine-layout {
+  display: grid;
+  grid-template-columns: 1fr 320px;
+  grid-template-rows: minmax(0, 1fr);
+  gap: 10px;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  padding: 12px;
+}
+.live-machine-main,
+.live-machine-side {
+  min-height: 0;
+}
+.live-machine-main {
+  overflow: auto;
+}
+.live-machine-side {
+  display: flex;
+  width: 100%;
+  overflow: hidden;
+}
+.machine-header {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--accent);
+  margin-bottom: 8px;
+}
+.machine-controls {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+.machine-controls select {
+  padding: 4px 8px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font: inherit;
+  font-size: 11px;
+}
+.machine-timeline-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.machine-timeline-controls input[type="range"] {
+  flex: 1;
+}
+.machine-summary {
+  font-size: 11px;
+  color: var(--muted);
+  margin-bottom: 8px;
+}
+.machine-graph {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 8px;
+  margin-bottom: 10px;
+}
+.machine-explain-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+.machine-panel {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 8px;
+}
+.machine-panel h4 {
+  font-size: 11px;
+  color: var(--accent);
+  margin-bottom: 6px;
+}
+.machine-history {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
+  width: 100%;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 8px;
+}
+.machine-history h4 {
+  font-size: 11px;
+  color: var(--accent);
+  margin-bottom: 6px;
+}
+.machine-history-list {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  overflow: auto;
+}
+.machine-history-row {
+  display: block;
+  width: 100%;
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+  appearance: none;
+  height: auto;
+  padding: 5px 7px;
+  border-radius: var(--radius-sm);
+  border: 1px solid transparent;
+  font-size: 10px;
+  color: var(--muted);
+  background: rgba(255,255,255,0.02);
+}
+.machine-history-row.active {
+  border-color: var(--cyan);
+  color: var(--text);
+  background: rgba(0,200,255,0.08);
+}
+.machine-history-event {
+  font-weight: 600;
+  color: var(--text);
+}
+.machine-history-meta {
+  display: block;
+  font-family: "SF Mono", "Fira Code", monospace;
+  font-size: 9px;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+.machine-guards {
+  display: grid;
+  gap: 6px;
+}
+.machine-guard {
+  background: rgba(255,255,255,0.02);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 6px;
+}
+.machine-guard-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 3px;
+}
+.machine-guard-detail {
+  font-size: 10px;
+  color: var(--muted);
+  line-height: 1.35;
+}
+.machine-guard-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.machine-guard-dot.active { background: var(--green); box-shadow: 0 0 4px rgba(34,197,94,0.35); }
+.machine-guard-dot.inactive { background: #f59e0b; }
+.machine-guard-dot.unknown { background: var(--muted); }
+.machine-guard-label { color: var(--text); font-size: 10px; font-weight: 600; }
+.machine-guard-status {
+  margin-left: auto;
+  font-size: 9px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  padding: 1px 6px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+}
+.machine-guard-status.active { color: var(--green); border-color: rgba(34,197,94,0.45); background: rgba(34,197,94,0.08); }
+.machine-guard-status.inactive { color: var(--accent); border-color: rgba(255,176,0,0.45); background: rgba(255,176,0,0.08); }
+.machine-guard-status.unknown { color: var(--muted); border-color: var(--border); background: rgba(255,255,255,0.03); }
+.machine-mapping {
+  display: grid;
+  gap: 6px;
+}
+.machine-kv {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: rgba(255,255,255,0.02);
+  padding: 6px;
+}
+.machine-kv-label {
+  display: block;
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.35px;
+  color: var(--muted);
+  margin-bottom: 2px;
+}
+.machine-kv-value {
+  display: block;
+  font-size: 10px;
+  color: var(--text);
+  font-family: "SF Mono", "Fira Code", monospace;
+}
+.machine-node {
+  fill: var(--surface);
+  stroke: var(--border);
+  stroke-width: 1.4;
+}
+.machine-node-label {
+  font-size: 10px;
+  fill: var(--muted);
+  text-anchor: middle;
+  dominant-baseline: central;
+}
+.machine-node.active {
+  stroke: var(--accent);
+  stroke-width: 2.2;
+  filter: drop-shadow(0 0 6px rgba(255,176,0,0.35));
+}
+.machine-node.active + .machine-node-label {
+  fill: var(--accent);
+}
+.machine-edge {
+  fill: none;
+  stroke: var(--border);
+  stroke-width: 1.2;
+}
+.machine-edge.active {
+  stroke: var(--cyan);
+  stroke-width: 2.3;
+  filter: drop-shadow(0 0 4px rgba(0,200,255,0.35));
+}
+.machine-edge-label-bg {
+  fill: rgba(20, 15, 4, 0.92);
+  stroke: var(--border);
+  stroke-width: 1;
+}
+.machine-edge-label-bg.active {
+  fill: rgba(0, 200, 255, 0.1);
+  stroke: var(--cyan);
+}
+.machine-edge-label {
+  font-size: 10px;
+  fill: #d4c5ab;
+  text-anchor: middle;
+  dominant-baseline: hanging;
+  paint-order: stroke fill;
+  stroke: rgba(0, 0, 0, 0.65);
+  stroke-width: 2;
+}
+.machine-edge-label.active {
+  fill: var(--cyan);
+}
+
+/* ═══════════════════════════════════════════════
    ARCHITECTURE OVERVIEW
    ═══════════════════════════════════════════════ */
 .arch-overview { font-size: 11px; color: var(--muted); }
@@ -888,6 +1195,8 @@ body {
 @media (max-width: 1000px) {
   .live-main { grid-template-columns: 1fr; }
   .live-state { border-right: none; border-bottom: 1px solid var(--border); max-height: 300px; }
+  .live-machine-layout { grid-template-columns: 1fr; }
+  .machine-explain-grid { grid-template-columns: 1fr; }
 }
 </style>
 </head>
@@ -897,14 +1206,15 @@ body {
      ═══════════════════════════════════════════════ -->
 <div class="app">
   <header class="header">
-    <h1>Capacitor Interface Explorer</h1>
-    <span class="subtitle">Architecture + Live Debugging</span>
+    <div class="header-left">
+      <h1>Capacitor Interface Explorer</h1>
+      <span class="subtitle">Architecture + Live Debugging</span>
+    </div>
+    <nav class="tab-bar top-tabs">
+      <button class="tab-btn active" data-tab="learn">Learn</button>
+      <button class="tab-btn" data-tab="live">Live</button>
+    </nav>
   </header>
-
-  <nav class="tab-bar">
-    <button class="tab-btn active" data-tab="learn">Learn</button>
-    <button class="tab-btn" data-tab="live">Live</button>
-  </nav>
 
   <!-- ═══ LEARN TAB ═══ -->
   <div class="tab-content active" id="tab-learn">
@@ -943,33 +1253,80 @@ body {
       <button class="ctrl" id="snapshot-refresh">Refresh</button>
       <label style="font-size:10px;color:var(--muted);display:flex;align-items:center;gap:3px;"><input type="checkbox" id="snapshot-auto" checked> Auto</label>
     </section>
-    <section class="live-main">
-      <div class="live-state" id="live-state-col">
-        <div class="kpi-grid" id="kpi-grid">
-          <div class="kpi-card"><div class="kpi-label">Sessions</div><div class="kpi-value" id="kpi-sessions">--</div></div>
-          <div class="kpi-card"><div class="kpi-label">Project</div><div class="kpi-value" id="kpi-project" style="font-size:12px;">--</div></div>
-          <div class="kpi-card"><div class="kpi-label">Shells</div><div class="kpi-value" id="kpi-shells">--</div></div>
-          <div class="kpi-card"><div class="kpi-label">Daemon</div><div class="kpi-value" id="kpi-daemon">--</div></div>
-        </div>
-        <div id="snapshot-sections"></div>
-      </div>
-      <div class="live-timeline" id="live-timeline-col">
-        <div class="timeline-controls">
-          <input type="text" id="timeline-filter" placeholder="Filter events...">
-          <select id="timeline-source-filter">
-            <option value="all">All Sources</option>
-            <option value="hook">Hook</option>
-            <option value="daemon">Daemon</option>
-            <option value="swift">Swift</option>
-            <option value="telemetry">Telemetry</option>
-          </select>
-          <button class="ctrl" id="timeline-clear">Clear</button>
-          <button class="ctrl" id="trace-test-btn" title="Inject mock activation trace data">Test Trace</button>
-        </div>
-        <div id="timeline-events"><div class="timeline-empty">No events yet. Connect to a live trace or start the telemetry server.</div></div>
-        <div id="activation-trace-section"></div>
-      </div>
+    <section class="live-subnav">
+      <button class="live-subtab-btn active" data-live-subtab="overview">Overview</button>
+      <button class="live-subtab-btn" data-live-subtab="session-machine">Session Machine</button>
     </section>
+
+    <div class="live-subtab-content active" id="live-subtab-overview">
+      <section class="live-main">
+        <div class="live-state" id="live-state-col">
+          <div class="kpi-grid" id="kpi-grid">
+            <div class="kpi-card"><div class="kpi-label">Sessions</div><div class="kpi-value" id="kpi-sessions">--</div></div>
+            <div class="kpi-card"><div class="kpi-label">Project</div><div class="kpi-value" id="kpi-project" style="font-size:12px;">--</div></div>
+            <div class="kpi-card"><div class="kpi-label">Shells</div><div class="kpi-value" id="kpi-shells">--</div></div>
+            <div class="kpi-card"><div class="kpi-label">Daemon</div><div class="kpi-value" id="kpi-daemon">--</div></div>
+          </div>
+          <div id="snapshot-sections"></div>
+        </div>
+        <div class="live-timeline" id="live-timeline-col">
+          <div class="timeline-controls">
+            <input type="text" id="timeline-filter" placeholder="Filter events...">
+            <select id="timeline-source-filter">
+              <option value="all">All Sources</option>
+              <option value="hook">Hook</option>
+              <option value="daemon">Daemon</option>
+              <option value="swift">Swift</option>
+              <option value="telemetry">Telemetry</option>
+            </select>
+            <button class="ctrl" id="timeline-clear">Clear</button>
+            <button class="ctrl" id="trace-test-btn" title="Inject mock activation trace data">Test Trace</button>
+          </div>
+          <div id="timeline-events"><div class="timeline-empty">No events yet. Connect to a live trace or start the telemetry server.</div></div>
+          <div id="activation-trace-section"></div>
+        </div>
+      </section>
+    </div>
+
+    <div class="live-subtab-content" id="live-subtab-session-machine">
+      <section class="live-machine-layout">
+        <div class="live-machine-main">
+          <div class="machine-header">Session Machine</div>
+          <div class="machine-controls">
+            <select id="machine-project-filter">
+              <option value="all">All projects</option>
+            </select>
+            <select id="machine-session-filter">
+              <option value="all">All sessions</option>
+            </select>
+          </div>
+          <div class="machine-timeline-controls">
+            <input type="range" id="machine-scrubber" min="0" max="0" step="1" value="0">
+            <label style="font-size:10px;color:var(--muted);display:flex;align-items:center;gap:3px;">
+              <input type="checkbox" id="machine-follow" checked> Follow
+            </label>
+          </div>
+          <div class="machine-summary" id="machine-summary">Waiting for daemon snapshot…</div>
+          <div class="machine-graph" id="machine-graph"></div>
+          <section class="machine-explain-grid">
+            <div class="machine-panel">
+              <h4>Guard Evaluation</h4>
+              <div class="machine-guards" id="machine-guards"></div>
+            </div>
+            <div class="machine-panel">
+              <h4>State Mapping</h4>
+              <div class="machine-mapping" id="machine-mapping"></div>
+            </div>
+          </section>
+        </div>
+        <aside class="live-machine-side">
+          <div class="machine-history">
+            <h4>Recent Events (Newest First)</h4>
+            <div class="machine-history-list" id="machine-history-list"></div>
+          </div>
+        </aside>
+      </section>
+    </div>
   </div>
 
   <!-- ═══ GLOBAL OVERLAYS ═══ -->
@@ -984,6 +1341,7 @@ body {
   </div>
 </div>
 
+<script src="./session-machine-model.js"></script>
 <script>
 /* ═══════════════════════════════════════════════════════════════
    PART 1: CONSTANTS + DATA (preserved from original)
@@ -1194,6 +1552,16 @@ const state = {
   unifiedEventIds: new Set(),
   timelineFilter: "",
   timelineSourceFilter: "all",
+  liveSubtab: "overview",
+  machineProjectFilter: "all",
+  machineSessionFilter: "all",
+  machineFollowLatest: true,
+  machineCursor: 0,
+  machineHistory: [],
+  machineHistoryIds: new Set(),
+  machinePreviousBySession: {},
+  machineLatestSessions: [],
+  machineLatestProjects: [],
   lastDecision: null,
   trace: []
 };
@@ -1224,6 +1592,14 @@ function byId(list, id) { return list.find(item => item.id === id); }
 function nodeCenter(node) { return { x: node.x + NODE_W / 2, y: node.y + NODE_H / 2 }; }
 function clamp(value, min, max) { return Math.min(Math.max(value, min), max); }
 function currentFlow() { return byId(flows, state.flowId) || flows[0]; }
+function escapeHtml(value) {
+  return String(value == null ? "" : value)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/\"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
 
 function flowEdgeState(edgeId) {
   const flow = currentFlow();
@@ -1785,6 +2161,468 @@ function stopPlay() {
 }
 
 /* ═══════════════════════════════════════════════════════════════
+   PART 9B: LIVE SESSION MACHINE MODEL + RENDERING
+   ═══════════════════════════════════════════════════════════════ */
+function machineNormalizePath(path) {
+  if (!path) return "";
+  var value = String(path).trim().replace(/\/+$/, "");
+  return value.toLowerCase();
+}
+
+function machineParseTime(value) {
+  if (!value) return null;
+  var ts = Date.parse(value);
+  return Number.isFinite(ts) ? ts : null;
+}
+
+function machineSessionFromSnapshot(raw) {
+  return {
+    session_id: raw.session_id || raw.sessionId || "",
+    state: raw.state || "idle",
+    project_path: raw.project_path || raw.projectPath || raw.cwd || "",
+    updated_at: raw.updated_at || raw.updatedAt || null,
+    state_changed_at: raw.state_changed_at || raw.stateChangedAt || null,
+    last_event: raw.last_event || raw.lastEvent || null,
+    last_activity_at: raw.last_activity_at || raw.lastActivityAt || null,
+    tools_in_flight: raw.tools_in_flight != null ? raw.tools_in_flight : raw.toolsInFlight,
+    ready_reason: raw.ready_reason || raw.readyReason || null,
+    is_alive: raw.is_alive != null ? raw.is_alive : raw.isAlive,
+    has_session: raw.has_session != null ? raw.has_session : raw.hasSession
+  };
+}
+
+function updateMachineHistoryFromSessions(sessions) {
+  if (!window.SessionMachineModel) return;
+  var sorted = sessions.slice().sort(function(a, b) {
+    return (machineParseTime(a.updated_at) || 0) - (machineParseTime(b.updated_at) || 0);
+  });
+  var now = Date.now();
+  sorted.forEach(function(session) {
+    if (!session.session_id) return;
+    var entryId = [
+      "snapshot",
+      session.session_id,
+      session.updated_at || "",
+      session.state || "",
+      session.last_event || "",
+      session.ready_reason || "",
+      String(session.tools_in_flight != null ? session.tools_in_flight : ""),
+      String(session.is_alive)
+    ].join("|");
+    if (state.machineHistoryIds.has(entryId)) return;
+    state.machineHistoryIds.add(entryId);
+    var previous = state.machinePreviousBySession[session.session_id] || null;
+    var transition = SessionMachineModel.inferTransition(previous, session, now);
+    var rawState = SessionMachineModel.normalizeState(session.state);
+    var effectiveState = SessionMachineModel.effectiveState(session, now);
+    state.machineHistory.push({
+      id: entryId,
+      timestamp: machineParseTime(session.updated_at) || Date.now(),
+      timestampRaw: session.updated_at || null,
+      sessionId: session.session_id,
+      projectPath: session.project_path || "",
+      rawState: rawState,
+      effectiveState: effectiveState,
+      eventLabel: transition ? transition.trigger : (session.last_event || "session_snapshot"),
+      transition: transition
+    });
+    state.machinePreviousBySession[session.session_id] = session;
+  });
+  state.machineHistory.sort(function(a, b) {
+    if (a.timestamp === b.timestamp) return a.id.localeCompare(b.id);
+    return a.timestamp - b.timestamp;
+  });
+  if (state.machineHistory.length > 400) {
+    var overflow = state.machineHistory.length - 400;
+    var removed = state.machineHistory.splice(0, overflow);
+    removed.forEach(function(item) { state.machineHistoryIds.delete(item.id); });
+  }
+}
+
+function updateMachineHistoryFromActivity(activity) {
+  if (!Array.isArray(activity)) return;
+  activity.forEach(function(item) {
+    var sessionId = item.session_id || item.sessionId || "";
+    var recordedAt = item.recorded_at || item.recordedAt || "";
+    var filePath = item.file_path || item.filePath || "";
+    var toolName = item.tool_name || item.toolName || "";
+    var projectPath = item.project_path || item.projectPath || "";
+    var entryId = ["activity", sessionId, recordedAt, filePath, toolName].join("|");
+    if (state.machineHistoryIds.has(entryId)) return;
+    state.machineHistoryIds.add(entryId);
+    state.machineHistory.push({
+      id: entryId,
+      timestamp: machineParseTime(recordedAt) || Date.now(),
+      timestampRaw: recordedAt || null,
+      sessionId: sessionId || "unknown",
+      projectPath: projectPath || "",
+      rawState: null,
+      effectiveState: null,
+      eventLabel: toolName ? ("post_tool_use(" + toolName + ")") : "post_tool_use",
+      transition: null
+    });
+  });
+  state.machineHistory.sort(function(a, b) {
+    if (a.timestamp === b.timestamp) return a.id.localeCompare(b.id);
+    return a.timestamp - b.timestamp;
+  });
+}
+
+function machineFilteredSessions() {
+  return state.machineLatestSessions.filter(function(session) {
+    if (state.machineProjectFilter !== "all" && machineNormalizePath(session.project_path) !== state.machineProjectFilter) {
+      return false;
+    }
+    return true;
+  });
+}
+
+function machineVisibleHistory() {
+  return state.machineHistory.filter(function(entry) {
+    if (state.machineProjectFilter !== "all" && machineNormalizePath(entry.projectPath) !== state.machineProjectFilter) {
+      return false;
+    }
+    if (state.machineSessionFilter !== "all" && entry.sessionId !== state.machineSessionFilter) {
+      return false;
+    }
+    return true;
+  });
+}
+
+function machineNodePositions() {
+  return {
+    working: { x: 450, y: 88 },
+    waiting: { x: 760, y: 190 },
+    compacting: { x: 140, y: 190 },
+    ready: { x: 450, y: 310 },
+    idle: { x: 760, y: 410 }
+  };
+}
+
+function machineTransitionGroups() {
+  var grouped = {};
+  SessionMachineModel.GRAPH_TRANSITIONS.forEach(function(t) {
+    var key = t.from + "->" + t.to;
+    grouped[key] = grouped[key] || [];
+    grouped[key].push(t);
+  });
+  return grouped;
+}
+
+function machineGraphSvg(activeState, highlightedTransition) {
+  if (!window.SessionMachineModel) return "";
+  var positions = machineNodePositions();
+  var grouped = machineTransitionGroups();
+  var edgeSvg = SessionMachineModel.GRAPH_TRANSITIONS.map(function(t) {
+    var from = positions[t.from];
+    var to = positions[t.to];
+    var key = t.from + "->" + t.to;
+    var siblings = grouped[key] || [t];
+    var index = siblings.findIndex(function(item) { return item.id === t.id; });
+    var dx = to.x - from.x;
+    var dy = to.y - from.y;
+    var len = Math.sqrt((dx * dx) + (dy * dy)) || 1;
+    var nx = -dy / len;
+    var ny = dx / len;
+    var centered = index - ((siblings.length - 1) / 2);
+    var offset = centered * 24;
+    var cx = (from.x + to.x) / 2 + (nx * offset);
+    var cy = (from.y + to.y) / 2 + (ny * offset);
+    var active = highlightedTransition && highlightedTransition.from === t.from && highlightedTransition.to === t.to;
+    return (
+      '<path class="machine-edge' + (active ? " active" : "") + '" d="M ' + from.x + " " + from.y + " Q " + cx + " " + cy + " " + to.x + " " + to.y + '"></path>'
+    );
+  }).join("");
+
+  var labelSvg = Object.keys(grouped).map(function(key) {
+    var transitions = grouped[key];
+    if (!transitions || transitions.length === 0) return "";
+    var fromName = transitions[0].from;
+    var toName = transitions[0].to;
+    var from = positions[fromName];
+    var to = positions[toName];
+    if (!from || !to) return "";
+    var dx = to.x - from.x;
+    var dy = to.y - from.y;
+    var len = Math.sqrt((dx * dx) + (dy * dy)) || 1;
+    var nx = -dy / len;
+    var ny = dx / len;
+    // Put opposite directions on opposite sides of the edge.
+    var side = fromName < toName ? 1 : -1;
+    var offset = 54 + (transitions.length > 1 ? 8 : 0);
+    var lx = ((from.x + to.x) / 2) + (nx * offset * side);
+    var ly = ((from.y + to.y) / 2) + (ny * offset * side);
+    var labels = transitions.map(function(t) { return t.trigger; });
+    var longest = labels.reduce(function(max, line) {
+      return Math.max(max, String(line).length);
+    }, 0);
+    var lineHeight = 11;
+    var boxWidth = Math.max(110, Math.min(360, Math.round(longest * 6.3) + 16));
+    var boxHeight = (labels.length * lineHeight) + 8;
+    var boxX = lx - (boxWidth / 2);
+    var boxY = ly - (boxHeight / 2);
+    var active = highlightedTransition && highlightedTransition.from === fromName && highlightedTransition.to === toName;
+    var tspans = labels.map(function(label, i) {
+      return '<tspan x="' + lx + '" dy="' + (i === 0 ? 0 : lineHeight) + '">' + escapeHtml(label) + "</tspan>";
+    }).join("");
+    return (
+      '<g>' +
+      '<rect class="machine-edge-label-bg' + (active ? " active" : "") + '" x="' + boxX + '" y="' + boxY + '" rx="6" ry="6" width="' + boxWidth + '" height="' + boxHeight + '"></rect>' +
+      '<text class="machine-edge-label' + (active ? " active" : "") + '" x="' + lx + '" y="' + (boxY + 5) + '">' + tspans + "</text>" +
+      "</g>"
+    );
+  }).join("");
+
+  var nodesSvg = SessionMachineModel.STATES.map(function(name) {
+    var p = positions[name];
+    var active = name === activeState;
+    var label = name.toUpperCase();
+    return (
+      '<circle class="machine-node' + (active ? " active" : "") + '" cx="' + p.x + '" cy="' + p.y + '" r="20"></circle>' +
+      '<text class="machine-node-label" x="' + p.x + '" y="' + (p.y + 32) + '">' + label + "</text>"
+    );
+  }).join("");
+
+  return '<svg viewBox="0 0 900 460" style="width:100%;height:440px;">' + edgeSvg + labelSvg + nodesSvg + "</svg>";
+}
+
+function machineTimelineEntries(visible) {
+  var maxEntries = 12;
+  var rows = [];
+  for (var i = visible.length - 1; i >= 0 && rows.length < maxEntries; i -= 1) {
+    rows.push({ index: i, entry: visible[i] });
+  }
+  if (!rows.some(function(row) { return row.index === state.machineCursor; }) && visible[state.machineCursor]) {
+    rows.push({ index: state.machineCursor, entry: visible[state.machineCursor] });
+    rows.sort(function(a, b) { return b.index - a.index; });
+  }
+  return rows;
+}
+
+function machineTimelineLabel(entry, index, total) {
+  var date = new Date(entry.timestamp);
+  var hh = String(date.getHours()).padStart(2, "0");
+  var mm = String(date.getMinutes()).padStart(2, "0");
+  var ss = String(date.getSeconds()).padStart(2, "0");
+  var ms = String(date.getMilliseconds()).padStart(3, "0");
+  return "#" + String(index + 1).padStart(2, "0") + "/" + total + " • " + hh + ":" + mm + ":" + ss + "." + ms;
+}
+
+function machineGuardStatusLabel(status) {
+  if (status === "active") return "Active";
+  if (status === "inactive") return "Inactive";
+  return "Unknown";
+}
+
+function machineDisplayValue(value, fallback) {
+  if (value == null || value === "") return fallback || "Unknown";
+  if (typeof value === "boolean") return value ? "Yes" : "No";
+  return String(value);
+}
+
+function machineMappingHtml(rows) {
+  return rows.map(function(row) {
+    return (
+      '<div class="machine-kv">' +
+      '<span class="machine-kv-label">' + escapeHtml(row.label) + "</span>" +
+      '<span class="machine-kv-value">' + escapeHtml(machineDisplayValue(row.value, row.fallback)) + "</span>" +
+      "</div>"
+    );
+  }).join("");
+}
+
+function renderMachinePanel() {
+  var projectSelect = document.getElementById("machine-project-filter");
+  var sessionSelect = document.getElementById("machine-session-filter");
+  var scrubber = document.getElementById("machine-scrubber");
+  var followToggle = document.getElementById("machine-follow");
+  var summaryEl = document.getElementById("machine-summary");
+  var graphEl = document.getElementById("machine-graph");
+  var historyEl = document.getElementById("machine-history-list");
+  var guardsEl = document.getElementById("machine-guards");
+  var mappingEl = document.getElementById("machine-mapping");
+  if (!projectSelect || !sessionSelect || !scrubber || !summaryEl || !graphEl || !historyEl || !guardsEl || !mappingEl) return;
+
+  if (!window.SessionMachineModel) {
+    summaryEl.textContent = "Session machine model script missing.";
+    graphEl.textContent = "";
+    historyEl.innerHTML = "";
+    guardsEl.innerHTML = "";
+    mappingEl.innerHTML = machineMappingHtml([
+      { label: "Model Status", value: "Session machine model script missing." }
+    ]);
+    return;
+  }
+
+  var projectMap = new Map();
+  state.machineLatestProjects.forEach(function(project) {
+    if (project && project.project_path) {
+      projectMap.set(machineNormalizePath(project.project_path), project.project_path);
+    }
+  });
+  state.machineLatestSessions.forEach(function(session) {
+    if (session.project_path) {
+      projectMap.set(machineNormalizePath(session.project_path), session.project_path);
+    }
+  });
+
+  var projectOptions = Array.from(projectMap.entries()).sort(function(a, b) {
+    return a[1].localeCompare(b[1]);
+  });
+  var projectHtml = '<option value="all">All projects</option>' + projectOptions.map(function(entry) {
+    var path = entry[1];
+    var name = path.split("/").filter(Boolean).pop() || path;
+    return '<option value="' + entry[0] + '">' + name + "</option>";
+  }).join("");
+  projectSelect.innerHTML = projectHtml;
+  if (!projectMap.has(state.machineProjectFilter) && state.machineProjectFilter !== "all") {
+    state.machineProjectFilter = "all";
+  }
+  projectSelect.value = state.machineProjectFilter;
+
+  var filteredSessions = machineFilteredSessions();
+  var sessionHtml = '<option value="all">All sessions</option>' + filteredSessions.map(function(session) {
+    var shortId = session.session_id ? session.session_id.slice(0, 8) : "unknown";
+    var path = session.project_path || "";
+    var name = path.split("/").filter(Boolean).pop() || path || "unknown";
+    return '<option value="' + session.session_id + '">' + shortId + " • " + name + "</option>";
+  }).join("");
+  sessionSelect.innerHTML = sessionHtml;
+  if (state.machineSessionFilter !== "all" && !filteredSessions.some(function(s) { return s.session_id === state.machineSessionFilter; })) {
+    state.machineSessionFilter = "all";
+  }
+  sessionSelect.value = state.machineSessionFilter;
+  followToggle.checked = !!state.machineFollowLatest;
+
+  var visible = machineVisibleHistory();
+  if (visible.length === 0) {
+    scrubber.min = "0";
+    scrubber.max = "0";
+    scrubber.value = "0";
+    scrubber.disabled = true;
+    summaryEl.textContent = "No session history yet. Keep live snapshot polling active.";
+    graphEl.innerHTML = machineGraphSvg(null, null);
+    historyEl.innerHTML = '<div class="timeline-empty">No events for current filter.</div>';
+    guardsEl.innerHTML = "";
+    mappingEl.innerHTML = machineMappingHtml([
+      { label: "Project Card State", value: null, fallback: "No project selected" },
+      { label: "Raw Session State", value: null, fallback: "No session selected" },
+      { label: "Effective Session State", value: null, fallback: "No session selected" },
+      { label: "Ready Reason", value: null, fallback: "No data" },
+      { label: "Highlighted Transition", value: null, fallback: "No event selected" }
+    ]);
+    return;
+  }
+
+  scrubber.disabled = false;
+  scrubber.min = "0";
+  scrubber.max = String(visible.length - 1);
+  if (state.machineFollowLatest) {
+    state.machineCursor = visible.length - 1;
+  }
+  state.machineCursor = Math.max(0, Math.min(state.machineCursor, visible.length - 1));
+  scrubber.value = String(state.machineCursor);
+
+  var selectedEntry = visible[state.machineCursor];
+  var selectedSession = state.machineLatestSessions.find(function(session) {
+    return session.session_id === selectedEntry.sessionId;
+  }) || filteredSessions[0] || null;
+  var selectedRaw = selectedSession ? SessionMachineModel.normalizeState(selectedSession.state) : null;
+  var selectedEffective = selectedSession ? SessionMachineModel.effectiveState(selectedSession, Date.now()) : null;
+  var guards = selectedSession ? SessionMachineModel.evaluateGuards(selectedSession, Date.now()) : [];
+  var timestampLabel = selectedEntry.timestampRaw || new Date(selectedEntry.timestamp).toISOString();
+
+  summaryEl.textContent =
+    "event=" + selectedEntry.eventLabel +
+    " • session=" + selectedEntry.sessionId +
+    " • project=" + (selectedEntry.projectPath || "—") +
+    " • at=" + timestampLabel;
+
+  graphEl.innerHTML = machineGraphSvg(selectedEffective, selectedEntry.transition || null);
+  var timelineRows = machineTimelineEntries(visible);
+  historyEl.innerHTML = timelineRows.map(function(row) {
+    var entry = row.entry;
+    var absoluteIndex = row.index;
+    var active = absoluteIndex === state.machineCursor;
+    var transitionLabel = entry.transition ? (entry.transition.from + " -> " + entry.transition.to) : "state stable";
+    var sessionShort = (entry.sessionId || "unknown").slice(0, 8);
+    var projectShort = (entry.projectPath || "—").split("/").filter(Boolean).pop() || "—";
+    return (
+      '<button type="button" class="machine-history-row' + (active ? " active" : "") + '" data-machine-index="' + absoluteIndex + '">' +
+      '<span class="machine-history-event">' + escapeHtml(entry.eventLabel) + "</span>" +
+      '<span class="machine-history-meta">' + escapeHtml(transitionLabel) + "</span>" +
+      '<span class="machine-history-meta">' + escapeHtml(machineTimelineLabel(entry, absoluteIndex, visible.length)) + "</span>" +
+      '<span class="machine-history-meta">' + escapeHtml(sessionShort + " • " + projectShort) + "</span>" +
+      "</button>"
+    );
+  }).join("");
+  historyEl.querySelectorAll("[data-machine-index]").forEach(function(row) {
+    row.addEventListener("click", function() {
+      state.machineFollowLatest = false;
+      state.machineCursor = Number(row.dataset.machineIndex || 0);
+      followToggle.checked = false;
+      renderMachinePanel();
+    });
+  });
+  guardsEl.innerHTML = guards.map(function(guard) {
+    var statusClass = guard.status === "active" ? "active" : (guard.status === "inactive" ? "inactive" : "unknown");
+    return (
+      '<div class="machine-guard">' +
+      '<div class="machine-guard-head">' +
+      '<span class="machine-guard-dot ' + statusClass + '"></span>' +
+      '<span class="machine-guard-label">' + escapeHtml(guard.label) + "</span>" +
+      '<span class="machine-guard-status ' + statusClass + '">' + machineGuardStatusLabel(statusClass) + "</span>" +
+      "</div>" +
+      '<div class="machine-guard-detail">' + escapeHtml(guard.detail) + "</div>" +
+      "</div>"
+    );
+  }).join("");
+
+  var selectedProjectPath = selectedEntry.projectPath || (selectedSession ? selectedSession.project_path : "");
+  var selectedProjectNorm = machineNormalizePath(selectedProjectPath);
+  var daemonProject = state.machineLatestProjects.find(function(project) {
+    return machineNormalizePath(project.project_path) === selectedProjectNorm;
+  }) || null;
+  mappingEl.innerHTML = machineMappingHtml([
+    { label: "Project Card State", value: daemonProject ? daemonProject.state : null, fallback: "Unknown" },
+    { label: "Project Has Session", value: daemonProject && daemonProject.has_session != null ? daemonProject.has_session : null, fallback: "Unknown" },
+    { label: "Raw Session State", value: selectedRaw, fallback: "Unknown" },
+    { label: "Effective Session State", value: selectedEffective, fallback: "Unknown" },
+    { label: "Ready Reason", value: selectedSession ? selectedSession.ready_reason : null, fallback: "None" },
+    { label: "Highlighted Transition", value: selectedEntry.transition ? (selectedEntry.transition.from + " -> " + selectedEntry.transition.to) : null, fallback: "No transition" }
+  ]);
+}
+
+function initMachineControls() {
+  var projectSelect = document.getElementById("machine-project-filter");
+  var sessionSelect = document.getElementById("machine-session-filter");
+  var scrubber = document.getElementById("machine-scrubber");
+  var followToggle = document.getElementById("machine-follow");
+  if (!projectSelect || !sessionSelect || !scrubber || !followToggle) return;
+
+  projectSelect.addEventListener("change", function() {
+    state.machineProjectFilter = projectSelect.value || "all";
+    if (state.machineFollowLatest) state.machineCursor = Number(scrubber.max || 0);
+    renderMachinePanel();
+  });
+  sessionSelect.addEventListener("change", function() {
+    state.machineSessionFilter = sessionSelect.value || "all";
+    if (state.machineFollowLatest) state.machineCursor = Number(scrubber.max || 0);
+    renderMachinePanel();
+  });
+  scrubber.addEventListener("input", function() {
+    state.machineFollowLatest = false;
+    state.machineCursor = Number(scrubber.value || 0);
+    followToggle.checked = false;
+    renderMachinePanel();
+  });
+  followToggle.addEventListener("change", function() {
+    state.machineFollowLatest = !!followToggle.checked;
+    renderMachinePanel();
+  });
+}
+
+/* ═══════════════════════════════════════════════════════════════
    PART 10: LIVE TAB — SNAPSHOT + TIMELINE
    ═══════════════════════════════════════════════════════════════ */
 function renderLiveState(data) {
@@ -1800,10 +2638,14 @@ function renderLiveState(data) {
     daemonEl.textContent = data ? "err" : "--";
     daemonEl.className = "kpi-value unhealthy";
     sectionsEl.innerHTML = '<div style="color:var(--muted);font-size:11px;padding:8px;">No snapshot data.</div>';
+    state.machineLatestSessions = [];
+    state.machineLatestProjects = [];
+    renderMachinePanel();
     return;
   }
   var sessions = Array.isArray(data.sessions) ? data.sessions : [];
   var projects = Array.isArray(data.project_states) ? data.project_states : [];
+  var activity = Array.isArray(data.activity) ? data.activity : [];
   var shellsMap = data.shell_state && data.shell_state.shells ? data.shell_state.shells : {};
   var shells = Object.entries(shellsMap).map(function(pair) { return Object.assign({ pid: pair[0] }, pair[1]); });
   var health = data.health && typeof data.health === "object" ? data.health : null;
@@ -1826,6 +2668,18 @@ function renderLiveState(data) {
   html += '<div class="data-section-header">Projects (' + projects.length + ')</div><div class="data-section-body">';
   projects.slice(0, 10).forEach(function(p) {
     html += '<div class="snapshot-item">' + formatPayload({ state: p.state, path: p.project_path || "--", sessions: p.session_count || 0, active: p.active_count || 0 }) + '</div>';
+  });
+  html += '</div>';
+  // Activity section
+  html += '<div class="data-section-header collapsed">Activity (' + activity.length + ')</div><div class="data-section-body">';
+  activity.slice(0, 10).forEach(function(entry) {
+    html += '<div class="snapshot-item">' + formatPayload({
+      session_id: (entry.session_id || "").slice(0, 8),
+      project_path: entry.project_path || "--",
+      tool_name: entry.tool_name || "--",
+      file_path: entry.file_path || "--",
+      recorded_at: entry.recorded_at || "--"
+    }) + '</div>';
   });
   html += '</div>';
   // Shells section
@@ -1864,6 +2718,12 @@ function renderLiveState(data) {
   sectionsEl.querySelectorAll(".data-section-header").forEach(function(header) {
     header.addEventListener("click", function() { header.classList.toggle("collapsed"); });
   });
+
+  state.machineLatestSessions = sessions.map(machineSessionFromSnapshot);
+  state.machineLatestProjects = projects;
+  updateMachineHistoryFromSessions(state.machineLatestSessions);
+  updateMachineHistoryFromActivity(activity);
+  renderMachinePanel();
 }
 
 async function fetchSnapshot() {
@@ -2281,6 +3141,7 @@ function setTab(tabId) {
   document.querySelectorAll(".tab-btn").forEach(function(btn) { btn.classList.toggle("active", btn.dataset.tab === tabId); });
   document.querySelectorAll(".tab-content").forEach(function(el) { el.classList.toggle("active", el.id === "tab-" + tabId); });
   if (tabId === "live") {
+    setLiveSubtab(state.liveSubtab);
     startSnapshotPolling();
     fetchSnapshot();
     connectTelemetrySSE();
@@ -2290,6 +3151,20 @@ function setTab(tabId) {
     stopSnapshotPolling();
     stopTelemetryPolling();
     disconnectTelemetrySSE();
+  }
+}
+
+function setLiveSubtab(subtabId) {
+  var nextTab = subtabId === "session-machine" ? "session-machine" : "overview";
+  state.liveSubtab = nextTab;
+  document.querySelectorAll(".live-subtab-btn").forEach(function(btn) {
+    btn.classList.toggle("active", btn.dataset.liveSubtab === nextTab);
+  });
+  document.querySelectorAll(".live-subtab-content").forEach(function(el) {
+    el.classList.toggle("active", el.id === "live-subtab-" + nextTab);
+  });
+  if (nextTab === "session-machine") {
+    renderMachinePanel();
   }
 }
 
@@ -2373,11 +3248,15 @@ function init() {
   createEdgeElements();
   initLearnControls();
   initMinimap();
+  initMachineControls();
   initKeyboardShortcuts();
 
   // Tab bar clicks
   document.querySelectorAll(".tab-btn").forEach(function(btn) {
     btn.addEventListener("click", function() { setTab(btn.dataset.tab); });
+  });
+  document.querySelectorAll(".live-subtab-btn").forEach(function(btn) {
+    btn.addEventListener("click", function() { setLiveSubtab(btn.dataset.liveSubtab); });
   });
 
   // Detail popover close on backdrop click
@@ -2448,6 +3327,8 @@ function init() {
 
   // Initial render
   setFlow(flows[0].id);
+  setLiveSubtab(state.liveSubtab);
+  renderMachinePanel();
 }
 
 init();
