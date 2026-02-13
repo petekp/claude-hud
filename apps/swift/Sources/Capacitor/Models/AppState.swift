@@ -457,6 +457,89 @@ class AppState {
         }
     }
 
+    // MARK: - Quick Feedback
+
+    func submitQuickFeedback(
+        _ message: String,
+        preferences overridePreferences: QuickFeedbackPreferences? = nil,
+    ) {
+        let trimmed = message.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            toast = .error("Add feedback before submitting")
+            return
+        }
+
+        let preferences = overridePreferences ?? QuickFeedbackPreferences.load()
+        let context = quickFeedbackContext()
+        let submitter = QuickFeedbackSubmitter(
+            openURL: { url in
+                NSWorkspace.shared.open(url)
+            },
+            sendRequest: { request in
+                let (_, response) = try await URLSession.shared.data(for: request)
+                if let httpResponse = response as? HTTPURLResponse,
+                   !(200 ..< 300).contains(httpResponse.statusCode)
+                {
+                    throw URLError(.badServerResponse)
+                }
+            },
+        )
+
+        _Concurrency.Task { [weak self] in
+            let outcome = await submitter.submit(
+                message: trimmed,
+                context: context,
+                preferences: preferences,
+            )
+
+            await MainActor.run {
+                guard let self else { return }
+
+                if outcome.issueOpened {
+                    if outcome.endpointAttempted, outcome.endpointSucceeded {
+                        self.toast = ToastMessage("Opened GitHub feedback draft and sent telemetry")
+                    } else if outcome.endpointAttempted {
+                        self.toast = ToastMessage("Opened GitHub feedback draft (endpoint send failed)")
+                    } else {
+                        self.toast = ToastMessage("Opened GitHub feedback draft")
+                    }
+                } else {
+                    self.toast = .error("Couldn’t open GitHub feedback draft")
+                }
+
+                Telemetry.emit("quick_feedback_submitted", "Quick feedback submitted", payload: [
+                    "issue_opened": outcome.issueOpened,
+                    "endpoint_attempted": outcome.endpointAttempted,
+                    "endpoint_succeeded": outcome.endpointSucceeded,
+                    "telemetry_enabled": preferences.includeTelemetry,
+                    "project_paths_enabled": preferences.includeProjectPaths,
+                    "session_count": context.sessionStates.count,
+                    "project_count": context.projectCount,
+                    "active_source": context.activeSource,
+                ])
+            }
+        }
+    }
+
+    private func quickFeedbackContext() -> QuickFeedbackContext {
+        let info = Bundle.main.infoDictionary
+        let appVersion = info?["CFBundleShortVersionString"] as? String ?? "unknown"
+        let buildNumber = info?["CFBundleVersion"] as? String ?? "unknown"
+
+        return QuickFeedbackContext(
+            appVersion: appVersion,
+            buildNumber: buildNumber,
+            channel: channel,
+            osVersion: ProcessInfo.processInfo.operatingSystemVersionString,
+            daemonStatus: daemonStatus,
+            activeProjectPath: activeProjectPath,
+            activeSource: String(describing: activeSource),
+            projectCount: projects.count,
+            sessionStates: sessionStateManager.sessionStates,
+            activationTrace: activationTrace,
+        )
+    }
+
     // MARK: - Project Management
 
     func refreshSuggestedProjects() {

@@ -1,7 +1,7 @@
 # Agent Changelog
 
 > This file helps coding agents understand project evolution, key decisions,
-> and deprecated patterns. Updated: 2026-02-12 (alpha release pipeline guardrails + clippy dead-code hygiene)
+> and deprecated patterns. Updated: 2026-02-13 (quick feedback MVP with privacy controls + hybrid transport)
 
 ## Current State Summary
 
@@ -17,6 +17,52 @@ Capacitor is a native macOS SwiftUI app (Apple Silicon, macOS 14+) that acts as 
 | `.claude/plans/ACTIVE-alpha-release-checklist.md` ("Build & Signing" block) | `App is code-signed`, `App is notarized`, and `DMG or ZIP artifact for download` remain unchecked | Local release verification now demonstrates successful code signing, notarized DMG acceptance (`spctl`), and generated ZIP/DMG artifacts for `0.2.0-alpha.1`; checklist needs manual status refresh | 2026-02-12 |
 
 ## Timeline
+
+### 2026-02-13 — Quick Feedback MVP (Hybrid GitHub + Optional API) (Completed / Uncommitted)
+
+**What changed:**
+- Added new quick feedback pipeline in Swift (`Utilities/QuickFeedback.swift`) with:
+  - consent-aware payload schema
+  - privacy defaults (`includeTelemetry=true`, `includeProjectPaths=false`)
+  - path redaction-by-default (`project#<hash>`)
+  - session/daemon/app context aggregation for triage
+  - GitHub issue prefill composer (`alpha-feedback` label)
+  - optional endpoint POST transport when `CAPACITOR_FEEDBACK_API_URL` is configured.
+- Added app-level feedback submission action in `AppState`:
+  - captures current runtime context (version/build/channel, OS, daemon status, active source, session map, activation trace digest signal)
+  - submits via `QuickFeedbackSubmitter`
+  - opens GitHub draft and surfaces toast outcomes
+  - emits `quick_feedback_submitted` telemetry event with transport outcome metadata.
+- Added quick-access UX in footer:
+  - new quick feedback button in primary footer controls
+  - lightweight modal sheet with freeform message box and submit action.
+- Added privacy controls in Settings (`Feedback & Privacy`):
+  - toggle: include telemetry context
+  - toggle: include project paths (disabled unless telemetry enabled).
+- Added focused test coverage (`QuickFeedbackSubmitterTests`) for:
+  - redaction default behavior
+  - explicit path opt-in behavior
+  - hybrid submission path (endpoint + GitHub)
+  - telemetry-disabled submission path (GitHub only).
+- Updated alpha checklist with a dedicated Quick Feedback section and manual QA checklist.
+
+**Why:**
+- Public alpha needed a low-friction way for users to report issues while giving maintainers enough runtime context to prioritize fixes/features.
+- Privacy guardrails are required for alpha: metadata-first telemetry and no raw project paths unless the user explicitly opts in.
+
+**Agent impact:**
+- For feedback-related work, prefer `QuickFeedbackSubmitter` and `QuickFeedbackPayloadBuilder` as the integration surface instead of ad-hoc URL building.
+- Preserve privacy defaults unless product direction explicitly changes; do not include project paths by default.
+- Keep feedback transport hybrid:
+  - GitHub issue draft is baseline UX
+  - endpoint POST is optional and environment-gated.
+- When extending feedback payload, avoid transcript/content capture by default; keep telemetry metadata-only.
+
+**Evidence / tests:**
+- `swift test --filter QuickFeedbackSubmitterTests` passes (4 tests).
+- Includes payload redaction, path opt-in, endpoint+GitHub submission, and telemetry-disabled behavior.
+
+---
 
 ### 2026-02-12 — Alpha Release Pipeline Guardrails + Clippy Dead-Code Hygiene (Completed / Uncommitted)
 

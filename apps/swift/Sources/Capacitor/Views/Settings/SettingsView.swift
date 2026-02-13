@@ -5,6 +5,8 @@ struct SettingsView: View {
     @AppStorage("floatingMode") private var floatingMode = true
     @AppStorage("alwaysOnTop") private var alwaysOnTop = false
     @AppStorage("playReadyChime") private var playReadyChime = true
+    @AppStorage(QuickFeedbackPreferenceKeys.includeTelemetry) private var includeFeedbackTelemetry = true
+    @AppStorage(QuickFeedbackPreferenceKeys.includeProjectPaths) private var includeFeedbackProjectPaths = false
 
     private var lastCheckString: String {
         if let date = updaterController.lastUpdateCheckDate {
@@ -31,6 +33,21 @@ struct SettingsView: View {
                 Toggle("Play Ready Chime", isOn: $playReadyChime)
                     .accessibilityLabel("Play ready chime")
                     .accessibilityHint("Play a sound when Claude finishes a task and is ready for input")
+            }
+
+            Section("Feedback & Privacy") {
+                Toggle("Include anonymized telemetry in quick feedback", isOn: $includeFeedbackTelemetry)
+                    .accessibilityLabel("Include anonymized telemetry")
+                    .accessibilityHint("Adds app and daemon health metadata with redacted paths by default")
+
+                Toggle("Include project paths for debugging", isOn: $includeFeedbackProjectPaths)
+                    .disabled(!includeFeedbackTelemetry)
+                    .accessibilityLabel("Include project paths for debugging")
+                    .accessibilityHint("Only enable when support needs exact paths; otherwise paths stay redacted")
+
+                Text("Quick feedback always opens a GitHub issue draft. If a feedback API endpoint is configured, telemetry is sent there too.")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
             }
 
             if updaterController.isAvailable {
@@ -65,8 +82,13 @@ struct SettingsView: View {
                 KeyboardShortcutRow(label: "Navigate Back", shortcut: "⌘[")
             }
         }
+        .onChange(of: includeFeedbackTelemetry) { _, enabled in
+            if !enabled {
+                includeFeedbackProjectPaths = false
+            }
+        }
         .formStyle(.grouped)
-        .frame(width: 400, height: 420)
+        .frame(width: 420, height: 520)
     }
 }
 

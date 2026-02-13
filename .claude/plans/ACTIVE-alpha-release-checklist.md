@@ -68,6 +68,15 @@ These features exist in the codebase but are **out of scope** for alpha.
 - [x] One-click terminal activation from dock cards
 - [x] Window constraints (min/max width/height) feel right for dock use
 
+### Quick Feedback
+- [x] One-click quick feedback entry exists in primary UI (footer)
+- [x] Feedback flow opens prefilled GitHub issue draft with metadata summary
+- [x] Telemetry payload includes triage context (app version/channel, OS, daemon status, session summary, active-source signal)
+- [x] Sensitive data protection defaults: project paths redacted unless explicitly opted in
+- [x] Optional feedback API ingestion supported via `CAPACITOR_FEEDBACK_API_URL`
+- [x] Privacy controls exist in Settings for telemetry + project path inclusion
+- [x] Test coverage added for payload redaction/opt-in + submission transport behavior
+
 ---
 
 ## 3. Onboarding — Streamline for Alpha
@@ -155,6 +164,16 @@ The current `WelcomeView` is step-by-step with hook installation + shell setup. 
 - [ ] Test floating mode positioning and drag behavior
 - [x] Kill/restart daemon — app recovers gracefully
 - [x] Test with Claude Code actually running sessions — state transitions are accurate
+- [ ] Run quick feedback manual QA checklist (below) end-to-end on alpha build
+
+### Quick Feedback Manual QA (Alpha)
+- [ ] From main HUD footer, click quick feedback button and verify sheet opens immediately
+- [ ] Submit short feedback with default privacy settings and verify GitHub issue draft opens with `alpha-feedback` label + telemetry JSON block
+- [ ] In Settings, disable telemetry; submit again and verify issue body states telemetry is disabled and no telemetry endpoint call is attempted
+- [ ] Re-enable telemetry, keep path sharing disabled; submit and verify paths appear redacted (`project#...`) in draft JSON
+- [ ] Enable path sharing; submit and verify real project paths appear in JSON
+- [ ] Set `CAPACITOR_FEEDBACK_API_URL` to a test endpoint and verify POST body arrives + issue draft still opens
+- [ ] Verify success/failure toast copy for both endpoint success and endpoint failure paths
 
 ### Edge Cases
 - [x] Project directory deleted while tracked — app handles gracefully

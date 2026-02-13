@@ -4,6 +4,7 @@ import SwiftUI
 struct HeaderView: View {
     @Environment(AppState.self) var appState: AppState
     @Environment(\.floatingMode) private var floatingMode
+    @State private var isQuickFeedbackPresented = false
 
     private var isOnListView: Bool {
         if case .list = appState.projectView { return true }
@@ -24,6 +25,10 @@ struct HeaderView: View {
                 }
 
                 Spacer()
+
+                HeaderFeedbackButton {
+                    isQuickFeedbackPresented = true
+                }
             }
             .padding(.horizontal, 12)
             .padding(.top, floatingMode ? 9 : 6)
@@ -38,6 +43,49 @@ struct HeaderView: View {
                 } else {
                     Color.hudBackground
                 }
+            }
+        }
+        .sheet(isPresented: $isQuickFeedbackPresented) {
+            QuickFeedbackSheet { message, preferences in
+                appState.submitQuickFeedback(message, preferences: preferences)
+            }
+        }
+    }
+}
+
+private struct HeaderFeedbackButton: View {
+    let action: () -> Void
+    @State private var isHovered = false
+    @Environment(\.prefersReducedMotion) private var reduceMotion
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 6) {
+                Image(systemName: "bubble.left")
+                    .font(.system(size: 11, weight: .semibold))
+                Text("Feedback")
+                    .font(.system(size: 11, weight: .semibold))
+            }
+            .foregroundColor(.white.opacity(isHovered ? 0.9 : 0.72))
+            .padding(.horizontal, 10)
+            .padding(.vertical, 5)
+            .background(
+                Capsule(style: .continuous)
+                    .fill(Color.white.opacity(isHovered ? 0.14 : 0.0)),
+            )
+            .overlay(
+                Capsule(style: .continuous)
+                    .strokeBorder(Color.white.opacity(isHovered ? 0.24 : 0.0), lineWidth: 0.5),
+            )
+        }
+        .buttonStyle(.plain)
+        .help("Quick Feedback")
+        .accessibilityLabel("Feedback")
+        .accessibilityHint("Open quick feedback sheet")
+        .scaleEffect(isHovered && !reduceMotion ? 1.02 : 1.0)
+        .onHover { hovering in
+            withAnimation(reduceMotion ? AppMotion.reducedMotionFallback : .spring(response: 0.2, dampingFraction: 0.75)) {
+                isHovered = hovering
             }
         }
     }
