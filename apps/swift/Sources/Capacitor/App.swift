@@ -43,7 +43,7 @@ struct CapacitorApp: App {
                             removal: .identity,
                         ))
                 } else {
-                    WelcomeView(shellStateStore: appState.shellStateStore, onComplete: {
+                    WelcomeView(onComplete: {
                         withAnimation(.easeInOut(duration: 0.4)) {
                             setupComplete = true
                         }
