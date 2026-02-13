@@ -1,11 +1,11 @@
 # Agent Changelog
 
 > This file helps coding agents understand project evolution, key decisions,
-> and deprecated patterns. Updated: 2026-02-12 (holistic project-card ordering stabilization + daemon empty-snapshot guard)
+> and deprecated patterns. Updated: 2026-02-12 (alpha release pipeline guardrails + clippy dead-code hygiene)
 
 ## Current State Summary
 
-Capacitor is a native macOS SwiftUI app (Apple Silicon, macOS 14+) that acts as a sidecar dashboard for Claude Code. The architecture uses a Rust core (`hud-core`) with UniFFI bindings to Swift plus a **Rust daemon (`capacitor-daemon`) that is the canonical source of truth** for session, shell, activity, and process-liveness state. Hooks emit events to the daemon over a Unix socket (`~/.capacitor/daemon.sock`), and Swift reads daemon snapshots (shell state + project aggregation); file-based JSON fallbacks are removed in daemon-only mode. Workstreams (managed git worktrees) are first-class with create/open/destroy UX and slug-prefixed naming; activation matching avoids crossing repo cards with managed worktree tmux panes. Project-card rendering now uses a **single unified active+idle row pipeline**, **stable outer identity by project path**, and **in-place status/effect animations** (no card-root remount invalidation), with status text using SwiftUI `numericText` content transitions. Manual ordering now persists as one global list (`projectOrder`) and active/idle groups are projections over that list with hysteresis bands (`active`/`cooling`/`idle`) to reduce Ready/Idle thrash. Daemon empty project snapshots are also quality-gated in Swift: one empty snapshot is held as transient noise, and clearing applies on consecutive empties. Terminal activation uses a Rust resolver plus Swift execution, explicitly targeting the attached tmux client TTY (`switch-client -c <tty>`) and then foregrounding the terminal window that owns that TTY. Build channel + alpha gating are runtime via `AppConfig` (env/Info.plist/config file), not compile-time flags; release versioning is centralized in `VERSION` (current alpha: `0.2.0-alpha.1`). Daemon startup and steady-state now include dead-session reconciliation plus health-exposed reconcile telemetry, demoting dead non-idle sessions to `Idle` without waiting for TTL or manual cleanup.
+Capacitor is a native macOS SwiftUI app (Apple Silicon, macOS 14+) that acts as a sidecar dashboard for Claude Code. The architecture uses a Rust core (`hud-core`) with UniFFI bindings to Swift plus a **Rust daemon (`capacitor-daemon`) that is the canonical source of truth** for session, shell, activity, and process-liveness state. Hooks emit events to the daemon over a Unix socket (`~/.capacitor/daemon.sock`), and Swift reads daemon snapshots (shell state + project aggregation); file-based JSON fallbacks are removed in daemon-only mode. Workstreams (managed git worktrees) are first-class with create/open/destroy UX and slug-prefixed naming; activation matching avoids crossing repo cards with managed worktree tmux panes. Project-card rendering now uses a **single unified active+idle row pipeline**, **stable outer identity by project path**, and **in-place status/effect animations** (no card-root remount invalidation), with status text using SwiftUI `numericText` content transitions. Manual ordering now persists as one global list (`projectOrder`) and active/idle groups are projections over that list with hysteresis bands (`active`/`cooling`/`idle`) to reduce Ready/Idle thrash. Daemon empty project snapshots are also quality-gated in Swift: one empty snapshot is held as transient noise, and clearing applies on consecutive empties. Terminal activation uses a Rust resolver plus Swift execution, explicitly targeting the attached tmux client TTY (`switch-client -c <tty>`) and then foregrounding the terminal window that owns that TTY. Build channel + alpha gating are runtime via `AppConfig` (env/Info.plist/config file), not compile-time flags; release versioning is centralized in `VERSION` (current alpha: `0.2.0-alpha.1`). **Release packaging defaults are now alpha-safe by script guardrail** (`build-distribution.sh` defaults to channel `alpha`, and `release.sh` forwards channel explicitly), reducing risk of shipping prod-channel feature flags in alpha artifacts. Daemon startup and steady-state now include dead-session reconciliation plus health-exposed reconcile telemetry, demoting dead non-idle sessions to `Idle` without waiting for TTL or manual cleanup.
 
 > **Historical note:** Timeline entries below may reference pre-daemon artifacts (locks, `sessions.json`, `shell-cwd.json`). Treat them as historical context only; they are not current behavior.
 
@@ -14,8 +14,45 @@ Capacitor is a native macOS SwiftUI app (Apple Silicon, macOS 14+) that acts as 
 | Location | States | Reality | Since |
 |----------|--------|---------|-------|
 | `AGENT_CHANGELOG.md` (2026-02-11 "Project-Card State Resolution + Daemon Startup Catch-up Hardening") | "List and dock rendering now key row identity by per-card session fingerprint (`ProjectOrdering.cardIdentityKey`)..." | `ProjectOrdering.cardIdentityKey` currently returns stable `project.path` only; session-state-based row-key coupling is intentionally removed | 2026-02-12 |
+| `.claude/plans/ACTIVE-alpha-release-checklist.md` ("Build & Signing" block) | `App is code-signed`, `App is notarized`, and `DMG or ZIP artifact for download` remain unchecked | Local release verification now demonstrates successful code signing, notarized DMG acceptance (`spctl`), and generated ZIP/DMG artifacts for `0.2.0-alpha.1`; checklist needs manual status refresh | 2026-02-12 |
 
 ## Timeline
+
+### 2026-02-12 — Alpha Release Pipeline Guardrails + Clippy Dead-Code Hygiene (Completed / Uncommitted)
+
+**What changed:**
+- Release distribution defaults now target alpha channel by default (`scripts/release/build-distribution.sh` sets `CHANNEL="alpha"`).
+- Full release workflow now parses and forwards channel explicitly (`--alpha`, `--channel`) and passes args via arrays to avoid brittle shell expansion (`scripts/release/release.sh`).
+- App bundle verifier warning/error counters no longer use post-increment under `set -e`; helper functions now increment safely and return success, preventing warning-only false failures (`scripts/release/verify-app-bundle.sh`).
+- Clippy `-D warnings -W dead_code` daemon blockers were eliminated by scoping replay/reset helpers to test-only usage:
+  - `Db::list_events`, `Db::clear_tombstones`, `Db::clear_sessions`, `Db::clear_activity`
+  - `replay::rebuild_from_events`
+- Added release guardrail bats tests (`tests/release-scripts/release-flow-guardrails.bats`) to lock:
+  - alpha default channel in distribution script
+  - explicit channel propagation in release workflow
+  - no post-increment in verifier helpers
+- Updated release quick workflow docs to call alpha channel explicitly (`.claude/docs/release-guide.md`).
+
+**Why:**
+- Public alpha packaging had a channel-safety gap: release scripts defaulted artifacts to `prod`, risking out-of-scope feature exposure in alpha builds.
+- `verify-app-bundle.sh` could exit early due to `set -e` + arithmetic post-increment semantics, producing false negatives.
+- CI-equivalent clippy dead-code failures blocked readiness signaling despite otherwise healthy tests/builds.
+
+**Agent impact:**
+- Treat alpha channel propagation as a release invariant: if adjusting release scripts, preserve explicit `--channel` forwarding and alpha-safe defaults.
+- For release verification scripts running with `set -e`, avoid `((var++))` in helpers; use assignment arithmetic (`var=$((var + 1))`) or explicit `|| true` guard patterns.
+- Do not widen test-scoped replay reset helpers into runtime paths without a concrete replay requirement; current production flow relies on catch-up over session-affecting events, not full DB replay resets.
+- Keep `tests/release-scripts/release-flow-guardrails.bats` green when modifying release scripts.
+
+**Evidence / tests:**
+- `cargo clippy -- -D warnings -W dead_code` passes.
+- `cargo test` passes.
+- `bats tests/release-scripts` passes (includes new guardrail suite).
+- `bats tests/hud-hook/hud-hook-smoke.bats` passes.
+- `./scripts/release/verify-app-bundle.sh` exits 0 (warning-only path no longer aborts).
+- `./scripts/release/build-distribution.sh --skip-notarization` now emits artifacts with `CapacitorChannel=alpha` in bundled `Info.plist`.
+
+---
 
 ### 2026-02-12 — Holistic Project-Card Ordering Stabilization (In Progress / Uncommitted)
 

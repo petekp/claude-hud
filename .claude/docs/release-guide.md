@@ -6,9 +6,9 @@ Complete procedures for building, notarizing, and distributing Capacitor release
 
 ```bash
 ./scripts/release/bump-version.sh patch          # Bump version
-./scripts/release/build-distribution.sh --skip-notarization  # Build without notarize
+./scripts/release/build-distribution.sh --channel alpha --skip-notarization  # Build without notarize
 ./scripts/release/verify-app-bundle.sh           # VERIFY before release!
-./scripts/release/build-distribution.sh          # Full build + notarize
+./scripts/release/build-distribution.sh --channel alpha  # Full build + notarize
 ./scripts/release/create-dmg.sh                  # Create + notarize DMG
 ./scripts/release/generate-appcast.sh --sign     # Update Sparkle feed (must sign!)
 

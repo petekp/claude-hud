@@ -61,6 +61,7 @@ impl Db {
         })
     }
 
+    #[cfg(test)]
     pub fn list_events(&self) -> Result<Vec<EventEnvelope>, String> {
         self.with_connection(|conn| {
             let mut stmt = conn
@@ -279,6 +280,7 @@ impl Db {
         })
     }
 
+    #[cfg(test)]
     pub fn clear_tombstones(&self) -> Result<(), String> {
         self.with_connection(|conn| {
             conn.execute("DELETE FROM tombstones", [])
@@ -431,6 +433,7 @@ impl Db {
         })
     }
 
+    #[cfg(test)]
     pub fn clear_sessions(&self) -> Result<(), String> {
         self.with_connection(|conn| {
             conn.execute("DELETE FROM sessions", [])
@@ -583,6 +586,7 @@ impl Db {
         })
     }
 
+    #[cfg(test)]
     pub fn clear_activity(&self) -> Result<(), String> {
         self.with_connection(|conn| {
             conn.execute("DELETE FROM activity", [])

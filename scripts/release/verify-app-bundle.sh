@@ -39,8 +39,16 @@ WARNINGS=0
 
 # Helper functions
 pass() { echo -e "${GREEN}✓${NC} $1"; }
-fail() { echo -e "${RED}✗${NC} $1"; ((ERRORS++)); }
-warn() { echo -e "${YELLOW}!${NC} $1"; ((WARNINGS++)); }
+fail() {
+    echo -e "${RED}✗${NC} $1"
+    ERRORS=$((ERRORS + 1))
+    return 0
+}
+warn() {
+    echo -e "${YELLOW}!${NC} $1"
+    WARNINGS=$((WARNINGS + 1))
+    return 0
+}
 
 # ============================================
 # 1. Basic Structure

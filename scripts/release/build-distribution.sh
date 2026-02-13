@@ -55,7 +55,7 @@ echo -e "${GREEN}Version: $VERSION (build $BUILD_NUMBER)${NC}"
 
 # Parse arguments
 SKIP_NOTARIZATION=false
-CHANNEL="prod"
+CHANNEL="alpha"
 while [[ $# -gt 0 ]]; do
     case $1 in
         --skip-notarization)

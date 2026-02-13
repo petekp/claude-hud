@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Full release workflow for Capacitor
-# Usage: ./release.sh [version] [--skip-notarization] [--dry-run]
+# Usage: ./release.sh [version] [--skip-notarization] [--dry-run] [--alpha] [--channel <name>]
 #
 # Examples:
 #   ./release.sh                    # Release current version
@@ -9,6 +9,7 @@
 #   ./release.sh 1.0.0              # Set version to 1.0.0, then release
 #   ./release.sh --dry-run          # Build everything but don't push/release
 #   ./release.sh patch --dry-run    # Bump and build, but don't push/release
+#   ./release.sh --channel beta     # Build release artifacts for beta channel
 
 set -e
 
@@ -24,17 +25,36 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 VERSION_ARG=""
 SKIP_NOTARIZATION=false
 DRY_RUN=false
+CHANNEL="alpha"
 
-for arg in "$@"; do
-    case $arg in
+while [[ $# -gt 0 ]]; do
+    case $1 in
         --skip-notarization)
             SKIP_NOTARIZATION=true
+            shift
             ;;
         --dry-run)
             DRY_RUN=true
+            shift
+            ;;
+        --alpha)
+            CHANNEL="alpha"
+            shift
+            ;;
+        --channel)
+            CHANNEL="${2:-$CHANNEL}"
+            shift 2
+            ;;
+        --channel=*)
+            CHANNEL="${1#*=}"
+            shift
             ;;
         major|minor|patch|[0-9]*)
-            VERSION_ARG="$arg"
+            VERSION_ARG="$1"
+            shift
+            ;;
+        *)
+            shift
             ;;
     esac
 done
@@ -57,6 +77,7 @@ fi
 
 VERSION=$(cat "$PROJECT_ROOT/VERSION" | tr -d '[:space:]')
 echo -e "${GREEN}Releasing version: $VERSION${NC}"
+echo -e "${GREEN}Channel: $CHANNEL${NC}"
 echo ""
 
 echo -e "${YELLOW}Checking git status...${NC}"
@@ -77,17 +98,23 @@ if ! git diff-index --quiet HEAD -- 2>/dev/null; then
 fi
 echo ""
 
-NOTARIZATION_FLAG=""
+BUILD_ARGS=()
 if [ "$SKIP_NOTARIZATION" = true ]; then
-    NOTARIZATION_FLAG="--skip-notarization"
+    BUILD_ARGS+=(--skip-notarization)
+fi
+BUILD_ARGS+=(--channel "$CHANNEL")
+
+DMG_ARGS=()
+if [ "$SKIP_NOTARIZATION" = true ]; then
+    DMG_ARGS+=(--skip-notarization)
 fi
 
 echo -e "${YELLOW}Step 2/7: Building distribution...${NC}"
-"$SCRIPT_DIR/build-distribution.sh" $NOTARIZATION_FLAG
+"$SCRIPT_DIR/build-distribution.sh" "${BUILD_ARGS[@]}"
 echo ""
 
 echo -e "${YELLOW}Step 3/7: Creating DMG...${NC}"
-"$SCRIPT_DIR/create-dmg.sh" $NOTARIZATION_FLAG
+"$SCRIPT_DIR/create-dmg.sh" "${DMG_ARGS[@]}"
 echo ""
 
 echo -e "${YELLOW}Step 4/7: Generating appcast...${NC}"

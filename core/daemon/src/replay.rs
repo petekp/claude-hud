@@ -4,6 +4,7 @@ use crate::reducer::SessionUpdate;
 use crate::session_store::handle_session_event;
 use chrono::{DateTime, Utc};
 
+#[cfg(test)]
 pub fn rebuild_from_events(db: &Db) -> Result<(), String> {
     db.clear_sessions()?;
     db.clear_activity()?;
