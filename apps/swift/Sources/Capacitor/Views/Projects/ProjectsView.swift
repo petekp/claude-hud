@@ -2,12 +2,40 @@ import AppKit
 import SwiftUI
 import UniformTypeIdentifiers
 
+/// Tracks previous row order without triggering view invalidation.
+/// Reference-type mutation is invisible to SwiftUI's Observation, so z-indices
+/// computed from previous state persist for the full duration of the spring animation.
+private final class RowOrderTracker {
+    private var indexByPath: [String: Int] = [:]
+
+    /// Snapshot current paths and return a lookup of z-index directions.
+    /// Moved up → +1 (on top), moved down → -1 (behind), unchanged/new → 0.
+    /// Call once per body evaluation; O(n) total instead of O(n²) per-card lookups.
+    func snapshotAndDirections(for currentPaths: [String]) -> [String: Double] {
+        defer {
+            indexByPath = Dictionary(uniqueKeysWithValues: currentPaths.enumerated().map { ($1, $0) })
+        }
+
+        guard !indexByPath.isEmpty else { return [:] }
+
+        var directions: [String: Double] = [:]
+        directions.reserveCapacity(currentPaths.count)
+        for (currIdx, path) in currentPaths.enumerated() {
+            guard let prevIdx = indexByPath[path] else { continue }
+            if currIdx < prevIdx { directions[path] = 1 }
+            else if currIdx > prevIdx { directions[path] = -1 }
+        }
+        return directions
+    }
+}
+
 struct ProjectsView: View {
     @Environment(AppState.self) var appState: AppState
     @Environment(\.floatingMode) private var floatingMode
     private let glassConfig = GlassConfig.shared
     @State private var pausedCollapsed = true
     @State private var draggedProject: Project?
+    @State private var rowOrderTracker = RowOrderTracker()
     #if DEBUG
         @AppStorage("debugShowProjectListDiagnostics") private var debugShowProjectListDiagnostics = true
     #endif
@@ -99,6 +127,7 @@ struct ProjectsView: View {
                         )
                         let activePaths = Set(grouped.active.map(\.path))
                         let rows = grouped.active + grouped.idle
+                        let reorderDirections = rowOrderTracker.snapshotAndDirections(for: rows.map(\.path))
                         let hasVisibleProjects = !grouped.active.isEmpty || !grouped.idle.isEmpty
 
                         if appState.isProjectCreationEnabled {
@@ -132,6 +161,7 @@ struct ProjectsView: View {
                                     index: index,
                                     group: group,
                                     groupProjects: groupProjects,
+                                    reorderZIndex: reorderDirections[project.path] ?? 0,
                                 )
                             }
                         }
@@ -229,6 +259,7 @@ struct ProjectsView: View {
         index: Int,
         group: ActivityGroup,
         groupProjects: [Project],
+        reorderZIndex: Double,
     ) -> some View {
         let canShowDetails = appState.isProjectDetailsEnabled
         let canCaptureIdeas = appState.isIdeaCaptureEnabled
@@ -270,6 +301,7 @@ struct ProjectsView: View {
             draggedProject: $draggedProject,
             appState: appState,
             glassConfig: glassConfig,
+            reorderZIndex: reorderZIndex,
         )
     }
 
@@ -376,9 +408,10 @@ private extension View {
         draggedProject: Binding<Project?>,
         appState: AppState,
         glassConfig: GlassConfig,
+        reorderZIndex: Double,
     ) -> some View {
         preventWindowDrag()
-            .zIndex(draggedProject.wrappedValue?.path == project.path ? 999 : 0)
+            .zIndex(draggedProject.wrappedValue?.path == project.path ? 999 : reorderZIndex)
             .id(ProjectOrdering.cardIdentityKey(projectPath: project.path, sessionState: sessionState))
             .onDrop(
                 of: [.text, .fileURL],

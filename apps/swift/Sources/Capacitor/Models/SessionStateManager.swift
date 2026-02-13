@@ -1,4 +1,5 @@
 import Foundation
+import SwiftUI
 
 /// Manages session state display for projects.
 ///
@@ -126,7 +127,9 @@ final class SessionStateManager {
                     }
                     let didChange = stabilized != self.sessionStates
                     if didChange {
-                        self.sessionStates = stabilized
+                        withAnimation(.spring(response: GlassConfig.shared.cardReorderSpringResponse, dampingFraction: GlassConfig.shared.cardReorderSpringDamping)) {
+                            self.sessionStates = stabilized
+                        }
                     }
                     self.pruneCachedStates()
                     #if DEBUG

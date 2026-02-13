@@ -344,6 +344,11 @@ import SwiftUI
                     TuningRow(label: "Damping", value: $config.cardInsertSpringDamping, range: 0.5 ... 1.0)
                 }
 
+                StickySection(title: "Card Reorder", onReset: resetReorder) {
+                    TuningRow(label: "Response", value: $config.cardReorderSpringResponse, range: 0.15 ... 0.6)
+                    TuningRow(label: "Damping", value: $config.cardReorderSpringDamping, range: 0.5 ... 1.0)
+                }
+
                 StickySection(title: "Section Toggle", onReset: resetSectionToggle) {
                     TuningRow(label: "Spring Response", value: $config.sectionToggleSpringResponse, range: 0.1 ... 0.4)
                 }
@@ -363,6 +368,11 @@ import SwiftUI
             config.cardInsertSpringResponse = 0.25
             config.cardInsertSpringDamping = 0.8
             config.pausedCardStagger = 0.025
+        }
+
+        private func resetReorder() {
+            config.cardReorderSpringResponse = 0.35
+            config.cardReorderSpringDamping = 0.85
         }
 
         private func resetSectionToggle() {

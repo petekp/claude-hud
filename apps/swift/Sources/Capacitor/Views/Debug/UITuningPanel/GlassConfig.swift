@@ -304,6 +304,8 @@ class GlassConfig {
     var cardInsertSpringDamping: Double = 0.8 // Spring damping for card insertion
     var pausedCardStagger: Double = 0.025 // Per-card stagger for paused section
     var sectionToggleSpringResponse: Double = 0.18 // Spring response for section collapse/expand
+    var cardReorderSpringResponse: Double = 0.35 // Spring response for card position reorder
+    var cardReorderSpringDamping: Double = 0.85 // Spring damping for card position reorder
 
     // MARK: - Layout Settings (Card List)
 
@@ -823,6 +825,8 @@ class GlassConfig {
         cardInsertSpringDamping = 0.8
         pausedCardStagger = 0.025
         sectionToggleSpringResponse = 0.18
+        cardReorderSpringResponse = 0.35
+        cardReorderSpringDamping = 0.85
 
         // Layout
         cardListSpacing = 4.98
