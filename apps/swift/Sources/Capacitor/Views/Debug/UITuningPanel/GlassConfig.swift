@@ -246,6 +246,37 @@ class GlassConfig {
     var cardPressedShadowRadius: Double = 2.0
     var cardPressedShadowY: Double = 1.0
 
+    // Press tilt & ripple (positional click feedback)
+    var cardPressTiltHorizontal: Double = 1.86
+    var cardPressTiltVertical: Double = 5.87
+    var cardPressRippleOpacity: Double = 1.70
+    var cardPressDistortion: Double = 0.0
+
+    // MARK: - Metal Highlight Parameters (GPU shader)
+
+    var highlightRingFrequency: Double = 1.00
+    var highlightRingSharpness: Double = 1.13
+    var highlightFalloff: Double = 0.10
+    var highlightSpecularTightness: Double = 8.60
+    var highlightSpecularWeight: Double = 1.33
+    var highlightRingWeight: Double = 0.84
+    var highlightRippleSpeed: Double = 9.06
+    var highlightRippleDuration: Double = 0.63
+    /// Blend mode for the metallic highlight overlay.
+    /// 0=normal, 1=plusLighter, 2=softLight, 3=overlay, 4=screen, 5=colorDodge, 6=hardLight
+    var highlightBlendMode: Int = 3
+    /// Whether the ripple uses vibrancy (NSVisualEffectView) as its base layer.
+    var highlightUseVibrancy: Bool = false
+    /// NSVisualEffectView material for the vibrancy base. Same as card material picker.
+    var highlightVibrancyMaterial: Int = 4 // 0=hudWindow, 1=popover, 2=menu, 3=sidebar, 4=fullScreenUI
+
+    // MARK: - Press Distortion Parameters (SwiftUI projectionEffect)
+
+    var distortionMaxSkew: Double = 0.0
+    var distortionScaleInset: Double = 0.0
+    var distortionDirectionalScale: Double = 0.0
+    var distortionAnchorOffset: Double = 0.07
+
     // MARK: - Compacting Text Animation
 
     var compactingCycleLength: Double = 1.8
@@ -745,6 +776,29 @@ class GlassConfig {
         cardPressedShadowOpacity = 0.12
         cardPressedShadowRadius = 2.0
         cardPressedShadowY = 1.0
+        cardPressTiltHorizontal = 1.86
+        cardPressTiltVertical = 5.87
+        cardPressRippleOpacity = 1.70
+        cardPressDistortion = 0.0
+
+        // Metal highlight
+        highlightRingFrequency = 1.00
+        highlightRingSharpness = 1.13
+        highlightFalloff = 0.10
+        highlightSpecularTightness = 8.60
+        highlightSpecularWeight = 1.33
+        highlightRingWeight = 0.84
+        highlightRippleSpeed = 9.06
+        highlightRippleDuration = 0.63
+        highlightBlendMode = 3
+        highlightUseVibrancy = false
+        highlightVibrancyMaterial = 4
+
+        // Press distortion
+        distortionMaxSkew = 0.0
+        distortionScaleInset = 0.0
+        distortionDirectionalScale = 0.0
+        distortionAnchorOffset = 0.07
 
         // Compacting text animation
         compactingCycleLength = 1.8
@@ -941,6 +995,27 @@ class GlassConfig {
             ("Card Pressed", "cardPressedShadowOpacity", 0.12, cardPressedShadowOpacity),
             ("Card Pressed", "cardPressedShadowRadius", 2.0, cardPressedShadowRadius),
             ("Card Pressed", "cardPressedShadowY", 1.0, cardPressedShadowY),
+            ("Card Pressed", "cardPressTiltHorizontal", 1.86, cardPressTiltHorizontal),
+            ("Card Pressed", "cardPressTiltVertical", 5.87, cardPressTiltVertical),
+            ("Card Pressed", "cardPressRippleOpacity", 1.70, cardPressRippleOpacity),
+            ("Card Pressed", "cardPressDistortion", 0.0, cardPressDistortion),
+            // Metal Highlight
+            ("Metal Highlight", "highlightRingFrequency", 1.00, highlightRingFrequency),
+            ("Metal Highlight", "highlightRingSharpness", 1.13, highlightRingSharpness),
+            ("Metal Highlight", "highlightFalloff", 0.10, highlightFalloff),
+            ("Metal Highlight", "highlightSpecularTightness", 8.60, highlightSpecularTightness),
+            ("Metal Highlight", "highlightSpecularWeight", 1.33, highlightSpecularWeight),
+            ("Metal Highlight", "highlightRingWeight", 0.84, highlightRingWeight),
+            ("Metal Highlight", "highlightRippleSpeed", 9.06, highlightRippleSpeed),
+            ("Metal Highlight", "highlightRippleDuration", 0.63, highlightRippleDuration),
+            ("Metal Highlight", "highlightBlendMode", 3, Double(highlightBlendMode)),
+            ("Metal Highlight", "highlightUseVibrancy", 0.0, highlightUseVibrancy ? 1.0 : 0.0),
+            ("Metal Highlight", "highlightVibrancyMaterial", 4, Double(highlightVibrancyMaterial)),
+            // Press Distortion
+            ("Press Distortion", "distortionMaxSkew", 0.0, distortionMaxSkew),
+            ("Press Distortion", "distortionScaleInset", 0.0, distortionScaleInset),
+            ("Press Distortion", "distortionDirectionalScale", 0.0, distortionDirectionalScale),
+            ("Press Distortion", "distortionAnchorOffset", 0.07, distortionAnchorOffset),
             // State Transitions
             ("State Transitions", "stateTransitionDuration", 0.35, stateTransitionDuration),
             ("State Transitions", "glowFadeDuration", 0.5, glowFadeDuration),

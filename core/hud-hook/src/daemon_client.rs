@@ -26,7 +26,7 @@ const RETRY_DELAY_MS: u64 = 50;
 pub fn send_handle_event(
     event: &HookEvent,
     session_id: &str,
-    pid: u32,
+    pid: Option<u32>,
     cwd: &str,
     agent_id: Option<&str>,
 ) -> bool {
@@ -59,7 +59,7 @@ pub fn send_handle_event(
         _ => (None, None, None, None),
     };
 
-    let event_id = make_event_id(pid);
+    let event_id = make_event_id(pid.unwrap_or(0));
     let recorded_at = Utc::now().to_rfc3339();
     let metadata = agent_id.and_then(|id| {
         let trimmed = id.trim();
@@ -74,7 +74,7 @@ pub fn send_handle_event(
         recorded_at: recorded_at.clone(),
         event_type,
         session_id: Some(session_id.to_string()),
-        pid: Some(pid),
+        pid,
         cwd: Some(cwd.to_string()),
         tool: tool.clone(),
         file_path: file_path.clone(),

@@ -282,6 +282,8 @@ Swift app polls daemon for latest state
 - Rust CLI that receives JSON events via stdin
 - Forwards to daemon via Unix socket
 - Handles errors gracefully (Claude Code shouldn't crash if hook fails)
+- Unknown/future hook events are skipped (fail-open) instead of failing the command
+- Session PID is best-effort: unusable parent PIDs (`<= 1`) are omitted
 - Fast startup (< 50ms cold start)
 
 **Why Not File Watching?**
@@ -312,6 +314,8 @@ Swift app polls daemon for latest state
 1. **Event Ingestion**
    - Receives hook events via socket
    - Parses JSON payloads
+   - Canonicalizes event timestamps to UTC `Z` format during parse
+   - Accepts missing PID for session events (PID remains required for `shell_cwd`)
    - Updates SQLite state atomically
 
 2. **State Resolution**

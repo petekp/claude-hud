@@ -62,6 +62,10 @@ fn handle_hook_input_with_home(hook_input: HookInput, home: &Path) -> Result<(),
         Some(e) => e,
         None => return Ok(()),
     };
+    if let HookEvent::Unknown { event_name } = &event {
+        tracing::debug!(event_name = %event_name, "Skipping unknown hook event");
+        return Ok(());
+    }
 
     let session_id = match &hook_input.session_id {
         Some(id) => id.clone(),
@@ -103,12 +107,12 @@ fn handle_hook_input_with_home(hook_input: HookInput, home: &Path) -> Result<(),
 
     let cwd = cwd.unwrap_or_default();
     let claude_pid = std::process::id();
-    let ppid = get_ppid().unwrap_or(claude_pid);
+    let session_pid = resolve_session_pid(get_ppid(), claude_pid);
 
     let daemon_sent = crate::daemon_client::send_handle_event(
         &event,
         &session_id,
-        ppid,
+        session_pid,
         &cwd,
         hook_input.agent_id.as_deref(),
     );
@@ -232,6 +236,15 @@ fn get_ppid() -> Option<u32> {
     }
 }
 
+fn resolve_session_pid(parent_pid: Option<u32>, fallback_pid: u32) -> Option<u32> {
+    let pid = parent_pid.unwrap_or(fallback_pid);
+    if pid <= 1 {
+        tracing::debug!(parent_pid = ?parent_pid, fallback_pid, "Skipping unusable session pid");
+        return None;
+    }
+    Some(pid)
+}
+
 fn touch_heartbeat(home: &Path) {
     let heartbeat_path = home.join(".capacitor/hud-hook-heartbeat");
 
@@ -323,5 +336,55 @@ mod tests {
 
         let result = handle_hook_input_with_home(hook_input, &temp_dir);
         assert!(result.is_ok());
+    }
+
+    #[test]
+    fn unknown_event_skips_daemon_send() {
+        let _guard = env_lock();
+        let _enabled = EnvGuard::set("CAPACITOR_DAEMON_ENABLED", "1");
+        let temp_dir = std::env::temp_dir().join(format!(
+            "hud-hook-test-{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&temp_dir).expect("create temp dir");
+        let socket_path = temp_dir.join("missing.sock");
+        let _socket = EnvGuard::set(
+            "CAPACITOR_DAEMON_SOCKET",
+            socket_path.to_string_lossy().as_ref(),
+        );
+
+        let hook_input = HookInput {
+            hook_event_name: Some("SomeFutureHookEvent".to_string()),
+            session_id: Some("session-1".to_string()),
+            cwd: Some("/repo".to_string()),
+            trigger: None,
+            notification_type: None,
+            stop_hook_active: None,
+            tool_name: None,
+            tool_use_id: None,
+            tool_input: None,
+            tool_response: None,
+            source: None,
+            reason: None,
+            agent_id: None,
+            agent_transcript_path: None,
+        };
+
+        let result = handle_hook_input_with_home(hook_input, &temp_dir);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn resolve_session_pid_rejects_unusable_parent_pid() {
+        assert_eq!(resolve_session_pid(Some(0), 4242), None);
+        assert_eq!(resolve_session_pid(Some(1), 4242), None);
+    }
+
+    #[test]
+    fn resolve_session_pid_uses_parent_pid_when_valid() {
+        assert_eq!(resolve_session_pid(Some(4242), 9999), Some(4242));
     }
 }

@@ -65,7 +65,10 @@ impl Db {
     pub fn list_events(&self) -> Result<Vec<EventEnvelope>, String> {
         self.with_connection(|conn| {
             let mut stmt = conn
-                .prepare("SELECT payload FROM events ORDER BY recorded_at ASC, id ASC")
+                .prepare(
+                    "SELECT payload FROM events \
+                     ORDER BY julianday(recorded_at) ASC, id ASC",
+                )
                 .map_err(|err| format!("Failed to prepare events query: {}", err))?;
 
             let rows = stmt
@@ -96,7 +99,7 @@ impl Db {
                      WHERE session_id IS NOT NULL \
                        AND event_type NOT IN ('shell_cwd', 'subagent_start', 'subagent_stop', 'teammate_idle') \
                        AND (?1 IS NULL OR julianday(recorded_at) >= julianday(?1)) \
-                     ORDER BY recorded_at ASC, id ASC",
+                     ORDER BY julianday(recorded_at) ASC, id ASC",
                 )
                 .map_err(|err| {
                     format!(
@@ -141,7 +144,7 @@ impl Db {
                     "SELECT recorded_at FROM events \
                      WHERE session_id IS NOT NULL \
                        AND event_type NOT IN ('shell_cwd', 'subagent_start', 'subagent_stop', 'teammate_idle') \
-                     ORDER BY recorded_at DESC, id DESC LIMIT 1",
+                     ORDER BY julianday(recorded_at) DESC, id DESC LIMIT 1",
                     [],
                     |row| row.get(0),
                 )
@@ -1009,6 +1012,26 @@ mod tests {
         }
     }
 
+    fn session_event(event_id: &str, recorded_at: &str, event_type: EventType) -> EventEnvelope {
+        EventEnvelope {
+            event_id: event_id.to_string(),
+            recorded_at: recorded_at.to_string(),
+            event_type,
+            session_id: Some("session-1".to_string()),
+            pid: Some(1234),
+            cwd: Some("/repo".to_string()),
+            tool: None,
+            file_path: None,
+            parent_app: None,
+            tty: None,
+            tmux_session: None,
+            tmux_client_tty: None,
+            notification_type: None,
+            stop_hook_active: None,
+            metadata: None,
+        }
+    }
+
     #[test]
     fn rebuilds_shell_state_from_events() {
         let temp_dir = tempfile::tempdir().expect("temp dir");
@@ -1367,5 +1390,51 @@ mod tests {
         let remaining = db.load_shell_state().unwrap();
         assert_eq!(remaining.shells.len(), 1);
         assert!(remaining.shells.contains_key("200"));
+    }
+
+    #[test]
+    fn list_session_affecting_events_orders_equal_instants_by_id() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let db = Db::new(temp_dir.path().join("state.db")).expect("db init");
+
+        let plus_zero = session_event(
+            "evt-b",
+            "2026-02-01T00:00:00+00:00",
+            EventType::SessionStart,
+        );
+        let zulu = session_event("evt-a", "2026-02-01T00:00:00Z", EventType::SessionStart);
+
+        db.insert_event(&plus_zero).expect("insert plus_zero");
+        db.insert_event(&zulu).expect("insert zulu");
+
+        let events = db
+            .list_session_affecting_events_since(None)
+            .expect("list events");
+        assert_eq!(events.len(), 2);
+        assert_eq!(events[0].event_id, "evt-a");
+        assert_eq!(events[1].event_id, "evt-b");
+    }
+
+    #[test]
+    fn latest_session_affecting_event_time_uses_temporal_order_not_lexical_order() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let db = Db::new(temp_dir.path().join("state.db")).expect("db init");
+
+        // 13:00+01:00 == 12:00Z (older than 12:30Z), but lexical string order is greater.
+        let older = session_event(
+            "evt-older",
+            "2026-01-31T13:00:00+01:00",
+            EventType::SessionStart,
+        );
+        let newer = session_event("evt-newer", "2026-01-31T12:30:00Z", EventType::SessionStart);
+
+        db.insert_event(&older).expect("insert older");
+        db.insert_event(&newer).expect("insert newer");
+
+        let latest = db
+            .latest_session_affecting_event_time()
+            .expect("latest time")
+            .expect("has latest");
+        assert_eq!(latest.to_rfc3339(), "2026-01-31T12:30:00+00:00");
     }
 }

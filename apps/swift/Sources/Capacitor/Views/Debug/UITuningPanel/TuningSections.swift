@@ -162,6 +162,97 @@ import SwiftUI
                     TuningRow(label: "Shadow Opacity", value: $config.cardPressedShadowOpacity, range: 0 ... 0.3)
                     TuningRow(label: "Shadow Radius", value: $config.cardPressedShadowRadius, range: 0 ... 10)
                     TuningRow(label: "Shadow Y", value: $config.cardPressedShadowY, range: 0 ... 5)
+
+                    SectionDivider()
+
+                    Text("Positional Feedback")
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundColor(.white.opacity(0.5))
+
+                    TuningRow(label: "Tilt Horizontal", value: $config.cardPressTiltHorizontal, range: 0 ... 12)
+                    TuningRow(label: "Tilt Vertical", value: $config.cardPressTiltVertical, range: 0 ... 16)
+                    TuningRow(label: "Distortion", value: $config.cardPressDistortion, range: 0 ... 5)
+                }
+
+                StickySection(title: "Click Ripple — Shape", onReset: resetRippleShape) {
+                    TuningRow(label: "Intensity", value: $config.cardPressRippleOpacity, range: 0 ... 5)
+
+                    SectionDivider()
+
+                    Text("Ring Pattern")
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundColor(.white.opacity(0.5))
+
+                    TuningRow(label: "Ring Frequency", value: $config.highlightRingFrequency, range: 1 ... 200)
+                    TuningRow(label: "Ring Sharpness", value: $config.highlightRingSharpness, range: 0.1 ... 50)
+
+                    SectionDivider()
+
+                    Text("Falloff & Specular")
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundColor(.white.opacity(0.5))
+
+                    TuningRow(label: "Falloff Rate", value: $config.highlightFalloff, range: 0.1 ... 20)
+                    TuningRow(label: "Specular Tightness", value: $config.highlightSpecularTightness, range: 0.5 ... 100)
+
+                    SectionDivider()
+
+                    Text("Layer Mix")
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundColor(.white.opacity(0.5))
+
+                    TuningRow(label: "Specular Weight", value: $config.highlightSpecularWeight, range: 0 ... 2)
+                    TuningRow(label: "Ring Weight", value: $config.highlightRingWeight, range: 0 ... 2)
+                }
+
+                StickySection(title: "Click Ripple — Animation", onReset: resetRippleAnimation) {
+                    TuningRow(label: "Propagation Speed", value: $config.highlightRippleSpeed, range: 0 ... 100)
+                    TuningRow(label: "Duration", value: $config.highlightRippleDuration, range: 0.1 ... 5.0)
+                }
+
+                StickySection(title: "Click Ripple — Rendering", onReset: resetRippleRendering) {
+                    TuningPickerRow(
+                        label: "Blend Mode",
+                        selection: $config.highlightBlendMode,
+                        options: [
+                            ("Normal", 0),
+                            ("Plus Lighter", 1),
+                            ("Soft Light", 2),
+                            ("Overlay", 3),
+                            ("Screen", 4),
+                            ("Color Dodge", 5),
+                            ("Hard Light", 6),
+                        ],
+                    )
+
+                    SectionDivider()
+
+                    Text("Vibrancy (Desktop Bleed-Through)")
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundColor(.white.opacity(0.5))
+
+                    TuningToggleRow(label: "Use Vibrancy", isOn: $config.highlightUseVibrancy)
+
+                    if config.highlightUseVibrancy {
+                        TuningPickerRow(
+                            label: "Material",
+                            selection: $config.highlightVibrancyMaterial,
+                            options: [
+                                ("HUD Window", 0),
+                                ("Popover", 1),
+                                ("Menu", 2),
+                                ("Sidebar", 3),
+                                ("Full Screen UI", 4),
+                            ],
+                        )
+                    }
+                }
+
+                StickySection(title: "Press Distortion (SwiftUI)", onReset: resetPressDistortion) {
+                    TuningRow(label: "Max Skew", value: $config.distortionMaxSkew, range: 0 ... 0.1, format: "%.4f")
+                    TuningRow(label: "Scale Inset", value: $config.distortionScaleInset, range: 0 ... 0.06, format: "%.4f")
+                    TuningRow(label: "Directional Scale", value: $config.distortionDirectionalScale, range: 0 ... 0.03, format: "%.4f")
+                    TuningRow(label: "Anchor Offset", value: $config.distortionAnchorOffset, range: 0 ... 1.0)
                 }
             })
         }
@@ -189,6 +280,38 @@ import SwiftUI
             config.cardPressedShadowOpacity = 0.12
             config.cardPressedShadowRadius = 2.0
             config.cardPressedShadowY = 1.0
+            config.cardPressTiltHorizontal = 1.86
+            config.cardPressTiltVertical = 5.87
+            config.cardPressRippleOpacity = 2.00
+            config.cardPressDistortion = 0.0
+        }
+
+        private func resetRippleShape() {
+            config.cardPressRippleOpacity = 1.70
+            config.highlightRingFrequency = 1.00
+            config.highlightRingSharpness = 1.13
+            config.highlightFalloff = 0.10
+            config.highlightSpecularTightness = 8.60
+            config.highlightSpecularWeight = 1.33
+            config.highlightRingWeight = 0.84
+        }
+
+        private func resetRippleAnimation() {
+            config.highlightRippleSpeed = 9.06
+            config.highlightRippleDuration = 0.63
+        }
+
+        private func resetRippleRendering() {
+            config.highlightBlendMode = 3
+            config.highlightUseVibrancy = false
+            config.highlightVibrancyMaterial = 4
+        }
+
+        private func resetPressDistortion() {
+            config.distortionMaxSkew = 0.0
+            config.distortionScaleInset = 0.0
+            config.distortionDirectionalScale = 0.0
+            config.distortionAnchorOffset = 0.07
         }
     }
 

@@ -28,6 +28,13 @@ struct ProjectCardView: View {
     @State private var previousState: SessionState?
     @State private var lastChimeTime: Date?
 
+    // Positional press feedback
+    @State private var cursorLocation: CGPoint = .zero
+    @State private var pressPoint: CGPoint = .zero
+    @State private var cardSize: CGSize = .zero
+    @State private var distortionIntensity: Double = 0
+    @State private var pressStartTime: Date?
+
     private let chimeCooldown: TimeInterval = 3.0
 
     // MARK: - Computed Properties
@@ -68,6 +75,28 @@ struct ProjectCardView: View {
         )
     }
 
+    // MARK: - Press Tilt
+
+    private var pressTiltX: Double {
+        guard isPressed, !reduceMotion, cardSize.height > 0 else { return 0 }
+        let normalizedY = (pressPoint.y / cardSize.height - 0.5) * 2
+        return -normalizedY * glassConfig.cardPressTiltVertical
+    }
+
+    private var pressTiltY: Double {
+        guard isPressed, !reduceMotion, cardSize.width > 0 else { return 0 }
+        let normalizedX = (pressPoint.x / cardSize.width - 0.5) * 2
+        return normalizedX * glassConfig.cardPressTiltHorizontal
+    }
+
+    private var tiltAnimation: Animation {
+        guard !reduceMotion else { return AppMotion.reducedMotionFallback }
+        if isPressed {
+            return .spring(response: 0.15, dampingFraction: 0.6)
+        }
+        return .spring(response: 0.35, dampingFraction: 0.75)
+    }
+
     // MARK: - Body
 
     var body: some View {
@@ -84,7 +113,7 @@ struct ProjectCardView: View {
         let paddingH = glassConfig.cardPaddingH
         let paddingV = glassConfig.cardPaddingV
 
-        cardContent
+        let styledCard = cardContent
             .padding(.horizontal, paddingH)
             .padding(.vertical, paddingV)
             .cardStyling(
@@ -99,11 +128,62 @@ struct ProjectCardView: View {
                 animationSeed: project.path,
                 isPressed: isPressed,
             )
+            .pressDistortion(
+                pressPoint: pressPoint,
+                cardSize: cardSize,
+                intensity: distortionIntensity,
+            )
+            .overlay { pressRipple }
+            .onContinuousHover { phase in
+                switch phase {
+                case let .active(location):
+                    cursorLocation = location
+                case .ended:
+                    break
+                }
+            }
+            .background {
+                GeometryReader { geo in
+                    Color.clear
+                        .onAppear { cardSize = geo.size }
+                        .onChange(of: geo.size) { _, newSize in cardSize = newSize }
+                }
+            }
+
+        styledCard
             .scaleEffect(cardScale)
+            .rotation3DEffect(
+                .degrees(pressTiltX),
+                axis: (x: 1, y: 0, z: 0),
+                perspective: 0.8,
+            )
+            .rotation3DEffect(
+                .degrees(pressTiltY),
+                axis: (x: 0, y: 1, z: 0),
+                perspective: 0.8,
+            )
             .animation(cardAnimation, value: cardScale)
+            .animation(tiltAnimation, value: pressTiltX)
+            .animation(tiltAnimation, value: pressTiltY)
             .onLongPressGesture(minimumDuration: .infinity, pressing: { pressing in
+                if pressing {
+                    pressPoint = cursorLocation
+                    pressStartTime = Date()
+                }
                 isPressed = pressing
+                let target = pressing ? glassConfig.cardPressDistortion : 0
+                withAnimation(pressing
+                    ? .spring(response: 0.12, dampingFraction: 0.55)
+                    : .spring(response: 0.4, dampingFraction: 0.8))
+                {
+                    distortionIntensity = target
+                }
             }, perform: {})
+            .task(id: pressStartTime) {
+                guard pressStartTime != nil else { return }
+                try? await _Concurrency.Task.sleep(for: .milliseconds(Int(rippleDuration * 1000)))
+                pressStartTime = nil
+            }
             .cardInteractions(
                 isHovered: $isHovered,
                 onTap: onTap,
@@ -143,6 +223,26 @@ struct ProjectCardView: View {
         case .compacting: "Compacting history"
         case .idle: "Idle"
         }
+    }
+
+    // MARK: - Press Highlight
+
+    private var pressRipple: some View {
+        MetallicPressHighlight(
+            pressPoint: pressPoint,
+            cardSize: cardSize,
+            cornerRadius: glassConfig.cardCornerRadius(for: .vertical),
+            intensity: glassConfig.cardPressRippleOpacity,
+            pressStartTime: pressStartTime,
+        )
+    }
+
+    private var rippleDuration: Double {
+        #if DEBUG
+            glassConfig.highlightRippleDuration
+        #else
+            0.63
+        #endif
     }
 
     // MARK: - Card Content

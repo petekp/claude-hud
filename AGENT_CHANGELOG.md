@@ -1,11 +1,11 @@
 # Agent Changelog
 
 > This file helps coding agents understand project evolution, key decisions,
-> and deprecated patterns. Updated: 2026-02-13 (compacting lifecycle hardening + quick feedback + release guardrails)
+> and deprecated patterns. Updated: 2026-02-13 (stop-gate grace-window guard + compacting lifecycle hardening + quick feedback + release guardrails)
 
 ## Current State Summary
 
-Capacitor is a native macOS SwiftUI app (Apple Silicon, macOS 14+) that acts as a sidecar dashboard for Claude Code. The architecture uses a Rust core (`hud-core`) with UniFFI bindings to Swift plus a **Rust daemon (`capacitor-daemon`) that is the canonical source of truth** for session, shell, activity, and process-liveness state. Hooks emit events to the daemon over a Unix socket (`~/.capacitor/daemon.sock`), and Swift reads daemon snapshots (shell state + project aggregation); file-based JSON fallbacks are removed in daemon-only mode. Workstreams (managed git worktrees) are first-class with create/open/destroy UX and slug-prefixed naming; activation matching avoids crossing repo cards with managed worktree tmux panes. Project-card rendering now uses a **single unified active+idle row pipeline**, **stable outer identity by project path**, and **in-place status/effect animations** (no card-root remount invalidation), with status text using SwiftUI `numericText` content transitions. Manual ordering now persists as one global list (`projectOrder`) and active/idle groups are projections over that list with hysteresis bands (`active`/`cooling`/`idle`) to reduce Ready/Idle thrash. Daemon empty project snapshots are also quality-gated in Swift: one empty snapshot is held as transient noise, and clearing applies on consecutive empties. Compacting lifecycle is now hard-gated: stop events are skipped while compacting, and compacting no longer inactivity-falls back to ready, preventing premature ready flicker during longer compactions. Terminal activation uses a Rust resolver plus Swift execution, explicitly targeting the attached tmux client TTY (`switch-client -c <tty>`) and then foregrounding the terminal window that owns that TTY. Build channel + alpha gating are runtime via `AppConfig` (env/Info.plist/config file), not compile-time flags; release versioning is centralized in `VERSION` (current alpha: `0.2.0-alpha.1`). **Release packaging defaults are now alpha-safe by script guardrail** (`build-distribution.sh` defaults to channel `alpha`, and `release.sh` forwards channel explicitly), reducing risk of shipping prod-channel feature flags in alpha artifacts. Daemon startup and steady-state now include dead-session reconciliation plus health-exposed reconcile telemetry, demoting dead non-idle sessions to `Idle` without waiting for TTL or manual cleanup.
+Capacitor is a native macOS SwiftUI app (Apple Silicon, macOS 14+) that acts as a sidecar dashboard for Claude Code. The architecture uses a Rust core (`hud-core`) with UniFFI bindings to Swift plus a **Rust daemon (`capacitor-daemon`) that is the canonical source of truth** for session, shell, activity, and process-liveness state. Hooks emit events to the daemon over a Unix socket (`~/.capacitor/daemon.sock`), and Swift reads daemon snapshots (shell state + project aggregation); file-based JSON fallbacks are removed in daemon-only mode. Workstreams (managed git worktrees) are first-class with create/open/destroy UX and slug-prefixed naming; activation matching avoids crossing repo cards with managed worktree tmux panes. Project-card rendering now uses a **single unified active+idle row pipeline**, **stable outer identity by project path**, and **in-place status/effect animations** (no card-root remount invalidation), with status text using SwiftUI `numericText` content transitions. Manual ordering now persists as one global list (`projectOrder`) and active/idle groups are projections over that list with hysteresis bands (`active`/`cooling`/`idle`) to reduce Ready/Idle thrash. Daemon empty project snapshots are also quality-gated in Swift: one empty snapshot is held as transient noise, and clearing applies on consecutive empties. Compacting lifecycle is now hard-gated: stop events are skipped while compacting, and compacting no longer inactivity-falls back to ready, preventing premature ready flicker during longer compactions. Stop-gate readiness is additionally treated as provisional for a short grace window when PID liveness is confirmed, reducing false `Ready` flashes while a session is still visibly working. Terminal activation uses a Rust resolver plus Swift execution, explicitly targeting the attached tmux client TTY (`switch-client -c <tty>`) and then foregrounding the terminal window that owns that TTY. Build channel + alpha gating are runtime via `AppConfig` (env/Info.plist/config file), not compile-time flags; release versioning is centralized in `VERSION` (current alpha: `0.2.0-alpha.1`). **Release packaging defaults are now alpha-safe by script guardrail** (`build-distribution.sh` defaults to channel `alpha`, and `release.sh` forwards channel explicitly), reducing risk of shipping prod-channel feature flags in alpha artifacts. Daemon startup and steady-state now include dead-session reconciliation plus health-exposed reconcile telemetry, demoting dead non-idle sessions to `Idle` without waiting for TTL or manual cleanup.
 
 > **Historical note:** Timeline entries below may reference pre-daemon artifacts (locks, `sessions.json`, `shell-cwd.json`). Treat them as historical context only; they are not current behavior.
 
@@ -18,6 +18,33 @@ Capacitor is a native macOS SwiftUI app (Apple Silicon, macOS 14+) that acts as 
 | `.claude/plans/ACTIVE-alpha-release-checklist.md` ("Build & Signing" block) | `App is code-signed`, `App is notarized`, and `DMG or ZIP artifact for download` remain unchecked | Local release verification now demonstrates successful code signing, notarized DMG acceptance (`spctl`), and generated ZIP/DMG artifacts for `0.2.0-alpha.1`; checklist needs manual status refresh | 2026-02-12 |
 
 ## Timeline
+
+### 2026-02-13 — Stop-Gate Ready Grace Window for Live Sessions (Completed / Uncommitted)
+
+**What changed:**
+- Added short-lived stop-gate overlay logic in daemon state evaluation:
+  - `Ready` sessions with `ready_reason=stop_gate` and confirmed live PID are surfaced as `Working` for a bounded grace window (`STOP_GATE_WORKING_GRACE_SECS = 20`).
+  - After grace expires, the same session reverts to normal `Ready` semantics.
+- Added targeted regression tests in daemon state:
+  - `stop_gate_ready_state_treated_as_working_while_pid_alive`
+  - `stop_gate_ready_state_reverts_to_ready_after_grace`
+- Kept reducer stop semantics unchanged (`Stop` still records `Ready` with `stop_gate`), minimizing blast radius to snapshot interpretation only.
+
+**Why:**
+- Live sessions in the field were intermittently showing `Ready` while Claude remained visibly busy due to stop hook timing, causing user-visible state trust issues.
+- A bounded grace window mitigates the race without permanently redefining stop semantics.
+
+**Agent impact:**
+- Treat `stop_gate` readiness as provisional, not authoritative, during the grace interval when PID liveness is `true`.
+- Do not broaden this override beyond `stop_gate` or remove the time bound without re-validating regressions.
+- For future lifecycle tuning, prefer small interpretation-layer guards over reducer-level state-machine rewrites unless protocol semantics change.
+
+**Evidence / tests:**
+- `cargo test -p capacitor-daemon stop_gate_ready_state_treated_as_working_while_pid_alive -- --nocapture`
+- `cargo test -p capacitor-daemon stop_gate_ready_state_reverts_to_ready_after_grace -- --nocapture`
+- `cargo test -p capacitor-daemon` passes.
+
+---
 
 ### 2026-02-13 — Card State-Bleed Fix + Compacting Lifecycle Hardening (Completed)
 

@@ -147,6 +147,32 @@ elif [ -f "$HOME/.local/bin/capacitor-daemon" ]; then
     cp "$HOME/.local/bin/capacitor-daemon" "$SWIFT_DEBUG_DIR/" 2>/dev/null || true
 fi
 
+# Compile Metal shaders into default.metallib for SwiftUI ShaderLibrary.bundle().
+# Only colorEffect shaders work from custom metallibs in SPM builds.
+# layerEffect/distortionEffect show yellow "not allowed" regardless of loading path
+# (ShaderLibrary.url or .bundle) — a SwiftUI limitation with non-Xcode metallibs.
+METAL_DIR="Sources/Capacitor/Shaders"
+METAL_OUTDIR="Sources/Capacitor/Resources/Shaders"
+METAL_OUT="$METAL_OUTDIR/default.metallib"
+mkdir -p "$METAL_OUTDIR"
+METAL_NEEDS_REBUILD=false
+for src in "$METAL_DIR"/*.metal; do
+    if [ "$src" -nt "$METAL_OUT" ] || [ ! -f "$METAL_OUT" ]; then
+        METAL_NEEDS_REBUILD=true
+        break
+    fi
+done
+if $METAL_NEEDS_REBUILD; then
+    AIR_FILES=""
+    for src in "$METAL_DIR"/*.metal; do
+        base=$(basename "$src" .metal)
+        xcrun metal -fno-fast-math -c "$src" -o "/tmp/$base.air"
+        AIR_FILES="$AIR_FILES /tmp/$base.air"
+    done
+    xcrun metallib $AIR_FILES -o "$METAL_OUT"
+    rm -f $AIR_FILES
+fi
+
 swift build || { echo "Swift build failed"; exit 1; }
 
 # Debug runtime sanity checks to avoid dyld "Library not loaded" crashes.

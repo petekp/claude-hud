@@ -37,11 +37,15 @@ let package = Package(
                 .product(name: "Sparkle", package: "Sparkle"),
             ],
             path: "Sources/Capacitor",
+            exclude: [
+                "Shaders",
+            ],
             resources: [
                 .process("Resources/Assets.xcassets"),
                 .process("Resources/logomark.pdf"),
                 .process("Resources/logo.pdf"),
                 .process("Resources/logo-small.pdf"),
+                .copy("Resources/Shaders/default.metallib"),
             ],
             linkerSettings: [
                 .linkedLibrary("hud_core"),

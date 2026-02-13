@@ -127,4 +127,30 @@ mod tests {
         assert_eq!(session.state_changed_at, "2026-01-31T00:00:10Z");
         assert_eq!(session.updated_at, "2026-01-31T00:00:10Z");
     }
+
+    #[test]
+    fn catch_up_uses_temporal_order_for_mixed_rfc3339_formats() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let db_path = temp_dir.path().join("state.db");
+        let db = Db::new(db_path).expect("db init");
+
+        // 13:00+01:00 == 12:00Z (older than 12:30Z), but lexical string order is greater.
+        let older_start = make_event(
+            "evt-1",
+            EventType::SessionStart,
+            "2026-01-31T13:00:00+01:00",
+        );
+        let newer_end = make_event("evt-2", EventType::SessionEnd, "2026-01-31T12:30:00Z");
+
+        db.insert_event(&older_start).expect("insert start");
+        db.insert_event(&newer_end).expect("insert end");
+
+        catch_up_sessions_from_events(&db, None).expect("catch up");
+
+        let session = db.get_session("session-1").expect("get session");
+        assert!(
+            session.is_none(),
+            "session should remain deleted after catch-up"
+        );
+    }
 }

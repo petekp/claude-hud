@@ -4,7 +4,7 @@
 //! The daemon remains the authority on validation, but clients can reuse the
 //! same types to construct valid requests.
 
-use chrono::DateTime;
+use chrono::{DateTime, SecondsFormat, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -186,7 +186,6 @@ impl EventEnvelope {
             }
             EventType::SessionEnd => {
                 require_string(&self.session_id, "session_id")?;
-                require_pid(&self.pid)?;
             }
             EventType::SessionStart
             | EventType::UserPromptSubmit
@@ -208,12 +207,13 @@ impl EventEnvelope {
 }
 
 pub fn parse_event(params: Value) -> Result<EventEnvelope, ErrorInfo> {
-    let envelope: EventEnvelope = serde_json::from_value(params).map_err(|err| {
+    let mut envelope: EventEnvelope = serde_json::from_value(params).map_err(|err| {
         ErrorInfo::new(
             "invalid_params",
             format!("event payload is invalid JSON: {}", err),
         )
     })?;
+    envelope.recorded_at = normalize_recorded_at(&envelope.recorded_at)?;
     envelope.validate()?;
     Ok(envelope)
 }
@@ -229,9 +229,16 @@ pub fn parse_process_liveness(params: Value) -> Result<ProcessLivenessRequest, E
 
 fn require_session_fields(event: &EventEnvelope) -> Result<(), ErrorInfo> {
     require_string(&event.session_id, "session_id")?;
-    require_pid(&event.pid)?;
     require_string(&event.cwd, "cwd")?;
     Ok(())
+}
+
+fn normalize_recorded_at(value: &str) -> Result<String, ErrorInfo> {
+    let timestamp = DateTime::parse_from_rfc3339(value)
+        .map_err(|_| ErrorInfo::new("invalid_timestamp", "recorded_at must be RFC3339"))?;
+    Ok(timestamp
+        .with_timezone(&Utc)
+        .to_rfc3339_opts(SecondsFormat::Secs, true))
 }
 
 fn require_string(value: &Option<String>, field: &str) -> Result<(), ErrorInfo> {
@@ -338,6 +345,40 @@ mod tests {
     fn rejects_long_event_id() {
         let mut event = base_event(EventType::SessionEnd);
         event.event_id = "a".repeat(256);
+        assert!(event.validate().is_err());
+    }
+
+    #[test]
+    fn parse_event_normalizes_recorded_at_to_utc_z() {
+        let params = serde_json::json!({
+            "event_id": "evt-1",
+            "recorded_at": "2026-01-30T07:00:00-05:00",
+            "event_type": "session_start",
+            "session_id": "session-1",
+            "pid": 1234,
+            "cwd": "/repo"
+        });
+
+        let parsed = parse_event(params).expect("parse event");
+        assert_eq!(parsed.recorded_at, "2026-01-30T12:00:00Z");
+    }
+
+    #[test]
+    fn session_events_allow_missing_pid() {
+        let mut event = base_event(EventType::SessionStart);
+        event.pid = None;
+        assert!(event.validate().is_ok());
+
+        let mut end_event = base_event(EventType::SessionEnd);
+        end_event.pid = None;
+        assert!(end_event.validate().is_ok());
+    }
+
+    #[test]
+    fn shell_cwd_requires_pid() {
+        let mut event = base_event(EventType::ShellCwd);
+        event.session_id = None;
+        event.pid = None;
         assert!(event.validate().is_err());
     }
 }

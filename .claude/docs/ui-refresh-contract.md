@@ -30,6 +30,10 @@ project/session state is sourced exclusively from the daemon.
 - **Daemon is authoritative.** Clients must not reinterpret state (no local staleness/TTL heuristics).
 - **UI updates are coalesced** to avoid layout churn:
   - `AppState.refreshSessionStates()` uses a **16ms debounce** before `objectWillChange.send()`.
+- **Only newest refresh may apply.**
+  - `SessionStateManager.refreshSessionStates(for:)` increments a monotonic generation counter.
+  - Any detached fetch that is canceled or has a stale generation is dropped before apply.
+  - This prevents older daemon responses from overwriting newer project-card state.
 - **If the daemon is unavailable**, state refreshes may fail; the UI should keep last known state and retry on next tick.
 
 ## Client Behavior Guarantees

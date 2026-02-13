@@ -28,6 +28,7 @@ const SESSION_TTL_READY_SECS: i64 = 30 * 60; // Ready
 const SESSION_TTL_IDLE_SECS: i64 = 10 * 60; // Idle
                                             // Ready does not auto-idle; it remains until TTL or session end.
 const SESSION_AUTO_READY_SECS: i64 = 60; // Auto-ready eligible states -> Ready when inactive and no tools are in flight.
+const STOP_GATE_WORKING_GRACE_SECS: i64 = 20; // Short-lived guard for false Stop->Ready while session is still actively finishing.
 const SESSION_CATCH_UP_MAX_AGE_SECS: i64 = SESSION_TTL_READY_SECS + (5 * 60); // Ready TTL plus margin.
 
 pub struct SharedState {
@@ -669,6 +670,17 @@ fn effective_session_state(
     now: DateTime<Utc>,
     is_alive: Option<bool>,
 ) -> crate::reducer::SessionState {
+    if matches!(record.state, crate::reducer::SessionState::Ready)
+        && record.ready_reason.as_deref() == Some("stop_gate")
+        && is_alive == Some(true)
+    {
+        if let Some(stop_time) = parse_rfc3339(&record.updated_at) {
+            if now.signed_duration_since(stop_time).num_seconds() <= STOP_GATE_WORKING_GRACE_SECS {
+                return crate::reducer::SessionState::Working;
+            }
+        }
+    }
+
     if matches!(record.state, crate::reducer::SessionState::Ready) && is_alive == Some(false) {
         return crate::reducer::SessionState::Idle;
     }
@@ -957,6 +969,50 @@ mod tests {
     }
 
     #[test]
+    fn stop_gate_ready_state_treated_as_working_while_pid_alive() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let db_path = temp_dir.path().join("state.db");
+        let db = Db::new(db_path).expect("db init");
+        let state = SharedState::new(db);
+
+        let now = Utc::now().to_rfc3339();
+        let mut record = make_record("session-stop-gate", "/repo", SessionState::Ready, now);
+        record.pid = std::process::id();
+        record.last_event = Some("stop".to_string());
+        record.ready_reason = Some("stop_gate".to_string());
+        state.db.upsert_session(&record).expect("insert session");
+
+        let aggregates = state.project_states_snapshot().expect("project states");
+        assert_eq!(aggregates.len(), 1);
+        assert_eq!(aggregates[0].state, SessionState::Working);
+    }
+
+    #[test]
+    fn stop_gate_ready_state_reverts_to_ready_after_grace() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let db_path = temp_dir.path().join("state.db");
+        let db = Db::new(db_path).expect("db init");
+        let state = SharedState::new(db);
+
+        let old_stop =
+            (Utc::now() - Duration::seconds(STOP_GATE_WORKING_GRACE_SECS + 5)).to_rfc3339();
+        let mut record = make_record(
+            "session-stop-gate-old",
+            "/repo",
+            SessionState::Ready,
+            old_stop,
+        );
+        record.pid = std::process::id();
+        record.last_event = Some("stop".to_string());
+        record.ready_reason = Some("stop_gate".to_string());
+        state.db.upsert_session(&record).expect("insert session");
+
+        let aggregates = state.project_states_snapshot().expect("project states");
+        assert_eq!(aggregates.len(), 1);
+        assert_eq!(aggregates[0].state, SessionState::Ready);
+    }
+
+    #[test]
     fn ttl_expires_stale_sessions() {
         let temp_dir = tempfile::tempdir().expect("temp dir");
         let db_path = temp_dir.path().join("state.db");
@@ -1197,6 +1253,31 @@ mod tests {
             "/Users/petepetrash/Code/unknown-pid"
         );
         assert_eq!(projects[0].state, SessionState::Ready);
+        assert!(projects[0].has_session);
+    }
+
+    #[test]
+    fn project_states_keep_working_when_pid_unknown() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let db_path = temp_dir.path().join("state.db");
+        let db = Db::new(db_path).expect("db init");
+        let state = SharedState::new(db);
+
+        let record = make_record(
+            "session-working-unknown-pid",
+            "/Users/petepetrash/Code/unknown-pid-working",
+            SessionState::Working,
+            Utc::now().to_rfc3339(),
+        );
+        state.db.upsert_session(&record).expect("insert session");
+
+        let projects = state.project_states_snapshot().expect("project states");
+        assert_eq!(projects.len(), 1);
+        assert_eq!(
+            projects[0].project_path,
+            "/Users/petepetrash/Code/unknown-pid-working"
+        );
+        assert_eq!(projects[0].state, SessionState::Working);
         assert!(projects[0].has_session);
     }
 

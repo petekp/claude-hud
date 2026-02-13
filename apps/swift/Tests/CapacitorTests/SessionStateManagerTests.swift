@@ -593,6 +593,101 @@ final class SessionStateManagerTests: XCTestCase {
         XCTAssertEqual(stateB?.sessionId, "session-direct")
     }
 
+    func testStaleCanceledRefreshResultDoesNotOverrideNewerState() async {
+        let projectPath = "/Users/pete/Code/race-project"
+        let staleResponse = makeProjectStatesResponse([
+            .init(
+                projectPath: projectPath,
+                state: "working",
+                updatedAt: "2026-02-12T10:00:00Z",
+                stateChangedAt: "2026-02-12T10:00:00Z",
+                sessionId: "session-stale",
+            ),
+        ])
+        let freshResponse = makeProjectStatesResponse([
+            .init(
+                projectPath: projectPath,
+                state: "ready",
+                updatedAt: "2026-02-12T10:00:05Z",
+                stateChangedAt: "2026-02-12T10:00:05Z",
+                sessionId: "session-fresh",
+            ),
+        ])
+
+        let callCounter = AsyncCallCounter()
+        let daemonClient = DaemonClient(transport: { _ in
+            let callIndex = await callCounter.next()
+
+            if callIndex == 1 {
+                // Simulate a transport that ignores cancellation and resolves late.
+                try? await _Concurrency.Task.sleep(nanoseconds: 250_000_000)
+                return staleResponse
+            }
+            return freshResponse
+        })
+
+        let manager = SessionStateManager(daemonClient: daemonClient)
+        let project = makeProject("race-project", path: projectPath)
+
+        manager.refreshSessionStates(for: [project])
+        try? await _Concurrency.Task.sleep(nanoseconds: 20_000_000)
+        manager.refreshSessionStates(for: [project])
+        try? await _Concurrency.Task.sleep(nanoseconds: 450_000_000)
+
+        let state = manager.getSessionState(for: project)
+        XCTAssertEqual(state?.sessionId, "session-fresh")
+        XCTAssertEqual(state?.state, .ready)
+    }
+
+    func testCanceledRefreshTaskResultIsDroppedBeforeApply() async {
+        let projectPath = "/Users/pete/Code/race-project-cancel"
+        let staleResponse = makeProjectStatesResponse([
+            .init(
+                projectPath: projectPath,
+                state: "working",
+                updatedAt: "2026-02-12T11:00:00Z",
+                stateChangedAt: "2026-02-12T11:00:00Z",
+                sessionId: "session-canceled",
+            ),
+        ])
+        let freshResponse = makeProjectStatesResponse([
+            .init(
+                projectPath: projectPath,
+                state: "ready",
+                updatedAt: "2026-02-12T11:00:05Z",
+                stateChangedAt: "2026-02-12T11:00:05Z",
+                sessionId: "session-current",
+            ),
+        ])
+
+        let callCounter = AsyncCallCounter()
+        let daemonClient = DaemonClient(transport: { _ in
+            let callIndex = await callCounter.next()
+
+            if callIndex == 1 {
+                while !_Concurrency.Task.isCancelled {
+                    try? await _Concurrency.Task.sleep(nanoseconds: 5_000_000)
+                }
+                // Return after cancellation to emulate a non-cooperative backend.
+                try? await _Concurrency.Task.sleep(nanoseconds: 200_000_000)
+                return staleResponse
+            }
+            return freshResponse
+        })
+
+        let manager = SessionStateManager(daemonClient: daemonClient)
+        let project = makeProject("race-project-cancel", path: projectPath)
+
+        manager.refreshSessionStates(for: [project])
+        try? await _Concurrency.Task.sleep(nanoseconds: 20_000_000)
+        manager.refreshSessionStates(for: [project])
+        try? await _Concurrency.Task.sleep(nanoseconds: 500_000_000)
+
+        let state = manager.getSessionState(for: project)
+        XCTAssertEqual(state?.sessionId, "session-current")
+        XCTAssertEqual(state?.state, .ready)
+    }
+
     func testGetSessionStateFallsBackToNormalizedPathLookup() throws {
         let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
@@ -634,6 +729,15 @@ final class SessionStateManagerTests: XCTestCase {
 
         XCTAssertEqual(state?.sessionId, "session-direct")
         XCTAssertEqual(state?.state, .working)
+    }
+
+    private actor AsyncCallCounter {
+        private var value = 0
+
+        func next() -> Int {
+            value += 1
+            return value
+        }
     }
 
     private func waitForSessionState(

@@ -60,12 +60,19 @@ final class SessionStateManager {
     private var previousSessionStates: [String: SessionState] = [:]
     private var consecutiveEmptySnapshotCount = 0
 
-    private let daemonClient = DaemonClient.shared
+    private let daemonClient: DaemonClient
     private var daemonRefreshTask: _Concurrency.Task<Void, Never>?
+    private var refreshGeneration: UInt64 = 0
+
+    init(daemonClient: DaemonClient = .shared) {
+        self.daemonClient = daemonClient
+    }
 
     // MARK: - Refresh
 
     func refreshSessionStates(for projects: [Project]) {
+        refreshGeneration &+= 1
+        let requestGeneration = refreshGeneration
         let daemonEnabled = daemonClient.isEnabled
         DebugLog.write("SessionStateManager.refresh daemonEnabled=\(daemonEnabled) projects=\(projects.count)")
 
@@ -83,12 +90,29 @@ final class SessionStateManager {
         checkForStateChanges()
 
         daemonRefreshTask?.cancel()
+        let daemonClient = daemonClient
         daemonRefreshTask = _Concurrency.Task.detached { [weak self] in
             guard let self else { return }
             do {
                 let daemonProjects = try await daemonClient.fetchProjectStates()
+                if _Concurrency.Task.isCancelled {
+                    await MainActor.run {
+                        DebugLog.write("SessionStateManager.refresh drop canceled generation=\(requestGeneration)")
+                    }
+                    return
+                }
                 let merged = mergeDaemonProjectStates(daemonProjects, projects: projects)
                 await MainActor.run {
+                    guard !_Concurrency.Task.isCancelled else {
+                        DebugLog.write("SessionStateManager.refresh drop canceled-before-apply generation=\(requestGeneration)")
+                        return
+                    }
+                    guard requestGeneration == self.refreshGeneration else {
+                        DebugLog.write(
+                            "SessionStateManager.refresh drop stale generation=\(requestGeneration) current=\(self.refreshGeneration)",
+                        )
+                        return
+                    }
                     let stabilized = self.stabilizeEmptyDaemonSnapshotIfNeeded(merged)
                     DebugLog.write("SessionStateManager.fetchProjectStates success count=\(daemonProjects.count)")
                     if !merged.isEmpty {
@@ -114,6 +138,16 @@ final class SessionStateManager {
                 }
             } catch {
                 await MainActor.run {
+                    if _Concurrency.Task.isCancelled {
+                        DebugLog.write("SessionStateManager.fetchProjectStates canceled generation=\(requestGeneration)")
+                        return
+                    }
+                    if requestGeneration != self.refreshGeneration {
+                        DebugLog.write(
+                            "SessionStateManager.fetchProjectStates stale-error generation=\(requestGeneration) current=\(self.refreshGeneration)",
+                        )
+                        return
+                    }
                     DebugLog.write("SessionStateManager.fetchProjectStates error=\(error)")
                 }
                 return

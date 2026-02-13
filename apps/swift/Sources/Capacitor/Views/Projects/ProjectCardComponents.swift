@@ -390,6 +390,210 @@ struct StaleBadge: View {
     }
 }
 
+// MARK: - Metallic Press Highlight (Metal Shader)
+
+/// GPU-computed metallic specular highlight at press point.
+/// Rings propagate outward from the click position as animated ripples.
+/// Uses a Metal shader for per-pixel concentric rings, 8-fold anisotropy,
+/// and warm→cool chromatic shift — effects that can't be done with SwiftUI gradients.
+///
+/// **Fire-and-forget**: the ripple fires on click and decays over `duration`.
+/// It does NOT depend on press/hold state — mouseUp doesn't affect it.
+///
+/// **Vibrancy mode**: When enabled, the shader output masks a `VibrancyView` so the
+/// ripple is "made of" frosted glass — desktop content bleeds through the pattern.
+struct MetallicPressHighlight: View {
+    let pressPoint: CGPoint
+    let cardSize: CGSize
+    let cornerRadius: CGFloat
+    let intensity: Double
+    /// Reference date when the press began (drives ripple animation).
+    let pressStartTime: Date?
+
+    #if DEBUG
+        private let config = GlassConfig.shared
+    #endif
+
+    private var blendMode: BlendMode {
+        #if DEBUG
+            Self.blendModeFromInt(config.highlightBlendMode)
+        #else
+            .overlay
+        #endif
+    }
+
+    #if DEBUG
+        private var useVibrancy: Bool {
+            config.highlightUseVibrancy
+        }
+
+        private var vibrancyMaterial: NSVisualEffectView.Material {
+            switch config.highlightVibrancyMaterial {
+            case 0: .hudWindow
+            case 1: .popover
+            case 2: .menu
+            case 3: .sidebar
+            case 4: .fullScreenUI
+            default: .popover
+            }
+        }
+    #endif
+
+    static func blendModeFromInt(_ value: Int) -> BlendMode {
+        switch value {
+        case 0: .normal
+        case 1: .plusLighter
+        case 2: .softLight
+        case 3: .overlay
+        case 4: .screen
+        case 5: .colorDodge
+        case 6: .hardLight
+        default: .overlay
+        }
+    }
+
+    var body: some View {
+        if pressStartTime != nil {
+            TimelineView(.animation(minimumInterval: nil, paused: false)) { timeline in
+                let library = ShaderCache.library
+                let elapsed = pressStartTime.map { timeline.date.timeIntervalSince($0) } ?? 0
+
+                #if DEBUG
+                    let ringFreq = config.highlightRingFrequency
+                    let ringSharp = config.highlightRingSharpness
+                    let falloff = config.highlightFalloff
+                    let specTight = config.highlightSpecularTightness
+                    let specWeight = config.highlightSpecularWeight
+                    let ringWeight = config.highlightRingWeight
+                    let speed = config.highlightRippleSpeed
+                    let duration = config.highlightRippleDuration
+                #else
+                    let ringFreq = 1.00
+                    let ringSharp = 1.13
+                    let falloff = 0.10
+                    let specTight = 8.60
+                    let specWeight = 1.33
+                    let ringWeight = 0.84
+                    let speed = 9.06
+                    let duration = 0.63
+                #endif
+
+                let fade = max(0, 1.0 - elapsed / max(duration, 0.01))
+                let effectiveIntensity = intensity * fade
+
+                let shaderMask = Color.white
+                    .colorEffect(
+                        library.metallicPress(
+                            .float2(pressPoint.x, pressPoint.y),
+                            .float2(cardSize.width, cardSize.height),
+                            .float(effectiveIntensity),
+                            .float(ringFreq),
+                            .float(ringSharp),
+                            .float(falloff),
+                            .float(specTight),
+                            .float(specWeight),
+                            .float(ringWeight),
+                            .float(max(elapsed, 0)),
+                            .float(speed),
+                        ),
+                    )
+                    .opacity(fade)
+
+                #if DEBUG
+                    if useVibrancy {
+                        VibrancyView(
+                            material: vibrancyMaterial,
+                            blendingMode: .behindWindow,
+                            isEmphasized: false,
+                            forceDarkAppearance: true,
+                        )
+                        .mask { shaderMask }
+                    } else {
+                        shaderMask
+                    }
+                #else
+                    shaderMask
+                #endif
+            }
+            .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
+            .blendMode(blendMode)
+            .allowsHitTesting(false)
+        }
+    }
+}
+
+// MARK: - Press Distortion Modifier
+
+/// Simulates a physical surface flex at the press point using SwiftUI geometry transforms.
+/// Metal layerEffect/distortionEffect don't work from custom metallibs (SPM or bundle) —
+/// SwiftUI renders the effect but overlays a yellow error indicator regardless of loading path.
+/// Pure SwiftUI projectionEffect achieves the same visual without the limitation.
+struct PressDistortionModifier: ViewModifier {
+    let pressPoint: CGPoint
+    let cardSize: CGSize
+    let intensity: Double
+
+    #if DEBUG
+        private let config = GlassConfig.shared
+    #endif
+
+    func body(content: Content) -> some View {
+        if intensity > 0, cardSize.width > 0, cardSize.height > 0 {
+            #if DEBUG
+                let skewMult = config.distortionMaxSkew
+                let insetMult = config.distortionScaleInset
+                let dirScale = config.distortionDirectionalScale
+                let anchorOff = config.distortionAnchorOffset
+            #else
+                let skewMult = 0.0
+                let insetMult = 0.0
+                let dirScale = 0.0
+                let anchorOff = 0.07
+            #endif
+
+            let nx = (pressPoint.x / cardSize.width - 0.5) * 2
+            let ny = (pressPoint.y / cardSize.height - 0.5) * 2
+
+            let maxSkew: CGFloat = skewMult * intensity
+            let scaleInset: CGFloat = 1.0 - insetMult * intensity
+
+            content
+                .scaleEffect(
+                    x: 1.0 + (1.0 - abs(nx)) * dirScale * intensity,
+                    y: 1.0 + (1.0 - abs(ny)) * dirScale * intensity,
+                    anchor: UnitPoint(
+                        x: 0.5 + nx * anchorOff,
+                        y: 0.5 + ny * anchorOff,
+                    ),
+                )
+                .projectionEffect(ProjectionTransform(CGAffineTransform(
+                    a: scaleInset, b: ny * maxSkew,
+                    c: nx * maxSkew, d: scaleInset,
+                    tx: 0, ty: 0,
+                )))
+        } else {
+            content
+        }
+    }
+}
+
+extension View {
+    func pressDistortion(pressPoint: CGPoint, cardSize: CGSize, intensity: Double) -> some View {
+        modifier(PressDistortionModifier(pressPoint: pressPoint, cardSize: cardSize, intensity: intensity))
+    }
+}
+
+// MARK: - Shader Cache
+
+/// Pre-compiled Metal shader library loaded via ShaderLibrary.bundle().
+/// restart-app.sh compiles Shaders/*.metal → Resources/Shaders/default.metallib.
+/// Using .bundle() (not .url()) because .url() breaks layerEffect/distortionEffect
+/// at runtime — SwiftUI shows yellow/not-allowed even when the effect renders.
+/// .bundle() uses the same code path as Xcode-compiled shaders.
+enum ShaderCache {
+    static let library: ShaderLibrary = .bundle(Bundle.module)
+}
+
 /// Blocker indicator badge
 struct BlockerBadge: View {
     var style: BadgeStyle = .normal
