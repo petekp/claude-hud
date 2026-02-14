@@ -25,6 +25,7 @@ mod activity;
 mod backoff;
 mod boundaries;
 mod db;
+mod hem;
 mod process;
 mod project_identity;
 mod reducer;
@@ -93,7 +94,21 @@ fn main() {
         }
     };
 
-    let shared_state = Arc::new(SharedState::new(db));
+    let hem_config = match hem::load_runtime_config(None) {
+        Ok(config) => config,
+        Err(err) => {
+            warn!(error = %err, "Failed to load HEM config; using safe defaults");
+            hem::HemRuntimeConfig::default()
+        }
+    };
+    let shared_state = Arc::new(SharedState::new_with_hem_config(db, hem_config.clone()));
+    info!(
+        hem_enabled = hem_config.engine.enabled,
+        hem_mode = ?hem_config.engine.mode,
+        provider = hem_config.provider.name,
+        provider_version = hem_config.provider.version,
+        "HEM runtime config loaded"
+    );
     spawn_dead_session_reconciler(Arc::clone(&shared_state));
 
     for stream in listener.incoming() {
@@ -265,6 +280,9 @@ fn handle_request(request: Request, state: Arc<SharedState>) -> Response {
             });
             if let Ok(value) = serde_json::to_value(state.dead_session_reconcile_snapshot()) {
                 data["dead_session_reconcile"] = value;
+            }
+            if let Ok(value) = serde_json::to_value(state.hem_shadow_metrics_snapshot()) {
+                data["hem_shadow"] = value;
             }
             if let Ok(path) = daemon_backoff_path() {
                 if let Some(snapshot) = backoff::snapshot(&path) {

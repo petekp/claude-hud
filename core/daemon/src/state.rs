@@ -10,7 +10,11 @@ use std::collections::HashMap;
 use std::sync::Mutex;
 
 use crate::activity::{reduce_activity, ActivityEntry};
-use crate::db::{Db, TombstoneRow};
+use crate::db::{Db, HemShadowMismatch, TombstoneRow};
+use crate::hem::{
+    HemCapabilityStatus, HemCapabilityTracker, HemEffectiveCapabilities, HemMode, HemProjectState,
+    HemRuntimeConfig,
+};
 use crate::process::get_process_start_time;
 use crate::project_identity::workspace_id;
 use crate::reducer::{SessionRecord, SessionUpdate};
@@ -30,15 +34,28 @@ const SESSION_TTL_IDLE_SECS: i64 = 10 * 60; // Idle
 const SESSION_AUTO_READY_SECS: i64 = 60; // Auto-ready eligible states -> Ready when inactive and no tools are in flight.
 const STOP_GATE_WORKING_GRACE_SECS: i64 = 20; // Short-lived guard for false Stop->Ready while session is still actively finishing.
 const SESSION_CATCH_UP_MAX_AGE_SECS: i64 = SESSION_TTL_READY_SECS + (5 * 60); // Ready TTL plus margin.
+const HEM_SHADOW_MISMATCH_RETENTION_DAYS: i64 = 14;
+const HEM_SHADOW_MISMATCH_PERSIST_LIMIT_PER_EVENT: usize = 4;
+const HEM_STABLE_STATE_TRANSITION_EXCLUSION_SECS: i64 = 20;
+const HEM_STABLE_STATE_AGREEMENT_GATE_TARGET: f64 = 0.995;
 
 pub struct SharedState {
     db: Db,
+    hem_config: HemRuntimeConfig,
     shell_state: Mutex<ShellState>,
     dead_session_reconcile: Mutex<HashMap<String, DeadSessionReconcileMetrics>>,
+    hem_shadow_metrics: Mutex<HemShadowMetrics>,
+    hem_capability_tracker: Mutex<HemCapabilityTracker>,
+    mutation_lock: Mutex<()>,
 }
 
 impl SharedState {
+    #[allow(dead_code)]
     pub fn new(db: Db) -> Self {
+        Self::new_with_hem_config(db, HemRuntimeConfig::default())
+    }
+
+    pub fn new_with_hem_config(db: Db, hem_config: HemRuntimeConfig) -> Self {
         let mut catch_up_since: Option<DateTime<Utc>> = None;
         let mut needs_catch_up = false;
         match db.has_sessions() {
@@ -109,6 +126,9 @@ impl SharedState {
         if let Err(err) = db.prune_process_liveness(PROCESS_LIVENESS_MAX_AGE_HOURS) {
             tracing::warn!(error = %err, "Failed to prune process liveness table");
         }
+        if let Err(err) = db.prune_hem_shadow_mismatches(HEM_SHADOW_MISMATCH_RETENTION_DAYS) {
+            tracing::warn!(error = %err, "Failed to prune HEM shadow mismatches");
+        }
 
         // Prune stale shells (TTL)
         let pruned_ttl = db.prune_stale_shells(SHELL_MAX_AGE_HOURS).unwrap_or(0);
@@ -142,8 +162,12 @@ impl SharedState {
 
         let shared = Self {
             db,
+            hem_config: hem_config.clone(),
             shell_state: Mutex::new(shell_state),
             dead_session_reconcile: Mutex::new(HashMap::new()),
+            hem_shadow_metrics: Mutex::new(HemShadowMetrics::new(&hem_config)),
+            hem_capability_tracker: Mutex::new(HemCapabilityTracker::new()),
+            mutation_lock: Mutex::new(()),
         };
 
         if let Err(err) = shared.reconcile_dead_non_idle_sessions("startup") {
@@ -157,9 +181,21 @@ impl SharedState {
     }
 
     pub fn update_from_event(&self, event: &EventEnvelope) {
-        if let Err(err) = self.db.insert_event(event) {
-            tracing::warn!(error = %err, "Failed to persist daemon event");
-            return;
+        let _mutation_guard = self
+            .mutation_lock
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+
+        match self.db.insert_event(event) {
+            Ok(true) => {}
+            Ok(false) => {
+                tracing::debug!(event_id = %event.event_id, "Skipping duplicate daemon event");
+                return;
+            }
+            Err(err) => {
+                tracing::warn!(error = %err, "Failed to persist daemon event");
+                return;
+            }
         }
 
         if let Err(err) = self.db.upsert_process_liveness(event) {
@@ -214,6 +250,8 @@ impl SharedState {
 
             self.update_shell_state_cache(event);
         }
+
+        self.evaluate_hem_shadow(event);
     }
 
     pub fn shell_state_snapshot(&self) -> ShellState {
@@ -333,6 +371,11 @@ impl SharedState {
     }
 
     pub fn reconcile_dead_non_idle_sessions(&self, source: &str) -> Result<usize, String> {
+        let _mutation_guard = self
+            .mutation_lock
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+
         let mut sessions = self.db.list_sessions()?;
         let now = Utc::now().to_rfc3339();
         let marker = format!("dead_pid_reconcile_{}", source);
@@ -376,6 +419,13 @@ impl SharedState {
             .unwrap_or_default()
     }
 
+    pub fn hem_shadow_metrics_snapshot(&self) -> HemShadowMetrics {
+        self.hem_shadow_metrics
+            .lock()
+            .map(|metrics| metrics.clone())
+            .unwrap_or_default()
+    }
+
     fn session_is_alive(&self, pid: u32) -> Option<bool> {
         if pid == 0 {
             return None;
@@ -397,6 +447,11 @@ impl SharedState {
     }
 
     pub fn project_states_snapshot(&self) -> Result<Vec<ProjectState>, String> {
+        if self.hem_config.engine.enabled && matches!(self.hem_config.engine.mode, HemMode::Primary)
+        {
+            return self.project_states_snapshot_hem_primary();
+        }
+
         let sessions = self.db.list_sessions()?;
         let now = Utc::now();
         let mut aggregates: HashMap<String, ProjectAggregate> = HashMap::new();
@@ -471,6 +526,11 @@ impl SharedState {
                 has_session,
             });
         }
+        results.sort_by(|left, right| {
+            left.project_path
+                .cmp(&right.project_path)
+                .then_with(|| left.session_id.cmp(&right.session_id))
+        });
 
         if !results.is_empty() {
             let summary = results
@@ -490,6 +550,111 @@ impl SharedState {
             tracing::debug!(summary = %summary, "Project state snapshot summary");
         } else {
             tracing::debug!("Project state snapshot empty");
+        }
+
+        Ok(results)
+    }
+
+    fn project_states_snapshot_hem_primary(&self) -> Result<Vec<ProjectState>, String> {
+        let sessions = self.db.list_sessions()?;
+        let now = Utc::now();
+        let mut eligible_sessions = Vec::new();
+
+        for record in sessions {
+            if record.project_path.trim().is_empty() {
+                continue;
+            }
+            if self.is_session_expired(&record, now) {
+                self.prune_session(&record.session_id)?;
+                continue;
+            }
+            let is_alive = self.session_is_alive(record.pid);
+            let mut normalized = record;
+            normalized.state = effective_session_state(&normalized, now, is_alive);
+            eligible_sessions.push(normalized);
+        }
+
+        let hem_states =
+            crate::hem::synthesize_project_states_shadow(&eligible_sessions, now, &self.hem_config);
+
+        let mut results = Vec::new();
+        for hem_state in hem_states {
+            let related_sessions = eligible_sessions
+                .iter()
+                .filter(|record| {
+                    record.project_path == hem_state.project_path
+                        || record.cwd == hem_state.project_path
+                })
+                .collect::<Vec<_>>();
+
+            let mut session_count = 0usize;
+            let mut active_count = 0usize;
+            let mut latest: Option<(&SessionRecord, DateTime<Utc>)> = None;
+            for record in &related_sessions {
+                session_count += 1;
+                if session_state_is_active(&record.state) {
+                    active_count += 1;
+                }
+                if let Some(ts) = session_timestamp(record) {
+                    match latest {
+                        Some((_, current_ts)) if ts <= current_ts => {}
+                        _ => latest = Some((record, ts)),
+                    }
+                }
+            }
+
+            let (updated_at, state_changed_at, session_id) = match latest {
+                Some((record, _)) => (
+                    record.updated_at.clone(),
+                    record.state_changed_at.clone(),
+                    Some(record.session_id.clone()),
+                ),
+                None => {
+                    let now_rfc3339 = now.to_rfc3339();
+                    (now_rfc3339.clone(), now_rfc3339, None)
+                }
+            };
+
+            let computed_workspace_id =
+                workspace_id(&hem_state.project_id, &hem_state.project_path);
+            results.push(ProjectState {
+                project_id: hem_state.project_id.clone(),
+                workspace_id: computed_workspace_id,
+                project_path: hem_state.project_path.clone(),
+                state: hem_state.state.clone(),
+                state_changed_at,
+                updated_at,
+                session_id,
+                session_count: session_count.max(hem_state.evidence_count),
+                active_count,
+                has_session: hem_state.state != crate::reducer::SessionState::Idle,
+            });
+        }
+
+        results.sort_by(|left, right| {
+            left.project_path
+                .cmp(&right.project_path)
+                .then_with(|| left.session_id.cmp(&right.session_id))
+        });
+
+        if !results.is_empty() {
+            let summary = results
+                .iter()
+                .map(|state| {
+                    format!(
+                        "{} state={} sessions={} active={} updated_at={}",
+                        state.project_path,
+                        state.state.as_str(),
+                        state.session_count,
+                        state.active_count,
+                        state.updated_at
+                    )
+                })
+                .collect::<Vec<_>>()
+                .join(" | ");
+            tracing::debug!(summary = %summary, "Project state snapshot summary (HEM primary)");
+        } else {
+            tracing::debug!("Project state snapshot empty (HEM primary)");
         }
 
         Ok(results)
@@ -583,6 +748,163 @@ impl SharedState {
             tracing::warn!("Failed to record dead-session reconciliation metrics (poisoned lock)");
         }
     }
+
+    fn evaluate_hem_shadow(&self, event: &EventEnvelope) {
+        let enabled = self
+            .hem_shadow_metrics
+            .lock()
+            .map(|metrics| metrics.enabled)
+            .unwrap_or(false);
+        if !enabled {
+            return;
+        }
+        if !should_evaluate_hem_shadow_for_event(event.event_type) {
+            return;
+        }
+
+        let capability_assessment = if let Ok(mut tracker) = self.hem_capability_tracker.lock() {
+            tracker.observe_event(event);
+            tracker.assess(&self.hem_config, event.recorded_at.as_str())
+        } else {
+            crate::hem::HemCapabilityAssessment::from_config(&self.hem_config)
+        };
+        if capability_assessment.status.warning_count > 0 && capability_assessment.warnings_changed
+        {
+            tracing::warn!(
+                strategy = %capability_assessment.status.strategy,
+                handshake_seen = capability_assessment.status.handshake_seen,
+                unknown_count = capability_assessment.status.unknown_count,
+                misdeclared_count = capability_assessment.status.misdeclared_count,
+                confidence_penalty_factor = capability_assessment.status.confidence_penalty_factor,
+                warnings = ?capability_assessment.status.warnings,
+                "HEM capability profile degraded by runtime assessment"
+            );
+        }
+
+        let reducer_states = match self.project_states_snapshot() {
+            Ok(states) => states,
+            Err(err) => {
+                tracing::warn!(error = %err, "Failed to build reducer project snapshot for HEM shadow");
+                return;
+            }
+        };
+        let sessions = match self.db.list_sessions() {
+            Ok(sessions) => sessions,
+            Err(err) => {
+                tracing::warn!(error = %err, "Failed to load sessions for HEM shadow synthesis");
+                return;
+            }
+        };
+        let effective_capabilities = HemEffectiveCapabilities {
+            confidence_penalty_factor: capability_assessment.confidence_penalty_factor,
+            notification_matcher_support: capability_assessment.notification_matcher_support,
+        };
+        let hem_states = crate::hem::synthesize_project_states_shadow_with_capabilities(
+            &sessions,
+            Utc::now(),
+            &self.hem_config,
+            &effective_capabilities,
+        );
+        let mismatches = build_hem_shadow_mismatches(event, &reducer_states, &hem_states);
+        let stable_state_agreement = compute_stable_state_agreement(
+            event.recorded_at.as_str(),
+            &reducer_states,
+            &hem_states,
+        );
+
+        for mismatch in select_mismatches_for_persistence(
+            &mismatches,
+            HEM_SHADOW_MISMATCH_PERSIST_LIMIT_PER_EVENT,
+        ) {
+            if let Err(err) = self.db.insert_hem_shadow_mismatch(mismatch) {
+                tracing::warn!(error = %err, "Failed to persist HEM shadow mismatch");
+            }
+        }
+        self.record_hem_shadow_metrics(
+            event.recorded_at.as_str(),
+            reducer_states.len(),
+            &mismatches,
+            stable_state_agreement,
+            capability_assessment.status,
+        );
+    }
+
+    fn record_hem_shadow_metrics(
+        &self,
+        observed_at: &str,
+        projects_evaluated: usize,
+        mismatches: &[HemShadowMismatch],
+        stable_state_agreement: StableStateAgreementSample,
+        capability_status: HemCapabilityStatus,
+    ) {
+        if let Ok(mut metrics) = self.hem_shadow_metrics.lock() {
+            metrics.events_evaluated = metrics.events_evaluated.saturating_add(1);
+            metrics.projects_evaluated = metrics
+                .projects_evaluated
+                .saturating_add(projects_evaluated as u64);
+            metrics.capability_status = capability_status;
+            metrics.stable_state_samples = metrics
+                .stable_state_samples
+                .saturating_add(stable_state_agreement.samples);
+            metrics.stable_state_matches = metrics
+                .stable_state_matches
+                .saturating_add(stable_state_agreement.matches);
+            metrics.last_evaluated_at = Some(observed_at.to_string());
+            if mismatches.is_empty() {
+                metrics.refresh_cutover_summary();
+                return;
+            }
+
+            metrics.mismatches_total = metrics
+                .mismatches_total
+                .saturating_add(mismatches.len() as u64);
+            metrics.last_mismatch_at = Some(observed_at.to_string());
+            for mismatch in mismatches {
+                let entry = metrics
+                    .mismatches_by_category
+                    .entry(mismatch.category.clone())
+                    .or_insert(0);
+                *entry = entry.saturating_add(1);
+                let severity = mismatch_severity(&mismatch.category);
+                let severity_entry = metrics
+                    .mismatches_by_severity
+                    .entry(severity.to_string())
+                    .or_insert(0);
+                *severity_entry = severity_entry.saturating_add(1);
+                match severity {
+                    "critical" => {
+                        metrics.gate_critical_mismatches =
+                            metrics.gate_critical_mismatches.saturating_add(1);
+                        metrics.gate_blocking_mismatches =
+                            metrics.gate_blocking_mismatches.saturating_add(1);
+                        metrics.last_blocking_mismatch_at = Some(observed_at.to_string());
+                    }
+                    "important" => {
+                        metrics.gate_important_mismatches =
+                            metrics.gate_important_mismatches.saturating_add(1);
+                        metrics.gate_blocking_mismatches =
+                            metrics.gate_blocking_mismatches.saturating_add(1);
+                        metrics.last_blocking_mismatch_at = Some(observed_at.to_string());
+                    }
+                    _ => {}
+                }
+            }
+            metrics.refresh_cutover_summary();
+        } else {
+            tracing::warn!("Failed to record HEM shadow metrics (poisoned lock)");
+        }
+    }
+}
+
+fn should_evaluate_hem_shadow_for_event(event_type: EventType) -> bool {
+    matches!(
+        event_type,
+        EventType::SessionEnd
+            | EventType::TaskCompleted
+            | EventType::Stop
+            | EventType::ShellCwd
+            | EventType::Notification
+    )
 }
 
 #[derive(Debug, Clone, Default, Serialize)]
@@ -593,6 +915,114 @@ pub struct DeadSessionReconcileMetrics {
     pub last_run_at: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub last_repair_at: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct HemShadowMetrics {
+    pub enabled: bool,
+    pub mode: String,
+    pub capability_status: HemCapabilityStatus,
+    pub events_evaluated: u64,
+    pub projects_evaluated: u64,
+    pub mismatches_total: u64,
+    pub mismatches_by_category: HashMap<String, u64>,
+    pub mismatches_by_severity: HashMap<String, u64>,
+    pub gate_blocking_mismatches: u64,
+    pub gate_critical_mismatches: u64,
+    pub gate_important_mismatches: u64,
+    pub stable_state_samples: u64,
+    pub stable_state_matches: u64,
+    pub stable_state_agreement_rate: f64,
+    pub stable_state_agreement_gate_target: f64,
+    pub stable_state_agreement_gate_met: bool,
+    pub shadow_gate_ready: bool,
+    pub blocking_mismatch_rate: f64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub last_evaluated_at: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub last_mismatch_at: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub last_blocking_mismatch_at: Option<String>,
+}
+
+impl HemShadowMetrics {
+    fn new(config: &HemRuntimeConfig) -> Self {
+        Self {
+            enabled: config.engine.enabled && matches!(config.engine.mode, HemMode::Shadow),
+            mode: match config.engine.mode {
+                HemMode::Shadow => "shadow".to_string(),
+                HemMode::Primary => "primary".to_string(),
+            },
+            capability_status: HemCapabilityStatus::from_strategy(
+                &config.capability_detection.strategy,
+            ),
+            events_evaluated: 0,
+            projects_evaluated: 0,
+            mismatches_total: 0,
+            mismatches_by_category: HashMap::new(),
+            mismatches_by_severity: HashMap::new(),
+            gate_blocking_mismatches: 0,
+            gate_critical_mismatches: 0,
+            gate_important_mismatches: 0,
+            stable_state_samples: 0,
+            stable_state_matches: 0,
+            stable_state_agreement_rate: 0.0,
+            stable_state_agreement_gate_target: HEM_STABLE_STATE_AGREEMENT_GATE_TARGET,
+            stable_state_agreement_gate_met: false,
+            shadow_gate_ready: false,
+            blocking_mismatch_rate: 0.0,
+            last_evaluated_at: None,
+            last_mismatch_at: None,
+            last_blocking_mismatch_at: None,
+        }
+    }
+
+    fn refresh_cutover_summary(&mut self) {
+        self.shadow_gate_ready =
+            self.enabled && self.events_evaluated > 0 && self.gate_blocking_mismatches == 0;
+        if self.stable_state_samples == 0 {
+            self.stable_state_agreement_rate = 0.0;
+        } else {
+            self.stable_state_agreement_rate =
+                self.stable_state_matches as f64 / self.stable_state_samples as f64;
+        }
+        self.stable_state_agreement_gate_met = self.stable_state_samples > 0
+            && self.stable_state_agreement_rate >= self.stable_state_agreement_gate_target;
+        if self.projects_evaluated == 0 {
+            self.blocking_mismatch_rate = 0.0;
+        } else {
+            self.blocking_mismatch_rate =
+                self.gate_blocking_mismatches as f64 / self.projects_evaluated as f64;
+        }
+    }
+}
+
+impl Default for HemShadowMetrics {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            mode: "shadow".to_string(),
+            capability_status: HemCapabilityStatus::default(),
+            events_evaluated: 0,
+            projects_evaluated: 0,
+            mismatches_total: 0,
+            mismatches_by_category: HashMap::new(),
+            mismatches_by_severity: HashMap::new(),
+            gate_blocking_mismatches: 0,
+            gate_critical_mismatches: 0,
+            gate_important_mismatches: 0,
+            stable_state_samples: 0,
+            stable_state_matches: 0,
+            stable_state_agreement_rate: 0.0,
+            stable_state_agreement_gate_target: HEM_STABLE_STATE_AGREEMENT_GATE_TARGET,
+            stable_state_agreement_gate_met: false,
+            shadow_gate_ready: false,
+            blocking_mismatch_rate: 0.0,
+            last_evaluated_at: None,
+            last_mismatch_at: None,
+            last_blocking_mismatch_at: None,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -644,6 +1074,171 @@ impl ProjectAggregate {
             latest_time: session_time,
         }
     }
+}
+
+fn build_hem_shadow_mismatches(
+    event: &EventEnvelope,
+    reducer_states: &[ProjectState],
+    hem_states: &[HemProjectState],
+) -> Vec<HemShadowMismatch> {
+    let mut reducer_by_path: HashMap<&str, &ProjectState> = HashMap::new();
+    for state in reducer_states {
+        reducer_by_path.insert(state.project_path.as_str(), state);
+    }
+
+    let mut hem_by_path: HashMap<&str, &HemProjectState> = HashMap::new();
+    for state in hem_states {
+        hem_by_path.insert(state.project_path.as_str(), state);
+    }
+
+    let mut mismatches = Vec::new();
+    for (project_path, reducer_state) in &reducer_by_path {
+        match hem_by_path.remove(project_path) {
+            Some(hem_state) => {
+                if reducer_state.state != hem_state.state {
+                    mismatches.push(HemShadowMismatch {
+                        observed_at: event.recorded_at.clone(),
+                        event_id: Some(event.event_id.clone()),
+                        session_id: event.session_id.clone(),
+                        project_id: Some(reducer_state.project_id.clone()),
+                        project_path: Some((*project_path).to_string()),
+                        category: "state_mismatch".to_string(),
+                        reducer_state: Some(reducer_state.state.as_str().to_string()),
+                        hem_state: Some(hem_state.state.as_str().to_string()),
+                        confidence_delta: Some((1.0 - hem_state.confidence).max(0.0)),
+                        detail_json: Some(
+                            serde_json::json!({
+                                "hem_confidence": hem_state.confidence,
+                                "hem_evidence_count": hem_state.evidence_count
+                            })
+                            .to_string(),
+                        ),
+                    });
+                }
+            }
+            None => mismatches.push(HemShadowMismatch {
+                observed_at: event.recorded_at.clone(),
+                event_id: Some(event.event_id.clone()),
+                session_id: event.session_id.clone(),
+                project_id: Some(reducer_state.project_id.clone()),
+                project_path: Some((*project_path).to_string()),
+                category: "missing_in_hem".to_string(),
+                reducer_state: Some(reducer_state.state.as_str().to_string()),
+                hem_state: None,
+                confidence_delta: None,
+                detail_json: Some(serde_json::json!({"reason": "no_hem_projection"}).to_string()),
+            }),
+        }
+    }
+
+    for (project_path, hem_state) in hem_by_path {
+        mismatches.push(HemShadowMismatch {
+            observed_at: event.recorded_at.clone(),
+            event_id: Some(event.event_id.clone()),
+            session_id: event.session_id.clone(),
+            project_id: Some(hem_state.project_id.clone()),
+            project_path: Some(project_path.to_string()),
+            category: "extra_in_hem".to_string(),
+            reducer_state: None,
+            hem_state: Some(hem_state.state.as_str().to_string()),
+            confidence_delta: Some((1.0 - hem_state.confidence).max(0.0)),
+            detail_json: Some(
+                serde_json::json!({
+                    "hem_confidence": hem_state.confidence,
+                    "hem_evidence_count": hem_state.evidence_count
+                })
+                .to_string(),
+            ),
+        });
+    }
+
+    mismatches
+}
+
+#[derive(Debug, Clone, Copy, Default)]
+struct StableStateAgreementSample {
+    samples: u64,
+    matches: u64,
+}
+
+fn compute_stable_state_agreement(
+    observed_at: &str,
+    reducer_states: &[ProjectState],
+    hem_states: &[HemProjectState],
+) -> StableStateAgreementSample {
+    let Some(observed_at) = parse_rfc3339(observed_at) else {
+        return StableStateAgreementSample::default();
+    };
+
+    let mut hem_by_path: HashMap<&str, &HemProjectState> = HashMap::new();
+    for state in hem_states {
+        hem_by_path.insert(state.project_path.as_str(), state);
+    }
+
+    let mut sample = StableStateAgreementSample::default();
+    for reducer_state in reducer_states {
+        if !is_operationally_stable_state(&reducer_state.state) {
+            continue;
+        }
+        let Some(changed_at) = parse_rfc3339(&reducer_state.state_changed_at) else {
+            continue;
+        };
+        let age_secs = observed_at.signed_duration_since(changed_at).num_seconds();
+        if age_secs < HEM_STABLE_STATE_TRANSITION_EXCLUSION_SECS {
+            continue;
+        }
+        sample.samples = sample.samples.saturating_add(1);
+        if hem_by_path
+            .get(reducer_state.project_path.as_str())
+            .is_some_and(|hem_state| hem_state.state == reducer_state.state)
+        {
+            sample.matches = sample.matches.saturating_add(1);
+        }
+    }
+    sample
+}
+
+fn is_operationally_stable_state(state: &crate::reducer::SessionState) -> bool {
+    matches!(
+        state,
+        crate::reducer::SessionState::Ready | crate::reducer::SessionState::Idle
+    )
+}
+
+fn mismatch_severity(category: &str) -> &'static str {
+    match category {
+        "state_mismatch" => "critical",
+        "missing_in_hem" | "extra_in_hem" => "important",
+        _ => "info",
+    }
+}
+
+fn mismatch_severity_rank(category: &str) -> u8 {
+    match mismatch_severity(category) {
+        "critical" => 0,
+        "important" => 1,
+        _ => 2,
+    }
+}
+
+fn select_mismatches_for_persistence<'a>(
+    mismatches: &'a [HemShadowMismatch],
+    limit: usize,
+) -> Vec<&'a HemShadowMismatch> {
+    if limit == 0 || mismatches.is_empty() {
+        return Vec::new();
+    }
+    let mut selected = mismatches.iter().collect::<Vec<_>>();
+    selected.sort_by(|left, right| {
+        mismatch_severity_rank(&left.category)
+            .cmp(&mismatch_severity_rank(&right.category))
+            .then_with(|| left.project_path.cmp(&right.project_path))
+            .then_with(|| left.category.cmp(&right.category))
+            .then_with(|| left.reducer_state.cmp(&right.reducer_state))
+            .then_with(|| left.hem_state.cmp(&right.hem_state))
+    });
+    selected.truncate(limit);
+    selected
 }
 
 fn session_state_priority(state: &crate::reducer::SessionState) -> u8 {
@@ -786,6 +1381,26 @@ mod tests {
     use crate::db::Db;
     use crate::reducer::SessionState;
 
+    fn event_base(event_id: &str, event_type: EventType, recorded_at: &str) -> EventEnvelope {
+        EventEnvelope {
+            event_id: event_id.to_string(),
+            recorded_at: recorded_at.to_string(),
+            event_type,
+            session_id: Some("session-1".to_string()),
+            pid: Some(1234),
+            cwd: Some("/repo".to_string()),
+            tool: Some("Read".to_string()),
+            file_path: None,
+            parent_app: None,
+            tty: None,
+            tmux_session: None,
+            tmux_client_tty: None,
+            notification_type: None,
+            stop_hook_active: None,
+            metadata: None,
+        }
+    }
+
     fn make_record(
         session_id: &str,
         project_path: &str,
@@ -805,6 +1420,31 @@ mod tests {
             last_activity_at: None,
             tools_in_flight: 0,
             ready_reason: None,
+        }
+    }
+
+    fn make_project_state(project_path: &str, state: SessionState) -> ProjectState {
+        ProjectState {
+            project_id: project_path.to_string(),
+            workspace_id: workspace_id(project_path, project_path),
+            project_path: project_path.to_string(),
+            state,
+            state_changed_at: "2026-02-13T12:00:00Z".to_string(),
+            updated_at: "2026-02-13T12:00:00Z".to_string(),
+            session_id: Some(format!("session-{}", project_path)),
+            session_count: 1,
+            active_count: 0,
+            has_session: true,
+        }
+    }
+
+    fn make_hem_project_state(project_path: &str, state: SessionState) -> HemProjectState {
+        HemProjectState {
+            project_id: project_path.to_string(),
+            project_path: project_path.to_string(),
+            state,
+            confidence: 0.9,
+            evidence_count: 1,
         }
     }
 
@@ -1401,6 +2041,536 @@ mod tests {
 
         let clamped = clamp_catch_up_since(Some(recent), now);
         assert_eq!(clamped, recent);
+    }
+
+    #[test]
+    fn update_from_event_does_not_reapply_duplicate_event_id() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let db_path = temp_dir.path().join("state.db");
+        let db = Db::new(db_path).expect("db init");
+        let state = SharedState::new(db);
+
+        let start = event_base("evt-start", EventType::SessionStart, "2026-02-13T12:00:00Z");
+        let pre_tool = event_base("evt-pretool", EventType::PreToolUse, "2026-02-13T12:00:01Z");
+
+        state.update_from_event(&start);
+        state.update_from_event(&pre_tool);
+        state.update_from_event(&pre_tool);
+
+        let session = state
+            .db
+            .get_session("session-1")
+            .expect("query session")
+            .expect("session exists");
+        assert_eq!(session.tools_in_flight, 1);
+
+        let events = state.db.list_events().expect("list events");
+        assert_eq!(events.len(), 2);
+    }
+
+    #[test]
+    fn project_states_snapshot_is_sorted_by_project_path() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let db_path = temp_dir.path().join("state.db");
+        let db = Db::new(db_path).expect("db init");
+        let state = SharedState::new(db);
+
+        let now = Utc::now().to_rfc3339();
+        let z_record = make_record(
+            "session-z",
+            "/Users/petepetrash/Code/zeta",
+            SessionState::Ready,
+            now.clone(),
+        );
+        let a_record = make_record(
+            "session-a",
+            "/Users/petepetrash/Code/alpha",
+            SessionState::Ready,
+            now,
+        );
+        state.db.upsert_session(&z_record).expect("insert z");
+        state.db.upsert_session(&a_record).expect("insert a");
+
+        let projects = state.project_states_snapshot().expect("project states");
+        let project_paths: Vec<String> = projects
+            .into_iter()
+            .map(|project| project.project_path)
+            .collect();
+        assert_eq!(
+            project_paths,
+            vec![
+                "/Users/petepetrash/Code/alpha".to_string(),
+                "/Users/petepetrash/Code/zeta".to_string()
+            ]
+        );
+    }
+
+    #[test]
+    fn project_states_snapshot_uses_hem_when_primary_mode_enabled() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let db_path = temp_dir.path().join("state.db");
+        let db = Db::new(db_path).expect("db init");
+
+        let mut hem_config = crate::hem::HemRuntimeConfig::default();
+        hem_config.engine.enabled = true;
+        hem_config.engine.mode = crate::hem::HemMode::Primary;
+        hem_config.source_reliability.hook_event = 0.20;
+        hem_config
+            .weights
+            .session_to_project
+            .project_boundary_from_file_path = 0.0;
+        hem_config
+            .weights
+            .session_to_project
+            .project_boundary_from_cwd = 0.0;
+        hem_config.weights.session_to_project.recent_tool_activity = 0.0;
+        hem_config.weights.session_to_project.notification_signal = 0.0;
+        hem_config.weights.shell_to_project.exact_path_match = 0.0;
+        hem_config.weights.shell_to_project.parent_path_match = 1.0;
+        hem_config.weights.shell_to_project.terminal_focus_signal = 1.0;
+        hem_config.weights.shell_to_project.tmux_client_signal = 0.0;
+        hem_config.thresholds.working_min_confidence = 0.30;
+
+        let state = SharedState::new_with_hem_config(db, hem_config);
+        let now = Utc::now().to_rfc3339();
+        let mut record = make_record(
+            "session-primary-hem",
+            "/Users/petepetrash/Code/project-a",
+            SessionState::Working,
+            now,
+        );
+        record.cwd = "/Users/petepetrash/Code/project-a/subdir".to_string();
+        state.db.upsert_session(&record).expect("insert session");
+
+        let projects = state.project_states_snapshot().expect("project states");
+        assert_eq!(projects.len(), 1);
+        assert_eq!(
+            projects[0].project_path,
+            "/Users/petepetrash/Code/project-a/subdir"
+        );
+        assert_eq!(projects[0].state, SessionState::Working);
+    }
+
+    #[test]
+    fn hem_shadow_metrics_track_event_evaluation_when_enabled() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let db_path = temp_dir.path().join("state.db");
+        let db = Db::new(db_path).expect("db init");
+
+        let mut hem_config = crate::hem::HemRuntimeConfig::default();
+        hem_config.engine.enabled = true;
+        hem_config.engine.mode = crate::hem::HemMode::Shadow;
+
+        let state = SharedState::new_with_hem_config(db, hem_config);
+        let now = Utc::now().to_rfc3339();
+        let record = make_record(
+            "session-metrics",
+            "/Users/petepetrash/Code/metrics",
+            SessionState::Working,
+            now.clone(),
+        );
+        state.db.upsert_session(&record).expect("insert session");
+
+        let mut event = event_base("evt-hem-shadow", EventType::TaskCompleted, &now);
+        event.session_id = Some("session-metrics".to_string());
+        event.cwd = Some("/Users/petepetrash/Code/metrics".to_string());
+        event.pid = Some(std::process::id());
+        state.update_from_event(&event);
+
+        let metrics = state.hem_shadow_metrics_snapshot();
+        assert!(metrics.enabled);
+        assert_eq!(metrics.mode, "shadow");
+        assert_eq!(metrics.events_evaluated, 1);
+        assert!(metrics.projects_evaluated >= 1);
+        assert_eq!(metrics.mismatches_total, 0);
+        assert_eq!(metrics.stable_state_samples, 0);
+        assert_eq!(metrics.stable_state_matches, 0);
+        assert!((metrics.stable_state_agreement_rate - 0.0).abs() < f64::EPSILON);
+        assert!(!metrics.stable_state_agreement_gate_met);
+        assert!(
+            (metrics.stable_state_agreement_gate_target - HEM_STABLE_STATE_AGREEMENT_GATE_TARGET)
+                .abs()
+                < f64::EPSILON
+        );
+        assert!(metrics.shadow_gate_ready);
+        assert!((metrics.blocking_mismatch_rate - 0.0).abs() < f64::EPSILON);
+        assert!(metrics.last_blocking_mismatch_at.is_none());
+        assert!(metrics.last_evaluated_at.is_some());
+        assert!(metrics.last_mismatch_at.is_none());
+    }
+
+    #[test]
+    fn hem_shadow_skips_non_transition_events_for_evaluation() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let db_path = temp_dir.path().join("state.db");
+        let db = Db::new(db_path).expect("db init");
+
+        let mut hem_config = crate::hem::HemRuntimeConfig::default();
+        hem_config.engine.enabled = true;
+        hem_config.engine.mode = crate::hem::HemMode::Shadow;
+
+        let state = SharedState::new_with_hem_config(db, hem_config);
+        let now = Utc::now().to_rfc3339();
+        let record = make_record(
+            "session-no-eval",
+            "/Users/petepetrash/Code/no-eval",
+            SessionState::Working,
+            now.clone(),
+        );
+        state.db.upsert_session(&record).expect("insert session");
+
+        let mut event = event_base("evt-no-eval", EventType::SessionStart, &now);
+        event.session_id = Some("session-no-eval".to_string());
+        event.cwd = Some("/Users/petepetrash/Code/no-eval".to_string());
+        event.pid = Some(std::process::id());
+        state.update_from_event(&event);
+
+        let mut event = event_base("evt-no-eval-2", EventType::PostToolUse, &now);
+        event.session_id = Some("session-no-eval".to_string());
+        event.cwd = Some("/Users/petepetrash/Code/no-eval".to_string());
+        event.pid = Some(std::process::id());
+        state.update_from_event(&event);
+
+        let metrics = state.hem_shadow_metrics_snapshot();
+        assert_eq!(metrics.events_evaluated, 0);
+    }
+
+    #[test]
+    fn hem_shadow_metrics_include_capability_status_and_penalty() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let db_path = temp_dir.path().join("state.db");
+        let db = Db::new(db_path).expect("db init");
+
+        let mut hem_config = crate::hem::HemRuntimeConfig::default();
+        hem_config.engine.enabled = true;
+        hem_config.engine.mode = crate::hem::HemMode::Shadow;
+        hem_config.capabilities.notification_matcher_support = true;
+        hem_config.capability_detection.strategy =
+            crate::hem::HemCapabilityDetectionStrategy::RuntimeHandshake;
+        hem_config.capability_detection.misdeclared_penalty = 0.8;
+
+        let state = SharedState::new_with_hem_config(db, hem_config);
+        let now = Utc::now().to_rfc3339();
+        let record = make_record(
+            "session-capability-status",
+            "/Users/petepetrash/Code/capability-status",
+            SessionState::Working,
+            now.clone(),
+        );
+        state.db.upsert_session(&record).expect("insert session");
+
+        let mut event = event_base("evt-capability-status", EventType::TaskCompleted, &now);
+        event.session_id = Some("session-capability-status".to_string());
+        event.cwd = Some("/Users/petepetrash/Code/capability-status".to_string());
+        event.pid = Some(std::process::id());
+        event.metadata = Some(serde_json::json!({
+            "capabilities": {
+                "notification_matcher_support": false
+            }
+        }));
+        state.update_from_event(&event);
+
+        let metrics = state.hem_shadow_metrics_snapshot();
+        assert!(metrics.capability_status.handshake_seen);
+        assert_eq!(metrics.capability_status.misdeclared_count, 1);
+        assert_eq!(metrics.capability_status.unknown_count, 0);
+        assert_eq!(metrics.capability_status.warning_count, 1);
+        assert!(metrics.capability_status.confidence_penalty_factor < 1.0);
+    }
+
+    #[test]
+    fn hem_shadow_mismatch_taxonomy_covers_state_missing_and_extra_cases() {
+        let event = event_base(
+            "evt-shadow-taxonomy",
+            EventType::PostToolUse,
+            "2026-02-13T12:00:00Z",
+        );
+        let reducer = vec![
+            make_project_state("/Users/petepetrash/Code/alpha", SessionState::Working),
+            make_project_state("/Users/petepetrash/Code/beta", SessionState::Ready),
+        ];
+        let hem = vec![
+            make_hem_project_state("/Users/petepetrash/Code/alpha", SessionState::Ready),
+            make_hem_project_state("/Users/petepetrash/Code/gamma", SessionState::Idle),
+        ];
+
+        let mut categories = build_hem_shadow_mismatches(&event, &reducer, &hem)
+            .into_iter()
+            .map(|mismatch| mismatch.category)
+            .collect::<Vec<_>>();
+        categories.sort();
+        assert_eq!(
+            categories,
+            vec![
+                "extra_in_hem".to_string(),
+                "missing_in_hem".to_string(),
+                "state_mismatch".to_string()
+            ]
+        );
+    }
+
+    #[test]
+    fn hem_shadow_persists_state_mismatch_rows_and_metrics() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let db_path = temp_dir.path().join("state.db");
+        let db = Db::new(db_path).expect("db init");
+
+        let mut hem_config = crate::hem::HemRuntimeConfig::default();
+        hem_config.engine.enabled = true;
+        hem_config.engine.mode = crate::hem::HemMode::Shadow;
+        let state = SharedState::new_with_hem_config(db, hem_config);
+
+        let stale = (Utc::now() - Duration::seconds(SESSION_AUTO_READY_SECS + 5)).to_rfc3339();
+        let mut record = make_record(
+            "session-shadow-mismatch",
+            "/Users/petepetrash/Code/shadow-mismatch",
+            SessionState::Working,
+            stale.clone(),
+        );
+        record.last_activity_at = Some(stale);
+        record.last_event = Some("task_completed".to_string());
+        record.tools_in_flight = 0;
+        state.db.upsert_session(&record).expect("insert session");
+
+        let now = Utc::now().to_rfc3339();
+        let mut shell = event_base("evt-shadow-mismatch", EventType::ShellCwd, &now);
+        shell.session_id = Some("session-shadow-mismatch".to_string());
+        shell.pid = Some(4242);
+        shell.cwd = Some("/Users/petepetrash/Code/shadow-mismatch".to_string());
+        shell.tty = Some("/dev/ttys4242".to_string());
+        shell.tool = None;
+        state.update_from_event(&shell);
+
+        let metrics = state.hem_shadow_metrics_snapshot();
+        assert_eq!(metrics.mismatches_total, 1);
+        assert_eq!(
+            metrics
+                .mismatches_by_category
+                .get("state_mismatch")
+                .copied()
+                .unwrap_or(0),
+            1
+        );
+        assert_eq!(
+            metrics
+                .mismatches_by_severity
+                .get("critical")
+                .copied()
+                .unwrap_or(0),
+            1
+        );
+        assert_eq!(metrics.gate_critical_mismatches, 1);
+        assert_eq!(metrics.gate_important_mismatches, 0);
+        assert_eq!(metrics.gate_blocking_mismatches, 1);
+        assert!(!metrics.shadow_gate_ready);
+        assert!((metrics.blocking_mismatch_rate - 1.0).abs() < f64::EPSILON);
+        assert_eq!(metrics.stable_state_samples, 1);
+        assert_eq!(metrics.stable_state_matches, 0);
+        assert!((metrics.stable_state_agreement_rate - 0.0).abs() < f64::EPSILON);
+        assert!(!metrics.stable_state_agreement_gate_met);
+        assert_eq!(metrics.last_blocking_mismatch_at, Some(now));
+        assert!(metrics.last_mismatch_at.is_some());
+        let persisted = state
+            .db
+            .count_hem_shadow_mismatches_by_category("state_mismatch")
+            .expect("count mismatches");
+        assert_eq!(persisted, 1);
+    }
+
+    #[test]
+    fn hem_shadow_gate_counters_include_important_mismatches() {
+        let mismatches = vec![
+            HemShadowMismatch {
+                observed_at: "2026-02-13T12:00:00Z".to_string(),
+                event_id: Some("evt-1".to_string()),
+                session_id: Some("session-1".to_string()),
+                project_id: Some("project-1".to_string()),
+                project_path: Some("/Users/petepetrash/Code/project-1".to_string()),
+                category: "missing_in_hem".to_string(),
+                reducer_state: Some("working".to_string()),
+                hem_state: None,
+                confidence_delta: None,
+                detail_json: None,
+            },
+            HemShadowMismatch {
+                observed_at: "2026-02-13T12:00:00Z".to_string(),
+                event_id: Some("evt-1".to_string()),
+                session_id: Some("session-2".to_string()),
+                project_id: Some("project-2".to_string()),
+                project_path: Some("/Users/petepetrash/Code/project-2".to_string()),
+                category: "extra_in_hem".to_string(),
+                reducer_state: None,
+                hem_state: Some("idle".to_string()),
+                confidence_delta: None,
+                detail_json: None,
+            },
+        ];
+        // Build a minimal SharedState to exercise the same production metrics path.
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let db_path = temp_dir.path().join("state.db");
+        let db = Db::new(db_path).expect("db init");
+        let state = SharedState::new_with_hem_config(db, crate::hem::HemRuntimeConfig::default());
+        state.record_hem_shadow_metrics(
+            "2026-02-13T12:00:00Z",
+            2,
+            &mismatches,
+            StableStateAgreementSample::default(),
+            HemCapabilityStatus::default(),
+        );
+
+        let snapshot = state.hem_shadow_metrics_snapshot();
+        assert_eq!(snapshot.gate_critical_mismatches, 0);
+        assert_eq!(snapshot.gate_important_mismatches, 2);
+        assert_eq!(snapshot.gate_blocking_mismatches, 2);
+        assert!(!snapshot.shadow_gate_ready);
+        assert!((snapshot.blocking_mismatch_rate - 1.0).abs() < f64::EPSILON);
+        assert_eq!(snapshot.stable_state_samples, 0);
+        assert_eq!(snapshot.stable_state_matches, 0);
+        assert!((snapshot.stable_state_agreement_rate - 0.0).abs() < f64::EPSILON);
+        assert!(!snapshot.stable_state_agreement_gate_met);
+        assert_eq!(
+            snapshot.last_blocking_mismatch_at,
+            Some("2026-02-13T12:00:00Z".to_string())
+        );
+    }
+
+    #[test]
+    fn mismatch_persistence_selection_prioritizes_severity_and_is_deterministic() {
+        let mismatches = vec![
+            HemShadowMismatch {
+                observed_at: "2026-02-13T12:00:00Z".to_string(),
+                event_id: Some("evt-1".to_string()),
+                session_id: Some("session-1".to_string()),
+                project_id: Some("project-c".to_string()),
+                project_path: Some("/c".to_string()),
+                category: "missing_in_hem".to_string(),
+                reducer_state: Some("working".to_string()),
+                hem_state: None,
+                confidence_delta: None,
+                detail_json: None,
+            },
+            HemShadowMismatch {
+                observed_at: "2026-02-13T12:00:00Z".to_string(),
+                event_id: Some("evt-1".to_string()),
+                session_id: Some("session-2".to_string()),
+                project_id: Some("project-a".to_string()),
+                project_path: Some("/a".to_string()),
+                category: "state_mismatch".to_string(),
+                reducer_state: Some("ready".to_string()),
+                hem_state: Some("idle".to_string()),
+                confidence_delta: Some(0.3),
+                detail_json: None,
+            },
+            HemShadowMismatch {
+                observed_at: "2026-02-13T12:00:00Z".to_string(),
+                event_id: Some("evt-1".to_string()),
+                session_id: Some("session-3".to_string()),
+                project_id: Some("project-b".to_string()),
+                project_path: Some("/b".to_string()),
+                category: "state_mismatch".to_string(),
+                reducer_state: Some("ready".to_string()),
+                hem_state: Some("idle".to_string()),
+                confidence_delta: Some(0.3),
+                detail_json: None,
+            },
+            HemShadowMismatch {
+                observed_at: "2026-02-13T12:00:00Z".to_string(),
+                event_id: Some("evt-1".to_string()),
+                session_id: Some("session-4".to_string()),
+                project_id: Some("project-z".to_string()),
+                project_path: Some("/z".to_string()),
+                category: "extra_in_hem".to_string(),
+                reducer_state: None,
+                hem_state: Some("idle".to_string()),
+                confidence_delta: Some(0.2),
+                detail_json: None,
+            },
+        ];
+
+        let selected = select_mismatches_for_persistence(&mismatches, 3);
+        let selected_paths = selected
+            .iter()
+            .map(|mismatch| mismatch.project_path.clone().unwrap_or_default())
+            .collect::<Vec<_>>();
+        assert_eq!(selected.len(), 3);
+        assert_eq!(selected[0].category, "state_mismatch");
+        assert_eq!(selected[1].category, "state_mismatch");
+        assert_eq!(
+            selected_paths,
+            vec!["/a".to_string(), "/b".to_string(), "/c".to_string()]
+        );
+    }
+
+    #[test]
+    fn stable_state_agreement_excludes_recent_transitions_and_non_stable_states() {
+        let reducer = vec![
+            ProjectState {
+                project_id: "alpha".to_string(),
+                workspace_id: "alpha".to_string(),
+                project_path: "/alpha".to_string(),
+                state: SessionState::Ready,
+                state_changed_at: "2026-02-13T11:59:30Z".to_string(),
+                updated_at: "2026-02-13T11:59:30Z".to_string(),
+                session_id: Some("s-alpha".to_string()),
+                session_count: 1,
+                active_count: 0,
+                has_session: true,
+            },
+            ProjectState {
+                project_id: "beta".to_string(),
+                workspace_id: "beta".to_string(),
+                project_path: "/beta".to_string(),
+                state: SessionState::Ready,
+                state_changed_at: "2026-02-13T11:59:50Z".to_string(),
+                updated_at: "2026-02-13T11:59:50Z".to_string(),
+                session_id: Some("s-beta".to_string()),
+                session_count: 1,
+                active_count: 0,
+                has_session: true,
+            },
+            ProjectState {
+                project_id: "gamma".to_string(),
+                workspace_id: "gamma".to_string(),
+                project_path: "/gamma".to_string(),
+                state: SessionState::Working,
+                state_changed_at: "2026-02-13T11:58:00Z".to_string(),
+                updated_at: "2026-02-13T11:58:00Z".to_string(),
+                session_id: Some("s-gamma".to_string()),
+                session_count: 1,
+                active_count: 1,
+                has_session: true,
+            },
+        ];
+        let hem = vec![
+            make_hem_project_state("/alpha", SessionState::Ready),
+            make_hem_project_state("/beta", SessionState::Ready),
+            make_hem_project_state("/gamma", SessionState::Working),
+        ];
+
+        let sample = compute_stable_state_agreement("2026-02-13T12:00:00Z", &reducer, &hem);
+        assert_eq!(sample.samples, 1);
+        assert_eq!(sample.matches, 1);
+    }
+
+    #[test]
+    fn stable_state_agreement_counts_idle_ready_mismatch_as_disagreement() {
+        let reducer = vec![ProjectState {
+            project_id: "alpha".to_string(),
+            workspace_id: "alpha".to_string(),
+            project_path: "/alpha".to_string(),
+            state: SessionState::Idle,
+            state_changed_at: "2026-02-13T11:59:00Z".to_string(),
+            updated_at: "2026-02-13T11:59:00Z".to_string(),
+            session_id: Some("s-alpha".to_string()),
+            session_count: 1,
+            active_count: 0,
+            has_session: false,
+        }];
+        let hem = vec![make_hem_project_state("/alpha", SessionState::Ready)];
+
+        let sample = compute_stable_state_agreement("2026-02-13T12:00:00Z", &reducer, &hem);
+        assert_eq!(sample.samples, 1);
+        assert_eq!(sample.matches, 0);
     }
 }
 

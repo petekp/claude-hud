@@ -1,0 +1,77 @@
+[engine]
+name = "hem-v2"
+enabled = true
+mode = "primary" # shadow | primary
+
+[provider]
+name = "claude_code"
+version = "2.x"
+
+[capabilities]
+hook_snapshot_introspection = false
+event_delivery_ack = false
+global_ordering_guarantee = false
+per_event_correlation_id = false
+notification_matcher_support = true
+tool_use_id_consistency = "partial" # none | partial | strong
+
+[capability_detection]
+strategy = "runtime_handshake" # runtime_handshake | config_only
+unknown_penalty = 0.95
+misdeclared_penalty = 0.80
+min_penalty_factor = 0.50
+
+[determinism]
+enabled = true
+tie_break = ["score_desc", "observed_at_desc", "source_reliability_desc", "project_id_asc", "entity_id_asc"]
+
+[constraints]
+max_projects_per_session = 1
+max_projects_per_shell = 1
+max_sessions_per_project = 64
+reject_excluded_pairs = true
+strict_watermark = true
+
+[thresholds]
+working_min_confidence = 0.70
+waiting_min_confidence = 0.70
+compacting_min_confidence = 0.70
+ready_min_confidence = 0.55
+idle_min_confidence = 0.50
+
+[ttl]
+active_secs = 1200
+ready_secs = 1800
+idle_secs = 600
+auto_ready_secs = 60
+stop_gate_grace_secs = 20
+
+[source_reliability]
+hook_event = 1.00
+shell_cwd = 0.90
+process_liveness = 0.95
+synthetic_guard = 0.80
+
+[weights.session_to_project]
+project_boundary_from_file_path = 0.45
+project_boundary_from_cwd = 0.25
+recent_tool_activity = 0.20
+notification_signal = 0.10
+
+[weights.shell_to_project]
+exact_path_match = 0.50
+parent_path_match = 0.20
+terminal_focus_signal = 0.20
+tmux_client_signal = 0.10
+
+[weights.state_synthesis]
+working = 1.00
+waiting = 0.95
+compacting = 0.90
+ready = 0.70
+idle = 0.40
+
+[feature_flags]
+use_tool_use_id_set_tracking = false
+require_runtime_hook_snapshot_match = false
+require_delivery_ack_for_high_confidence = false

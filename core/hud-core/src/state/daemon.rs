@@ -118,7 +118,7 @@ pub(crate) fn daemon_health() -> Option<bool> {
 pub(crate) fn daemon_enabled() -> bool {
     match env::var(ENABLE_ENV) {
         Ok(value) => matches!(value.as_str(), "1" | "true" | "TRUE" | "yes" | "YES"),
-        Err(_) => false,
+        Err(_) => true,
     }
 }
 
@@ -206,6 +206,42 @@ fn is_more_recent(left: &DaemonSessionRecord, right: &DaemonSessionRecord) -> bo
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::{Mutex, OnceLock};
+
+    static ENV_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+
+    struct EnvGuard {
+        key: &'static str,
+        prior: Option<String>,
+    }
+
+    impl EnvGuard {
+        fn set(key: &'static str, value: &str) -> Self {
+            let prior = std::env::var(key).ok();
+            std::env::set_var(key, value);
+            Self { key, prior }
+        }
+
+        fn unset(key: &'static str) -> Self {
+            let prior = std::env::var(key).ok();
+            std::env::remove_var(key);
+            Self { key, prior }
+        }
+    }
+
+    impl Drop for EnvGuard {
+        fn drop(&mut self) {
+            if let Some(value) = &self.prior {
+                std::env::set_var(self.key, value);
+            } else {
+                std::env::remove_var(self.key);
+            }
+        }
+    }
+
+    fn env_lock() -> std::sync::MutexGuard<'static, ()> {
+        ENV_LOCK.get_or_init(|| Mutex::new(())).lock().unwrap()
+    }
 
     fn make_session_record(
         session_id: &str,
@@ -282,5 +318,26 @@ mod tests {
         let selected = snapshot.latest_for_project("/Users/pete/Code/assistant-ui/packages/web");
 
         assert!(selected.is_none());
+    }
+
+    #[test]
+    fn daemon_enabled_defaults_to_true_when_env_missing() {
+        let _guard = env_lock();
+        let _unset = EnvGuard::unset(ENABLE_ENV);
+        assert!(daemon_enabled());
+    }
+
+    #[test]
+    fn daemon_enabled_is_false_when_env_zero() {
+        let _guard = env_lock();
+        let _set = EnvGuard::set(ENABLE_ENV, "0");
+        assert!(!daemon_enabled());
+    }
+
+    #[test]
+    fn daemon_enabled_is_true_when_env_one() {
+        let _guard = env_lock();
+        let _set = EnvGuard::set(ENABLE_ENV, "1");
+        assert!(daemon_enabled());
     }
 }

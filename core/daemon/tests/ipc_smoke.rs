@@ -159,6 +159,114 @@ fn daemon_ipc_health_and_liveness_smoke() {
         .and_then(|value| value.as_u64())
         .unwrap_or(0);
     assert_eq!(interval, 15);
+    let hem_shadow = health
+        .data
+        .as_ref()
+        .and_then(|data| data.get("hem_shadow"))
+        .and_then(|value| value.as_object())
+        .expect("hem_shadow object");
+    assert_eq!(
+        hem_shadow.get("enabled").and_then(|value| value.as_bool()),
+        Some(false)
+    );
+    assert_eq!(
+        hem_shadow.get("mode").and_then(|value| value.as_str()),
+        Some("primary")
+    );
+    assert_eq!(
+        hem_shadow
+            .get("gate_blocking_mismatches")
+            .and_then(|value| value.as_u64()),
+        Some(0)
+    );
+    assert_eq!(
+        hem_shadow
+            .get("gate_critical_mismatches")
+            .and_then(|value| value.as_u64()),
+        Some(0)
+    );
+    assert_eq!(
+        hem_shadow
+            .get("gate_important_mismatches")
+            .and_then(|value| value.as_u64()),
+        Some(0)
+    );
+    assert_eq!(
+        hem_shadow
+            .get("shadow_gate_ready")
+            .and_then(|value| value.as_bool()),
+        Some(false)
+    );
+    assert_eq!(
+        hem_shadow
+            .get("blocking_mismatch_rate")
+            .and_then(|value| value.as_f64()),
+        Some(0.0)
+    );
+    assert_eq!(
+        hem_shadow
+            .get("stable_state_samples")
+            .and_then(|value| value.as_u64()),
+        Some(0)
+    );
+    assert_eq!(
+        hem_shadow
+            .get("stable_state_matches")
+            .and_then(|value| value.as_u64()),
+        Some(0)
+    );
+    assert_eq!(
+        hem_shadow
+            .get("stable_state_agreement_rate")
+            .and_then(|value| value.as_f64()),
+        Some(0.0)
+    );
+    assert_eq!(
+        hem_shadow
+            .get("stable_state_agreement_gate_target")
+            .and_then(|value| value.as_f64()),
+        Some(0.995)
+    );
+    assert_eq!(
+        hem_shadow
+            .get("stable_state_agreement_gate_met")
+            .and_then(|value| value.as_bool()),
+        Some(false)
+    );
+    let capability_status = hem_shadow
+        .get("capability_status")
+        .and_then(|value| value.as_object())
+        .expect("capability_status object");
+    assert_eq!(
+        capability_status
+            .get("strategy")
+            .and_then(|value| value.as_str()),
+        Some("runtime_handshake")
+    );
+    assert_eq!(
+        capability_status
+            .get("handshake_seen")
+            .and_then(|value| value.as_bool()),
+        Some(false)
+    );
+    assert_eq!(
+        capability_status
+            .get("warning_count")
+            .and_then(|value| value.as_u64()),
+        Some(0)
+    );
+    assert_eq!(
+        capability_status
+            .get("confidence_penalty_factor")
+            .and_then(|value| value.as_f64()),
+        Some(1.0)
+    );
+    assert!(
+        hem_shadow.get("last_blocking_mismatch_at").is_none()
+            || hem_shadow
+                .get("last_blocking_mismatch_at")
+                .is_some_and(|value| value.is_null())
+    );
 
     let repo_root = home.path().join("repo");
     let src_dir = repo_root.join("src");

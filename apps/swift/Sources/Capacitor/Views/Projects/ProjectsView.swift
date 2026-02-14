@@ -85,180 +85,214 @@ struct ProjectsView: View {
         )
         let scrollbarInset = floatingMode ? WindowCornerRadius.value(floatingMode: floatingMode) : 0
 
-        ScrollView {
-            ScrollViewReader { scrollProxy in
-                LazyVStack(spacing: cardListSpacing) {
-                    #if DEBUG
-                        if debugShowProjectListDiagnostics {
-                            DebugActiveStateCard()
-                                .padding(.bottom, 6)
-                            DebugActivationTraceCard()
-                                .padding(.bottom, 6)
-                        }
-                    #endif
-                    // Setup status card - show regardless of project state
-                    if let diagnostic = appState.hookDiagnostic, diagnostic.shouldShowSetupCard {
-                        SetupStatusCard(
-                            diagnostic: diagnostic,
-                            onFix: { appState.fixHooks() },
-                            onRefresh: {
-                                appState.checkHookDiagnostic()
-                                appState.refreshSessionStates()
-                            },
-                            onTest: { appState.testHooks() },
-                        )
-                        .padding(.bottom, 4)
+        // Empty state: render outside ScrollView to avoid LazyVStack layout
+        // oscillation when EmptyProjectsView's .frame(maxHeight: .infinity)
+        // interacts with the scroll container's content size calculation.
+        if !appState.isLoading, appState.projects.isEmpty {
+            VStack(spacing: 0) {
+                #if DEBUG
+                    if debugShowProjectListDiagnostics {
+                        DebugActiveStateCard()
+                            .padding(.horizontal, listHorizontalPadding)
+                            .padding(.bottom, 6)
+                        DebugActivationTraceCard()
+                            .padding(.horizontal, listHorizontalPadding)
+                            .padding(.bottom, 6)
                     }
-
-                    if appState.isLoading {
-                        VStack(spacing: 8) {
-                            SkeletonCard()
-                            SkeletonCard()
-                            SkeletonCard()
+                #endif
+                if let diagnostic = appState.hookDiagnostic, diagnostic.shouldShowSetupCard {
+                    SetupStatusCard(
+                        diagnostic: diagnostic,
+                        onFix: { appState.fixHooks() },
+                        onRefresh: {
+                            appState.checkHookDiagnostic()
+                            appState.refreshSessionStates()
+                        },
+                        onTest: { appState.testHooks() },
+                    )
+                    .padding(.horizontal, listHorizontalPadding)
+                    .padding(.bottom, 4)
+                }
+                EmptyProjectsView()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+            .padding(.top, contentTopPadding)
+            .padding(.bottom, contentBottomPadding)
+            .background(floatingMode ? Color.clear : Color.hudBackground)
+        } else {
+            ScrollView {
+                ScrollViewReader { scrollProxy in
+                    LazyVStack(spacing: cardListSpacing) {
+                        #if DEBUG
+                            if debugShowProjectListDiagnostics {
+                                DebugActiveStateCard()
+                                    .padding(.bottom, 6)
+                                DebugActivationTraceCard()
+                                    .padding(.bottom, 6)
+                            }
+                        #endif
+                        // Setup status card - show regardless of project state
+                        if let diagnostic = appState.hookDiagnostic, diagnostic.shouldShowSetupCard {
+                            SetupStatusCard(
+                                diagnostic: diagnostic,
+                                onFix: { appState.fixHooks() },
+                                onRefresh: {
+                                    appState.checkHookDiagnostic()
+                                    appState.refreshSessionStates()
+                                },
+                                onTest: { appState.testHooks() },
+                            )
+                            .padding(.bottom, 4)
                         }
-                        .padding(.top, 8)
-                    } else if appState.projects.isEmpty {
-                        EmptyProjectsView()
-                    } else {
-                        let grouped = ProjectOrdering.orderedGroupedProjects(
-                            nonPausedProjects,
-                            order: appState.projectOrder,
-                            sessionStates: sessionStates,
-                        )
-                        let activePaths = Set(grouped.active.map(\.path))
-                        let rows = grouped.active + grouped.idle
-                        let reorderDirections = rowOrderTracker.snapshotAndDirections(for: rows.map(\.path))
-                        let hasVisibleProjects = !grouped.active.isEmpty || !grouped.idle.isEmpty
 
-                        if appState.isProjectCreationEnabled {
-                            ActivityPanel()
-                        }
+                        if appState.isLoading {
+                            VStack(spacing: 8) {
+                                SkeletonCard()
+                                SkeletonCard()
+                                SkeletonCard()
+                            }
+                            .padding(.top, 8)
+                        } else {
+                            let grouped = ProjectOrdering.orderedGroupedProjects(
+                                nonPausedProjects,
+                                order: appState.projectOrder,
+                                sessionStates: sessionStates,
+                            )
+                            let activePaths = Set(grouped.active.map(\.path))
+                            let rows = grouped.active + grouped.idle
+                            let reorderDirections = rowOrderTracker.snapshotAndDirections(for: rows.map(\.path))
+                            let hasVisibleProjects = !grouped.active.isEmpty || !grouped.idle.isEmpty
 
-                        if hasVisibleProjects {
-                            if !grouped.active.isEmpty {
-                                SectionHeader(
-                                    title: "In Progress",
-                                    count: grouped.active.count,
-                                )
-                                .padding(.top, 4)
-                                .transition(.opacity)
+                            if appState.isProjectCreationEnabled {
+                                ActivityPanel()
                             }
 
-                            ForEach(Array(rows.enumerated()), id: \.element.path) { index, project in
-                                if index == grouped.active.count, !grouped.idle.isEmpty {
+                            if hasVisibleProjects {
+                                if !grouped.active.isEmpty {
                                     SectionHeader(
-                                        title: "Idle",
-                                        count: grouped.idle.count,
+                                        title: "In Progress",
+                                        count: grouped.active.count,
                                     )
-                                    .padding(.top, grouped.active.isEmpty ? 4 : 8)
-                                    .id("idle-section-header")
+                                    .padding(.top, 4)
                                     .transition(.opacity)
                                 }
 
-                                let sessionState = ProjectOrdering.sessionState(for: project.path, sessionStates: sessionStates)
-                                let projectStatus = appState.getProjectStatus(for: project)
-                                let flashState = appState.isFlashing(project)
-                                let isStale = SessionStaleness.isReadyStale(
-                                    state: sessionState?.state,
-                                    stateChangedAt: sessionState?.stateChangedAt,
-                                )
-                                let group: ActivityGroup = activePaths.contains(project.path) ? .active : .idle
-                                let groupProjects = group == .active ? grouped.active : grouped.idle
-                                activeProjectCard(
-                                    project: project,
-                                    sessionState: sessionState,
-                                    projectStatus: projectStatus,
-                                    flashState: flashState,
-                                    isStale: isStale,
-                                    index: index,
-                                    group: group,
-                                    groupProjects: groupProjects,
-                                    reorderZIndex: reorderDirections[project.path] ?? 0,
-                                )
-                            }
-                        }
-
-                        if !pausedProjects.isEmpty {
-                            PausedSectionHeader(
-                                count: pausedProjects.count,
-                                isCollapsed: pausedCollapsed,
-                                onToggle: {
-                                    let expanding = pausedCollapsed
-                                    withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                                        pausedCollapsed.toggle()
+                                ForEach(Array(rows.enumerated()), id: \.element.path) { index, project in
+                                    if index == grouped.active.count, !grouped.idle.isEmpty {
+                                        SectionHeader(
+                                            title: "Idle",
+                                            count: grouped.idle.count,
+                                        )
+                                        .padding(.top, grouped.active.isEmpty ? 4 : 8)
+                                        .id("idle-section-header")
+                                        .transition(.opacity)
                                     }
-                                    if expanding {
-                                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-                                            withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                                                scrollProxy.scrollTo("scroll-end", anchor: .bottom)
+
+                                    let sessionState = ProjectOrdering.sessionState(for: project.path, sessionStates: sessionStates)
+                                    let projectStatus = appState.getProjectStatus(for: project)
+                                    let flashState = appState.isFlashing(project)
+                                    let isStale = SessionStaleness.isReadyStale(
+                                        state: sessionState?.state,
+                                        stateChangedAt: sessionState?.stateChangedAt,
+                                    )
+                                    let group: ActivityGroup = activePaths.contains(project.path) ? .active : .idle
+                                    let groupProjects = group == .active ? grouped.active : grouped.idle
+                                    activeProjectCard(
+                                        project: project,
+                                        sessionState: sessionState,
+                                        projectStatus: projectStatus,
+                                        flashState: flashState,
+                                        isStale: isStale,
+                                        index: index,
+                                        group: group,
+                                        groupProjects: groupProjects,
+                                        reorderZIndex: reorderDirections[project.path] ?? 0,
+                                    )
+                                }
+                            }
+
+                            if !pausedProjects.isEmpty {
+                                PausedSectionHeader(
+                                    count: pausedProjects.count,
+                                    isCollapsed: pausedCollapsed,
+                                    onToggle: {
+                                        let expanding = pausedCollapsed
+                                        withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                                            pausedCollapsed.toggle()
+                                        }
+                                        if expanding {
+                                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                                                withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                                                    scrollProxy.scrollTo("scroll-end", anchor: .bottom)
+                                                }
                                             }
                                         }
-                                    }
-                                },
-                            )
-                            .padding(.top, hasVisibleProjects ? 12 : 4)
-                            .transition(.opacity)
+                                    },
+                                )
+                                .padding(.top, hasVisibleProjects ? 12 : 4)
+                                .transition(.opacity)
 
-                            if !pausedCollapsed {
-                                VStack(spacing: 0) {
-                                    ForEach(Array(pausedProjects.enumerated()), id: \.element.path) { index, project in
-                                        pausedProjectCard(project: project, index: index)
+                                if !pausedCollapsed {
+                                    VStack(spacing: 0) {
+                                        ForEach(Array(pausedProjects.enumerated()), id: \.element.path) { index, project in
+                                            pausedProjectCard(project: project, index: index)
+                                        }
+                                        // Anchor inside the eager VStack so it's always materialized
+                                        // when the section is expanded (LazyVStack won't defer it)
+                                        Color.clear.frame(height: 1).id("scroll-end")
                                     }
-                                    // Anchor inside the eager VStack so it's always materialized
-                                    // when the section is expanded (LazyVStack won't defer it)
-                                    Color.clear.frame(height: 1).id("scroll-end")
+                                }
+                            }
+                        }
+                    }
+                    .padding(.leading, listHorizontalPadding)
+                    .padding(.trailing, contentTrailingPadding)
+                    .padding(.top, contentTopPadding)
+                    .padding(.bottom, contentBottomPadding)
+                    .onChange(of: pausedProjects.count) { oldCount, newCount in
+                        if newCount > oldCount, pausedCollapsed {
+                            withAnimation(.spring(response: glassConfig.sectionToggleSpringResponse, dampingFraction: 0.85)) {
+                                pausedCollapsed = false
+                            }
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                                withAnimation(.spring(response: glassConfig.sectionToggleSpringResponse, dampingFraction: 0.85)) {
+                                    scrollProxy.scrollTo("scroll-end", anchor: .bottom)
                                 }
                             }
                         }
                     }
                 }
-                .padding(.leading, listHorizontalPadding)
-                .padding(.trailing, contentTrailingPadding)
-                .padding(.top, contentTopPadding)
-                .padding(.bottom, contentBottomPadding)
-                .onChange(of: pausedProjects.count) { oldCount, newCount in
-                    if newCount > oldCount, pausedCollapsed {
-                        withAnimation(.spring(response: glassConfig.sectionToggleSpringResponse, dampingFraction: 0.85)) {
-                            pausedCollapsed = false
-                        }
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-                            withAnimation(.spring(response: glassConfig.sectionToggleSpringResponse, dampingFraction: 0.85)) {
-                                scrollProxy.scrollTo("scroll-end", anchor: .bottom)
-                            }
-                        }
+            }
+            .mask {
+                GeometryReader { proxy in
+                    let sizes = ScrollMaskLayout.sizes(
+                        totalWidth: proxy.size.width,
+                        scrollbarWidth: maskScrollbarWidth,
+                    )
+
+                    HStack(spacing: 0) {
+                        ScrollEdgeFadeMask(
+                            topInset: 0,
+                            bottomInset: 0,
+                            topFade: topFade,
+                            bottomFade: bottomFade,
+                        )
+                        .frame(width: sizes.content, height: proxy.size.height)
+
+                        Color.white
+                            .frame(width: sizes.scrollbar, height: proxy.size.height)
                     }
                 }
             }
+            .background(
+                ScrollViewScrollerInsetsConfigurator(
+                    topInset: scrollbarInset,
+                    bottomInset: scrollbarInset,
+                    hideTrack: true,
+                ),
+            )
+            .background(floatingMode ? Color.clear : Color.hudBackground)
         }
-        .mask {
-            GeometryReader { proxy in
-                let sizes = ScrollMaskLayout.sizes(
-                    totalWidth: proxy.size.width,
-                    scrollbarWidth: maskScrollbarWidth,
-                )
-
-                HStack(spacing: 0) {
-                    ScrollEdgeFadeMask(
-                        topInset: 0,
-                        bottomInset: 0,
-                        topFade: topFade,
-                        bottomFade: bottomFade,
-                    )
-                    .frame(width: sizes.content, height: proxy.size.height)
-
-                    Color.white
-                        .frame(width: sizes.scrollbar, height: proxy.size.height)
-                }
-            }
-        }
-        .background(
-            ScrollViewScrollerInsetsConfigurator(
-                topInset: scrollbarInset,
-                bottomInset: scrollbarInset,
-                hideTrack: true,
-            ),
-        )
-        .background(floatingMode ? Color.clear : Color.hudBackground)
     }
 
     @ViewBuilder
@@ -822,7 +856,7 @@ struct EmptyProjectsView: View {
                 suggestionRow(suggestion)
             }
         }
-        .frame(maxWidth: 260)
+        .frame(maxWidth: 320)
     }
 
     private func suggestionRow(_ suggestion: SuggestedProject) -> some View {
@@ -839,7 +873,7 @@ struct EmptyProjectsView: View {
         } label: {
             HStack(spacing: 10) {
                 Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                    .font(.system(size: 14))
+                    .font(.system(size: 16))
                     .foregroundColor(
                         isSelected
                             ? Color.hudAccent.opacity(0.8)
@@ -848,11 +882,11 @@ struct EmptyProjectsView: View {
 
                 VStack(alignment: .leading, spacing: 2) {
                     Text(suggestion.name)
-                        .font(.system(size: 12, weight: .medium))
+                        .font(.system(size: 13, weight: .medium))
                         .foregroundColor(.white.opacity(isSelected ? 0.9 : isHovered ? 0.7 : 0.55))
 
                     Text(suggestion.displayPath)
-                        .font(.system(size: 10, design: .monospaced))
+                        .font(.system(size: 11, design: .monospaced))
                         .foregroundColor(.white.opacity(isSelected ? 0.4 : isHovered ? 0.3 : 0.25))
                         .lineLimit(1)
                         .truncationMode(.middle)
@@ -861,7 +895,7 @@ struct EmptyProjectsView: View {
                 Spacer()
             }
             .padding(.horizontal, 12)
-            .padding(.vertical, 8)
+            .padding(.vertical, 9)
             .background(
                 RoundedRectangle(cornerRadius: 8)
                     .fill(

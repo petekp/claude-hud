@@ -22,6 +22,7 @@ const SOCKET_NAME: &str = "daemon.sock";
 const READ_TIMEOUT_MS: u64 = 600;
 const WRITE_TIMEOUT_MS: u64 = 600;
 const RETRY_DELAY_MS: u64 = 50;
+const CAPABILITY_TOOL_USE_ID_CONSISTENCY: &str = "partial";
 
 pub fn send_handle_event(
     event: &HookEvent,
@@ -61,14 +62,7 @@ pub fn send_handle_event(
 
     let event_id = make_event_id(pid.unwrap_or(0));
     let recorded_at = Utc::now().to_rfc3339();
-    let metadata = agent_id.and_then(|id| {
-        let trimmed = id.trim();
-        if trimmed.is_empty() {
-            None
-        } else {
-            Some(serde_json::json!({ "agent_id": trimmed }))
-        }
-    });
+    let metadata = build_runtime_capability_metadata(agent_id);
     let build_envelope = || EventEnvelope {
         event_id: event_id.clone(),
         recorded_at: recorded_at.clone(),
@@ -102,9 +96,11 @@ pub fn send_shell_cwd_event(
         return Err("Daemon disabled".to_string());
     }
 
+    let event_id = make_event_id(pid);
+    let recorded_at = Utc::now().to_rfc3339();
     let build_envelope = || EventEnvelope {
-        event_id: make_event_id(pid),
-        recorded_at: Utc::now().to_rfc3339(),
+        event_id: event_id.clone(),
+        recorded_at: recorded_at.clone(),
         event_type: EventType::ShellCwd,
         session_id: None,
         pid: Some(pid),
@@ -117,10 +113,34 @@ pub fn send_shell_cwd_event(
         tmux_client_tty: tmux_client_tty.clone(),
         notification_type: None,
         stop_hook_active: None,
-        metadata: None,
+        metadata: build_runtime_capability_metadata(None),
     };
 
     send_event_with_retry(build_envelope, "shell-cwd event")
+}
+
+fn build_runtime_capability_metadata(agent_id: Option<&str>) -> Option<serde_json::Value> {
+    let mut metadata = serde_json::json!({
+        "capabilities": {
+            "hook_snapshot_introspection": false,
+            "event_delivery_ack": false,
+            "global_ordering_guarantee": false,
+            "per_event_correlation_id": true,
+            "notification_matcher_support": true,
+            "tool_use_id_consistency": CAPABILITY_TOOL_USE_ID_CONSISTENCY
+        }
+    });
+
+    if let Some(trimmed) = agent_id.map(str::trim).filter(|value| !value.is_empty()) {
+        if let Some(object) = metadata.as_object_mut() {
+            object.insert(
+                "agent_id".to_string(),
+                serde_json::Value::String(trimmed.to_string()),
+            );
+        }
+    }
+
+    Some(metadata)
 }
 
 #[allow(dead_code)]
@@ -299,10 +319,10 @@ fn parent_app_string(app: ParentApp) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use capacitor_daemon_protocol::Response;
+    use capacitor_daemon_protocol::{Request, Response};
     use std::sync::{
         atomic::{AtomicUsize, Ordering},
-        Mutex, OnceLock,
+        Arc, Mutex, OnceLock,
     };
     use std::time::{Duration, Instant};
 
@@ -317,6 +337,12 @@ mod tests {
         fn set(key: &'static str, value: &str) -> Self {
             let prior = std::env::var(key).ok();
             std::env::set_var(key, value);
+            Self { key, prior }
+        }
+
+        fn unset(key: &'static str) -> Self {
+            let prior = std::env::var(key).ok();
+            std::env::remove_var(key);
             Self { key, prior }
         }
     }
@@ -350,6 +376,57 @@ mod tests {
                 Err(_) => break,
             }
         }
+    }
+
+    fn read_request_id(stream: &mut UnixStream) -> Option<String> {
+        let mut buffer = Vec::new();
+        let mut chunk = [0u8; 1024];
+        loop {
+            match stream.read(&mut chunk) {
+                Ok(0) => break,
+                Ok(n) => {
+                    buffer.extend_from_slice(&chunk[..n]);
+                    if buffer.contains(&b'\n') {
+                        break;
+                    }
+                }
+                Err(_) => return None,
+            }
+        }
+
+        let newline_index = buffer.iter().position(|b| *b == b'\n');
+        let request_bytes = match newline_index {
+            Some(index) => &buffer[..index],
+            None => buffer.as_slice(),
+        };
+        let request: Request = serde_json::from_slice(request_bytes).ok()?;
+        request.id
+    }
+
+    fn read_request_event(stream: &mut UnixStream) -> Option<EventEnvelope> {
+        let mut buffer = Vec::new();
+        let mut chunk = [0u8; 1024];
+        loop {
+            match stream.read(&mut chunk) {
+                Ok(0) => break,
+                Ok(n) => {
+                    buffer.extend_from_slice(&chunk[..n]);
+                    if buffer.contains(&b'\n') {
+                        break;
+                    }
+                }
+                Err(_) => return None,
+            }
+        }
+
+        let newline_index = buffer.iter().position(|b| *b == b'\n');
+        let request_bytes = match newline_index {
+            Some(index) => &buffer[..index],
+            None => buffer.as_slice(),
+        };
+        let request: Request = serde_json::from_slice(request_bytes).ok()?;
+        let params = request.params?;
+        serde_json::from_value(params).ok()
     }
 
     #[test]
@@ -416,5 +493,227 @@ mod tests {
         server.join().unwrap();
 
         assert_eq!(attempt_count.load(Ordering::SeqCst), 2);
+    }
+
+    #[test]
+    fn send_shell_cwd_retry_reuses_same_request_id_after_lost_response() {
+        let _guard = env_lock();
+
+        let socket_dir = std::path::Path::new("/tmp").join(format!(
+            "hh-lost-{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or(Duration::from_millis(0))
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&socket_dir).unwrap();
+        let socket_path = socket_dir.join("daemon.sock");
+        let _ = std::fs::remove_file(&socket_path);
+
+        let listener = std::os::unix::net::UnixListener::bind(&socket_path).unwrap();
+        listener.set_nonblocking(true).unwrap();
+
+        let attempt_ids: Arc<Mutex<Vec<Option<String>>>> = Arc::new(Mutex::new(Vec::new()));
+        let attempt_ids_clone = Arc::clone(&attempt_ids);
+
+        let server = std::thread::spawn(move || {
+            let start = Instant::now();
+            let mut handled = 0;
+            while handled < 2 && start.elapsed() < Duration::from_secs(5) {
+                match listener.accept() {
+                    Ok((mut stream, _)) => {
+                        handled += 1;
+                        let request_id = read_request_id(&mut stream);
+                        attempt_ids_clone.lock().unwrap().push(request_id);
+
+                        if handled == 2 {
+                            let response = Response::ok(None, serde_json::json!({"status": "ok"}));
+                            let mut payload = serde_json::to_vec(&response).unwrap();
+                            payload.push(b'\n');
+                            let _ = stream.write_all(&payload);
+                        }
+                    }
+                    Err(err) if err.kind() == std::io::ErrorKind::WouldBlock => {
+                        std::thread::sleep(Duration::from_millis(10));
+                    }
+                    Err(_) => break,
+                }
+            }
+        });
+
+        let _socket_guard = EnvGuard::set(SOCKET_ENV, socket_path.to_str().unwrap());
+        let _enabled_guard = EnvGuard::set(ENABLE_ENV, "1");
+
+        let result = send_shell_cwd_event(
+            4242,
+            "/repo",
+            "/dev/ttys001",
+            ParentApp::Terminal,
+            None,
+            None,
+        );
+
+        assert!(result.is_ok());
+        server.join().unwrap();
+
+        let ids = attempt_ids.lock().unwrap();
+        assert_eq!(ids.len(), 2);
+        assert_eq!(ids[0], ids[1], "retry must reuse the same request/event id");
+    }
+
+    #[test]
+    fn daemon_enabled_defaults_to_true_when_env_missing() {
+        let _guard = env_lock();
+        let _unset = EnvGuard::unset(ENABLE_ENV);
+        assert!(daemon_enabled());
+    }
+
+    #[test]
+    fn daemon_enabled_is_false_when_env_zero() {
+        let _guard = env_lock();
+        let _set = EnvGuard::set(ENABLE_ENV, "0");
+        assert!(!daemon_enabled());
+    }
+
+    #[test]
+    fn daemon_enabled_is_true_when_env_one() {
+        let _guard = env_lock();
+        let _set = EnvGuard::set(ENABLE_ENV, "1");
+        assert!(daemon_enabled());
+    }
+
+    #[test]
+    fn send_handle_event_includes_runtime_capability_handshake_and_agent_id() {
+        let _guard = env_lock();
+
+        let socket_dir = std::path::Path::new("/tmp").join(format!(
+            "hh-capability-{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or(Duration::from_millis(0))
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&socket_dir).unwrap();
+        let socket_path = socket_dir.join("daemon.sock");
+        let _ = std::fs::remove_file(&socket_path);
+        let listener = std::os::unix::net::UnixListener::bind(&socket_path).unwrap();
+
+        let captured = Arc::new(Mutex::new(None::<EventEnvelope>));
+        let captured_clone = Arc::clone(&captured);
+        let server = std::thread::spawn(move || {
+            if let Ok((mut stream, _)) = listener.accept() {
+                let event = read_request_event(&mut stream);
+                *captured_clone.lock().unwrap() = event;
+                let response = Response::ok(None, serde_json::json!({"status": "ok"}));
+                let mut payload = serde_json::to_vec(&response).unwrap();
+                payload.push(b'\n');
+                let _ = stream.write_all(&payload);
+            }
+        });
+
+        let _socket_guard = EnvGuard::set(SOCKET_ENV, socket_path.to_str().unwrap());
+        let _enabled_guard = EnvGuard::set(ENABLE_ENV, "1");
+        let event = HookEvent::PostToolUse {
+            tool_name: Some("Read".to_string()),
+            file_path: Some("src/main.rs".to_string()),
+        };
+        assert!(send_handle_event(
+            &event,
+            "session-1",
+            Some(4242),
+            "/repo",
+            Some("agent-123"),
+        ));
+        server.join().unwrap();
+
+        let event = captured.lock().unwrap().take().expect("captured event");
+        let metadata = event.metadata.expect("metadata");
+        let caps = metadata
+            .get("capabilities")
+            .and_then(|value| value.as_object())
+            .expect("capabilities object");
+        assert_eq!(
+            caps.get("notification_matcher_support")
+                .and_then(|value| value.as_bool()),
+            Some(true)
+        );
+        assert_eq!(
+            caps.get("per_event_correlation_id")
+                .and_then(|value| value.as_bool()),
+            Some(true)
+        );
+        assert_eq!(
+            caps.get("tool_use_id_consistency")
+                .and_then(|value| value.as_str()),
+            Some("partial")
+        );
+        assert_eq!(
+            metadata.get("agent_id").and_then(|value| value.as_str()),
+            Some("agent-123")
+        );
+    }
+
+    #[test]
+    fn send_shell_cwd_event_includes_runtime_capability_handshake() {
+        let _guard = env_lock();
+
+        let socket_dir = std::path::Path::new("/tmp").join(format!(
+            "hh-capability-shell-{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or(Duration::from_millis(0))
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&socket_dir).unwrap();
+        let socket_path = socket_dir.join("daemon.sock");
+        let _ = std::fs::remove_file(&socket_path);
+        let listener = std::os::unix::net::UnixListener::bind(&socket_path).unwrap();
+
+        let captured = Arc::new(Mutex::new(None::<EventEnvelope>));
+        let captured_clone = Arc::clone(&captured);
+        let server = std::thread::spawn(move || {
+            if let Ok((mut stream, _)) = listener.accept() {
+                let event = read_request_event(&mut stream);
+                *captured_clone.lock().unwrap() = event;
+                let response = Response::ok(None, serde_json::json!({"status": "ok"}));
+                let mut payload = serde_json::to_vec(&response).unwrap();
+                payload.push(b'\n');
+                let _ = stream.write_all(&payload);
+            }
+        });
+
+        let _socket_guard = EnvGuard::set(SOCKET_ENV, socket_path.to_str().unwrap());
+        let _enabled_guard = EnvGuard::set(ENABLE_ENV, "1");
+        assert!(send_shell_cwd_event(
+            4242,
+            "/repo",
+            "/dev/ttys001",
+            ParentApp::Terminal,
+            None,
+            None
+        )
+        .is_ok());
+        server.join().unwrap();
+
+        let event = captured.lock().unwrap().take().expect("captured event");
+        let metadata = event.metadata.expect("metadata");
+        let caps = metadata
+            .get("capabilities")
+            .and_then(|value| value.as_object())
+            .expect("capabilities object");
+        assert_eq!(
+            caps.get("notification_matcher_support")
+                .and_then(|value| value.as_bool()),
+            Some(true)
+        );
+        assert_eq!(
+            caps.get("tool_use_id_consistency")
+                .and_then(|value| value.as_str()),
+            Some("partial")
+        );
+        assert!(
+            metadata.get("agent_id").is_none(),
+            "shell cwd metadata should not inject agent_id"
+        );
     }
 }

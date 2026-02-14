@@ -29,8 +29,10 @@ pub struct HookInput {
     pub tool_input: Option<ToolInput>,
     #[serde(default)]
     pub tool_response: Option<ToolResponse>,
-    pub source: Option<String>,
-    pub reason: Option<String>,
+    #[serde(default)]
+    pub source: Option<serde_json::Value>,
+    #[serde(default)]
+    pub reason: Option<serde_json::Value>,
     pub agent_id: Option<String>,
     pub agent_transcript_path: Option<String>,
 }
@@ -261,6 +263,36 @@ mod tests {
             _ => panic!("expected PostToolUseFailure"),
         }
     }
+
+    #[test]
+    fn deserializes_session_start_when_source_is_object() {
+        let input: HookInput = serde_json::from_str(
+            r#"{
+                "hook_event_name":"SessionStart",
+                "session_id":"sess-1",
+                "cwd":"/Users/petepetrash/Code/capacitor",
+                "source":{"type":"startup"}
+            }"#,
+        )
+        .expect("HookInput should accept object source");
+
+        assert_eq!(input.to_event(), Some(HookEvent::SessionStart));
+    }
+
+    #[test]
+    fn deserializes_session_start_when_reason_is_object() {
+        let input: HookInput = serde_json::from_str(
+            r#"{
+                "hook_event_name":"SessionStart",
+                "session_id":"sess-2",
+                "cwd":"/Users/petepetrash/Code/capacitor",
+                "reason":{"kind":"resume"}
+            }"#,
+        )
+        .expect("HookInput should accept object reason");
+
+        assert_eq!(input.to_event(), Some(HookEvent::SessionStart));
+    }
 }
 
 // -----------------------------------------------------------------------------
@@ -297,9 +329,9 @@ pub struct LastEvent {
     #[serde(default)]
     pub trigger: Option<String>,
     #[serde(default)]
-    pub source: Option<String>,
+    pub source: Option<serde_json::Value>,
     #[serde(default)]
-    pub reason: Option<String>,
+    pub reason: Option<serde_json::Value>,
     #[serde(default)]
     pub stop_hook_active: Option<bool>,
     #[serde(default)]

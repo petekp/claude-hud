@@ -21,8 +21,8 @@ use std::path::PathBuf;
 use std::process::Command;
 use tempfile::NamedTempFile;
 
-// Default hooks enable daemon-only mode (no lock fallbacks).
-const HOOK_COMMAND: &str = "CAPACITOR_DAEMON_ENABLED=1 $HOME/.local/bin/hud-hook handle";
+// Capacitor-managed hook marker. This tags owned hook entries without forcing daemon behavior.
+const HOOK_COMMAND: &str = "CAPACITOR_HOOK_MARKER=1 $HOME/.local/bin/hud-hook handle";
 
 /// Hook event configuration: (event_name, needs_matcher, is_async)
 /// - `needs_matcher`: Tool events like PreToolUse/PostToolUse/PostToolUseFailure/PermissionRequest
@@ -741,7 +741,54 @@ fn which_with_fallback(binary: &str, fallback_paths: &[&str]) -> Option<String> 
 
 /// Check if a command is the HUD hook binary.
 fn is_hud_hook_command(cmd: Option<&str>) -> bool {
-    cmd.map(|c| c.contains("hud-hook")).unwrap_or(false)
+    let command = match cmd {
+        Some(c) => c.trim(),
+        None => return false,
+    };
+    if command.is_empty() {
+        return false;
+    }
+
+    let mut tokens = command.split_whitespace().peekable();
+
+    while let Some(token) = tokens.peek().copied() {
+        if is_shell_assignment_token(token) {
+            let _ = tokens.next();
+            continue;
+        }
+        break;
+    }
+
+    let executable = match tokens.next() {
+        Some(token) => token,
+        None => return false,
+    };
+
+    let executable_basename = executable.rsplit('/').next().unwrap_or(executable);
+    if executable_basename != "hud-hook" {
+        return false;
+    }
+
+    matches!(tokens.next(), Some("handle"))
+}
+
+fn is_shell_assignment_token(token: &str) -> bool {
+    let Some((name, _value)) = token.split_once('=') else {
+        return false;
+    };
+    if name.is_empty() {
+        return false;
+    }
+
+    let mut chars = name.chars();
+    let Some(first) = chars.next() else {
+        return false;
+    };
+    if !(first.is_ascii_alphabetic() || first == '_') {
+        return false;
+    }
+
+    chars.all(|ch| ch.is_ascii_alphanumeric() || ch == '_')
 }
 
 #[derive(Debug, Default, Serialize, Deserialize)]
@@ -951,6 +998,60 @@ mod tests {
 
         // hooks_registered_in_settings should return false since matcher is missing
         assert!(!checker.hooks_registered_in_settings());
+    }
+
+    #[test]
+    fn test_is_hud_hook_command_uses_strict_identity_matching() {
+        let cases = [
+            (
+                "CAPACITOR_DAEMON_ENABLED=1 $HOME/.local/bin/hud-hook handle",
+                true,
+            ),
+            ("$HOME/.local/bin/hud-hook handle", true),
+            ("hud-hook handle", true),
+            ("echo hud-hook handle", false),
+            ("custom-hud-hook-wrapper handle", false),
+            ("python -c \"print('hud-hook')\"", false),
+        ];
+
+        for (cmd, expected) in cases {
+            assert_eq!(
+                is_hud_hook_command(Some(cmd)),
+                expected,
+                "command mismatch for: {cmd}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_normalize_hud_hook_config_does_not_rewrite_unrelated_commands() {
+        let (_temp, storage) = setup_test_env();
+        let checker = SetupChecker::new(storage);
+
+        let original = "echo hud-hook handle".to_string();
+        let mut hook_config = HookConfig {
+            matcher: None,
+            hooks: Some(vec![InnerHook {
+                hook_type: Some("command".to_string()),
+                command: Some(original.clone()),
+                async_hook: None,
+                timeout: None,
+                other: HashMap::new(),
+            }]),
+            other: HashMap::new(),
+        };
+
+        let normalized = checker.normalize_hud_hook_config(&mut hook_config, false, true);
+        assert!(!normalized);
+
+        let hook = hook_config
+            .hooks
+            .as_ref()
+            .and_then(|hooks| hooks.first())
+            .expect("hook exists");
+        assert_eq!(hook.command.as_deref(), Some(original.as_str()));
+        assert_eq!(hook.async_hook, None);
+        assert_eq!(hook.timeout, None);
     }
 
     // ─────────────────────────────────────────────────────────────────────────────

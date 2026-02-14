@@ -26,6 +26,21 @@ pub struct TombstoneRow {
     pub expires_at: String,
 }
 
+#[allow(dead_code)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+pub struct HemShadowMismatch {
+    pub observed_at: String,
+    pub event_id: Option<String>,
+    pub session_id: Option<String>,
+    pub project_id: Option<String>,
+    pub project_path: Option<String>,
+    pub category: String,
+    pub reducer_state: Option<String>,
+    pub hem_state: Option<String>,
+    pub confidence_delta: Option<f64>,
+    pub detail_json: Option<String>,
+}
+
 impl Db {
     pub fn new(path: PathBuf) -> Result<Self, String> {
         let db = Self { path };
@@ -33,7 +48,7 @@ impl Db {
         Ok(db)
     }
 
-    pub fn insert_event(&self, event: &EventEnvelope) -> Result<(), String> {
+    pub fn insert_event(&self, event: &EventEnvelope) -> Result<bool, String> {
         self.with_connection(|conn| {
             let payload = serde_json::to_string(event)
                 .map_err(|err| format!("Failed to serialize event payload: {}", err))?;
@@ -42,22 +57,23 @@ impl Db {
                 .trim_matches('"')
                 .to_string();
 
-            conn.execute(
-                "INSERT INTO events (id, recorded_at, event_type, session_id, pid, payload)\
+            let rows_affected = conn
+                .execute(
+                    "INSERT INTO events (id, recorded_at, event_type, session_id, pid, payload)\
                  VALUES (?1, ?2, ?3, ?4, ?5, ?6)\
                  ON CONFLICT(id) DO NOTHING",
-                params![
-                    event.event_id,
-                    event.recorded_at,
-                    event_type,
-                    event.session_id,
-                    event.pid,
-                    payload
-                ],
-            )
-            .map_err(|err| format!("Failed to insert event: {}", err))?;
+                    params![
+                        event.event_id,
+                        event.recorded_at,
+                        event_type,
+                        event.session_id,
+                        event.pid,
+                        payload
+                    ],
+                )
+                .map_err(|err| format!("Failed to insert event: {}", err))?;
 
-            Ok(())
+            Ok(rows_affected > 0)
         })
     }
 
@@ -283,12 +299,63 @@ impl Db {
         })
     }
 
+    #[allow(dead_code)]
+    pub fn insert_hem_shadow_mismatch(&self, mismatch: &HemShadowMismatch) -> Result<(), String> {
+        self.with_connection(|conn| {
+            conn.execute(
+                "INSERT INTO hem_shadow_mismatches \
+                    (observed_at, event_id, session_id, project_id, project_path, category, reducer_state, hem_state, confidence_delta, detail_json) \
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+                params![
+                    mismatch.observed_at,
+                    mismatch.event_id,
+                    mismatch.session_id,
+                    mismatch.project_id,
+                    mismatch.project_path,
+                    mismatch.category,
+                    mismatch.reducer_state,
+                    mismatch.hem_state,
+                    mismatch.confidence_delta,
+                    mismatch.detail_json
+                ],
+            )
+            .map_err(|err| format!("Failed to insert hem shadow mismatch: {}", err))?;
+            Ok(())
+        })
+    }
+
+    pub fn prune_hem_shadow_mismatches(&self, retention_days: i64) -> Result<usize, String> {
+        let days = retention_days.max(0);
+        let modifier = format!("-{} days", days);
+        self.with_connection(|conn| {
+            conn.execute(
+                "DELETE FROM hem_shadow_mismatches \
+                 WHERE julianday(observed_at) < julianday('now', ?1)",
+                params![modifier],
+            )
+            .map_err(|err| format!("Failed to prune hem shadow mismatches: {}", err))
+        })
+    }
+
     #[cfg(test)]
     pub fn clear_tombstones(&self) -> Result<(), String> {
         self.with_connection(|conn| {
             conn.execute("DELETE FROM tombstones", [])
                 .map_err(|err| format!("Failed to clear tombstones: {}", err))?;
             Ok(())
+        })
+    }
+
+    #[cfg(test)]
+    pub fn count_hem_shadow_mismatches_by_category(&self, category: &str) -> Result<u64, String> {
+        self.with_connection(|conn| {
+            conn.query_row(
+                "SELECT COUNT(*) FROM hem_shadow_mismatches WHERE category = ?1",
+                params![category],
+                |row| row.get::<_, i64>(0),
+            )
+            .map(|count| count as u64)
+            .map_err(|err| format!("Failed to count hem_shadow_mismatches by category: {}", err))
         })
     }
 
@@ -883,6 +950,23 @@ impl Db {
                     created_at TEXT NOT NULL,
                     expires_at TEXT NOT NULL
                  );
+                 CREATE TABLE IF NOT EXISTS hem_shadow_mismatches (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    observed_at TEXT NOT NULL,
+                    event_id TEXT,
+                    session_id TEXT,
+                    project_id TEXT,
+                    project_path TEXT,
+                    category TEXT NOT NULL,
+                    reducer_state TEXT,
+                    hem_state TEXT,
+                    confidence_delta REAL,
+                    detail_json TEXT
+                 );
+                 CREATE INDEX IF NOT EXISTS idx_hem_shadow_mismatches_observed_at
+                    ON hem_shadow_mismatches(observed_at);
+                 CREATE INDEX IF NOT EXISTS idx_hem_shadow_mismatches_category
+                    ON hem_shadow_mismatches(category);
                  COMMIT;",
             )
             .map_err(|err| format!("Failed to initialize schema: {}", err))?;
@@ -1237,6 +1321,59 @@ mod tests {
         assert!(tables.contains(&"sessions".to_string()));
         assert!(tables.contains(&"activity".to_string()));
         assert!(tables.contains(&"tombstones".to_string()));
+        assert!(tables.contains(&"hem_shadow_mismatches".to_string()));
+    }
+
+    #[test]
+    fn inserts_and_prunes_hem_shadow_mismatches() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let db_path = temp_dir.path().join("state.db");
+        let db = Db::new(db_path).expect("db init");
+
+        let old = HemShadowMismatch {
+            observed_at: (Utc::now() - Duration::days(30)).to_rfc3339(),
+            event_id: Some("evt-old".to_string()),
+            session_id: Some("session-1".to_string()),
+            project_id: Some("/repo/.git".to_string()),
+            project_path: Some("/repo".to_string()),
+            category: "state_mismatch".to_string(),
+            reducer_state: Some("working".to_string()),
+            hem_state: Some("ready".to_string()),
+            confidence_delta: Some(0.42),
+            detail_json: Some("{\"kind\":\"old\"}".to_string()),
+        };
+        let recent = HemShadowMismatch {
+            observed_at: Utc::now().to_rfc3339(),
+            event_id: Some("evt-recent".to_string()),
+            session_id: Some("session-2".to_string()),
+            project_id: Some("/repo/.git".to_string()),
+            project_path: Some("/repo".to_string()),
+            category: "state_mismatch".to_string(),
+            reducer_state: Some("ready".to_string()),
+            hem_state: Some("working".to_string()),
+            confidence_delta: Some(0.37),
+            detail_json: Some("{\"kind\":\"recent\"}".to_string()),
+        };
+
+        db.insert_hem_shadow_mismatch(&old)
+            .expect("insert old mismatch");
+        db.insert_hem_shadow_mismatch(&recent)
+            .expect("insert recent mismatch");
+
+        let removed = db
+            .prune_hem_shadow_mismatches(14)
+            .expect("prune mismatches");
+        assert_eq!(removed, 1);
+
+        let count = db
+            .with_connection(|conn| {
+                conn.query_row("SELECT COUNT(*) FROM hem_shadow_mismatches", [], |row| {
+                    row.get::<_, i64>(0)
+                })
+                .map_err(|err| format!("Failed to count hem_shadow_mismatches rows: {}", err))
+            })
+            .expect("count rows");
+        assert_eq!(count, 1);
     }
 
     #[test]

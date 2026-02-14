@@ -81,6 +81,51 @@ final class TerminalLauncherTests: XCTestCase {
         XCTAssertEqual(activateCalls, 1)
     }
 
+    func testEnsureTmuxSessionFallsBackToListClientsWhenDisplayMessageUnavailable() async {
+        var activateCalls = 0
+        var scripts: [String] = []
+
+        let result = await TerminalLauncher.performEnsureTmuxSession(
+            sessionName: "agent-skills",
+            projectPath: "/Users/pete/Code/agent-skills",
+            runScript: { script in
+                scripts.append(script)
+                if script.contains("display-message -p '#{client_tty}'") {
+                    // App process is not running inside tmux; this fails in real usage.
+                    return (1, nil)
+                }
+                if script.contains("list-clients -F '#{client_tty}'") {
+                    return (0, "/dev/ttys015\n")
+                }
+                if script.contains("tmux switch-client -c '/dev/ttys015' -t 'agent-skills'") {
+                    return (0, nil)
+                }
+                if script.contains("tmux switch-client -t 'agent-skills'") {
+                    return (1, "no current client")
+                }
+                if script.contains("tmux new-session -d -s 'agent-skills'") {
+                    return (1, "duplicate session")
+                }
+                return (1, nil)
+            },
+            activateTerminal: { _ in
+                activateCalls += 1
+                return true
+            },
+        )
+
+        XCTAssertTrue(result)
+        XCTAssertEqual(activateCalls, 1)
+        XCTAssertTrue(
+            scripts.contains { $0.contains("list-clients -F '#{client_tty}'") },
+            "Expected list-clients fallback lookup, got scripts: \(scripts)",
+        )
+        XCTAssertFalse(
+            scripts.contains { $0.contains("tmux new-session -d -s 'agent-skills'") },
+            "Expected no session creation when existing session can be switched",
+        )
+    }
+
     func testSwitchTmuxSessionDoesNotActivateOnFailure() async {
         var activateCalls = 0
 
