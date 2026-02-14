@@ -25,6 +25,14 @@ struct ShellCwdState: Codable {
     let shells: [String: ShellEntry]
 }
 
+struct ShellRoutingStatus: Equatable {
+    let hasActiveShells: Bool
+    let hasAttachedTmuxClient: Bool
+    let tmuxClientTty: String?
+    let targetParentApp: String?
+    let targetTmuxSession: String?
+}
+
 @MainActor
 @Observable
 final class ShellStateStore {
@@ -94,10 +102,7 @@ final class ShellStateStore {
     /// Prefers interactive TTYs (e.g., /dev/ttys*) to avoid background/non-interactive shells.
     /// If no shells match the requested parent app, falls back to the full shell list.
     func mostRecentShell(matchingParentApp parentApp: String?) -> (pid: String, entry: ShellEntry)? {
-        let threshold = Date().addingTimeInterval(-Constants.shellStalenessThresholdSeconds)
-        guard let shells = state?.shells else { return nil }
-
-        var candidates = shells.filter { $0.value.updatedAt > threshold }
+        var candidates = activeShellEntries()
         let interactive = candidates.filter { $0.value.tty.hasPrefix("/dev/tty") }
         if !interactive.isEmpty {
             candidates = interactive
@@ -127,9 +132,41 @@ final class ShellStateStore {
 
     /// Returns true if there are any non-stale active shells.
     var hasActiveShells: Bool {
-        guard let shells = state?.shells else { return false }
+        !activeShellEntries().isEmpty
+    }
+
+    /// Lightweight status used by the projects UI to explain activation behavior.
+    var routingStatus: ShellRoutingStatus {
+        let activeShells = activeShellEntries()
+        let mostRecent = mostRecentShell
+
+        let attachedTmuxShell = activeShells
+            .filter { _, entry in
+                guard let tty = entry.tmuxClientTty?.trimmingCharacters(in: .whitespacesAndNewlines) else {
+                    return false
+                }
+                return !tty.isEmpty
+            }
+            .max { lhs, rhs in
+                lhs.value.updatedAt < rhs.value.updatedAt
+            }
+
+        let tmuxClientTty = attachedTmuxShell?.value.tmuxClientTty?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+
+        return ShellRoutingStatus(
+            hasActiveShells: !activeShells.isEmpty,
+            hasAttachedTmuxClient: attachedTmuxShell != nil,
+            tmuxClientTty: tmuxClientTty?.isEmpty == false ? tmuxClientTty : nil,
+            targetParentApp: mostRecent?.entry.parentApp,
+            targetTmuxSession: mostRecent?.entry.tmuxSession,
+        )
+    }
+
+    private func activeShellEntries() -> [Dictionary<String, ShellEntry>.Element] {
+        guard let shells = state?.shells else { return [] }
         let threshold = Date().addingTimeInterval(-Constants.shellStalenessThresholdSeconds)
-        return shells.values.contains { $0.updatedAt > threshold }
+        return shells.filter { $0.value.updatedAt > threshold }
     }
 
     #if DEBUG

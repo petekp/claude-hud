@@ -100,6 +100,9 @@ struct ProjectsView: View {
                             .padding(.bottom, 6)
                     }
                 #endif
+                TerminalRoutingStatusRow()
+                    .padding(.horizontal, listHorizontalPadding)
+                    .padding(.bottom, 6)
                 if let diagnostic = appState.hookDiagnostic, diagnostic.shouldShowSetupCard {
                     SetupStatusCard(
                         diagnostic: diagnostic,
@@ -131,6 +134,8 @@ struct ProjectsView: View {
                                     .padding(.bottom, 6)
                             }
                         #endif
+                        TerminalRoutingStatusRow()
+                            .padding(.bottom, 6)
                         // Setup status card - show regardless of project state
                         if let diagnostic = appState.hookDiagnostic, diagnostic.shouldShowSetupCard {
                             SetupStatusCard(
