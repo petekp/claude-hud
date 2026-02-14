@@ -186,7 +186,16 @@ struct ProjectCardView: View {
             }
             .cardInteractions(
                 isHovered: $isHovered,
-                onTap: onTap,
+                onTap: {
+                    // Re-trigger ripple only if none is playing (avoids resetting
+                    // the mouseDown ripple on mouseUp during a single click, while
+                    // still firing on rapid clicks after the previous ripple expires)
+                    if pressStartTime == nil {
+                        pressPoint = cursorLocation
+                        pressStartTime = Date()
+                    }
+                    onTap()
+                },
                 onDragStarted: onDragStarted,
             )
             .cardLifecycleHandlers(

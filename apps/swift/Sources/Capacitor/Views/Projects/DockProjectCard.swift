@@ -205,7 +205,13 @@ struct DockProjectCard: View {
             .onHover { hovering in
                 isHovered = hovering
             }
-            .onTapGesture(perform: onTap)
+            .onTapGesture {
+                if pressStartTime == nil {
+                    pressPoint = cursorLocation
+                    pressStartTime = Date()
+                }
+                onTap()
+            }
             .accessibilityAddTraits(.isButton)
             .accessibilityAction { onTap() }
             .onDrag {
