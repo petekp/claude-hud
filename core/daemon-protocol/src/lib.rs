@@ -7,6 +7,7 @@
 use chrono::{DateTime, SecondsFormat, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use std::collections::HashMap;
 
 pub const PROTOCOL_VERSION: u32 = 1;
 pub const MAX_REQUEST_BYTES: usize = 1024 * 1024; // 1MB
@@ -17,6 +18,9 @@ pub enum Method {
     GetHealth,
     GetShellState,
     GetProcessLiveness,
+    GetRoutingSnapshot,
+    GetRoutingDiagnostics,
+    GetConfig,
     GetSessions,
     GetProjectStates,
     GetActivity,
@@ -39,6 +43,97 @@ pub struct Request {
 #[serde(deny_unknown_fields)]
 pub struct ProcessLivenessRequest {
     pub pid: u32,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RoutingSnapshotRequest {
+    pub project_path: String,
+    #[serde(default)]
+    pub workspace_id: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RoutingDiagnosticsRequest {
+    pub project_path: String,
+    #[serde(default)]
+    pub workspace_id: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum RoutingStatus {
+    Attached,
+    Detached,
+    Unavailable,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum RoutingTargetKind {
+    TmuxSession,
+    TerminalApp,
+    None,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum RoutingConfidence {
+    High,
+    Medium,
+    Low,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct RoutingTarget {
+    pub kind: RoutingTargetKind,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub value: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct RoutingEvidence {
+    pub evidence_type: String,
+    pub value: String,
+    pub age_ms: u64,
+    pub trust_rank: u8,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct RoutingSnapshot {
+    pub version: u32,
+    pub workspace_id: String,
+    pub project_path: String,
+    pub status: RoutingStatus,
+    pub target: RoutingTarget,
+    pub confidence: RoutingConfidence,
+    pub reason_code: String,
+    pub reason: String,
+    pub evidence: Vec<RoutingEvidence>,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct RoutingDiagnostics {
+    pub snapshot: RoutingSnapshot,
+    pub signal_ages_ms: HashMap<String, u64>,
+    pub candidate_targets: Vec<RoutingTarget>,
+    pub conflicts: Vec<String>,
+    pub scope_resolution: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct RoutingConfigView {
+    pub tmux_signal_fresh_ms: u64,
+    pub shell_signal_fresh_ms: u64,
+    pub shell_retention_hours: u64,
+    pub tmux_poll_interval_ms: u64,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -227,6 +322,58 @@ pub fn parse_process_liveness(params: Value) -> Result<ProcessLivenessRequest, E
     })
 }
 
+pub fn parse_routing_snapshot(params: Value) -> Result<RoutingSnapshotRequest, ErrorInfo> {
+    #[derive(Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct RawRoutingRequest {
+        #[serde(default)]
+        project_path: Option<String>,
+        #[serde(default)]
+        workspace_id: Option<String>,
+    }
+
+    let parsed: RawRoutingRequest = serde_json::from_value(params).map_err(|err| {
+        ErrorInfo::new(
+            "invalid_params",
+            format!("routing snapshot params are invalid JSON: {}", err),
+        )
+    })?;
+
+    Ok(RoutingSnapshotRequest {
+        project_path: normalize_required_string(
+            parsed.project_path.unwrap_or_default(),
+            "project_path",
+        )?,
+        workspace_id: normalize_optional_string(parsed.workspace_id),
+    })
+}
+
+pub fn parse_routing_diagnostics(params: Value) -> Result<RoutingDiagnosticsRequest, ErrorInfo> {
+    #[derive(Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct RawRoutingRequest {
+        #[serde(default)]
+        project_path: Option<String>,
+        #[serde(default)]
+        workspace_id: Option<String>,
+    }
+
+    let parsed: RawRoutingRequest = serde_json::from_value(params).map_err(|err| {
+        ErrorInfo::new(
+            "invalid_params",
+            format!("routing diagnostics params are invalid JSON: {}", err),
+        )
+    })?;
+
+    Ok(RoutingDiagnosticsRequest {
+        project_path: normalize_required_string(
+            parsed.project_path.unwrap_or_default(),
+            "project_path",
+        )?,
+        workspace_id: normalize_optional_string(parsed.workspace_id),
+    })
+}
+
 fn require_session_fields(event: &EventEnvelope) -> Result<(), ErrorInfo> {
     require_string(&event.session_id, "session_id")?;
     require_string(&event.cwd, "cwd")?;
@@ -268,6 +415,28 @@ fn require_bool(value: &Option<bool>, field: &str) -> Result<(), ErrorInfo> {
             format!("{} is required", field),
         )),
     }
+}
+
+fn normalize_required_string(value: String, field: &str) -> Result<String, ErrorInfo> {
+    let normalized = value.trim().to_string();
+    if normalized.is_empty() {
+        return Err(ErrorInfo::new(
+            "missing_field",
+            format!("{} is required", field),
+        ));
+    }
+    Ok(normalized)
+}
+
+fn normalize_optional_string(value: Option<String>) -> Option<String> {
+    value.and_then(|candidate| {
+        let normalized = candidate.trim().to_string();
+        if normalized.is_empty() {
+            None
+        } else {
+            Some(normalized)
+        }
+    })
 }
 
 #[cfg(test)]
@@ -380,5 +549,44 @@ mod tests {
         event.session_id = None;
         event.pid = None;
         assert!(event.validate().is_err());
+    }
+
+    #[test]
+    fn parse_routing_snapshot_requires_project_path() {
+        let params = serde_json::json!({});
+        let error = parse_routing_snapshot(params).expect_err("missing project path should fail");
+        assert_eq!(error.code, "missing_field");
+    }
+
+    #[test]
+    fn parse_routing_snapshot_supports_workspace_id() {
+        let params = serde_json::json!({
+            "project_path": "/Users/petepetrash/Code/capacitor",
+            "workspace_id": "workspace-1"
+        });
+        let parsed = parse_routing_snapshot(params).expect("parse routing snapshot request");
+        assert_eq!(parsed.project_path, "/Users/petepetrash/Code/capacitor");
+        assert_eq!(parsed.workspace_id.as_deref(), Some("workspace-1"));
+    }
+
+    #[test]
+    fn parse_routing_diagnostics_requires_project_path() {
+        let params = serde_json::json!({
+            "workspace_id": "workspace-2"
+        });
+        let error =
+            parse_routing_diagnostics(params).expect_err("missing project path should fail");
+        assert_eq!(error.code, "missing_field");
+    }
+
+    #[test]
+    fn method_serializes_new_routing_variants_as_snake_case() {
+        let snapshot = serde_json::to_string(&Method::GetRoutingSnapshot).expect("serialize");
+        let diagnostics = serde_json::to_string(&Method::GetRoutingDiagnostics).expect("serialize");
+        let config = serde_json::to_string(&Method::GetConfig).expect("serialize");
+
+        assert_eq!(snapshot, "\"get_routing_snapshot\"");
+        assert_eq!(diagnostics, "\"get_routing_diagnostics\"");
+        assert_eq!(config, "\"get_config\"");
     }
 }

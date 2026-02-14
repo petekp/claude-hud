@@ -75,3 +75,20 @@ idle = 0.40
 use_tool_use_id_set_tracking = false
 require_runtime_hook_snapshot_match = false
 require_delivery_ack_for_high_confidence = false
+
+[routing]
+enabled = false
+tmux_signal_fresh_ms = 5000
+shell_signal_fresh_ms = 600000
+shell_retention_hours = 24
+tmux_poll_interval_ms = 1000
+
+[routing.workspace_bindings]
+# key = workspace_id
+# each workspace can pin preferred sessions and path patterns
+# exact match wins over pattern match
+# "abc123" = { preferred_sessions = ["capacitor"], path_patterns = ["/Users/petepetrash/Code/capacitor/**"] }
+
+[routing.feature_flags]
+dual_run = true
+emit_diagnostics = true

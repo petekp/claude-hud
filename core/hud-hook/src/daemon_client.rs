@@ -91,6 +91,8 @@ pub fn send_shell_cwd_event(
     parent_app: ParentApp,
     tmux_session: Option<String>,
     tmux_client_tty: Option<String>,
+    proc_start: Option<u64>,
+    tmux_pane: Option<String>,
 ) -> Result<(), String> {
     if !daemon_enabled() {
         return Err("Daemon disabled".to_string());
@@ -113,10 +115,30 @@ pub fn send_shell_cwd_event(
         tmux_client_tty: tmux_client_tty.clone(),
         notification_type: None,
         stop_hook_active: None,
-        metadata: build_runtime_capability_metadata(None),
+        metadata: build_shell_cwd_metadata(proc_start, tmux_pane.clone()),
     };
 
     send_event_with_retry(build_envelope, "shell-cwd event")
+}
+
+fn build_shell_cwd_metadata(
+    proc_start: Option<u64>,
+    tmux_pane: Option<String>,
+) -> Option<serde_json::Value> {
+    let mut metadata =
+        build_runtime_capability_metadata(None).unwrap_or_else(|| serde_json::json!({}));
+    if let Some(object) = metadata.as_object_mut() {
+        if let Some(proc_start) = proc_start {
+            object.insert("proc_start".to_string(), serde_json::json!(proc_start));
+        }
+        if let Some(tmux_pane) = tmux_pane
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty())
+        {
+            object.insert("tmux_pane".to_string(), serde_json::json!(tmux_pane));
+        }
+    }
+    Some(metadata)
 }
 
 fn build_runtime_capability_metadata(agent_id: Option<&str>) -> Option<serde_json::Value> {
@@ -486,6 +508,8 @@ mod tests {
             ParentApp::Terminal,
             None,
             None,
+            None,
+            None,
         );
 
         assert!(result.is_ok());
@@ -549,6 +573,8 @@ mod tests {
             "/repo",
             "/dev/ttys001",
             ParentApp::Terminal,
+            None,
+            None,
             None,
             None,
         );
@@ -690,6 +716,8 @@ mod tests {
             "/dev/ttys001",
             ParentApp::Terminal,
             None,
+            None,
+            None,
             None
         )
         .is_ok());
@@ -714,6 +742,62 @@ mod tests {
         assert!(
             metadata.get("agent_id").is_none(),
             "shell cwd metadata should not inject agent_id"
+        );
+    }
+
+    #[test]
+    fn send_shell_cwd_event_includes_proc_start_and_tmux_pane_metadata() {
+        let _guard = env_lock();
+
+        let socket_dir = std::path::Path::new("/tmp").join(format!(
+            "hh-shell-metadata-{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or(Duration::from_millis(0))
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&socket_dir).unwrap();
+        let socket_path = socket_dir.join("daemon.sock");
+        let _ = std::fs::remove_file(&socket_path);
+        let listener = std::os::unix::net::UnixListener::bind(&socket_path).unwrap();
+
+        let captured = Arc::new(Mutex::new(None::<EventEnvelope>));
+        let captured_clone = Arc::clone(&captured);
+        let server = std::thread::spawn(move || {
+            if let Ok((mut stream, _)) = listener.accept() {
+                let event = read_request_event(&mut stream);
+                *captured_clone.lock().unwrap() = event;
+                let response = Response::ok(None, serde_json::json!({"status": "ok"}));
+                let mut payload = serde_json::to_vec(&response).unwrap();
+                payload.push(b'\n');
+                let _ = stream.write_all(&payload);
+            }
+        });
+
+        let _socket_guard = EnvGuard::set(SOCKET_ENV, socket_path.to_str().unwrap());
+        let _enabled_guard = EnvGuard::set(ENABLE_ENV, "1");
+        assert!(send_shell_cwd_event(
+            4242,
+            "/repo",
+            "/dev/ttys001",
+            ParentApp::Terminal,
+            Some("caps".to_string()),
+            Some("/dev/ttys001".to_string()),
+            Some(1234567),
+            Some("%1".to_string()),
+        )
+        .is_ok());
+        server.join().unwrap();
+
+        let event = captured.lock().unwrap().take().expect("captured event");
+        let metadata = event.metadata.expect("metadata");
+        assert_eq!(
+            metadata.get("proc_start").and_then(|value| value.as_u64()),
+            Some(1234567)
+        );
+        assert_eq!(
+            metadata.get("tmux_pane").and_then(|value| value.as_str()),
+            Some("%1")
         );
     }
 }

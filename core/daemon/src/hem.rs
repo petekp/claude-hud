@@ -124,6 +124,85 @@ pub struct HemRuntimeConfig {
     pub source_reliability: HemSourceReliabilityConfig,
     #[serde(default)]
     pub weights: HemWeightsConfig,
+    #[serde(default)]
+    pub routing: RoutingRuntimeConfig,
+}
+
+fn default_routing_tmux_signal_fresh_ms() -> u64 {
+    5_000
+}
+
+fn default_routing_shell_signal_fresh_ms() -> u64 {
+    600_000
+}
+
+fn default_routing_shell_retention_hours() -> u64 {
+    24
+}
+
+fn default_routing_tmux_poll_interval_ms() -> u64 {
+    1_000
+}
+
+fn default_routing_feature_flag_true() -> bool {
+    true
+}
+
+#[derive(Debug, Clone, Deserialize, Default)]
+pub struct RoutingWorkspaceBindingConfig {
+    #[serde(default)]
+    pub preferred_sessions: Vec<String>,
+    #[serde(default)]
+    pub path_patterns: Vec<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct RoutingFeatureFlagsConfig {
+    #[serde(default = "default_routing_feature_flag_true")]
+    pub dual_run: bool,
+    #[serde(default = "default_routing_feature_flag_true")]
+    pub emit_diagnostics: bool,
+}
+
+impl Default for RoutingFeatureFlagsConfig {
+    fn default() -> Self {
+        Self {
+            dual_run: default_routing_feature_flag_true(),
+            emit_diagnostics: default_routing_feature_flag_true(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct RoutingRuntimeConfig {
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default = "default_routing_tmux_signal_fresh_ms")]
+    pub tmux_signal_fresh_ms: u64,
+    #[serde(default = "default_routing_shell_signal_fresh_ms")]
+    pub shell_signal_fresh_ms: u64,
+    #[serde(default = "default_routing_shell_retention_hours")]
+    pub shell_retention_hours: u64,
+    #[serde(default = "default_routing_tmux_poll_interval_ms")]
+    pub tmux_poll_interval_ms: u64,
+    #[serde(default)]
+    pub workspace_bindings: HashMap<String, RoutingWorkspaceBindingConfig>,
+    #[serde(default)]
+    pub feature_flags: RoutingFeatureFlagsConfig,
+}
+
+impl Default for RoutingRuntimeConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            tmux_signal_fresh_ms: default_routing_tmux_signal_fresh_ms(),
+            shell_signal_fresh_ms: default_routing_shell_signal_fresh_ms(),
+            shell_retention_hours: default_routing_shell_retention_hours(),
+            tmux_poll_interval_ms: default_routing_tmux_poll_interval_ms(),
+            workspace_bindings: HashMap::new(),
+            feature_flags: RoutingFeatureFlagsConfig::default(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -619,6 +698,34 @@ pub fn load_runtime_config(path: Option<PathBuf>) -> Result<HemRuntimeConfig, St
             err
         )
     })
+}
+
+impl HemRuntimeConfig {
+    pub fn routing_config(&self) -> crate::are::state::RoutingConfig {
+        let mut workspace_bindings = crate::are::registry::WorkspaceBindings::default();
+        for (workspace_id, binding) in &self.routing.workspace_bindings {
+            workspace_bindings.upsert(
+                workspace_id.clone(),
+                crate::are::registry::WorkspaceBinding {
+                    preferred_sessions: binding.preferred_sessions.clone(),
+                    path_patterns: binding.path_patterns.clone(),
+                },
+            );
+        }
+
+        crate::are::state::RoutingConfig {
+            enabled: self.routing.enabled,
+            tmux_signal_fresh_ms: self.routing.tmux_signal_fresh_ms,
+            shell_signal_fresh_ms: self.routing.shell_signal_fresh_ms,
+            shell_retention_hours: self.routing.shell_retention_hours,
+            tmux_poll_interval_ms: self.routing.tmux_poll_interval_ms,
+            workspace_bindings,
+            feature_flags: crate::are::state::RoutingFeatureFlags {
+                dual_run: self.routing.feature_flags.dual_run,
+                emit_diagnostics: self.routing.feature_flags.emit_diagnostics,
+            },
+        }
+    }
 }
 
 #[allow(dead_code)]
@@ -1449,6 +1556,74 @@ enabled = true
         let config = load_runtime_config(Some(path)).expect("load config");
         assert!(config.engine.enabled);
         assert_eq!(config.engine.mode, HemMode::Primary);
+    }
+
+    #[test]
+    fn load_runtime_config_defaults_routing_policy_when_omitted() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let path = temp_dir.path().join("hem.toml");
+        fs_err::write(
+            &path,
+            r#"
+[engine]
+enabled = true
+mode = "primary"
+        "#,
+        )
+        .expect("write config");
+
+        let config = load_runtime_config(Some(path)).expect("load config");
+        assert!(!config.routing.enabled);
+        assert_eq!(config.routing.tmux_signal_fresh_ms, 5_000);
+        assert_eq!(config.routing.shell_signal_fresh_ms, 600_000);
+        assert_eq!(config.routing.shell_retention_hours, 24);
+        assert_eq!(config.routing.tmux_poll_interval_ms, 1_000);
+        assert!(config.routing.feature_flags.dual_run);
+        assert!(config.routing.feature_flags.emit_diagnostics);
+    }
+
+    #[test]
+    fn load_runtime_config_parses_routing_bindings_and_flags() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let path = temp_dir.path().join("hem.toml");
+        fs_err::write(
+            &path,
+            r#"
+[routing]
+enabled = true
+tmux_signal_fresh_ms = 7000
+shell_signal_fresh_ms = 900000
+shell_retention_hours = 48
+tmux_poll_interval_ms = 1500
+
+[routing.workspace_bindings]
+"ws-123" = { preferred_sessions = ["capacitor"], path_patterns = ["/Users/petepetrash/Code/capacitor/**"] }
+
+[routing.feature_flags]
+dual_run = false
+emit_diagnostics = false
+        "#,
+        )
+        .expect("write config");
+
+        let config = load_runtime_config(Some(path)).expect("load config");
+        assert!(config.routing.enabled);
+        assert_eq!(config.routing.tmux_signal_fresh_ms, 7_000);
+        assert_eq!(config.routing.shell_signal_fresh_ms, 900_000);
+        assert_eq!(config.routing.shell_retention_hours, 48);
+        assert_eq!(config.routing.tmux_poll_interval_ms, 1_500);
+        assert!(!config.routing.feature_flags.dual_run);
+        assert!(!config.routing.feature_flags.emit_diagnostics);
+        let binding = config
+            .routing
+            .workspace_bindings
+            .get("ws-123")
+            .expect("workspace binding");
+        assert_eq!(binding.preferred_sessions, vec!["capacitor".to_string()]);
+        assert_eq!(
+            binding.path_patterns,
+            vec!["/Users/petepetrash/Code/capacitor/**".to_string()]
+        );
     }
 
     #[test]

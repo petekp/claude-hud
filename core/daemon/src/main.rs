@@ -16,12 +16,13 @@ use tracing::{error, info, warn};
 use tracing_subscriber::EnvFilter;
 
 use capacitor_daemon_protocol::{
-    parse_event, parse_process_liveness, ErrorInfo, Method, Request, Response, MAX_REQUEST_BYTES,
-    PROTOCOL_VERSION,
+    parse_event, parse_process_liveness, parse_routing_diagnostics, parse_routing_snapshot,
+    ErrorInfo, Method, Request, Response, MAX_REQUEST_BYTES, PROTOCOL_VERSION,
 };
 use serde_json::Value;
 
 mod activity;
+mod are;
 mod backoff;
 mod boundaries;
 mod db;
@@ -107,9 +108,13 @@ fn main() {
         hem_mode = ?hem_config.engine.mode,
         provider = hem_config.provider.name,
         provider_version = hem_config.provider.version,
+        routing_enabled = hem_config.routing.enabled,
+        routing_dual_run = hem_config.routing.feature_flags.dual_run,
+        routing_emit_diagnostics = hem_config.routing.feature_flags.emit_diagnostics,
         "HEM runtime config loaded"
     );
     spawn_dead_session_reconciler(Arc::clone(&shared_state));
+    spawn_routing_tmux_poller(Arc::clone(&shared_state));
 
     for stream in listener.incoming() {
         match stream {
@@ -132,6 +137,26 @@ fn spawn_dead_session_reconciler(state: Arc<SharedState>) {
                 error = %err,
                 "Periodic dead-session reconciliation failed"
             );
+        }
+    });
+}
+
+fn spawn_routing_tmux_poller(state: Arc<SharedState>) {
+    if !state.routing_poller_enabled() {
+        info!("ARE tmux poller disabled by routing config");
+        return;
+    }
+
+    let poll_interval_ms = state.routing_tmux_poll_interval_ms();
+    thread::spawn(move || {
+        let mut poller =
+            crate::are::tmux_poller::TmuxPoller::new(crate::are::tmux_poller::CommandTmuxAdapter);
+        loop {
+            match poller.poll_once() {
+                Ok((snapshot, diff)) => state.apply_tmux_snapshot(snapshot, diff),
+                Err(err) => warn!(error = %err, "ARE tmux poll failed"),
+            }
+            thread::sleep(Duration::from_millis(poll_interval_ms));
         }
     });
 }
@@ -284,6 +309,9 @@ fn handle_request(request: Request, state: Arc<SharedState>) -> Response {
             if let Ok(value) = serde_json::to_value(state.hem_shadow_metrics_snapshot()) {
                 data["hem_shadow"] = value;
             }
+            if let Ok(value) = serde_json::to_value(state.routing_metrics_snapshot()) {
+                data["routing"] = value;
+            }
             if let Ok(path) = daemon_backoff_path() {
                 if let Some(snapshot) = backoff::snapshot(&path) {
                     if let Ok(value) = serde_json::to_value(snapshot) {
@@ -335,6 +363,76 @@ fn handle_request(request: Request, state: Arc<SharedState>) -> Response {
                 ),
             }
         }
+        Method::GetRoutingSnapshot => {
+            let params = match request.params {
+                Some(params) => params,
+                None => {
+                    return Response::error(
+                        request.id,
+                        "invalid_params",
+                        "project_path is required",
+                    );
+                }
+            };
+            let parsed = match parse_routing_snapshot(params) {
+                Ok(parsed) => parsed,
+                Err(err) => return Response::error_with_info(request.id, err),
+            };
+            match state.routing_snapshot(&parsed.project_path, parsed.workspace_id.as_deref()) {
+                Ok(snapshot) => match serde_json::to_value(snapshot) {
+                    Ok(value) => Response::ok(request.id, value),
+                    Err(err) => Response::error(
+                        request.id,
+                        "serialization_error",
+                        format!("Failed to serialize routing snapshot: {}", err),
+                    ),
+                },
+                Err(err) => Response::error(
+                    request.id,
+                    "routing_error",
+                    format!("Failed to resolve routing snapshot: {}", err),
+                ),
+            }
+        }
+        Method::GetRoutingDiagnostics => {
+            let params = match request.params {
+                Some(params) => params,
+                None => {
+                    return Response::error(
+                        request.id,
+                        "invalid_params",
+                        "project_path is required",
+                    );
+                }
+            };
+            let parsed = match parse_routing_diagnostics(params) {
+                Ok(parsed) => parsed,
+                Err(err) => return Response::error_with_info(request.id, err),
+            };
+            match state.routing_diagnostics(&parsed.project_path, parsed.workspace_id.as_deref()) {
+                Ok(diagnostics) => match serde_json::to_value(diagnostics) {
+                    Ok(value) => Response::ok(request.id, value),
+                    Err(err) => Response::error(
+                        request.id,
+                        "serialization_error",
+                        format!("Failed to serialize routing diagnostics: {}", err),
+                    ),
+                },
+                Err(err) => Response::error(
+                    request.id,
+                    "routing_error",
+                    format!("Failed to resolve routing diagnostics: {}", err),
+                ),
+            }
+        }
+        Method::GetConfig => match serde_json::to_value(state.routing_config_view()) {
+            Ok(value) => Response::ok(request.id, value),
+            Err(err) => Response::error(
+                request.id,
+                "serialization_error",
+                format!("Failed to serialize runtime config: {}", err),
+            ),
+        },
         Method::GetSessions => match state.sessions_snapshot() {
             Ok(sessions) => {
                 let count = sessions.len();

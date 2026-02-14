@@ -3,7 +3,10 @@
 //! Phase 3 persists an append-only event log plus a materialized shell CWD
 //! table, keeping shell state fast to query while other state remains event-only.
 
-use capacitor_daemon_protocol::{EventEnvelope, EventType};
+use capacitor_daemon_protocol::{
+    EventEnvelope, EventType, RoutingConfigView, RoutingDiagnostics, RoutingSnapshot,
+    RoutingStatus, RoutingTarget, RoutingTargetKind,
+};
 use chrono::{DateTime, Duration, Utc};
 use serde::Serialize;
 use std::collections::HashMap;
@@ -42,7 +45,13 @@ const HEM_STABLE_STATE_AGREEMENT_GATE_TARGET: f64 = 0.995;
 pub struct SharedState {
     db: Db,
     hem_config: HemRuntimeConfig,
+    routing_config: crate::are::state::RoutingConfig,
     shell_state: Mutex<ShellState>,
+    routing_state: Mutex<crate::are::state::RoutingState>,
+    routing_metrics: Mutex<crate::are::metrics::RoutingMetrics>,
+    routing_shell_registry: Mutex<crate::are::registry::ShellRegistry>,
+    routing_tmux_registry: Mutex<crate::are::registry::TmuxRegistry>,
+    routing_process_registry: Mutex<crate::are::registry::ProcessRegistry>,
     dead_session_reconcile: Mutex<HashMap<String, DeadSessionReconcileMetrics>>,
     hem_shadow_metrics: Mutex<HemShadowMetrics>,
     hem_capability_tracker: Mutex<HemCapabilityTracker>,
@@ -160,10 +169,19 @@ impl SharedState {
             tracing::info!(count, "Pruned dead shells at startup (process not running)");
         }
 
+        let routing_config = hem_config.routing_config();
+        let routing_shell_registry = build_routing_shell_registry(&shell_state);
+
         let shared = Self {
             db,
             hem_config: hem_config.clone(),
+            routing_config: routing_config.clone(),
             shell_state: Mutex::new(shell_state),
+            routing_state: Mutex::new(crate::are::state::RoutingState::default()),
+            routing_metrics: Mutex::new(crate::are::metrics::RoutingMetrics::new(&routing_config)),
+            routing_shell_registry: Mutex::new(routing_shell_registry),
+            routing_tmux_registry: Mutex::new(crate::are::registry::TmuxRegistry::default()),
+            routing_process_registry: Mutex::new(crate::are::registry::ProcessRegistry::default()),
             dead_session_reconcile: Mutex::new(HashMap::new()),
             hem_shadow_metrics: Mutex::new(HemShadowMetrics::new(&hem_config)),
             hem_capability_tracker: Mutex::new(HemCapabilityTracker::new()),
@@ -201,6 +219,7 @@ impl SharedState {
         if let Err(err) = self.db.upsert_process_liveness(event) {
             tracing::warn!(error = %err, "Failed to update process liveness");
         }
+        self.update_routing_process_registry(event);
 
         let current_session = match event.session_id.as_ref() {
             Some(session_id) => self.db.get_session(session_id).ok().flatten(),
@@ -249,6 +268,7 @@ impl SharedState {
             }
 
             self.update_shell_state_cache(event);
+            self.update_routing_shell_registry(event);
         }
 
         self.evaluate_hem_shadow(event);
@@ -424,6 +444,121 @@ impl SharedState {
             .lock()
             .map(|metrics| metrics.clone())
             .unwrap_or_default()
+    }
+
+    pub fn routing_metrics_snapshot(&self) -> crate::are::metrics::RoutingMetrics {
+        self.routing_metrics
+            .lock()
+            .map(|metrics| metrics.clone())
+            .unwrap_or_default()
+    }
+
+    pub fn routing_config_view(&self) -> RoutingConfigView {
+        self.routing_config.view()
+    }
+
+    pub fn routing_poller_enabled(&self) -> bool {
+        self.routing_config.enabled || self.routing_config.feature_flags.dual_run
+    }
+
+    pub fn routing_tmux_poll_interval_ms(&self) -> u64 {
+        self.routing_config.tmux_poll_interval_ms.max(100)
+    }
+
+    pub fn routing_snapshot(
+        &self,
+        project_path: &str,
+        workspace_id_param: Option<&str>,
+    ) -> Result<RoutingSnapshot, String> {
+        let diagnostics = self.resolve_routing(project_path, workspace_id_param)?;
+        self.emit_routing_observability(&diagnostics);
+        let snapshot = diagnostics.snapshot.clone();
+
+        if let Ok(mut state) = self.routing_state.lock() {
+            state.cache_snapshot(snapshot.clone());
+        }
+
+        if let Ok(mut metrics) = self.routing_metrics.lock() {
+            metrics.record_snapshot(&snapshot);
+            if self.routing_config.feature_flags.dual_run {
+                let legacy = self.legacy_routing_decision(project_path);
+                metrics.record_divergence(&legacy, &snapshot);
+            }
+        } else {
+            tracing::warn!("Failed to update routing metrics (poisoned lock)");
+        }
+
+        Ok(snapshot)
+    }
+
+    pub fn routing_diagnostics(
+        &self,
+        project_path: &str,
+        workspace_id_param: Option<&str>,
+    ) -> Result<RoutingDiagnostics, String> {
+        self.resolve_routing(project_path, workspace_id_param)
+    }
+
+    pub fn apply_tmux_snapshot(
+        &self,
+        snapshot: crate::are::tmux_poller::TmuxSnapshot,
+        diff: crate::are::tmux_poller::TmuxDiff,
+    ) {
+        if let Ok(mut tmux_registry) = self.routing_tmux_registry.lock() {
+            tmux_registry.replace_snapshot(snapshot.clients, snapshot.sessions);
+        } else {
+            tracing::warn!("Failed to update tmux registry from poller (poisoned lock)");
+            return;
+        }
+
+        tracing::debug!(
+            clients_added = diff.clients_added,
+            clients_removed = diff.clients_removed,
+            clients_updated = diff.clients_updated,
+            sessions_added = diff.sessions_added,
+            sessions_removed = diff.sessions_removed,
+            sessions_updated = diff.sessions_updated,
+            "ARE tmux poll diff applied"
+        );
+    }
+
+    fn resolve_routing(
+        &self,
+        project_path: &str,
+        workspace_id_param: Option<&str>,
+    ) -> Result<RoutingDiagnostics, String> {
+        let normalized_project_path = project_path.trim();
+        if normalized_project_path.is_empty() {
+            return Err("project_path is required".to_string());
+        }
+        let resolved_workspace_id =
+            normalize_workspace_id(workspace_id_param).unwrap_or_else(|| {
+                crate::project_identity::resolve_project_identity(normalized_project_path)
+                    .map(|identity| workspace_id(&identity.project_id, &identity.project_path))
+                    .unwrap_or_else(|| {
+                        workspace_id(normalized_project_path, normalized_project_path)
+                    })
+            });
+        let shell_registry = self
+            .routing_shell_registry
+            .lock()
+            .map(|registry| registry.clone())
+            .unwrap_or_default();
+        let tmux_registry = self
+            .routing_tmux_registry
+            .lock()
+            .map(|registry| registry.clone())
+            .unwrap_or_default();
+        Ok(crate::are::resolver::resolve(
+            crate::are::resolver::ResolveInput {
+                project_path: normalized_project_path,
+                workspace_id: &resolved_workspace_id,
+                now: Utc::now(),
+                config: &self.routing_config,
+                shell_registry: &shell_registry,
+                tmux_registry: &tmux_registry,
+            },
+        ))
     }
 
     fn session_is_alive(&self, pid: u32) -> Option<bool> {
@@ -729,6 +864,203 @@ impl SharedState {
                 tty = %tty,
                 parent_app = ?event.parent_app,
                 "Shell state cache updated"
+            );
+        }
+    }
+
+    fn update_routing_process_registry(&self, event: &EventEnvelope) {
+        let Some(pid) = event.pid else {
+            return;
+        };
+        let checked_at = parse_rfc3339(&event.recorded_at).unwrap_or_else(Utc::now);
+        let proc_start = metadata_proc_start(event.metadata.as_ref());
+        let signal = crate::are::registry::ProcessSignal {
+            pid,
+            proc_start,
+            is_alive: true,
+            checked_at,
+        };
+        if let Ok(mut registry) = self.routing_process_registry.lock() {
+            registry.upsert(signal);
+        }
+    }
+
+    fn update_routing_shell_registry(&self, event: &EventEnvelope) {
+        let (pid, cwd, tty) = match (event.pid, &event.cwd, &event.tty) {
+            (Some(pid), Some(cwd), Some(tty)) => (pid, cwd, tty),
+            _ => return,
+        };
+        let recorded_at = parse_rfc3339(&event.recorded_at).unwrap_or_else(Utc::now);
+        let signal = crate::are::registry::ShellSignal {
+            pid,
+            proc_start: metadata_proc_start(event.metadata.as_ref()),
+            cwd: cwd.clone(),
+            tty: tty.clone(),
+            parent_app: event.parent_app.clone(),
+            tmux_session: event.tmux_session.clone(),
+            tmux_client_tty: event.tmux_client_tty.clone(),
+            tmux_pane: metadata_tmux_pane(event.metadata.as_ref()),
+            recorded_at,
+        };
+        if let Ok(mut registry) = self.routing_shell_registry.lock() {
+            registry.upsert(signal.clone());
+        }
+
+        if let (Some(client_tty), Some(session_name)) = (
+            signal.tmux_client_tty.as_ref(),
+            signal.tmux_session.as_ref(),
+        ) {
+            if let Ok(mut tmux_registry) = self.routing_tmux_registry.lock() {
+                tmux_registry.upsert_client(crate::are::registry::TmuxClientSignal {
+                    client_tty: client_tty.clone(),
+                    session_name: session_name.clone(),
+                    pane_current_path: Some(signal.cwd.clone()),
+                    captured_at: signal.recorded_at,
+                });
+                tmux_registry.upsert_session(crate::are::registry::TmuxSessionSignal {
+                    session_name: session_name.clone(),
+                    pane_paths: vec![signal.cwd.clone()],
+                    captured_at: signal.recorded_at,
+                });
+            }
+        }
+    }
+
+    fn legacy_routing_decision(
+        &self,
+        project_path: &str,
+    ) -> crate::are::metrics::LegacyRoutingDecision {
+        let project_path = normalize_routing_path(project_path);
+        let now = Utc::now();
+        let shell_registry = self
+            .routing_shell_registry
+            .lock()
+            .map(|registry| registry.clone())
+            .unwrap_or_default();
+
+        let mut best: Option<(u8, u64, crate::are::registry::ShellSignal)> = None;
+        for shell in shell_registry.all() {
+            let shell_path = normalize_routing_path(&shell.cwd);
+            let path_quality = path_match_quality(&project_path, &shell_path);
+            if path_quality == 0 {
+                continue;
+            }
+            let age = routing_age_ms(now, shell.recorded_at);
+            let shell_owned = shell.clone();
+            match &best {
+                Some((best_quality, best_age, best_shell)) => {
+                    if path_quality > *best_quality
+                        || (path_quality == *best_quality
+                            && (age < *best_age
+                                || (age == *best_age
+                                    && shell_owned.tty.as_str().cmp(best_shell.tty.as_str())
+                                        == std::cmp::Ordering::Less)))
+                    {
+                        best = Some((path_quality, age, shell_owned));
+                    }
+                }
+                None => best = Some((path_quality, age, shell_owned)),
+            }
+        }
+
+        let Some((_, age, shell)) = best else {
+            return crate::are::metrics::LegacyRoutingDecision {
+                status: RoutingStatus::Unavailable,
+                target: RoutingTarget {
+                    kind: RoutingTargetKind::None,
+                    value: None,
+                },
+            };
+        };
+
+        let target = if let Some(session_name) = shell.tmux_session.as_ref() {
+            RoutingTarget {
+                kind: RoutingTargetKind::TmuxSession,
+                value: Some(session_name.clone()),
+            }
+        } else if let Some(parent_app) = sanitize_parent_app(shell.parent_app.as_deref()) {
+            RoutingTarget {
+                kind: RoutingTargetKind::TerminalApp,
+                value: Some(parent_app.to_string()),
+            }
+        } else {
+            RoutingTarget {
+                kind: RoutingTargetKind::None,
+                value: None,
+            }
+        };
+
+        if target.kind == RoutingTargetKind::None {
+            return crate::are::metrics::LegacyRoutingDecision {
+                status: RoutingStatus::Unavailable,
+                target,
+            };
+        }
+
+        let is_fresh = age <= self.routing_config.shell_signal_fresh_ms;
+        let attached = shell
+            .tmux_client_tty
+            .as_deref()
+            .is_some_and(|value| !value.trim().is_empty());
+        let status = if attached && is_fresh {
+            RoutingStatus::Attached
+        } else {
+            RoutingStatus::Detached
+        };
+        crate::are::metrics::LegacyRoutingDecision { status, target }
+    }
+
+    fn emit_routing_observability(&self, diagnostics: &RoutingDiagnostics) {
+        let target_kind = match diagnostics.snapshot.target.kind {
+            RoutingTargetKind::TmuxSession => "tmux_session",
+            RoutingTargetKind::TerminalApp => "terminal_app",
+            RoutingTargetKind::None => "none",
+        };
+        let confidence = match diagnostics.snapshot.confidence {
+            capacitor_daemon_protocol::RoutingConfidence::High => "high",
+            capacitor_daemon_protocol::RoutingConfidence::Medium => "medium",
+            capacitor_daemon_protocol::RoutingConfidence::Low => "low",
+        };
+        tracing::info!(
+            event = "routing_snapshot_emitted",
+            workspace_id = %diagnostics.snapshot.workspace_id,
+            reason_code = %diagnostics.snapshot.reason_code,
+            confidence = confidence,
+            target_kind = target_kind,
+            target_value = ?diagnostics.snapshot.target.value,
+            signal_ages_ms = ?diagnostics.signal_ages_ms,
+            "Routing snapshot emitted"
+        );
+
+        let shell_stale = diagnostics
+            .signal_ages_ms
+            .get("shell_cwd")
+            .is_some_and(|age| *age > self.routing_config.shell_signal_fresh_ms);
+        let tmux_stale = diagnostics
+            .signal_ages_ms
+            .get("tmux_client")
+            .is_some_and(|age| *age > self.routing_config.tmux_signal_fresh_ms);
+        if shell_stale || tmux_stale {
+            tracing::warn!(
+                event = "routing_signal_stale",
+                workspace_id = %diagnostics.snapshot.workspace_id,
+                signal_ages_ms = ?diagnostics.signal_ages_ms,
+                "Routing signals stale"
+            );
+        }
+        if !diagnostics.conflicts.is_empty() {
+            tracing::warn!(
+                event = "routing_conflict_detected",
+                workspace_id = %diagnostics.snapshot.workspace_id,
+                conflicts = ?diagnostics.conflicts,
+                "Routing conflict detected"
+            );
+        }
+        if diagnostics.scope_resolution == "workspace_ambiguous" {
+            tracing::warn!(
+                event = "routing_scope_ambiguous",
+                workspace_id = %diagnostics.snapshot.workspace_id,
+                "Routing scope ambiguous"
             );
         }
     }
@@ -1367,6 +1699,91 @@ fn parse_rfc3339(value: &str) -> Option<DateTime<Utc>> {
         .map(|dt| dt.with_timezone(&Utc))
 }
 
+fn build_routing_shell_registry(shell_state: &ShellState) -> crate::are::registry::ShellRegistry {
+    let mut registry = crate::are::registry::ShellRegistry::default();
+    for (pid, shell) in &shell_state.shells {
+        let Ok(pid) = pid.parse::<u32>() else {
+            continue;
+        };
+        let recorded_at = parse_rfc3339(&shell.updated_at).unwrap_or_else(Utc::now);
+        registry.upsert(crate::are::registry::ShellSignal {
+            pid,
+            proc_start: None,
+            cwd: shell.cwd.clone(),
+            tty: shell.tty.clone(),
+            parent_app: shell.parent_app.clone(),
+            tmux_session: shell.tmux_session.clone(),
+            tmux_client_tty: shell.tmux_client_tty.clone(),
+            tmux_pane: None,
+            recorded_at,
+        });
+    }
+    registry
+}
+
+fn normalize_workspace_id(value: Option<&str>) -> Option<String> {
+    value
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string)
+}
+
+fn metadata_proc_start(metadata: Option<&serde_json::Value>) -> Option<u64> {
+    metadata
+        .and_then(|value| value.get("proc_start"))
+        .and_then(|value| {
+            value
+                .as_u64()
+                .or_else(|| value.as_str().and_then(|raw| raw.parse::<u64>().ok()))
+        })
+}
+
+fn metadata_tmux_pane(metadata: Option<&serde_json::Value>) -> Option<String> {
+    metadata
+        .and_then(|value| value.get("tmux_pane"))
+        .and_then(|value| value.as_str())
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string)
+}
+
+fn normalize_routing_path(value: &str) -> String {
+    if value == "/" {
+        "/".to_string()
+    } else {
+        value.trim_end_matches('/').to_string()
+    }
+}
+
+fn path_match_quality(project_path: &str, shell_path: &str) -> u8 {
+    if project_path == shell_path {
+        return 3;
+    }
+    if shell_path.starts_with(&(project_path.to_string() + "/"))
+        || project_path.starts_with(&(shell_path.to_string() + "/"))
+    {
+        return 2;
+    }
+    0
+}
+
+fn sanitize_parent_app(value: Option<&str>) -> Option<&str> {
+    value.and_then(|candidate| {
+        let normalized = candidate.trim();
+        if normalized.is_empty() || normalized.eq_ignore_ascii_case("unknown") {
+            None
+        } else {
+            Some(normalized)
+        }
+    })
+}
+
+fn routing_age_ms(now: DateTime<Utc>, observed_at: DateTime<Utc>) -> u64 {
+    now.signed_duration_since(observed_at)
+        .num_milliseconds()
+        .max(0) as u64
+}
+
 fn clamp_catch_up_since(since: Option<DateTime<Utc>>, now: DateTime<Utc>) -> DateTime<Utc> {
     let cutoff = now - Duration::seconds(SESSION_CATCH_UP_MAX_AGE_SECS);
     match since {
@@ -1446,6 +1863,45 @@ mod tests {
             confidence: 0.9,
             evidence_count: 1,
         }
+    }
+
+    #[test]
+    fn routing_snapshot_uses_polled_tmux_snapshot_as_authoritative_signal() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let db_path = temp_dir.path().join("state.db");
+        let db = Db::new(db_path).expect("db init");
+        let state = SharedState::new(db);
+
+        let captured_at = Utc::now();
+        state.apply_tmux_snapshot(
+            crate::are::tmux_poller::TmuxSnapshot {
+                captured_at,
+                clients: vec![crate::are::registry::TmuxClientSignal {
+                    client_tty: "/dev/ttys015".to_string(),
+                    session_name: "caps".to_string(),
+                    pane_current_path: Some("/repo".to_string()),
+                    captured_at,
+                }],
+                sessions: vec![crate::are::registry::TmuxSessionSignal {
+                    session_name: "caps".to_string(),
+                    pane_paths: vec!["/repo".to_string()],
+                    captured_at,
+                }],
+            },
+            crate::are::tmux_poller::TmuxDiff {
+                clients_added: 1,
+                sessions_added: 1,
+                ..Default::default()
+            },
+        );
+
+        let snapshot = state
+            .routing_snapshot("/repo", Some("workspace-1"))
+            .expect("routing snapshot");
+        assert_eq!(snapshot.status, RoutingStatus::Attached);
+        assert_eq!(snapshot.reason_code, "TMUX_CLIENT_ATTACHED");
+        assert_eq!(snapshot.target.kind, RoutingTargetKind::TmuxSession);
+        assert_eq!(snapshot.target.value.as_deref(), Some("caps"));
     }
 
     #[test]

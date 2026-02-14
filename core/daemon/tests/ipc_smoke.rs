@@ -267,6 +267,64 @@ fn daemon_ipc_health_and_liveness_smoke() {
                 .get("last_blocking_mismatch_at")
                 .is_some_and(|value| value.is_null())
     );
+    let routing = health
+        .data
+        .as_ref()
+        .and_then(|data| data.get("routing"))
+        .and_then(|value| value.as_object())
+        .expect("routing metrics object");
+    assert_eq!(
+        routing.get("enabled").and_then(|value| value.as_bool()),
+        Some(false)
+    );
+    assert_eq!(
+        routing
+            .get("dual_run_enabled")
+            .and_then(|value| value.as_bool()),
+        Some(true)
+    );
+    assert_eq!(
+        routing
+            .get("snapshots_emitted")
+            .and_then(|value| value.as_u64()),
+        Some(0)
+    );
+
+    let config = send_request(
+        &socket,
+        Request {
+            protocol_version: PROTOCOL_VERSION,
+            method: Method::GetConfig,
+            id: Some("routing-config-check".to_string()),
+            params: None,
+        },
+    );
+    assert!(config.ok, "get_config response was not ok");
+    let config_data = config.data.expect("config payload");
+    assert_eq!(
+        config_data
+            .get("tmux_signal_fresh_ms")
+            .and_then(|value| value.as_u64()),
+        Some(5_000)
+    );
+    assert_eq!(
+        config_data
+            .get("shell_signal_fresh_ms")
+            .and_then(|value| value.as_u64()),
+        Some(600_000)
+    );
+    assert_eq!(
+        config_data
+            .get("shell_retention_hours")
+            .and_then(|value| value.as_u64()),
+        Some(24)
+    );
+    assert_eq!(
+        config_data
+            .get("tmux_poll_interval_ms")
+            .and_then(|value| value.as_u64()),
+        Some(1_000)
+    );
 
     let repo_root = home.path().join("repo");
     let src_dir = repo_root.join("src");
@@ -334,6 +392,131 @@ fn daemon_ipc_health_and_liveness_smoke() {
         },
     );
     assert!(post_response.ok, "post_tool_use response was not ok");
+
+    let shell_event = EventEnvelope {
+        event_id: "evt-shell-1".to_string(),
+        recorded_at: (now + ChronoDuration::seconds(12)).to_rfc3339(),
+        event_type: EventType::ShellCwd,
+        session_id: None,
+        pid: Some(pid),
+        cwd: Some(repo_root.to_string_lossy().to_string()),
+        tool: None,
+        file_path: None,
+        parent_app: Some("tmux".to_string()),
+        tty: Some("/dev/ttys001".to_string()),
+        tmux_session: Some("caps".to_string()),
+        tmux_client_tty: Some("/dev/ttys001".to_string()),
+        notification_type: None,
+        stop_hook_active: None,
+        metadata: Some(serde_json::json!({
+            "proc_start": 123456789,
+            "tmux_pane": "%1"
+        })),
+    };
+
+    let shell_response = send_request(
+        &socket,
+        Request {
+            protocol_version: PROTOCOL_VERSION,
+            method: Method::Event,
+            id: Some(shell_event.event_id.clone()),
+            params: Some(serde_json::to_value(shell_event).expect("serialize shell event")),
+        },
+    );
+    assert!(shell_response.ok, "shell_cwd response was not ok");
+
+    let routing_snapshot = send_request(
+        &socket,
+        Request {
+            protocol_version: PROTOCOL_VERSION,
+            method: Method::GetRoutingSnapshot,
+            id: Some("routing-snapshot-check".to_string()),
+            params: Some(serde_json::json!({
+                "project_path": repo_root.to_string_lossy().to_string()
+            })),
+        },
+    );
+    assert!(routing_snapshot.ok, "routing snapshot response was not ok");
+    let routing_snapshot_data = routing_snapshot.data.expect("routing snapshot payload");
+    assert_eq!(
+        routing_snapshot_data
+            .get("status")
+            .and_then(|value| value.as_str()),
+        Some("attached")
+    );
+    let routing_target = routing_snapshot_data
+        .get("target")
+        .and_then(|value| value.as_object())
+        .expect("routing target object");
+    assert_eq!(
+        routing_target.get("kind").and_then(|value| value.as_str()),
+        Some("tmux_session")
+    );
+    assert_eq!(
+        routing_target.get("value").and_then(|value| value.as_str()),
+        Some("caps")
+    );
+
+    let routing_diagnostics = send_request(
+        &socket,
+        Request {
+            protocol_version: PROTOCOL_VERSION,
+            method: Method::GetRoutingDiagnostics,
+            id: Some("routing-diagnostics-check".to_string()),
+            params: Some(serde_json::json!({
+                "project_path": repo_root.to_string_lossy().to_string()
+            })),
+        },
+    );
+    assert!(
+        routing_diagnostics.ok,
+        "routing diagnostics response was not ok"
+    );
+    let routing_diagnostics_data = routing_diagnostics
+        .data
+        .expect("routing diagnostics payload");
+    let routing_diagnostics_snapshot = routing_diagnostics_data
+        .get("snapshot")
+        .and_then(|value| value.as_object())
+        .expect("routing diagnostics snapshot");
+    assert_eq!(
+        routing_diagnostics_snapshot
+            .get("reason_code")
+            .and_then(|value| value.as_str()),
+        Some("TMUX_CLIENT_ATTACHED")
+    );
+
+    let health_after_routing = send_request(
+        &socket,
+        Request {
+            protocol_version: PROTOCOL_VERSION,
+            method: Method::GetHealth,
+            id: Some("health-after-routing".to_string()),
+            params: None,
+        },
+    );
+    assert!(
+        health_after_routing.ok,
+        "health after routing response was not ok"
+    );
+    let routing_after = health_after_routing
+        .data
+        .as_ref()
+        .and_then(|data| data.get("routing"))
+        .and_then(|value| value.as_object())
+        .expect("routing health after snapshot");
+    assert_eq!(
+        routing_after
+            .get("snapshots_emitted")
+            .and_then(|value| value.as_u64()),
+        Some(1)
+    );
+    assert_eq!(
+        routing_after
+            .get("confidence_high")
+            .and_then(|value| value.as_u64()),
+        Some(1)
+    );
 
     let sessions = send_request(
         &socket,

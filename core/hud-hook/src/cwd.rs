@@ -14,7 +14,7 @@
 //! Target: < 15ms total execution time.
 //! The shell spawns this in the background, so users never wait.
 
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, Local, NaiveDateTime, TimeZone, Utc};
 use hud_core::ParentApp;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -67,6 +67,8 @@ pub fn run(path: &str, pid: u32, tty: &str) -> Result<(), CwdError> {
     let parent_app = detect_parent_app(pid);
     let resolved_tty = resolve_tty(tty)?;
     let entry = ShellEntry::new(normalized_path.clone(), resolved_tty.clone(), parent_app);
+    let proc_start = detect_proc_start(pid);
+    let tmux_pane = detect_tmux_pane();
 
     if !crate::daemon_client::daemon_enabled() {
         return Err(CwdError::DaemonUnavailable("Daemon disabled".to_string()));
@@ -79,6 +81,8 @@ pub fn run(path: &str, pid: u32, tty: &str) -> Result<(), CwdError> {
         parent_app,
         entry.tmux_session.clone(),
         entry.tmux_client_tty.clone(),
+        proc_start,
+        tmux_pane,
     ) {
         Ok(()) => Ok(()),
         Err(err) => Err(CwdError::DaemonUnavailable(err)),
@@ -194,6 +198,31 @@ fn detect_tmux_context() -> Option<(String, String)> {
         (Some(session), Some(client_tty)) => Some((session, client_tty)),
         _ => None,
     }
+}
+
+fn detect_tmux_pane() -> Option<String> {
+    std::env::var("TMUX_PANE")
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+}
+
+fn detect_proc_start(pid: u32) -> Option<u64> {
+    let output = std::process::Command::new("ps")
+        .args(["-p", &pid.to_string(), "-o", "lstart="])
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let text = String::from_utf8_lossy(&output.stdout);
+    let raw = text.trim();
+    if raw.is_empty() {
+        return None;
+    }
+    let naive = NaiveDateTime::parse_from_str(raw, "%a %b %e %H:%M:%S %Y").ok()?;
+    let local = Local.from_local_datetime(&naive).single()?;
+    Some(local.timestamp().max(0) as u64)
 }
 
 #[cfg(test)]
