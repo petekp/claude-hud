@@ -43,9 +43,99 @@ final class DaemonClientTests: XCTestCase {
         }
     }
 
+    func testFetchRoutingSnapshotUsesExpectedMethodAndDecodesPayload() async throws {
+        var capturedMethod: String?
+        var capturedProjectPath: String?
+        var capturedWorkspaceId: String?
+        let client = DaemonClient(transport: { requestData in
+            let requestJson = try JSONSerialization.jsonObject(with: requestData, options: [])
+            let requestObject = requestJson as? [String: Any]
+            capturedMethod = requestObject?["method"] as? String
+            if let params = requestObject?["params"] as? [String: Any] {
+                capturedProjectPath = params["project_path"] as? String
+                capturedWorkspaceId = params["workspace_id"] as? String
+            }
+            return Self.makeRoutingSnapshotResponse()
+        })
+
+        let snapshot = try await client.fetchRoutingSnapshot(
+            projectPath: "/Users/petepetrash/Code/capacitor",
+            workspaceId: "workspace-1",
+        )
+
+        XCTAssertEqual(capturedMethod, "get_routing_snapshot")
+        XCTAssertEqual(capturedProjectPath, "/Users/petepetrash/Code/capacitor")
+        XCTAssertEqual(capturedWorkspaceId, "workspace-1")
+        XCTAssertEqual(snapshot.status, "attached")
+        XCTAssertEqual(snapshot.target.kind, "tmux_session")
+        XCTAssertEqual(snapshot.target.value, "caps")
+    }
+
+    func testFetchRoutingDiagnosticsUsesExpectedMethod() async throws {
+        var capturedMethod: String?
+        let client = DaemonClient(transport: { requestData in
+            let requestJson = try JSONSerialization.jsonObject(with: requestData, options: [])
+            let requestObject = requestJson as? [String: Any]
+            capturedMethod = requestObject?["method"] as? String
+            return Self.makeRoutingDiagnosticsResponse()
+        })
+
+        let diagnostics = try await client.fetchRoutingDiagnostics(
+            projectPath: "/Users/petepetrash/Code/capacitor",
+            workspaceId: nil,
+        )
+
+        XCTAssertEqual(capturedMethod, "get_routing_diagnostics")
+        XCTAssertEqual(diagnostics.snapshot.reasonCode, "TMUX_CLIENT_ATTACHED")
+    }
+
+    func testFetchDaemonConfigUsesExpectedMethodAndDecodesValues() async throws {
+        var capturedMethod: String?
+        let client = DaemonClient(transport: { requestData in
+            let requestJson = try JSONSerialization.jsonObject(with: requestData, options: [])
+            let requestObject = requestJson as? [String: Any]
+            capturedMethod = requestObject?["method"] as? String
+            return Self.makeRoutingConfigResponse()
+        })
+
+        let config = try await client.fetchDaemonConfig()
+        XCTAssertEqual(capturedMethod, "get_config")
+        XCTAssertEqual(config.tmuxSignalFreshMs, 5000)
+        XCTAssertEqual(config.shellSignalFreshMs, 600_000)
+        XCTAssertEqual(config.shellRetentionHours, 24)
+        XCTAssertEqual(config.tmuxPollIntervalMs, 1000)
+    }
+
     private func makeProjectStatesResponse() -> Data {
         let json = """
         {"ok":true,"id":"test","data":[{"project_path":"/tmp/project","state":"working","updated_at":"2026-02-02T19:00:00Z","state_changed_at":"2026-02-02T19:00:00Z","session_id":null,"session_count":1,"active_count":1,"has_session":false}]}
+        """
+        var data = Data(json.utf8)
+        data.append(0x0A)
+        return data
+    }
+
+    private static func makeRoutingSnapshotResponse() -> Data {
+        let json = """
+        {"ok":true,"id":"test","data":{"version":1,"workspace_id":"workspace-1","project_path":"/Users/petepetrash/Code/capacitor","status":"attached","target":{"kind":"tmux_session","value":"caps"},"confidence":"high","reason_code":"TMUX_CLIENT_ATTACHED","reason":"Attached tmux client","evidence":[],"updated_at":"2026-02-14T15:00:00Z"}}
+        """
+        var data = Data(json.utf8)
+        data.append(0x0A)
+        return data
+    }
+
+    private static func makeRoutingDiagnosticsResponse() -> Data {
+        let json = """
+        {"ok":true,"id":"test","data":{"snapshot":{"version":1,"workspace_id":"workspace-1","project_path":"/Users/petepetrash/Code/capacitor","status":"attached","target":{"kind":"tmux_session","value":"caps"},"confidence":"high","reason_code":"TMUX_CLIENT_ATTACHED","reason":"Attached tmux client","evidence":[],"updated_at":"2026-02-14T15:00:00Z"},"signal_ages_ms":{"tmux_client":250},"candidate_targets":[{"kind":"tmux_session","value":"caps"}],"conflicts":[],"scope_resolution":"path_exact"}}
+        """
+        var data = Data(json.utf8)
+        data.append(0x0A)
+        return data
+    }
+
+    private static func makeRoutingConfigResponse() -> Data {
+        let json = """
+        {"ok":true,"id":"test","data":{"tmux_signal_fresh_ms":5000,"shell_signal_fresh_ms":600000,"shell_retention_hours":24,"tmux_poll_interval_ms":1000}}
         """
         var data = Data(json.utf8)
         data.append(0x0A)

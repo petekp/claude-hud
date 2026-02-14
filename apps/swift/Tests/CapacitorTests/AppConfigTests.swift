@@ -72,4 +72,28 @@ final class AppConfigTests: XCTestCase {
         XCTAssertFalse(config.featureFlags.projectCreation)
         XCTAssertTrue(config.featureFlags.llmFeatures)
     }
+
+    func testAreFeatureFlagsDefaultOffAndCanBeEnabled() {
+        let baseline = AppConfig.resolve(
+            environment: [:],
+            info: [:],
+            configFile: nil,
+            defaultChannel: .prod,
+        )
+        XCTAssertFalse(baseline.featureFlags.areStatusRow)
+        XCTAssertFalse(baseline.featureFlags.areLauncher)
+        XCTAssertFalse(baseline.featureFlags.areShadowCompare)
+
+        let overridden = AppConfig.resolve(
+            environment: [
+                "CAPACITOR_FEATURES_ENABLED": "areStatusRow,areLauncher,areShadowCompare",
+            ],
+            info: [:],
+            configFile: nil,
+            defaultChannel: .prod,
+        )
+        XCTAssertTrue(overridden.featureFlags.areStatusRow)
+        XCTAssertTrue(overridden.featureFlags.areLauncher)
+        XCTAssertTrue(overridden.featureFlags.areShadowCompare)
+    }
 }

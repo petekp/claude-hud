@@ -1,6 +1,13 @@
 import SwiftUI
 
 enum TerminalRoutingStatusCopy {
+    struct AERRoutingPresentation: Equatable {
+        let tmuxSummary: String
+        let targetSummary: String
+        let tooltip: String
+        let isAttached: Bool
+    }
+
     private static let tooltipDateFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")
@@ -66,6 +73,65 @@ enum TerminalRoutingStatusCopy {
         return "No shell telemetry detected yet."
     }
 
+    static func arePresentation(_ snapshot: DaemonRoutingSnapshot) -> AERRoutingPresentation {
+        let targetSummary = switch snapshot.target.kind {
+        case "tmux_session":
+            if let value = snapshot.target.value, !value.isEmpty {
+                "target tmux:\(value)"
+            } else {
+                "target tmux"
+            }
+        case "terminal_app":
+            if let value = snapshot.target.value, !value.isEmpty {
+                "target \(value)"
+            } else {
+                "target terminal"
+            }
+        default:
+            "target unknown"
+        }
+
+        let tmuxSummary = switch snapshot.status {
+        case "attached":
+            "tmux attached"
+        case "detached":
+            "tmux detached"
+        default:
+            "routing unavailable"
+        }
+
+        let tooltip = areTooltip(reasonCode: snapshot.reasonCode)
+        return AERRoutingPresentation(
+            tmuxSummary: tmuxSummary,
+            targetSummary: targetSummary,
+            tooltip: tooltip,
+            isAttached: snapshot.status == "attached",
+        )
+    }
+
+    private static func areTooltip(reasonCode: String) -> String {
+        switch reasonCode {
+        case "TMUX_CLIENT_ATTACHED":
+            "Attached tmux client detected for this workspace."
+        case "TMUX_SESSION_DETACHED":
+            "Tmux session exists but no attached tmux client is active."
+        case "SHELL_FALLBACK_ACTIVE":
+            "Using fresh shell telemetry fallback for routing."
+        case "SHELL_FALLBACK_STALE":
+            "Using stale shell telemetry fallback; routing confidence is reduced."
+        case "ROUTING_SCOPE_AMBIGUOUS":
+            "Workspace scope is ambiguous across candidate routing targets."
+        case "ROUTING_CONFLICT_DETECTED":
+            "Conflicting routing candidates were detected; deterministic tie-breakers were applied."
+        case "NO_TRUSTED_EVIDENCE":
+            "No trusted routing evidence is currently available."
+        case "PROCESS_IDENTITY_MISMATCH":
+            "Process identity mismatch detected between routing signals."
+        default:
+            "Routing status is available."
+        }
+    }
+
     private static func targetsTmux(_ status: ShellRoutingStatus) -> Bool {
         if let session = status.targetTmuxSession, !session.isEmpty {
             return true
@@ -84,20 +150,41 @@ struct TerminalRoutingStatusRow: View {
         appState.shellStateStore.routingStatus
     }
 
+    private var arePresentation: TerminalRoutingStatusCopy.AERRoutingPresentation? {
+        guard appState.featureFlags.areStatusRow,
+              let snapshot = appState.shellStateStore.areRoutingSnapshot
+        else {
+            return nil
+        }
+        return TerminalRoutingStatusCopy.arePresentation(snapshot)
+    }
+
     private var targetSummary: String {
-        TerminalRoutingStatusCopy.targetSummary(status)
+        if let arePresentation {
+            return arePresentation.targetSummary
+        }
+        return TerminalRoutingStatusCopy.targetSummary(status)
     }
 
     private var tmuxSummary: String {
-        TerminalRoutingStatusCopy.tmuxSummary(status)
+        if let arePresentation {
+            return arePresentation.tmuxSummary
+        }
+        return TerminalRoutingStatusCopy.tmuxSummary(status)
     }
 
     private var tooltipText: String {
-        TerminalRoutingStatusCopy.tooltip(status)
+        if let arePresentation {
+            return arePresentation.tooltip
+        }
+        return TerminalRoutingStatusCopy.tooltip(status)
     }
 
     private var accentColor: Color {
-        status.hasAttachedTmuxClient ? .statusReady : .statusWaiting
+        if let arePresentation {
+            return arePresentation.isAttached ? .statusReady : .statusWaiting
+        }
+        return status.hasAttachedTmuxClient ? .statusReady : .statusWaiting
     }
 
     var body: some View {

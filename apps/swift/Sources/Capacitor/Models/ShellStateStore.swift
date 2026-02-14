@@ -60,6 +60,7 @@ final class ShellStateStore {
     private let daemonClient = DaemonClient.shared
 
     private(set) var state: ShellCwdState?
+    private(set) var areRoutingSnapshot: DaemonRoutingSnapshot?
 
     init() {}
 
@@ -95,12 +96,64 @@ final class ShellStateStore {
                 "shell_count": daemonState.shells.count,
                 "stale_filtered_count": staleCount,
             ])
+            let flags = AppConfig.current().featureFlags
+            if flags.areStatusRow || flags.areShadowCompare {
+                if let projectPath = mostRecentShell?.entry.cwd {
+                    await refreshAERRoutingSnapshot(
+                        projectPath: projectPath,
+                        emitShadowCompare: flags.areShadowCompare,
+                    )
+                } else if flags.areStatusRow {
+                    areRoutingSnapshot = nil
+                }
+            }
         } catch {
             logger.info("Shell state update failed: \(error.localizedDescription, privacy: .public)")
             DebugLog.write("ShellStateStore.loadState failed: \(error)")
             Telemetry.emit("shell_state_refresh", "Shell state update failed", payload: [
                 "error": error.localizedDescription,
             ])
+        }
+    }
+
+    private func refreshAERRoutingSnapshot(projectPath: String, emitShadowCompare: Bool) async {
+        do {
+            let snapshot = try await daemonClient.fetchRoutingSnapshot(
+                projectPath: projectPath,
+                workspaceId: nil,
+            )
+            areRoutingSnapshot = snapshot
+            guard emitShadowCompare else {
+                return
+            }
+            let local = Self.shadowComparableDecision(from: routingStatus)
+            let statusMismatch = local.status != snapshot.status
+            let targetMismatch = local.targetKind != snapshot.target.kind
+                || local.targetValue != snapshot.target.value
+            Telemetry.emit(
+                "routing_shadow_compare",
+                statusMismatch || targetMismatch ? "mismatch" : "match",
+                payload: [
+                    "project_path": projectPath,
+                    "local_status": local.status,
+                    "are_status": snapshot.status,
+                    "local_target_kind": local.targetKind,
+                    "are_target_kind": snapshot.target.kind,
+                    "local_target_value": local.targetValue ?? "",
+                    "are_target_value": snapshot.target.value ?? "",
+                    "status_mismatch": statusMismatch,
+                    "target_mismatch": targetMismatch,
+                ],
+            )
+        } catch {
+            Telemetry.emit(
+                "routing_shadow_compare_error",
+                "Routing shadow compare failed",
+                payload: [
+                    "project_path": projectPath,
+                    "error": error.localizedDescription,
+                ],
+            )
         }
     }
 
@@ -229,6 +282,33 @@ final class ShellStateStore {
         guard let shells = state?.shells else { return [] }
         let threshold = Date().addingTimeInterval(-Constants.shellStalenessThresholdSeconds)
         return shells.filter { $0.value.updatedAt > threshold }
+    }
+
+    static func shadowComparableDecision(from status: ShellRoutingStatus) -> (
+        status: String, targetKind: String, targetValue: String?,
+    ) {
+        let targetKind: String
+        let targetValue: String?
+        if let tmuxSession = status.targetTmuxSession, !tmuxSession.isEmpty {
+            targetKind = "tmux_session"
+            targetValue = tmuxSession
+        } else if let app = status.targetParentApp, !app.isEmpty, app.lowercased() != "unknown" {
+            targetKind = "terminal_app"
+            targetValue = app
+        } else {
+            targetKind = "none"
+            targetValue = nil
+        }
+
+        let routingStatus = if status.hasAttachedTmuxClient {
+            "attached"
+        } else if status.hasAnyShells {
+            "detached"
+        } else {
+            "unavailable"
+        }
+
+        return (routingStatus, targetKind, targetValue)
     }
 
     #if DEBUG

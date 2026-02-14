@@ -163,4 +163,40 @@ final class ShellStateStoreRoutingStatusTests: XCTestCase {
         XCTAssertNil(status.targetTmuxSession)
         XCTAssertFalse(status.isUsingLastKnownTarget)
     }
+
+    func testShadowComparableDecisionMapsAttachedTmuxStatus() {
+        let status = ShellRoutingStatus(
+            hasActiveShells: true,
+            hasAttachedTmuxClient: true,
+            hasAnyShells: true,
+            tmuxClientTty: "/dev/ttys015",
+            targetParentApp: "tmux",
+            targetTmuxSession: "caps",
+            lastSeenAt: Date(),
+            isUsingLastKnownTarget: false,
+        )
+
+        let decision = ShellStateStore.shadowComparableDecision(from: status)
+        XCTAssertEqual(decision.status, "attached")
+        XCTAssertEqual(decision.targetKind, "tmux_session")
+        XCTAssertEqual(decision.targetValue, "caps")
+    }
+
+    func testShadowComparableDecisionMapsUnavailableWithoutShells() {
+        let status = ShellRoutingStatus(
+            hasActiveShells: false,
+            hasAttachedTmuxClient: false,
+            hasAnyShells: false,
+            tmuxClientTty: nil,
+            targetParentApp: nil,
+            targetTmuxSession: nil,
+            lastSeenAt: nil,
+            isUsingLastKnownTarget: false,
+        )
+
+        let decision = ShellStateStore.shadowComparableDecision(from: status)
+        XCTAssertEqual(decision.status, "unavailable")
+        XCTAssertEqual(decision.targetKind, "none")
+        XCTAssertNil(decision.targetValue)
+    }
 }

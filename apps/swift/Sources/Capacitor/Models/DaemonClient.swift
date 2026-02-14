@@ -75,6 +75,91 @@ struct DaemonProjectState: Decodable {
     }
 }
 
+struct DaemonRoutingTarget: Decodable, Equatable {
+    let kind: String
+    let value: String?
+}
+
+struct DaemonRoutingEvidence: Decodable, Equatable {
+    let evidenceType: String
+    let value: String
+    let ageMs: UInt64
+    let trustRank: UInt8
+
+    enum CodingKeys: String, CodingKey {
+        case evidenceType = "evidence_type"
+        case value
+        case ageMs = "age_ms"
+        case trustRank = "trust_rank"
+    }
+}
+
+struct DaemonRoutingSnapshot: Decodable, Equatable {
+    let version: Int
+    let workspaceId: String
+    let projectPath: String
+    let status: String
+    let target: DaemonRoutingTarget
+    let confidence: String
+    let reasonCode: String
+    let reason: String
+    let evidence: [DaemonRoutingEvidence]
+    let updatedAt: String
+
+    enum CodingKeys: String, CodingKey {
+        case version
+        case workspaceId = "workspace_id"
+        case projectPath = "project_path"
+        case status
+        case target
+        case confidence
+        case reasonCode = "reason_code"
+        case reason
+        case evidence
+        case updatedAt = "updated_at"
+    }
+}
+
+struct DaemonRoutingDiagnostics: Decodable, Equatable {
+    let snapshot: DaemonRoutingSnapshot
+    let signalAgesMs: [String: UInt64]
+    let candidateTargets: [DaemonRoutingTarget]
+    let conflicts: [String]
+    let scopeResolution: String
+
+    enum CodingKeys: String, CodingKey {
+        case snapshot
+        case signalAgesMs = "signal_ages_ms"
+        case candidateTargets = "candidate_targets"
+        case conflicts
+        case scopeResolution = "scope_resolution"
+    }
+}
+
+struct DaemonRoutingConfig: Decodable, Equatable {
+    let tmuxSignalFreshMs: UInt64
+    let shellSignalFreshMs: UInt64
+    let shellRetentionHours: UInt64
+    let tmuxPollIntervalMs: UInt64
+
+    enum CodingKeys: String, CodingKey {
+        case tmuxSignalFreshMs = "tmux_signal_fresh_ms"
+        case shellSignalFreshMs = "shell_signal_fresh_ms"
+        case shellRetentionHours = "shell_retention_hours"
+        case tmuxPollIntervalMs = "tmux_poll_interval_ms"
+    }
+}
+
+private struct RoutingSnapshotParams: Encodable {
+    let projectPath: String
+    let workspaceId: String?
+
+    enum CodingKeys: String, CodingKey {
+        case projectPath = "project_path"
+        case workspaceId = "workspace_id"
+    }
+}
+
 struct DaemonErrorInfo: Decodable {
     let code: String
     let message: String
@@ -175,6 +260,24 @@ final class DaemonClient {
     func fetchProjectStates() async throws -> [DaemonProjectState] {
         DebugLog.write("DaemonClient.fetchProjectStates start enabled=\(isEnabled)")
         return try await performRequest(method: "get_project_states", params: String?.none)
+    }
+
+    func fetchRoutingSnapshot(projectPath: String, workspaceId: String?) async throws -> DaemonRoutingSnapshot {
+        try await performRequest(
+            method: "get_routing_snapshot",
+            params: RoutingSnapshotParams(projectPath: projectPath, workspaceId: workspaceId),
+        )
+    }
+
+    func fetchRoutingDiagnostics(projectPath: String, workspaceId: String?) async throws -> DaemonRoutingDiagnostics {
+        try await performRequest(
+            method: "get_routing_diagnostics",
+            params: RoutingSnapshotParams(projectPath: projectPath, workspaceId: workspaceId),
+        )
+    }
+
+    func fetchDaemonConfig() async throws -> DaemonRoutingConfig {
+        try await performRequest(method: "get_config", params: String?.none)
     }
 
     private func performRequest<Payload: Decodable>(

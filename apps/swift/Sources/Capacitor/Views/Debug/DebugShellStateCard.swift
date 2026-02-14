@@ -15,8 +15,10 @@ import SwiftUI
 #if DEBUG
     struct DebugShellStateCard: View {
         @State private var shellState: ShellCwdState?
+        @State private var routingDiagnostics: DaemonRoutingDiagnostics?
         @State private var lastUpdatedAt: Date?
         @State private var lastError: String?
+        @State private var routingDiagnosticsError: String?
         @State private var isRefreshing = false
         @State private var autoRefresh = true
 
@@ -52,6 +54,14 @@ import SwiftUI
                         }
                     }
                     .frame(maxHeight: 220)
+                }
+
+                if let diagnostics = routingDiagnostics {
+                    routingDiagnosticsSection(diagnostics)
+                } else if let routingDiagnosticsError {
+                    Text("Routing diagnostics error: \(routingDiagnosticsError)")
+                        .font(.caption2)
+                        .foregroundColor(.orange.opacity(0.85))
                 }
             }
             .padding(10)
@@ -108,8 +118,27 @@ import SwiftUI
                 shellState = try await DaemonClient.shared.fetchShellState()
                 lastUpdatedAt = Date()
                 lastError = nil
+                if let projectPath = shellState?.shells.values
+                    .max(by: { $0.updatedAt < $1.updatedAt })?.cwd
+                {
+                    do {
+                        routingDiagnostics = try await DaemonClient.shared.fetchRoutingDiagnostics(
+                            projectPath: projectPath,
+                            workspaceId: nil,
+                        )
+                        routingDiagnosticsError = nil
+                    } catch {
+                        routingDiagnostics = nil
+                        routingDiagnosticsError = String(describing: error)
+                    }
+                } else {
+                    routingDiagnostics = nil
+                    routingDiagnosticsError = nil
+                }
             } catch {
                 lastError = String(describing: error)
+                routingDiagnostics = nil
+                routingDiagnosticsError = nil
             }
         }
 
@@ -168,6 +197,28 @@ import SwiftUI
             let formatter = RelativeDateTimeFormatter()
             formatter.unitsStyle = .abbreviated
             return formatter.localizedString(for: date, relativeTo: Date())
+        }
+
+        private func routingDiagnosticsSection(_ diagnostics: DaemonRoutingDiagnostics) -> some View {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Routing diagnostics")
+                    .font(.caption)
+                    .foregroundColor(.white.opacity(0.72))
+                Text("status=\(diagnostics.snapshot.status) confidence=\(diagnostics.snapshot.confidence) reason=\(diagnostics.snapshot.reasonCode)")
+                    .font(.system(size: 10, weight: .regular, design: .monospaced))
+                    .foregroundColor(.white.opacity(0.68))
+                Text("scope=\(diagnostics.scopeResolution) conflicts=\(diagnostics.conflicts.count)")
+                    .font(.system(size: 10, weight: .regular, design: .monospaced))
+                    .foregroundColor(.white.opacity(0.62))
+                ForEach(Array(diagnostics.snapshot.evidence.enumerated()), id: \.offset) { _, evidence in
+                    Text("\(evidence.evidenceType)=\(evidence.value) age_ms=\(evidence.ageMs) trust=\(evidence.trustRank)")
+                        .font(.system(size: 10, weight: .regular, design: .monospaced))
+                        .foregroundColor(.white.opacity(0.6))
+                }
+            }
+            .padding(8)
+            .background(Color.white.opacity(0.05))
+            .clipShape(RoundedRectangle(cornerRadius: 8))
         }
     }
 #endif
