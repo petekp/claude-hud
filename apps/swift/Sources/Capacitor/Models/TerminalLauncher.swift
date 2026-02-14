@@ -277,6 +277,12 @@ final class TerminalLauncher: ActivationActionDependencies {
     }
 
     private func launchTerminalAsync(for project: Project, shellState: ShellCwdState? = nil) async {
+        if AppConfig.current().featureFlags.areLauncher {
+            let handledWithARE = await launchTerminalWithAERSnapshot(for: project)
+            if handledWithARE {
+                return
+            }
+        }
         await launchTerminalWithRustResolver(for: project, shellState: shellState)
     }
 
@@ -429,6 +435,110 @@ final class TerminalLauncher: ActivationActionDependencies {
     }
 
     // MARK: - Rust Resolver Path
+
+    private func launchTerminalWithAERSnapshot(for project: Project) async -> Bool {
+        do {
+            let snapshot = try await DaemonClient.shared.fetchRoutingSnapshot(
+                projectPath: project.path,
+                workspaceId: nil,
+            )
+            let primary = Self.activationActionFromAERSnapshot(
+                snapshot,
+                projectPath: project.path,
+                projectName: project.name,
+            )
+            logger.info(
+                "ARE launcher snapshot: status=\(snapshot.status) target=\(snapshot.target.kind):\(snapshot.target.value ?? "nil") reason_code=\(snapshot.reasonCode)",
+            )
+            Telemetry.emit("activation_decision", "are_snapshot", payload: [
+                "primary": String(describing: primary),
+                "reason_code": snapshot.reasonCode,
+                "status": snapshot.status,
+                "target_kind": snapshot.target.kind,
+                "target_value": snapshot.target.value ?? "",
+            ])
+
+            let primarySuccess = await executeActivationAction(primary, projectPath: project.path, projectName: project.name)
+            var fallbackSuccess = false
+            var usedFallback = false
+            if !primarySuccess {
+                let primaryIsLaunchNew = if case .launchNewTerminal = primary {
+                    true
+                } else {
+                    false
+                }
+                if !primaryIsLaunchNew {
+                    usedFallback = true
+                    let fallback = ActivationAction.launchNewTerminal(
+                        projectPath: project.path,
+                        projectName: project.name,
+                    )
+                    fallbackSuccess = await executeActivationAction(
+                        fallback,
+                        projectPath: project.path,
+                        projectName: project.name,
+                    )
+                }
+            }
+
+            let finalSuccess = primarySuccess || fallbackSuccess
+            onActivationResult?(TerminalActivationResult(
+                projectName: project.name,
+                projectPath: project.path,
+                success: finalSuccess,
+                usedFallback: usedFallback,
+            ))
+            return true
+        } catch {
+            logger.warning("ARE launcher snapshot unavailable, falling back to resolver: \(error.localizedDescription)")
+            Telemetry.emit("activation_decision", "are_snapshot_fetch_failed", payload: [
+                "project": project.name,
+                "path": project.path,
+                "error": error.localizedDescription,
+            ])
+            return false
+        }
+    }
+
+    static func activationActionFromAERSnapshot(
+        _ snapshot: DaemonRoutingSnapshot,
+        projectPath: String,
+        projectName: String,
+    ) -> ActivationAction {
+        if snapshot.target.kind == "tmux_session",
+           let sessionName = snapshot.target.value,
+           !sessionName.isEmpty
+        {
+            if snapshot.status == "attached" {
+                if let hostTty = tmuxHostTTY(from: snapshot) {
+                    return .activateHostThenSwitchTmux(hostTty: hostTty, sessionName: sessionName)
+                }
+                return .switchTmuxSession(sessionName: sessionName)
+            }
+            if snapshot.status == "detached" {
+                return .ensureTmuxSession(sessionName: sessionName, projectPath: projectPath)
+            }
+        }
+
+        if snapshot.target.kind == "terminal_app",
+           snapshot.status == "detached" || snapshot.status == "attached",
+           let appName = snapshot.target.value,
+           !appName.isEmpty
+        {
+            return .activateApp(appName: appName)
+        }
+
+        return .launchNewTerminal(projectPath: projectPath, projectName: projectName)
+    }
+
+    private static func tmuxHostTTY(from snapshot: DaemonRoutingSnapshot) -> String? {
+        snapshot.evidence
+            .first(where: { $0.evidenceType == "tmux_client" })
+            .flatMap { evidence in
+                let trimmed = evidence.value.trimmingCharacters(in: .whitespacesAndNewlines)
+                return trimmed.isEmpty ? nil : trimmed
+            }
+    }
 
     private func launchTerminalWithRustResolver(for project: Project, shellState: ShellCwdState? = nil) async {
         logger.info("━━━ ACTIVATION START: \(project.name) ━━━")

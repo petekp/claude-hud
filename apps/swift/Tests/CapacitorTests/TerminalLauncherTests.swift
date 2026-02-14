@@ -289,4 +289,122 @@ final class TerminalLauncherTests: XCTestCase {
         }
         wait(for: [exp], timeout: 5.0)
     }
+
+    func testAERoutingActionMappingAttachedTmuxUsesHostThenSwitchWhenClientEvidencePresent() {
+        let snapshot = DaemonRoutingSnapshot(
+            version: 1,
+            workspaceId: "workspace-1",
+            projectPath: "/Users/pete/Code/capacitor",
+            status: "attached",
+            target: DaemonRoutingTarget(kind: "tmux_session", value: "caps"),
+            confidence: "high",
+            reasonCode: "TMUX_CLIENT_ATTACHED",
+            reason: "attached",
+            evidence: [
+                DaemonRoutingEvidence(
+                    evidenceType: "tmux_client",
+                    value: "/dev/ttys015",
+                    ageMs: 120,
+                    trustRank: 1,
+                ),
+            ],
+            updatedAt: "2026-02-14T15:00:00Z",
+        )
+
+        let action = TerminalLauncher.activationActionFromAERSnapshot(
+            snapshot,
+            projectPath: "/Users/pete/Code/capacitor",
+            projectName: "capacitor",
+        )
+        switch action {
+        case let .activateHostThenSwitchTmux(hostTty, sessionName):
+            XCTAssertEqual(hostTty, "/dev/ttys015")
+            XCTAssertEqual(sessionName, "caps")
+        default:
+            XCTFail("Expected activateHostThenSwitchTmux, got \(String(describing: action))")
+        }
+    }
+
+    func testAERoutingActionMappingDetachedTmuxEnsuresSession() {
+        let snapshot = DaemonRoutingSnapshot(
+            version: 1,
+            workspaceId: "workspace-1",
+            projectPath: "/Users/pete/Code/capacitor",
+            status: "detached",
+            target: DaemonRoutingTarget(kind: "tmux_session", value: "caps"),
+            confidence: "medium",
+            reasonCode: "TMUX_SESSION_DETACHED",
+            reason: "detached",
+            evidence: [],
+            updatedAt: "2026-02-14T15:00:00Z",
+        )
+
+        let action = TerminalLauncher.activationActionFromAERSnapshot(
+            snapshot,
+            projectPath: "/Users/pete/Code/capacitor",
+            projectName: "capacitor",
+        )
+        switch action {
+        case let .ensureTmuxSession(sessionName, projectPath):
+            XCTAssertEqual(sessionName, "caps")
+            XCTAssertEqual(projectPath, "/Users/pete/Code/capacitor")
+        default:
+            XCTFail("Expected ensureTmuxSession, got \(String(describing: action))")
+        }
+    }
+
+    func testAERoutingActionMappingDetachedTerminalAppActivatesApp() {
+        let snapshot = DaemonRoutingSnapshot(
+            version: 1,
+            workspaceId: "workspace-1",
+            projectPath: "/Users/pete/Code/capacitor",
+            status: "detached",
+            target: DaemonRoutingTarget(kind: "terminal_app", value: "Ghostty"),
+            confidence: "low",
+            reasonCode: "SHELL_FALLBACK_ACTIVE",
+            reason: "fallback",
+            evidence: [],
+            updatedAt: "2026-02-14T15:00:00Z",
+        )
+
+        let action = TerminalLauncher.activationActionFromAERSnapshot(
+            snapshot,
+            projectPath: "/Users/pete/Code/capacitor",
+            projectName: "capacitor",
+        )
+        switch action {
+        case let .activateApp(appName):
+            XCTAssertEqual(appName, "Ghostty")
+        default:
+            XCTFail("Expected activateApp, got \(String(describing: action))")
+        }
+    }
+
+    func testAERoutingActionMappingUnavailableLaunchesNewTerminal() {
+        let snapshot = DaemonRoutingSnapshot(
+            version: 1,
+            workspaceId: "workspace-1",
+            projectPath: "/Users/pete/Code/capacitor",
+            status: "unavailable",
+            target: DaemonRoutingTarget(kind: "none", value: nil),
+            confidence: "low",
+            reasonCode: "NO_TRUSTED_EVIDENCE",
+            reason: "none",
+            evidence: [],
+            updatedAt: "2026-02-14T15:00:00Z",
+        )
+
+        let action = TerminalLauncher.activationActionFromAERSnapshot(
+            snapshot,
+            projectPath: "/Users/pete/Code/capacitor",
+            projectName: "capacitor",
+        )
+        switch action {
+        case let .launchNewTerminal(projectPath, projectName):
+            XCTAssertEqual(projectPath, "/Users/pete/Code/capacitor")
+            XCTAssertEqual(projectName, "capacitor")
+        default:
+            XCTFail("Expected launchNewTerminal, got \(String(describing: action))")
+        }
+    }
 }
