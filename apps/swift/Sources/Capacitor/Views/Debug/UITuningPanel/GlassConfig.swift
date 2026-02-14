@@ -60,9 +60,9 @@ class GlassConfig {
     // Panel background
     var panelTintOpacity: Double = 0.46
     var panelCornerRadius: Double = 13.99
-    var panelBorderOpacity: Double = 0.42
-    var panelHighlightOpacity: Double = 0.00
-    var panelTopHighlightOpacity: Double = 0.11
+    var panelBorderOpacity: Double = 0.20
+    var panelHighlightOpacity: Double = 0.03
+    var panelTopHighlightOpacity: Double = 0.13
     var panelShadowOpacity: Double = 0.00
     var panelShadowRadius: Double = 0
     var panelShadowY: Double = 0
@@ -180,13 +180,13 @@ class GlassConfig {
     // MARK: - Working Stripe Effect (tuned defaults)
 
     var workingStripeWidth: Double = 24.0
-    var workingStripeSpacing: Double = 38.49
-    var workingStripeAngle: Double = 41.30
+    var workingStripeSpacing: Double = 44.91
+    var workingStripeAngle: Double = 38.02
     var workingScrollSpeed: Double = 3.68
-    var workingStripeOpacity: Double = 0.22
-    var workingGlowIntensity: Double = 2.40
-    var workingGlowBlurRadius: Double = 13.13
-    var workingCoreBrightness: Double = 0.91
+    var workingStripeOpacity: Double = 0.83
+    var workingGlowIntensity: Double = 3.00
+    var workingGlowBlurRadius: Double = 30.00
+    var workingCoreBrightness: Double = 0.56
     var workingGradientFalloff: Double = 0.39
     var workingVignetteInnerRadius: Double = 0.03
     var workingVignetteOuterRadius: Double = 0.00
@@ -196,15 +196,15 @@ class GlassConfig {
         Color(hue: workingVignetteColorHue, saturation: workingVignetteColorSaturation, brightness: workingVignetteColorBrightness)
     }
 
-    var workingVignetteColorIntensity: Double = 0.47
+    var workingVignetteColorIntensity: Double = 0.60
     var workingVignetteBlendMode: BlendMode = .plusLighter
-    var workingVignetteColorHue: Double = 0.05
-    var workingVignetteColorSaturation: Double = 0.67
-    var workingVignetteColorBrightness: Double = 0.39
+    var workingVignetteColorHue: Double = 0.06
+    var workingVignetteColorSaturation: Double = 0.92
+    var workingVignetteColorBrightness: Double = 0.33
 
     // Working border glow (tuned defaults)
-    var workingBorderWidth: Double = 1.0
-    var workingBorderBaseOpacity: Double = 0.35
+    var workingBorderWidth: Double = 2.05
+    var workingBorderBaseOpacity: Double = 0.34
     var workingBorderPulseIntensity: Double = 0.50
     var workingBorderPulseSpeed: Double = 2.21
     var workingBorderBlurAmount: Double = 8.0
@@ -658,9 +658,9 @@ class GlassConfig {
     func reset() {
         panelTintOpacity = 0.46
         panelCornerRadius = 13.99
-        panelBorderOpacity = 0.42
-        panelHighlightOpacity = 0.00
-        panelTopHighlightOpacity = 0.11
+        panelBorderOpacity = 0.20
+        panelHighlightOpacity = 0.03
+        panelTopHighlightOpacity = 0.13
         panelShadowOpacity = 0.00
         panelShadowRadius = 0
         panelShadowY = 0
@@ -850,9 +850,9 @@ class GlassConfig {
             // Panel Background
             ("Panel", "panelTintOpacity", 0.46, panelTintOpacity),
             ("Panel", "panelCornerRadius", 13.99, panelCornerRadius),
-            ("Panel", "panelBorderOpacity", 0.42, panelBorderOpacity),
-            ("Panel", "panelHighlightOpacity", 0.00, panelHighlightOpacity),
-            ("Panel", "panelTopHighlightOpacity", 0.11, panelTopHighlightOpacity),
+            ("Panel", "panelBorderOpacity", 0.20, panelBorderOpacity),
+            ("Panel", "panelHighlightOpacity", 0.03, panelHighlightOpacity),
+            ("Panel", "panelTopHighlightOpacity", 0.13, panelTopHighlightOpacity),
             ("Panel", "panelShadowOpacity", 0.00, panelShadowOpacity),
             ("Panel", "panelShadowRadius", 0, panelShadowRadius),
             ("Panel", "panelShadowY", 0, panelShadowY),
@@ -939,24 +939,24 @@ class GlassConfig {
             ("Waiting Border", "waitingBorderOuterBlur", 0.8, waitingBorderOuterBlur),
             // Working Stripes
             ("Working Stripes", "workingStripeWidth", 24.0, workingStripeWidth),
-            ("Working Stripes", "workingStripeSpacing", 38.49, workingStripeSpacing),
-            ("Working Stripes", "workingStripeAngle", 41.30, workingStripeAngle),
+            ("Working Stripes", "workingStripeSpacing", 44.91, workingStripeSpacing),
+            ("Working Stripes", "workingStripeAngle", 38.02, workingStripeAngle),
             ("Working Stripes", "workingScrollSpeed", 3.68, workingScrollSpeed),
-            ("Working Stripes", "workingStripeOpacity", 0.22, workingStripeOpacity),
-            ("Working Stripes", "workingGlowIntensity", 2.40, workingGlowIntensity),
-            ("Working Stripes", "workingGlowBlurRadius", 13.13, workingGlowBlurRadius),
-            ("Working Stripes", "workingCoreBrightness", 0.91, workingCoreBrightness),
+            ("Working Stripes", "workingStripeOpacity", 0.83, workingStripeOpacity),
+            ("Working Stripes", "workingGlowIntensity", 3.00, workingGlowIntensity),
+            ("Working Stripes", "workingGlowBlurRadius", 30.00, workingGlowBlurRadius),
+            ("Working Stripes", "workingCoreBrightness", 0.56, workingCoreBrightness),
             ("Working Stripes", "workingGradientFalloff", 0.39, workingGradientFalloff),
             ("Working Stripes", "workingVignetteInnerRadius", 0.03, workingVignetteInnerRadius),
             ("Working Stripes", "workingVignetteOuterRadius", 0.00, workingVignetteOuterRadius),
             ("Working Stripes", "workingVignetteCenterOpacity", 0.05, workingVignetteCenterOpacity),
-            ("Working Stripes", "workingVignetteColorHue", 0.05, workingVignetteColorHue),
-            ("Working Stripes", "workingVignetteColorSaturation", 0.67, workingVignetteColorSaturation),
-            ("Working Stripes", "workingVignetteColorBrightness", 0.39, workingVignetteColorBrightness),
-            ("Working Stripes", "workingVignetteColorIntensity", 0.47, workingVignetteColorIntensity),
+            ("Working Stripes", "workingVignetteColorHue", 0.06, workingVignetteColorHue),
+            ("Working Stripes", "workingVignetteColorSaturation", 0.92, workingVignetteColorSaturation),
+            ("Working Stripes", "workingVignetteColorBrightness", 0.33, workingVignetteColorBrightness),
+            ("Working Stripes", "workingVignetteColorIntensity", 0.60, workingVignetteColorIntensity),
             // Working Border
-            ("Working Border", "workingBorderWidth", 1.0, workingBorderWidth),
-            ("Working Border", "workingBorderBaseOpacity", 0.35, workingBorderBaseOpacity),
+            ("Working Border", "workingBorderWidth", 2.05, workingBorderWidth),
+            ("Working Border", "workingBorderBaseOpacity", 0.34, workingBorderBaseOpacity),
             ("Working Border", "workingBorderPulseIntensity", 0.50, workingBorderPulseIntensity),
             ("Working Border", "workingBorderPulseSpeed", 2.21, workingBorderPulseSpeed),
             ("Working Border", "workingBorderBlurAmount", 8.0, workingBorderBlurAmount),

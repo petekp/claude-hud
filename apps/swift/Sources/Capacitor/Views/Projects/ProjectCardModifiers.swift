@@ -198,9 +198,21 @@ extension View {
                 .animation(ambientCrossFade, value: effectiveReadyAmbient)
         }
         .overlay {
-            ReadyBorderGlow(seed: animationSeed, layoutMode: layoutMode, animate: shouldAnimate && layerOpacities.readyBorder > 0)
-                .opacity(layerOpacities.readyBorder)
-                .animation(borderCrossFade, value: layerOpacities.readyBorder)
+            // Swap animated glow for a brighter static green border on hover (non-focused ready cards)
+            let hoverReady = isHovered && !isActive && layerOpacities.readyBorder > 0
+            let effectiveReadyBorder = hoverReady ? 0.0 : layerOpacities.readyBorder
+            let hoverSnap = Animation.easeOut(duration: cfg.hoverTransitionDuration)
+            ZStack {
+                ReadyBorderGlow(seed: animationSeed, layoutMode: layoutMode, animate: shouldAnimate && effectiveReadyBorder > 0)
+                    .opacity(effectiveReadyBorder)
+                    .animation(hoverSnap, value: effectiveReadyBorder)
+
+                // Static bright green border on hover
+                RoundedRectangle(cornerRadius: cornerRadius)
+                    .strokeBorder(Color.statusReady.opacity(0.6), lineWidth: 1.5)
+                    .opacity(hoverReady ? 1.0 : 0.0)
+                    .animation(hoverSnap, value: hoverReady)
+            }
         }
         // Waiting effects — always present, cross-fade via opacity
         .overlay {
