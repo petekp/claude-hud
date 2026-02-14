@@ -23,11 +23,15 @@ impl Default for HemMode {
     }
 }
 
+fn default_hem_engine_mode() -> HemMode {
+    HemMode::Primary
+}
+
 #[derive(Debug, Clone, Deserialize)]
 pub struct HemEngineConfig {
     #[serde(default)]
     pub enabled: bool,
-    #[serde(default)]
+    #[serde(default = "default_hem_engine_mode")]
     pub mode: HemMode,
 }
 
@@ -1427,6 +1431,24 @@ max_sessions_per_project = 8
                 .abs()
                 < f64::EPSILON
         );
+    }
+
+    #[test]
+    fn load_runtime_config_defaults_engine_mode_to_primary_when_omitted() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let path = temp_dir.path().join("hem.toml");
+        fs_err::write(
+            &path,
+            r#"
+[engine]
+enabled = true
+        "#,
+        )
+        .expect("write config");
+
+        let config = load_runtime_config(Some(path)).expect("load config");
+        assert!(config.engine.enabled);
+        assert_eq!(config.engine.mode, HemMode::Primary);
     }
 
     #[test]

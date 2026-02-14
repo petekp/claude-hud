@@ -1,7 +1,7 @@
 # Agent Changelog
 
 > This file helps coding agents understand project evolution, key decisions,
-> and deprecated patterns. Updated: 2026-02-13 (stop-gate grace-window guard + compacting lifecycle hardening + quick feedback + release guardrails)
+> and deprecated patterns. Updated: 2026-02-14 (manual QA + daemon outage resilience run)
 
 ## Current State Summary
 
@@ -18,6 +18,32 @@ Capacitor is a native macOS SwiftUI app (Apple Silicon, macOS 14+) that acts as 
 | `.claude/plans/ACTIVE-alpha-release-checklist.md` ("Build & Signing" block) | `App is code-signed`, `App is notarized`, and `DMG or ZIP artifact for download` remain unchecked | Local release verification now demonstrates successful code signing, notarized DMG acceptance (`spctl`), and generated ZIP/DMG artifacts for `0.2.0-alpha.1`; checklist needs manual status refresh | 2026-02-12 |
 
 ## Timeline
+
+### 2026-02-14 — Manual QA + Daemon Outage Resilience (Completed / Uncommitted)
+
+**What was validated:**
+- Manual activation paths verified with transparent-ui briefing + app-debug logs:
+  - Ghostty open + tmux attached -> `activateHostThenSwitchTmux` succeeds.
+  - Ghostty closed / no tmux client attached -> `launchTerminalWithTmux` succeeds.
+  - `agent-skills` activation can resolve through `ensureTmuxSession` with single-shot success (no loop in latest run).
+- Cutover safety fix validated with test-first guard:
+  - Added regression test to ensure partial HEM runtime config (`[engine] enabled=true` with omitted `mode`) still resolves to `primary`.
+  - Updated `HemEngineConfig.mode` serde default to explicit `primary` to prevent accidental shadow fallback from incomplete configs.
+- Daemon fault-injection validation:
+  - Forced daemon outage (`launchctl bootout`) produces expected transient `Connection refused` errors in polling paths.
+  - Health recovery path auto-restarts daemon (`AppState.checkDaemonHealth triggering recovery`) without app crash.
+  - Post-recovery activation remains normal (`tool-ui` activation succeeds; idle window shows no spontaneous extra activations).
+  - Clicks during outage can still trigger terminal focus/switch actions via local activation path while daemon RPC remains unavailable.
+
+**Findings to track:**
+- **Counterintuitive UX (P2):** rapid multi-click on the same project card triggers an activation burst (observed 6 `tool-ui` activations within ~1s, all successful). Behavior suggests missing per-project activation coalescing/debounce.
+- **Observability mismatch (P3):** `GET /agent-briefing` snapshot currently omits `health` while transparent-ui docs describe daemon health in snapshot payload. Keep docs/payload aligned.
+
+**Suggested follow-up:**
+- Add per-project in-flight activation guard (or short debounce window) at launch entrypoint to suppress duplicate activations.
+- Either include daemon health in briefing snapshot or adjust docs to reflect current payload contract.
+
+---
 
 ### 2026-02-13 — Stop-Gate Ready Grace Window for Live Sessions (Completed / Uncommitted)
 
