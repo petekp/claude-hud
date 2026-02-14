@@ -28,9 +28,22 @@ struct ShellCwdState: Codable {
 struct ShellRoutingStatus: Equatable {
     let hasActiveShells: Bool
     let hasAttachedTmuxClient: Bool
+    let hasAnyShells: Bool
     let tmuxClientTty: String?
     let targetParentApp: String?
     let targetTmuxSession: String?
+    let lastSeenAt: Date?
+    let isUsingLastKnownTarget: Bool
+
+    var hasStaleTelemetry: Bool {
+        !hasActiveShells && hasAnyShells
+    }
+
+    func staleAgeMinutes(reference: Date = Date()) -> Int? {
+        guard let lastSeenAt else { return nil }
+        let interval = reference.timeIntervalSince(lastSeenAt)
+        return max(0, Int(interval / 60.0))
+    }
 }
 
 @MainActor
@@ -138,28 +151,77 @@ final class ShellStateStore {
     /// Lightweight status used by the projects UI to explain activation behavior.
     var routingStatus: ShellRoutingStatus {
         let activeShells = activeShellEntries()
-        let mostRecent = mostRecentShell
+        let allShells = state?.shells ?? [:]
+        func normalized(_ value: String?) -> String? {
+            guard let value else { return nil }
+            let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+            return trimmed.isEmpty ? nil : trimmed
+        }
+        func hasUsableRoutingTarget(_ entry: ShellEntry) -> Bool {
+            if normalized(entry.tmuxSession) != nil {
+                return true
+            }
+            guard let parentApp = normalized(entry.parentApp)?.lowercased() else {
+                return false
+            }
+            return parentApp != "unknown"
+        }
+
+        let mostRecentActive = mostRecentShell
+        let mostRecentKnown = allShells
+            .max(by: { $0.value.updatedAt < $1.value.updatedAt })
+            .map { (pid: $0.key, entry: $0.value) }
+        let mostRecentKnownUsable = allShells
+            .filter { _, entry in hasUsableRoutingTarget(entry) }
+            .max(by: { $0.value.updatedAt < $1.value.updatedAt })
+            .map { (pid: $0.key, entry: $0.value) }
 
         let attachedTmuxShell = activeShells
             .filter { _, entry in
-                guard let tty = entry.tmuxClientTty?.trimmingCharacters(in: .whitespacesAndNewlines) else {
-                    return false
-                }
-                return !tty.isEmpty
+                normalized(entry.tmuxClientTty) != nil
             }
             .max { lhs, rhs in
                 lhs.value.updatedAt < rhs.value.updatedAt
             }
+        let activeTtys = Set(activeShells.compactMap { normalized($0.value.tty) })
+        let inferredAttachedTmuxShell = attachedTmuxShell == nil ? allShells
+            .filter { _, entry in
+                guard let tmuxClientTty = normalized(entry.tmuxClientTty) else {
+                    return false
+                }
+                return activeTtys.contains(tmuxClientTty)
+            }
+            .max(by: { $0.value.updatedAt < $1.value.updatedAt }) : nil
+        let effectiveAttachedTmuxShell = attachedTmuxShell ?? inferredAttachedTmuxShell
 
-        let tmuxClientTty = attachedTmuxShell?.value.tmuxClientTty?
-            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let tmuxClientTty = normalized(effectiveAttachedTmuxShell?.value.tmuxClientTty)
+        let fallbackTarget = (effectiveAttachedTmuxShell.map { (pid: $0.key, entry: $0.value) } ?? mostRecentKnownUsable)
+        let hasUsableActiveTarget = mostRecentActive.map { hasUsableRoutingTarget($0.entry) } ?? false
+        let target: (pid: String, entry: ShellEntry)?
+        let isUsingLastKnownTarget: Bool
+        if hasUsableActiveTarget {
+            target = mostRecentActive
+            isUsingLastKnownTarget = false
+        } else if let fallbackTarget {
+            target = fallbackTarget
+            isUsingLastKnownTarget = true
+        } else if let mostRecentActive {
+            target = mostRecentActive
+            isUsingLastKnownTarget = false
+        } else {
+            target = mostRecentKnown
+            isUsingLastKnownTarget = mostRecentKnown != nil
+        }
 
         return ShellRoutingStatus(
             hasActiveShells: !activeShells.isEmpty,
-            hasAttachedTmuxClient: attachedTmuxShell != nil,
-            tmuxClientTty: tmuxClientTty?.isEmpty == false ? tmuxClientTty : nil,
-            targetParentApp: mostRecent?.entry.parentApp,
-            targetTmuxSession: mostRecent?.entry.tmuxSession,
+            hasAttachedTmuxClient: effectiveAttachedTmuxShell != nil,
+            hasAnyShells: !allShells.isEmpty,
+            tmuxClientTty: tmuxClientTty,
+            targetParentApp: target?.entry.parentApp,
+            targetTmuxSession: target?.entry.tmuxSession,
+            lastSeenAt: mostRecentKnown?.entry.updatedAt,
+            isUsingLastKnownTarget: isUsingLastKnownTarget,
         )
     }
 

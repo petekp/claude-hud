@@ -593,6 +593,100 @@ final class SessionStateManagerTests: XCTestCase {
         XCTAssertEqual(stateB?.sessionId, "session-direct")
     }
 
+    func testActiveChildStateBeatsReadyRootStateForPinnedRepoRoot() async throws {
+        setenv("CAPACITOR_DAEMON_ENABLED", "1", 1)
+        defer { unsetenv("CAPACITOR_DAEMON_ENABLED") }
+
+        let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+
+        let repoRoot = tempDir.appendingPathComponent("agent-canvas-v2")
+        let repoGit = repoRoot.appendingPathComponent(".git")
+        let activeChild = repoRoot.appendingPathComponent("interactive-guide")
+
+        try FileManager.default.createDirectory(at: repoGit, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: activeChild, withIntermediateDirectories: true)
+
+        let socketPath = tempDir.appendingPathComponent("daemon.sock").path
+        let server = try UnixSocketServer(path: socketPath)
+        defer { server.stop() }
+        server.start(response: makeProjectStatesResponse([
+            .init(
+                projectPath: activeChild.path,
+                state: "working",
+                updatedAt: "2026-02-14T20:32:20Z",
+                stateChangedAt: "2026-02-14T20:32:20Z",
+                sessionId: "session-child-working",
+            ),
+            .init(
+                projectPath: repoRoot.path,
+                state: "ready",
+                updatedAt: "2026-02-14T20:32:21Z",
+                stateChangedAt: "2026-02-14T20:32:21Z",
+                sessionId: "session-root-ready",
+            ),
+        ]))
+
+        setenv("CAPACITOR_DAEMON_SOCKET", socketPath, 1)
+        defer { unsetenv("CAPACITOR_DAEMON_SOCKET") }
+
+        let manager = SessionStateManager()
+        let pinnedRoot = makeProject("agent-canvas-v2", path: repoRoot.path)
+
+        manager.refreshSessionStates(for: [pinnedRoot])
+        let state = await waitForSessionState(manager, project: pinnedRoot)
+
+        XCTAssertEqual(state?.state, .working)
+        XCTAssertEqual(state?.sessionId, "session-child-working")
+    }
+
+    func testActiveRootStateBeatsNewerReadyChildStateForPinnedRepoRoot() async throws {
+        setenv("CAPACITOR_DAEMON_ENABLED", "1", 1)
+        defer { unsetenv("CAPACITOR_DAEMON_ENABLED") }
+
+        let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+
+        let repoRoot = tempDir.appendingPathComponent("agent-canvas-v2")
+        let repoGit = repoRoot.appendingPathComponent(".git")
+        let childPath = repoRoot.appendingPathComponent("interactive-guide")
+
+        try FileManager.default.createDirectory(at: repoGit, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: childPath, withIntermediateDirectories: true)
+
+        let socketPath = tempDir.appendingPathComponent("daemon.sock").path
+        let server = try UnixSocketServer(path: socketPath)
+        defer { server.stop() }
+        server.start(response: makeProjectStatesResponse([
+            .init(
+                projectPath: repoRoot.path,
+                state: "working",
+                updatedAt: "2026-02-14T20:32:20Z",
+                stateChangedAt: "2026-02-14T20:32:20Z",
+                sessionId: "session-root-working",
+            ),
+            .init(
+                projectPath: childPath.path,
+                state: "ready",
+                updatedAt: "2026-02-14T20:32:21Z",
+                stateChangedAt: "2026-02-14T20:32:21Z",
+                sessionId: "session-child-ready",
+            ),
+        ]))
+
+        setenv("CAPACITOR_DAEMON_SOCKET", socketPath, 1)
+        defer { unsetenv("CAPACITOR_DAEMON_SOCKET") }
+
+        let manager = SessionStateManager()
+        let pinnedRoot = makeProject("agent-canvas-v2", path: repoRoot.path)
+
+        manager.refreshSessionStates(for: [pinnedRoot])
+        let state = await waitForSessionState(manager, project: pinnedRoot)
+
+        XCTAssertEqual(state?.state, .working)
+        XCTAssertEqual(state?.sessionId, "session-root-working")
+    }
+
     func testStaleCanceledRefreshResultDoesNotOverrideNewerState() async {
         let projectPath = "/Users/pete/Code/race-project"
         let staleResponse = makeProjectStatesResponse([

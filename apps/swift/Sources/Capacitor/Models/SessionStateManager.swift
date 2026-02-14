@@ -464,7 +464,23 @@ final class SessionStateManager {
         if candidate.priority != existing.priority {
             return candidate.priority.rawValue > existing.priority.rawValue
         }
+        if candidate.priority == .direct {
+            let candidateActivity = stateActivityPriority(candidate.state)
+            let existingActivity = stateActivityPriority(existing.state)
+            if candidateActivity != existingActivity {
+                return candidateActivity > existingActivity
+            }
+        }
         return isMoreRecent(candidate.state, than: existing.state)
+    }
+
+    private nonisolated func stateActivityPriority(_ state: DaemonProjectState) -> Int {
+        switch mapDaemonState(state.state) {
+        case .working, .waiting, .compacting:
+            1
+        case .ready, .idle:
+            0
+        }
     }
 
     private nonisolated func mapDaemonState(_ state: String) -> SessionState {

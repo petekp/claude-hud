@@ -1,7 +1,7 @@
 # Agent Changelog
 
 > This file helps coding agents understand project evolution, key decisions,
-> and deprecated patterns. Updated: 2026-02-14 (agent-changelog refresh: HEM cutover + routing telemetry)
+> and deprecated patterns. Updated: 2026-02-14 (agent-changelog refresh: routing telemetry + direct-match activity precedence)
 
 ## Current State Summary
 
@@ -19,6 +19,44 @@ Capacitor is a native macOS SwiftUI app (Apple Silicon, macOS 14+) that acts as 
 | `docs/architecture-decisions/006-hierarchical-evidence-matching-state-detection.md` (Phase 1 / Extended Shadow Soak sections) | Shadow-default + one-week soak described as required pre-cutover baseline | Alpha override is now in effect and production default is HEM primary; treat those phase requirements as historical guardrails unless override policy is explicitly reverted | 2026-02-14 |
 
 ## Timeline
+
+### 2026-02-14 — Routing Telemetry UX + Direct-Match Activity Precedence (Completed / Uncommitted)
+
+**What changed:**
+- Extended `ShellRoutingStatus` to distinguish:
+  - live telemetry (`hasActiveShells`)
+  - stale telemetry (`!hasActiveShells && hasAnyShells`)
+  - no telemetry (`!hasAnyShells`)
+- Added last-known context in `ShellStateStore.routingStatus` so when telemetry is stale the UI can still show the last resolved target (`targetParentApp` / `targetTmuxSession`) and last seen timestamp.
+- Refined projects-row copy in `TerminalRoutingStatusRow`:
+  - stale + tmux target -> `tmux telemetry stale (Xm ago)`
+  - stale + non-tmux target -> `shell telemetry stale (Xm ago)`
+  - none -> `no shell telemetry`
+  - stale target prefix -> `last target ...` (instead of collapsing to `target unknown`)
+- Added hover tooltip (`.help`) with explicit stale age/timestamp and guidance that row is showing last-known routing context.
+- Refined `SessionStateManager` direct-match tie-breaking:
+  - when two daemon candidates both match with `.direct` priority, active states (`working` / `waiting` / `compacting`) now outrank passive states (`ready` / `idle`) before timestamp recency
+  - prevents a slightly newer `ready` root snapshot from overriding an actually active child/root candidate for the pinned repo card.
+- Added focused tests:
+  - `ShellStateStoreRoutingStatusTests` expanded for stale-vs-none status derivation
+  - new `TerminalRoutingStatusCopyTests` for copy/tooltip rendering behavior.
+  - `SessionStateManagerTests` expanded with repo-root pinning cases to lock active-over-ready direct-match behavior.
+
+**Why:**
+- The previous row text conflated “no telemetry ever” with “telemetry exists but is stale,” which made terminal-state debugging counterintuitive when Ghostty/tmux was visibly open but recent hook updates were absent.
+- Preserving last-known target context reduces operator confusion and keeps routing diagnostics actionable without opening logs.
+- For direct project matches, activity should win over pure recency to avoid false-ready presentation on actively running sessions.
+
+**Agent impact:**
+- Treat stale telemetry as a first-class state; do not collapse it into “unknown/unavailable” language.
+- Keep row copy generation centralized in `TerminalRoutingStatusCopy` rather than spreading string logic across views.
+- When adding new routing states, update formatter tests (`TerminalRoutingStatusCopyTests`) before changing row copy.
+- When changing direct-match selection heuristics, update `SessionStateManagerTests` first to lock intended precedence before editing matcher logic.
+
+**Evidence / tests:**
+- `swift test --filter "(ShellStateStoreRoutingStatusTests|TerminalRoutingStatusCopyTests|SessionStateManagerTests)"` passes (27 tests).
+
+---
 
 ### 2026-02-14 — Manual QA + HEM Cutover Guardrail (Completed / Committed)
 
@@ -1661,6 +1699,8 @@ Fixed terminal activation to check the daemon shell snapshot BEFORE tmux session
 
 | Don't | Do Instead | Deprecated Since |
 |-------|------------|------------------|
+| Collapse stale telemetry and missing telemetry into the same “unknown” status copy | Distinguish `stale` vs `none`, and show last-known target context when stale | 2026-02-14 |
+| Resolve `.direct` daemon state ties by recency only | Prefer active lifecycle states (`working`/`waiting`/`compacting`) over passive (`ready`/`idle`) before recency | 2026-02-14 |
 | Persist separate active/idle manual order lists (`activeProjectOrder` / `idleProjectOrder`) | Persist one global `projectOrder` and derive active/idle projections from that single sequence | 2026-02-12 |
 | Clear session state immediately on first empty daemon `get_project_states` snapshot | Hold first empty snapshot as transient; clear after consecutive empties | 2026-02-12 |
 | Use `tmux switch-client -t <session>` when a client TTY is known | Resolve `#{client_tty}` and use `tmux switch-client -c <client_tty> -t <session>` | 2026-02-11 |

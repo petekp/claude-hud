@@ -28,9 +28,13 @@ final class ShellStateStoreRoutingStatusTests: XCTestCase {
         let status = store.routingStatus
         XCTAssertFalse(status.hasActiveShells)
         XCTAssertFalse(status.hasAttachedTmuxClient)
+        XCTAssertFalse(status.hasAnyShells)
         XCTAssertNil(status.tmuxClientTty)
         XCTAssertNil(status.targetParentApp)
         XCTAssertNil(status.targetTmuxSession)
+        XCTAssertNil(status.lastSeenAt)
+        XCTAssertFalse(status.isUsingLastKnownTarget)
+        XCTAssertFalse(status.hasStaleTelemetry)
     }
 
     func testRoutingStatusDetectsAttachedTmuxClientAndTargetSession() {
@@ -52,9 +56,13 @@ final class ShellStateStoreRoutingStatusTests: XCTestCase {
         let status = store.routingStatus
         XCTAssertTrue(status.hasActiveShells)
         XCTAssertTrue(status.hasAttachedTmuxClient)
+        XCTAssertTrue(status.hasAnyShells)
         XCTAssertEqual(status.tmuxClientTty, "/dev/ttys015")
         XCTAssertEqual(status.targetParentApp, "tmux")
         XCTAssertEqual(status.targetTmuxSession, "tool-ui")
+        XCTAssertNotNil(status.lastSeenAt)
+        XCTAssertFalse(status.isUsingLastKnownTarget)
+        XCTAssertFalse(status.hasStaleTelemetry)
     }
 
     func testRoutingStatusIgnoresStaleShells() {
@@ -77,6 +85,82 @@ final class ShellStateStoreRoutingStatusTests: XCTestCase {
         let status = store.routingStatus
         XCTAssertFalse(status.hasActiveShells)
         XCTAssertFalse(status.hasAttachedTmuxClient)
+        XCTAssertTrue(status.hasAnyShells)
         XCTAssertNil(status.tmuxClientTty)
+        XCTAssertEqual(status.targetParentApp, "tmux")
+        XCTAssertEqual(status.targetTmuxSession, "capacitor")
+        XCTAssertNotNil(status.lastSeenAt)
+        XCTAssertTrue(status.isUsingLastKnownTarget)
+        XCTAssertTrue(status.hasStaleTelemetry)
+        XCTAssertNotNil(status.staleAgeMinutes(reference: Date()))
+    }
+
+    func testRoutingStatusUsesLastKnownTmuxTargetWhenActiveShellIsUnknown() {
+        let store = ShellStateStore()
+        let now = Date()
+        let staleTmux = now.addingTimeInterval(-(14 * 60 * 60))
+        let state = ShellCwdState(
+            version: 1,
+            shells: [
+                "2001": makeEntry(
+                    cwd: "/Users/pete/Code/capacitor",
+                    tty: "/dev/ttys022",
+                    parentApp: nil,
+                    tmuxSession: nil,
+                    tmuxClientTty: nil,
+                    updatedAt: now,
+                ),
+                "2002": makeEntry(
+                    cwd: "/Users/pete/Code/capacitor",
+                    tty: "/dev/ttys099",
+                    parentApp: "tmux",
+                    tmuxSession: "capacitor",
+                    tmuxClientTty: "/dev/ttys022",
+                    updatedAt: staleTmux,
+                ),
+            ],
+        )
+        store.setStateForTesting(state)
+
+        let status = store.routingStatus
+        XCTAssertTrue(status.hasActiveShells)
+        XCTAssertTrue(status.hasAttachedTmuxClient)
+        XCTAssertEqual(status.tmuxClientTty, "/dev/ttys022")
+        XCTAssertEqual(status.targetParentApp, "tmux")
+        XCTAssertEqual(status.targetTmuxSession, "capacitor")
+        XCTAssertTrue(status.isUsingLastKnownTarget)
+    }
+
+    func testRoutingStatusPrefersUsableActiveTargetOverLastKnownTarget() {
+        let store = ShellStateStore()
+        let now = Date()
+        let olderTmux = now.addingTimeInterval(-(60 * 60))
+        let state = ShellCwdState(
+            version: 1,
+            shells: [
+                "3001": makeEntry(
+                    cwd: "/Users/pete/Code/capacitor",
+                    tty: "/dev/ttys011",
+                    parentApp: "ghostty",
+                    tmuxSession: nil,
+                    tmuxClientTty: nil,
+                    updatedAt: now,
+                ),
+                "3002": makeEntry(
+                    cwd: "/Users/pete/Code/capacitor",
+                    tty: "/dev/ttys099",
+                    parentApp: "tmux",
+                    tmuxSession: "capacitor",
+                    tmuxClientTty: "/dev/ttys099",
+                    updatedAt: olderTmux,
+                ),
+            ],
+        )
+        store.setStateForTesting(state)
+
+        let status = store.routingStatus
+        XCTAssertEqual(status.targetParentApp, "ghostty")
+        XCTAssertNil(status.targetTmuxSession)
+        XCTAssertFalse(status.isUsingLastKnownTarget)
     }
 }
