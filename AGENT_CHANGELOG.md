@@ -1,11 +1,11 @@
 # Agent Changelog
 
 > This file helps coding agents understand project evolution, key decisions,
-> and deprecated patterns. Updated: 2026-02-14 (manual QA + daemon outage resilience run)
+> and deprecated patterns. Updated: 2026-02-14 (agent-changelog refresh: HEM cutover + routing telemetry)
 
 ## Current State Summary
 
-Capacitor is a native macOS SwiftUI app (Apple Silicon, macOS 14+) that acts as a sidecar dashboard for Claude Code. The architecture uses a Rust core (`hud-core`) with UniFFI bindings to Swift plus a **Rust daemon (`capacitor-daemon`) that is the canonical source of truth** for session, shell, activity, and process-liveness state. Hooks emit events to the daemon over a Unix socket (`~/.capacitor/daemon.sock`), and Swift reads daemon snapshots (shell state + project aggregation); file-based JSON fallbacks are removed in daemon-only mode. Workstreams (managed git worktrees) are first-class with create/open/destroy UX and slug-prefixed naming; activation matching avoids crossing repo cards with managed worktree tmux panes. Project-card rendering now uses a **single unified active+idle row pipeline**, **stable outer identity by project path**, and **in-place status/effect animations** (no card-root remount invalidation), with status text using SwiftUI `numericText` content transitions. Manual ordering now persists as one global list (`projectOrder`) and active/idle groups are projections over that list with hysteresis bands (`active`/`cooling`/`idle`) to reduce Ready/Idle thrash. Daemon empty project snapshots are also quality-gated in Swift: one empty snapshot is held as transient noise, and clearing applies on consecutive empties. Compacting lifecycle is now hard-gated: stop events are skipped while compacting, and compacting no longer inactivity-falls back to ready, preventing premature ready flicker during longer compactions. Stop-gate readiness is additionally treated as provisional for a short grace window when PID liveness is confirmed, reducing false `Ready` flashes while a session is still visibly working. Terminal activation uses a Rust resolver plus Swift execution, explicitly targeting the attached tmux client TTY (`switch-client -c <tty>`) and then foregrounding the terminal window that owns that TTY. Build channel + alpha gating are runtime via `AppConfig` (env/Info.plist/config file), not compile-time flags; release versioning is centralized in `VERSION` (current alpha: `0.2.0-alpha.1`). **Release packaging defaults are now alpha-safe by script guardrail** (`build-distribution.sh` defaults to channel `alpha`, and `release.sh` forwards channel explicitly), reducing risk of shipping prod-channel feature flags in alpha artifacts. Daemon startup and steady-state now include dead-session reconciliation plus health-exposed reconcile telemetry, demoting dead non-idle sessions to `Idle` without waiting for TTL or manual cleanup.
+Capacitor is a native macOS SwiftUI app (Apple Silicon, macOS 14+) that acts as a sidecar dashboard for Claude Code. The architecture uses a Rust core (`hud-core`) with UniFFI bindings to Swift plus a **Rust daemon (`capacitor-daemon`) that is the canonical source of truth** for session, shell, activity, and process-liveness state. Hooks emit events to the daemon over a Unix socket (`~/.capacitor/daemon.sock`), and Swift reads daemon snapshots (shell state + project aggregation); file-based JSON fallbacks are removed in daemon-only mode. As of alpha fast-cutover, project-state reads default to **HEM primary**, while reducer/session-store logic remains active on the ingest/write path. Workstreams (managed git worktrees) are first-class with create/open/destroy UX and slug-prefixed naming; activation matching avoids crossing repo cards with managed worktree tmux panes. Project-card rendering now uses a **single unified active+idle row pipeline**, **stable outer identity by project path**, and **in-place status/effect animations** (no card-root remount invalidation), with status text using SwiftUI `numericText` content transitions. Manual ordering now persists as one global list (`projectOrder`) and active/idle groups are projections over that list with hysteresis bands (`active`/`cooling`/`idle`) to reduce Ready/Idle thrash. Daemon empty project snapshots are also quality-gated in Swift: one empty snapshot is held as transient noise, and clearing applies on consecutive empties. Compacting lifecycle is now hard-gated: stop events are skipped while compacting, and compacting no longer inactivity-falls back to ready, preventing premature ready flicker during longer compactions. Stop-gate readiness is additionally treated as provisional for a short grace window when PID liveness is confirmed, reducing false `Ready` flashes while a session is still visibly working. Terminal activation uses a Rust resolver plus Swift execution, explicitly targeting the attached tmux client TTY (`switch-client -c <tty>`) and then foregrounding the terminal window that owns that TTY. Build channel + alpha gating are runtime via `AppConfig` (env/Info.plist/config file), not compile-time flags; release versioning is centralized in `VERSION` (current alpha: `0.2.0-alpha.1`). **Release packaging defaults are now alpha-safe by script guardrail** (`build-distribution.sh` defaults to channel `alpha`, and `release.sh` forwards channel explicitly), reducing risk of shipping prod-channel feature flags in alpha artifacts. Daemon startup and steady-state now include dead-session reconciliation plus health-exposed reconcile telemetry, demoting dead non-idle sessions to `Idle` without waiting for TTL or manual cleanup.
 
 > **Historical note:** Timeline entries below may reference pre-daemon artifacts (locks, `sessions.json`, `shell-cwd.json`). Treat them as historical context only; they are not current behavior.
 
@@ -16,10 +16,11 @@ Capacitor is a native macOS SwiftUI app (Apple Silicon, macOS 14+) that acts as 
 | `README.md` (opening scope statement) | "observe-only sidecar: no workstreams, no idea capture, no project details." | This is alpha shipping scope, not full codebase capability. Workstreams and related flows still exist in source and are runtime-gated by channel/feature flags. | 2026-02-08 |
 | `AGENT_CHANGELOG.md` (2026-02-11 "Project-Card State Resolution + Daemon Startup Catch-up Hardening") | "List and dock rendering now key row identity by per-card session fingerprint (`ProjectOrdering.cardIdentityKey`)..." | `ProjectOrdering.cardIdentityKey` currently returns stable `project.path` only; session-state-based row-key coupling is intentionally removed | 2026-02-12 |
 | `.claude/plans/ACTIVE-alpha-release-checklist.md` ("Build & Signing" block) | `App is code-signed`, `App is notarized`, and `DMG or ZIP artifact for download` remain unchecked | Local release verification now demonstrates successful code signing, notarized DMG acceptance (`spctl`), and generated ZIP/DMG artifacts for `0.2.0-alpha.1`; checklist needs manual status refresh | 2026-02-12 |
+| `docs/architecture-decisions/006-hierarchical-evidence-matching-state-detection.md` (Phase 1 / Extended Shadow Soak sections) | Shadow-default + one-week soak described as required pre-cutover baseline | Alpha override is now in effect and production default is HEM primary; treat those phase requirements as historical guardrails unless override policy is explicitly reverted | 2026-02-14 |
 
 ## Timeline
 
-### 2026-02-14 — Manual QA + Daemon Outage Resilience (Completed / Uncommitted)
+### 2026-02-14 — Manual QA + HEM Cutover Guardrail (Completed / Committed)
 
 **What was validated:**
 - Manual activation paths verified with transparent-ui briefing + app-debug logs:
@@ -42,6 +43,27 @@ Capacitor is a native macOS SwiftUI app (Apple Silicon, macOS 14+) that acts as 
 **Suggested follow-up:**
 - Add per-project in-flight activation guard (or short debounce window) at launch entrypoint to suppress duplicate activations.
 - Either include daemon health in briefing snapshot or adjust docs to reflect current payload contract.
+
+**Commits:** `279af04`, `eeb8449`
+
+---
+
+### 2026-02-13 — Projects View Routing Status Surface (Completed / Committed)
+
+**What changed:**
+- Added `TerminalRoutingStatusRow` to Projects view to expose current shell/tmux routing target and attachment state.
+- Added `ShellStateStore.routingStatus` model (`hasActiveShells`, `hasAttachedTmuxClient`, `tmuxClientTty`, target parent app/session) so UI can explain activation behavior directly.
+- Added focused Swift tests for routing status derivation (`ShellStateStoreRoutingStatusTests`).
+
+**Why:**
+- Operators were confused about why clicks opened/focused particular terminal windows; routing decisions were visible only in logs.
+- A lightweight in-app status line improves operability without adding a new diagnostics endpoint.
+
+**Agent impact:**
+- For activation debugging, check Projects view routing row first; use logs/transparent UI only for deeper traces.
+- Prefer extending `ShellRoutingStatus` rather than adding ad-hoc per-view shell parsing.
+
+**Commits:** `f588a26`
 
 ---
 
