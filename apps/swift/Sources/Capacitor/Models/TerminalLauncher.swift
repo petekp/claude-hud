@@ -214,6 +214,8 @@ final class TerminalLauncher: ActivationActionDependencies {
 
     private let appleScript: AppleScriptClient
     private let fetchRoutingSnapshot: (String, String?) async throws -> DaemonRoutingSnapshot
+    private let fallbackTmuxSessionResolver: ((String) async -> String?)?
+    private let fallbackTmuxSessionExistsResolver: ((String) async -> Bool)?
     private let executeActivationActionOverride: ((ActivationAction, String, String) async -> Bool)?
     private let launchNewTerminalOverride: ((String, String) -> Bool)?
     var onActivationTrace: ((String) -> Void)?
@@ -282,11 +284,15 @@ final class TerminalLauncher: ActivationActionDependencies {
                 workspaceId: workspaceId,
             )
         },
+        fallbackTmuxSessionResolver: ((String) async -> String?)? = nil,
+        fallbackTmuxSessionExistsResolver: ((String) async -> Bool)? = nil,
         executeActivationActionOverride: ((ActivationAction, String, String) async -> Bool)? = nil,
         launchNewTerminalOverride: ((String, String) -> Bool)? = nil,
     ) {
         self.appleScript = appleScript
         self.fetchRoutingSnapshot = fetchRoutingSnapshot
+        self.fallbackTmuxSessionResolver = fallbackTmuxSessionResolver
+        self.fallbackTmuxSessionExistsResolver = fallbackTmuxSessionExistsResolver
         self.executeActivationActionOverride = executeActivationActionOverride
         self.launchNewTerminalOverride = launchNewTerminalOverride
     }
@@ -312,6 +318,14 @@ final class TerminalLauncher: ActivationActionDependencies {
         }
         guard shouldProcessLaunchRequest(requestID) else {
             debugLog("launchTerminalAsync skipped fallback for stale request id=\(requestID) path=\(project.path)")
+            return
+        }
+
+        if await recoverSnapshotFailureViaTmuxIfPossible(for: project, requestID: requestID) {
+            return
+        }
+        guard shouldProcessLaunchRequest(requestID) else {
+            debugLog("launchTerminalAsync skipped post-recovery fallback for stale request id=\(requestID) path=\(project.path)")
             return
         }
 
@@ -363,6 +377,80 @@ final class TerminalLauncher: ActivationActionDependencies {
         }
         lastSnapshotFailureFallbackLaunchByProjectPath[projectPath] = now
         return true
+    }
+
+    private func recoverSnapshotFailureViaTmuxIfPossible(for project: Project, requestID: UInt64) async -> Bool {
+        guard shouldProcessLaunchRequest(requestID) else {
+            return false
+        }
+        guard let sessionName = await resolveSnapshotFailureFallbackTmuxSession(for: project.path) else {
+            return false
+        }
+        let recovered = await executeActivationAction(
+            .ensureTmuxSession(sessionName: sessionName, projectPath: project.path),
+            projectPath: project.path,
+            projectName: project.name,
+        )
+        guard shouldProcessLaunchRequest(requestID) else {
+            debugLog("snapshot_unavailable_tmux_recovery ignored stale request id=\(requestID) path=\(project.path)")
+            return true
+        }
+        if recovered {
+            debugLog("snapshot_unavailable_tmux_recovery success path=\(project.path) session=\(sessionName)")
+            Telemetry.emit("activation_outcome", "snapshot_unavailable_tmux_recovery", payload: [
+                "project": project.name,
+                "path": project.path,
+                "session": sessionName,
+                "used_fallback": true,
+                "success": true,
+            ])
+            onActivationResult?(TerminalActivationResult(
+                projectName: project.name,
+                projectPath: project.path,
+                success: true,
+                usedFallback: true,
+            ))
+            return true
+        }
+        debugLog("snapshot_unavailable_tmux_recovery failed path=\(project.path) session=\(sessionName)")
+        return false
+    }
+
+    private func resolveSnapshotFailureFallbackTmuxSession(for projectPath: String) async -> String? {
+        let candidate: String? = if let fallbackTmuxSessionResolver {
+            await fallbackTmuxSessionResolver(projectPath)
+        } else {
+            await findTmuxSessionForPath(projectPath)
+        }
+        if let candidate {
+            let trimmed = candidate.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !trimmed.isEmpty {
+                return trimmed
+            }
+        }
+
+        // During daemon outages, preserve session-name-exact semantics from the resolver:
+        // if the project slug itself is a valid tmux session, recover via ensure/switch.
+        let projectSlug = URL(fileURLWithPath: projectPath).lastPathComponent
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !projectSlug.isEmpty else { return nil }
+
+        let exists: Bool = if let fallbackTmuxSessionExistsResolver {
+            await fallbackTmuxSessionExistsResolver(projectSlug)
+        } else {
+            await hasTmuxSessionNamed(projectSlug)
+        }
+        if exists {
+            debugLog("snapshot_unavailable_tmux_recovery session=\(projectSlug) path=\(projectPath)")
+            return projectSlug
+        }
+        return nil
+    }
+
+    private func hasTmuxSessionNamed(_ sessionName: String) async -> Bool {
+        let escaped = shellEscape(sessionName)
+        let result = await runBashScriptWithResultAsync("tmux has-session -t \(escaped) 2>/dev/null")
+        return result.exitCode == 0
     }
 
     static func performSwitchTmuxSession(

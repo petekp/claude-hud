@@ -69,6 +69,14 @@ tmux new-session -d -s project-a -c /absolute/path/to/project-a
 tmux new-session -d -s project-b -c /absolute/path/to/project-b
 ```
 
+For outage-recovery validation (exact-name fallback), also prepare a session-name-exact fixture whose pane path is intentionally different from the pinned project path:
+
+```bash
+# Pinned project card path: /absolute/path/to/agent-skills
+# Intentional mismatch pane path:
+tmux new-session -d -s agent-skills -c /tmp/agent-skills-mismatch
+```
+
 5. (Optional but recommended) start Transparent UI for telemetry visibility.
 
 ```bash
@@ -129,7 +137,7 @@ printf "[MANUAL-TEST][END] terminal-activation %s\n" "$(date -u +%Y-%m-%dT%H:%M:
 4. Extract and review relevant events.
 
 ```bash
-rg -n "MANUAL-TEST|TerminalLauncher\]|activateHostThenSwitchTmux|switchTmuxSession|ensureTmuxSession|launchNewTerminal|ARE snapshot request canceled/stale|ARE snapshot ignored for stale request|launchTerminalAsync ignored stale request|executeActivationAction" ~/.capacitor/daemon/app-debug.log
+rg -n "MANUAL-TEST|TerminalLauncher\]|activateHostThenSwitchTmux|switchTmuxSession|ensureTmuxSession|snapshot_unavailable_tmux_recovery|launchNewTerminal|ARE snapshot request canceled/stale|ARE snapshot ignored for stale request|launchTerminalAsync ignored stale request|executeActivationAction" ~/.capacitor/daemon/app-debug.log
 ```
 
 ## Test Matrix
@@ -154,7 +162,7 @@ Use this matrix in order. Every P0 scenario must pass before merge/release.
 | P1-2 | No tmux client, no terminal running | No Ghostty/iTerm/Terminal window active | Click project with tmux session | New terminal launch is acceptable fallback | `launchTerminalWithTmux` or `launchNewTerminal` | None |
 | P1-3 | Detached snapshot with client evidence | Routing snapshot indicates `detached`, evidence includes `tmux_client` | Click project card | Host-terminal activation + tmux switch path | `activateHostThenSwitchTmux` | Direct `launchNewTerminal` without failed primary |
 | P1-4 | Detached snapshot without client evidence | No attached clients/evidence | Click project card | Ensure/create+switch session path, fallback only if needed | `ensureTmuxSession` | Immediate launch without attempting ensure path |
-| P1-5 | Snapshot unavailable | Simulate daemon/routing fetch failure | Click project card | Fallback launch path works without hang | `are_snapshot_fetch_failed` then launch fallback | Crash, dead click |
+| P1-5 | Snapshot unavailable | Simulate daemon/routing fetch failure | Click project card | Reuse-first outage recovery: try tmux recovery before any new window; launch only as last resort | `are_snapshot_fetch_failed` and either `snapshot_unavailable_tmux_recovery success` OR single launch fallback | Immediate launch when recoverable tmux session exists; crash; dead click; launch fan-out |
 
 ### P1: Ambiguous and Multi-window Behavior
 
@@ -165,6 +173,14 @@ Use this matrix in order. Every P0 scenario must pass before merge/release.
 | P1-8 | Terminal.app ownership precedence | Terminal.app + Ghostty running; tmux client hosted in Terminal.app | Click project card | Terminal.app focus + session switch | TTY discovery + switch logs | Ghostty takeover while Terminal.app owns client |
 
 `P1-3` is conditional. If detached snapshots do not retain `tmux_client` evidence in the run, evaluate that click under `P1-4` (`ensureTmuxSession` path) rather than recording a failure.
+
+#### P1-5 Required Sub-scenarios (run all)
+
+| ID | Scenario | Setup | Action | Expected UI/Behavior | Expected Log Signals | Forbidden Signals |
+|---|---|---|---|---|---|---|
+| P1-5A | Outage + path-scoped tmux recovery | Snapshot unavailable; tmux session path matches project path | Click project card | Reuse existing terminal/tmux context; no new window | `are_snapshot_fetch_failed` + `snapshot_unavailable_tmux_recovery success` + `ensureTmuxSession` | `launchNewTerminal` |
+| P1-5B | Outage + exact session-name fallback (`agent-skills` pattern) | Snapshot unavailable; tmux has `session_name == project_slug` but pane path differs from project path | Click project card | Reuse tmux via exact-name session fallback; no new window | `are_snapshot_fetch_failed` + `snapshot_unavailable_tmux_recovery session=<project-slug>` + success marker | `launchNewTerminal` |
+| P1-5C | Outage + no recoverable tmux candidate | Snapshot unavailable; no path or exact-name tmux candidate | Click project card | Single debounced fallback launch is acceptable | `are_snapshot_fetch_failed` then single `launchNewTerminal` | Multiple launch attempts for one click |
 
 ### P2: Edge and Failure Hardening (recommended)
 
@@ -194,7 +210,7 @@ Use this language while evaluating each scenario:
 - `P1-2`: “Fallback is understandable.” If launch is required, it feels like a clear recovery, not random behavior.
 - `P1-3`: “Detached but recoverable.” Host terminal is recovered cleanly when client evidence exists.
 - `P1-4`: “Try smart paths first.” Ensure/create path is attempted before giving up to launch fallback.
-- `P1-5`: “No dead click.” Even when snapshot fetch fails, user still gets a visible, timely outcome.
+- `P1-5`: “Reuse first under outage.” Snapshot failures should reuse tmux when possible; launch only if no recovery candidate exists.
 - `P1-6`: “No fan-out storm.” Multi-window ambiguity does not create repeated extra windows per click.
 - `P1-7`: “Correct ownership.” iTerm-hosted client stays in iTerm flow.
 - `P1-8`: “Correct ownership.” Terminal.app-hosted client stays in Terminal.app flow.
@@ -266,6 +282,9 @@ Copy this section into PRs/issues for manual QA evidence:
 - P1-3:
 - P1-4:
 - P1-5:
+  - P1-5A:
+  - P1-5B:
+  - P1-5C:
 - P1-6:
 - P1-7:
 - P1-8:

@@ -903,6 +903,111 @@ final class TerminalLauncherTests: XCTestCase {
         XCTAssertEqual(results.first?.usedFallback, true)
     }
 
+    func testLaunchTerminalSnapshotFetchFailureRecoversViaTmuxSessionBeforeLaunchingNewTerminal() async {
+        let project = makeProject(name: "project-a", path: "/Users/pete/Code/project-a")
+        var actions: [ActivationAction] = []
+        var launchedFallbacks: [(path: String, name: String)] = []
+        var results: [TerminalActivationResult] = []
+
+        let launcher = TerminalLauncher(
+            appleScript: StubAppleScriptClient(shouldSucceed: true),
+            fetchRoutingSnapshot: { _, _ in
+                throw SnapshotFetchError.unavailable
+            },
+            fallbackTmuxSessionResolver: { _ in
+                "project-a"
+            },
+            executeActivationActionOverride: { action, _, _ in
+                actions.append(action)
+                if case let .ensureTmuxSession(sessionName, projectPath) = action {
+                    return sessionName == "project-a" && projectPath == project.path
+                }
+                return false
+            },
+            launchNewTerminalOverride: { path, name in
+                launchedFallbacks.append((path, name))
+                return true
+            },
+        )
+
+        launcher.onActivationResult = { result in
+            results.append(result)
+        }
+
+        launcher.launchTerminal(for: project)
+        try? await _Concurrency.Task.sleep(nanoseconds: 250_000_000)
+
+        XCTAssertEqual(actions.count, 1, "Expected tmux recovery action before considering terminal launch.")
+        if let firstAction = actions.first {
+            if case let .ensureTmuxSession(sessionName, projectPath) = firstAction {
+                XCTAssertEqual(sessionName, "project-a")
+                XCTAssertEqual(projectPath, project.path)
+            } else {
+                XCTFail("Expected ensureTmuxSession recovery action, got \(String(describing: firstAction))")
+            }
+        }
+        XCTAssertTrue(
+            launchedFallbacks.isEmpty,
+            "Snapshot fetch failure should not spawn a new terminal when tmux recovery succeeds.",
+        )
+        XCTAssertEqual(results.count, 1)
+        XCTAssertEqual(results.first?.projectPath, project.path)
+        XCTAssertEqual(results.first?.success, true)
+        XCTAssertEqual(results.first?.usedFallback, true)
+    }
+
+    func testLaunchTerminalSnapshotFetchFailureRecoversViaExactSessionNameWhenPathLookupMisses() async {
+        let project = makeProject(name: "agent-skills", path: "/Users/pete/Code/agent-skills")
+        var actions: [ActivationAction] = []
+        var launchedFallbacks: [(path: String, name: String)] = []
+        var results: [TerminalActivationResult] = []
+
+        let launcher = TerminalLauncher(
+            appleScript: StubAppleScriptClient(shouldSucceed: true),
+            fetchRoutingSnapshot: { _, _ in
+                throw SnapshotFetchError.unavailable
+            },
+            fallbackTmuxSessionResolver: { _ in
+                nil
+            },
+            fallbackTmuxSessionExistsResolver: { sessionName in
+                sessionName == "agent-skills"
+            },
+            executeActivationActionOverride: { action, _, _ in
+                actions.append(action)
+                if case let .ensureTmuxSession(sessionName, projectPath) = action {
+                    return sessionName == "agent-skills" && projectPath == project.path
+                }
+                return false
+            },
+            launchNewTerminalOverride: { path, name in
+                launchedFallbacks.append((path, name))
+                return true
+            },
+        )
+
+        launcher.onActivationResult = { result in
+            results.append(result)
+        }
+
+        launcher.launchTerminal(for: project)
+        try? await _Concurrency.Task.sleep(nanoseconds: 250_000_000)
+
+        XCTAssertEqual(actions.count, 1)
+        if let firstAction = actions.first {
+            if case let .ensureTmuxSession(sessionName, projectPath) = firstAction {
+                XCTAssertEqual(sessionName, "agent-skills")
+                XCTAssertEqual(projectPath, project.path)
+            } else {
+                XCTFail("Expected ensureTmuxSession exact-name recovery action, got \(String(describing: firstAction))")
+            }
+        }
+        XCTAssertTrue(launchedFallbacks.isEmpty, "Exact session-name recovery should prevent new terminal launch.")
+        XCTAssertEqual(results.count, 1)
+        XCTAssertEqual(results.first?.projectPath, project.path)
+        XCTAssertEqual(results.first?.success, true)
+    }
+
     func testLaunchTerminalColdStartNoTrustedEvidenceLogsFallbackMarkerAndLaunchesWithoutStall() async {
         let project = makeProject(name: "project-a", path: "/Users/pete/Code/project-a")
         var actions: [ActivationAction] = []

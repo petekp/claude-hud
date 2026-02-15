@@ -376,3 +376,57 @@
 
 - Sign-off decision:
   - Post-merge release-baseline sign-off slice for terminal activation is **PASS** at `bcb45a1`.
+
+#### Addendum (2026-02-15): Agent-Skills Outage Revalidation (Launcher Exact-Name Fallback)
+- Scope:
+  - Revalidate `agent-skills` project-card activation after launcher-side snapshot-outage recovery patch (`recoverSnapshotFailureViaTmuxIfPossible` + exact session-name fallback).
+  - Cover required scenarios: normal click + outage `P1-5A/B/C`.
+  - Runtime surface: `CapacitorDebug` app with AX-driven card press automation (`swift /tmp/press_cap_button.swift <project-name>`).
+
+- Normal (daemon healthy) `agent-skills` click:
+  - Marker: `AGENT-SKILLS-NORMAL2-20260215T190218Z` (`~/.capacitor/daemon/app-debug.log:104128-104161`)
+  - Evidence:
+    - Daemon snapshot IPC succeeded (`DaemonClient.sendAndReceive ... finish ok`).
+    - Activation used reuse-first host path:
+      - `executeActivationAction action=activateHostThenSwitchTmux(hostTty: "/dev/ttys066", sessionName: "agent-skills")` (`104149`)
+    - No `launchNewTerminal` in block.
+    - Ghostty window count remained stable (`ghostty_windows_before=1`, `ghostty_windows_after=1`).
+
+- `P1-5A` outage + path-scoped tmux recovery:
+  - Marker: `P1-5A-OUTAGE-PATH-RECOVERY-20260215T190059Z` (`~/.capacitor/daemon/app-debug.log:103244-103271`)
+  - Setup: daemon socket path cut before click (`socket_cut=1`).
+  - Evidence:
+    - Snapshot IPC outage reproduced (`NSPOSIXErrorDomain Code=2 "No such file or directory"`).
+    - Recovery path executed:
+      - `ensureTmuxSession session=capacitor`
+      - `snapshot_unavailable_tmux_recovery success path=/Users/petepetrash/Code/capacitor session=capacitor`
+    - No `launchNewTerminal` in block.
+    - Ghostty window count stable (`1 -> 1`).
+
+- `P1-5B` outage + exact session-name fallback (`agent-skills`):
+  - Marker: `P1-5B-OUTAGE-SESSION-EXACT-20260215T190113Z` (`~/.capacitor/daemon/app-debug.log:103388-103420`)
+  - Setup: daemon socket path cut before click (`socket_cut=1`), tmux fixture retained mismatch pane path for `agent-skills`.
+  - Evidence:
+    - Snapshot IPC outage reproduced (`NSPOSIXErrorDomain Code=2 "No such file or directory"`).
+    - Exact-name outage recovery path executed:
+      - `snapshot_unavailable_tmux_recovery session=agent-skills path=/Users/petepetrash/Code/agent-skills`
+      - `ensureTmuxSession session=agent-skills`
+      - `snapshot_unavailable_tmux_recovery success ... session=agent-skills`
+    - No `launchNewTerminal` in block.
+    - Ghostty window count stable (`1 -> 1`).
+
+- `P1-5C` outage + no recoverable tmux candidate:
+  - Marker: `P1-5C-OUTAGE-NO-CANDIDATE-20260215T190132Z` (`~/.capacitor/daemon/app-debug.log:103604-103643`)
+  - Setup:
+    - Removed `tool-ui` tmux session before click (`tool_ui_session_removed=1`).
+    - Daemon socket path cut before click (`socket_cut=1`).
+  - Evidence:
+    - Snapshot IPC outage reproduced (`NSPOSIXErrorDomain Code=2 "No such file or directory"`).
+    - Single fallback launch action observed:
+      - `[TerminalLauncher] launchNewTerminal project=tool-ui path=/Users/petepetrash/Code/aui/tool-ui` (`103627`)
+    - Restored `tool-ui` tmux session after scenario (`tool_ui_session_restored=1`).
+    - Ghostty window count remained `1 -> 1` during this single-click fallback run.
+
+- Revalidation decision:
+  - `agent-skills` no-new-window regression is resolved in both normal and outage paths.
+  - Required outage sub-scenarios `P1-5A/P1-5B/P1-5C` are covered with live daemon log evidence and pass expected signal contracts.

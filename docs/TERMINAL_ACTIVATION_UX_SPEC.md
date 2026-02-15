@@ -17,9 +17,10 @@ The contract is normative and testable:
 
 ## 2. Source-of-Truth Boundary
 
-1. Daemon routing snapshot is the only routing authority consumed by launcher logic.
-2. Swift shell-derived fallback architecture is out of scope and MUST NOT be reintroduced.
-3. Launching a new terminal window is exceptional fallback behavior, not a primary UX path.
+1. Daemon routing snapshot is the primary routing authority consumed by launcher logic.
+2. If daemon routing snapshot is unavailable, launcher MAY use constrained local tmux recovery (project-path match, then session-name-exact fallback).
+3. Swift shell-derived fallback architecture is out of scope and MUST NOT be reintroduced.
+4. Launching a new terminal window is exceptional fallback behavior, not a primary UX path.
 
 ## 3. Hard UX Invariants
 
@@ -36,6 +37,7 @@ The contract is normative and testable:
 - `UX-I6` Ownership continuity: when host ownership is discoverable (TTY/app evidence), activation should focus the owning host terminal context.
 - `UX-I7` Graceful fallback: if primary action fails, fallback launch should occur once and remain understandable.
 - `UX-I8` Host-hygiene validity: P1 manual evidence is valid only under controlled host baseline (`Ghostty=0, iTerm2=0, Terminal=0`) unless the scenario explicitly requires multiple hosts/windows.
+- `UX-I9` Outage reuse-first: when snapshot fetch is unavailable, launcher should recover via tmux before spawning a new window when a plausible project session exists.
 
 ## 4. Decision Tables
 
@@ -65,9 +67,19 @@ The contract is normative and testable:
 | `F1` | Primary action succeeds | Emit success outcome, no fallback launch |
 | `F2` | Primary action fails and primary action is not `launchNewTerminal` | Execute exactly one fallback: `launchNewTerminal(projectPath, projectName)` |
 | `F3` | Primary action is already `launchNewTerminal` | Do not chain additional fallback |
-| `F4` | Snapshot fetch fails and request is still latest | Return to legacy emergency path: launch new terminal once |
+| `F4` | Snapshot fetch fails and request is still latest | Attempt outage tmux recovery (`S1/S2`) before launch fallback |
 
-### 4.4 Overlap/Concurrency Contract
+### 4.4 Snapshot-Unavailable Recovery Contract
+
+| Contract ID | Condition | Required behavior |
+|---|---|---|
+| `S1` | Snapshot unavailable + path-scoped tmux session is discoverable | `ensureTmuxSession(sessionName, projectPath)`; do not launch new terminal |
+| `S2` | Snapshot unavailable + no path-scoped session + tmux session name exactly equals project slug | `ensureTmuxSession(sessionName=projectSlug, projectPath)`; do not launch new terminal |
+| `S3` | Snapshot unavailable + no `S1/S2` candidate | Launch new terminal once (debounced) |
+| `S4` | `S1/S2` action fails | Fall through to single launch fallback |
+| `S5` | Snapshot-unavailable request becomes stale due to overlap | Suppress stale recovery/fallback outcome (`latest-click-wins`) |
+
+### 4.5 Overlap/Concurrency Contract
 
 | Contract ID | Condition | Required behavior | Required stale evidence |
 |---|---|---|---|
@@ -75,7 +87,7 @@ The contract is normative and testable:
 | `O2` | Rapid burst `A -> B -> A` | Only last click (`A`) may execute action/outcome | Stale markers for superseded clicks; no late override by older clicks |
 | `O3` | Sequential non-overlap clicks | Each click executes in order | No stale markers required |
 
-### 4.5 Host Ownership and Reuse Contract (`activateHostThenSwitchTmux`)
+### 4.6 Host Ownership and Reuse Contract (`activateHostThenSwitchTmux`)
 
 | Contract ID | Runtime state | Required behavior |
 |---|---|---|
@@ -84,6 +96,18 @@ The contract is normative and testable:
 | `H3` | no tmux client attached + Ghostty running | Activate Ghostty and switch with nil client TTY (reuse first) |
 | `H4` | no tmux client attached + Ghostty not running | Launch terminal with tmux |
 | `H5` | no discoverable host and no Ghostty fallback | Return failure; upstream `F2` may launch once |
+
+### 4.7 Expected User Experience During Snapshot Outage
+
+When `get_routing_snapshot` fails (`Connection refused`, `No such file`, etc.), users should observe:
+
+1. Reuse first, not fan-out:
+   - If a project-scoped tmux session is discoverable (`S1`), clicking the card should switch/ensure that session in the existing terminal context.
+2. Exact-name recovery before spawning:
+   - If path lookup misses but tmux has a session whose name exactly matches the project slug (`S2`), clicking the card should still reuse tmux rather than opening a new window.
+   - Example: project card `agent-skills` with tmux session `agent-skills` currently parked at a different pane path still reuses that session.
+3. New window only as last resort:
+   - Only when neither `S1` nor `S2` can recover (or recovery fails) should the app launch a new terminal window (`S3/S4`).
 
 ## 5. P0/P1 Scenario Mapping
 
@@ -98,7 +122,7 @@ The contract is normative and testable:
 | `P1-2` | `L5`, `F1`, `UX-I7` |
 | `P1-3` | `L1` when `tmux_client` evidence exists in detached snapshot |
 | `P1-4` | `L3`, `F2`, `UX-I7` |
-| `P1-5` | `F4`, `UX-I7` |
+| `P1-5` | `F4`, `S1/S2/S3`, `UX-I7`, `UX-I9` |
 | `P1-6` | `H2/H3`, `UX-I3`, `UX-I6` |
 | `P1-7` | `H1`, `UX-I6` |
 | `P1-8` | `H1`, `UX-I6` |
@@ -121,6 +145,7 @@ These are additional scenarios that should be explicitly covered to prevent blin
 | `G10` | Cold-start with empty evidence registries | Timely, understandable fallback outcome; no stall |
 | `G11` | OS-level launch failure (permission/script/app missing) | Explicit user-visible failure with actionable guidance |
 | `G12` | Delayed host events after final click | No post-action drift; final focus remains aligned with latest click intent |
+| `G13` | Project session exists by exact name but pane path is currently different | Reuse existing tmux session by exact session-name fallback; avoid new window fan-out |
 
 ## 6. P1-3 Mismatch Resolution (Decision)
 
@@ -144,8 +169,8 @@ These are areas where current behavior is technically consistent but may feel su
    - Risk: user may still need manual window hunting after click.
 4. No-client Ghostty reuse can switch tmux without explicit host TTY.
    - Risk: in dense multi-client environments, result may feel under-specified.
-5. Snapshot-unavailable fallback launches a new terminal by design.
-   - Risk: under repeated transient daemon errors, this can feel like window churn.
+5. Snapshot-unavailable recovery can target a same-name session whose pane cwd is currently elsewhere.
+   - Risk: context may feel surprising, but this is preferred over spawning extra windows under outages.
 
 Treat these as product-policy checkpoints before locking stricter release gates.
 
@@ -165,8 +190,8 @@ These decisions are now the intended product behavior. If implementation diverge
 4. No-client Ghostty reuse should minimize client ambiguity.
    - Rule: when switching without explicit host TTY, implementation SHOULD use the best available client-selection heuristic instead of arbitrary selection.
    - UX intent: reduce “right app, wrong pane/client” outcomes in dense environments.
-5. Snapshot-failure fallback should be churn-resistant.
-   - Rule: repeated snapshot failures SHOULD be damped (short debounce/circuit-break) to prevent repeated window launches under rapid clicks.
+5. Snapshot-failure fallback should be churn-resistant and reuse-first.
+   - Rule: on snapshot failure, launcher SHOULD try `S1/S2` tmux recovery first and only then use debounced launch fallback.
    - UX intent: graceful degradation without launch storms.
 
 ## 7. Executable Test Matrix (contract -> tests)
@@ -193,6 +218,7 @@ These decisions are now the intended product behavior. If implementation diverge
 | `O1/O2` + `UX-I2` | `testLaunchTerminalOverlappingRequestsOnlyExecutesLatestClick`, `testLaunchTerminalOverlappingRequestsLogsStaleSnapshotMarker` in `apps/swift/Tests/CapacitorTests/TerminalLauncherTests.swift` |
 | `O3` | `testLaunchTerminalSequentialRequestsExecuteInOrder` in `apps/swift/Tests/CapacitorTests/TerminalLauncherTests.swift` |
 | `F2/F3/F4/D5` | `testLaunchTerminalPrimaryFailureExecutesSingleFallbackLaunch`, `testLaunchTerminalPrimaryLaunchFailureDoesNotChainSecondFallback`, `testLaunchTerminalSnapshotFetchFailureLaunchesFallbackWithSuccessOutcome`, `testLaunchTerminalSnapshotFailureFallbackIsDebouncedAcrossRapidRepeatedClicks` in `apps/swift/Tests/CapacitorTests/TerminalLauncherTests.swift` |
+| `S1/S2/G13` | `testLaunchTerminalSnapshotFetchFailureRecoversViaTmuxSessionBeforeLaunchingNewTerminal`, `testLaunchTerminalSnapshotFetchFailureRecoversViaExactSessionNameWhenPathLookupMisses` in `apps/swift/Tests/CapacitorTests/TerminalLauncherTests.swift` |
 | `UX-I1/G4` | `testLaunchTerminalLatestClickEmitsSingleFinalOutcomeSequence`, `testLaunchTerminalRepeatedSameCardRapidClicksCoalesceToSingleOutcome` in `apps/swift/Tests/CapacitorTests/TerminalLauncherTests.swift` |
 | `G8` | `testAERoutingActionMappingDetachedUnknownTerminalAppLaunchesNewTerminal` in `apps/swift/Tests/CapacitorTests/TerminalLauncherTests.swift` |
 | `G12` | `testLaunchTerminalStalePrimaryFailureDoesNotLaunchFallbackAfterNewerClick` in `apps/swift/Tests/CapacitorTests/TerminalLauncherTests.swift` |
@@ -220,6 +246,7 @@ Tests and manual evidence should key off these markers in `~/.capacitor/daemon/a
 - Action execution: `[TerminalLauncher] executeActivationAction action=...`
 - Host switch path: `[TerminalLauncher] activateHostThenSwitchTmux ...`
 - Ensure path: `[TerminalLauncher] ensureTmuxSession ...`
+- Snapshot-outage recovery: `[TerminalLauncher] snapshot_unavailable_tmux_recovery ...`
 - Launch fallback: `[TerminalLauncher] launchNewTerminal ...`
 - Stale suppression: `[TerminalLauncher] ARE snapshot request canceled/stale ...` and/or `[TerminalLauncher] ARE snapshot ignored for stale request ...`
 
