@@ -35,7 +35,7 @@ Implementation plans for Capacitor. Files are prefixed by status.
 
 | Document | Purpose |
 |----------|---------|
-| `REFERENCE-app-renaming-checklist.md` | Checklist for ClaudeHUD → Capacitor rename |
+| `REFERENCE-app-renaming-checklist.md` | Checklist for Capacitor → Capacitor rename |
 | `REFERENCE-hud-vision-jan-2026.md` | Vision document for Capacitor direction |
 | `REFERENCE-idea-capture-bootstrap-prompt.md` | Bootstrap prompt for idea capture sessions |
 

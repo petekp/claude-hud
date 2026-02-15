@@ -1,6 +1,6 @@
 [package]
 name = "hud-core"
-description = "Core library for Claude HUD - shared business logic for all clients"
+description = "Core library for Capacitor - shared business logic for all clients"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

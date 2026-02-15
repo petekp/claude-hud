@@ -4,7 +4,7 @@
 //!
 //! # Architecture: Sidecar Pattern
 //!
-//! Claude HUD follows a **sidecar philosophy**: we observe Claude Code without interfering.
+//! Capacitor follows a **sidecar philosophy**: we observe Claude Code without interfering.
 //! The daemon reducer is authoritative for state transitions; this module is a
 //! passive reader that maps daemon snapshots for clients.
 //!

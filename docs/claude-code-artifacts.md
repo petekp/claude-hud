@@ -1,6 +1,6 @@
 # Claude Code Disk Artifacts Reference
 
-Technical reference for all files and directories created by Claude Code CLI. This document helps assess what data is available for Claude HUD integration.
+Technical reference for all files and directories created by Claude Code CLI. This document helps assess what data is available for Capacitor integration.
 
 ---
 
@@ -144,7 +144,7 @@ Technical reference for all files and directories created by Claude Code CLI. Th
 }
 ```
 
-### HUD-Specific Caches (created by Claude HUD)
+### HUD-Specific Caches (created by Capacitor)
 
 | File | Purpose |
 |------|---------|

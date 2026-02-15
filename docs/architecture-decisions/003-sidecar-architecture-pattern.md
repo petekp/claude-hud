@@ -9,7 +9,7 @@
 
 ## Context
 
-Claude HUD started as a dashboard for observing Claude Code sessions. As we add new features (idea capture, project creation, AI-powered triage), we face a fundamental architectural choice:
+Capacitor started as a dashboard for observing Claude Code sessions. As we add new features (idea capture, project creation, AI-powered triage), we face a fundamental architectural choice:
 
 **Should HUD be a standalone application with its own API integration, or a sidecar that leverages the user's existing Claude Code installation?**
 
@@ -24,7 +24,7 @@ This decision affects:
 
 ## Decision
 
-**Claude HUD is a sidecar that powers up your existing Claude Code workflow—not a standalone application.**
+**Capacitor is a sidecar that powers up your existing Claude Code workflow—not a standalone application.**
 
 ### Core Principles
 

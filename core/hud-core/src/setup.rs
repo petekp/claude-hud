@@ -1,4 +1,4 @@
-//! Setup validation and hook installation for Claude HUD.
+//! Setup validation and hook installation for Capacitor.
 //!
 //! This module handles:
 //! - Checking dependencies (tmux, claude CLI)

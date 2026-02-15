@@ -1,6 +1,6 @@
 # App Renaming Checklist
 
-> **Decision Made:** The app will be renamed from **ClaudeHUD** to **Capacitor** (see `ACTIVE-capacitor-global-storage.md`). Use this checklist when implementing the rename.
+> **Decision Made:** The app will be renamed from **Capacitor** to **Capacitor** (see `ACTIVE-capacitor-global-storage.md`). Use this checklist when implementing the rename.
 
 ## What Needs to Change
 
@@ -10,12 +10,12 @@
 
 ### 2. Swift Package
 - [ ] `apps/swift/Package.swift` - Update `.executable(name: "...")` and target names
-- [ ] Rename directory: `apps/swift/Sources/ClaudeHUD/` → `apps/swift/Sources/Capacitor/`
+- [ ] Rename directory: `apps/swift/Sources/Capacitor/` → `apps/swift/Sources/Capacitor/`
 
 ### 3. Bundle Identifiers & Info.plist
 - [ ] `scripts/build-distribution.sh` - Update `BUNDLE_ID` variable
 - [ ] Info.plist template in build script - Update `CFBundleIdentifier`, `CFBundleName`
-- [ ] Existing `apps/swift/ClaudeHUD.app/Contents/Info.plist` if it exists
+- [ ] Existing `apps/swift/Capacitor.app/Contents/Info.plist` if it exists
 
 ### 4. Documentation
 - [ ] `README.md` - Update all references
@@ -24,7 +24,7 @@
 - [ ] `docs/` - Update references in documentation
 
 ### 5. Code Files
-- [ ] Swift files - Update `@main struct ClaudeHUDApp` in `App.swift`
+- [ ] Swift files - Update `@main struct CapacitorApp` in `App.swift`
 - [ ] Any hardcoded strings in Swift UI
 
 ### 6. Repository & GitHub
@@ -34,7 +34,7 @@
 
 ### 7. Notarization Profile
 - [ ] Update keychain profile name when setting up notarization
-- [ ] Or continue using "ClaudeHUD" as the profile name (internal only)
+- [ ] Or continue using "Capacitor" as the profile name (internal only)
 
 ### 8. Distribution Artifacts
 - [ ] `.gitignore` - Update if you have app-name-specific ignores
@@ -46,7 +46,7 @@
 ```bash
 # From repository root
 find . -type f -name "*.swift" -o -name "*.sh" -o -name "*.md" | \
-  xargs sed -i '' 's/ClaudeHUD/Capacitor/g'
+  xargs sed -i '' 's/Capacitor/Capacitor/g'
 ```
 
 **Option B: Targeted Changes (Safer)**
@@ -55,7 +55,7 @@ Go through each file manually using the checklist above. Safer for avoiding unin
 ## Things That DON'T Need to Change
 
 - Rust crate names (`hud-core`) - these are internal
-- Directory structure beyond `Sources/ClaudeHUD/`
+- Directory structure beyond `Sources/Capacitor/`
 - State files in `~/.claude/hud-*.json` - these are user-local
 - Hook scripts - they're named after functionality, not the app
 

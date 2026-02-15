@@ -1,4 +1,4 @@
-//! Core types shared across all Claude HUD clients.
+//! Core types shared across all Capacitor clients.
 //!
 //! These types are the "lingua franca" of the HUD ecosystem. All clients
 //! (Swift desktop, TUI, mobile) use these exact same types, ensuring consistency.

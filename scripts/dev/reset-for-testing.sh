@@ -80,8 +80,6 @@ echo "→ Clearing app UserDefaults..."
 rm -f ~/Library/Preferences/Capacitor.plist && echo "  ✓ Removed Capacitor.plist (swift run)" || true
 rm -f ~/Library/Preferences/com.capacitor.app.plist && echo "  ✓ Removed com.capacitor.app.plist (release)" || true
 rm -f ~/Library/Preferences/com.capacitor.app.debug.plist && echo "  ✓ Removed com.capacitor.app.debug.plist (debug)" || true
-rm -f ~/Library/Preferences/ClaudeHUD.plist && echo "  ✓ Removed ClaudeHUD.plist (legacy)" || true
-rm -f ~/Library/Preferences/com.claudehud.app.plist && echo "  ✓ Removed com.claudehud.app.plist (legacy)" || true
 
 # Force cfprefsd to drop its cache. Without this, deleted prefs may reappear.
 killall cfprefsd 2>/dev/null && echo "  ✓ Refreshed preferences cache" || true

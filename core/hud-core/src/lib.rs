@@ -1,6 +1,6 @@
 //! # hud-core
 //!
-//! Core library for Claude HUD, providing shared business logic for all clients
+//! Core library for Capacitor, providing shared business logic for all clients
 //! (Swift desktop, TUI, mobile server).
 //!
 //! ## Design Principles

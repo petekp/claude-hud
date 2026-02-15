@@ -1,4 +1,4 @@
-//! HudEngine - The main entry point for Claude HUD clients.
+//! HudEngine - The main entry point for Capacitor clients.
 //!
 //! The HudEngine provides a unified, client-agnostic API for all HUD functionality.
 //! It's designed to be:
@@ -38,7 +38,7 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-/// The main engine for Claude HUD operations.
+/// The main engine for Capacitor operations.
 ///
 /// Provides a unified API for all HUD functionality, suitable for any client type.
 /// This is the primary FFI interface for Swift/Kotlin/Python clients.

@@ -1,6 +1,6 @@
 # Assets
 
-This directory contains application assets for Claude HUD.
+This directory contains application assets for Capacitor.
 
 ## Required Files
 

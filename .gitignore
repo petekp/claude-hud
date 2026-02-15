@@ -38,7 +38,7 @@ apps/swift/*.app
 # Rust target (should already be ignored but ensure)
 target/
 *.local.md
-apps/swift/ClaudeHUD.app/
+apps/swift/Capacitor.app/
 
 # SwiftPM transient accessor artifacts
 apps/swift/resource_bundle_accessor-*

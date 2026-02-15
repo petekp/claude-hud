@@ -43,7 +43,7 @@ verify_binary() {
     fi
 }
 
-echo "=== Claude HUD Hook Binary Sync ==="
+echo "=== Capacitor Hook Binary Sync ==="
 echo ""
 
 # Determine binary source: repo build (preferred) or app bundle (fallback)

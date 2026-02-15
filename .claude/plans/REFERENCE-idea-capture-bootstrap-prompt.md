@@ -4,11 +4,11 @@
 
 ---
 
-I'm ready to implement the **Idea Capture** feature for Claude HUD. This feature enables instant capture of ideas (< 1 second) that are stored in markdown files Claude sessions can naturally read and update.
+I'm ready to implement the **Idea Capture** feature for Capacitor. This feature enables instant capture of ideas (< 1 second) that are stored in markdown files Claude sessions can naturally read and update.
 
 ## Context
 
-**Project:** Claude HUD - macOS dashboard for Claude Code (Rust core + Swift UI)
+**Project:** Capacitor - macOS dashboard for Claude Code (Rust core + Swift UI)
 
 **Feature:** Idea Capture - upstream of project creation, solving "idea friction"
 
@@ -66,10 +66,10 @@ I'm ready to implement the **Idea Capture** feature for Claude HUD. This feature
    ```
 
 5. Create Swift UI:
-   - `apps/swift/Sources/ClaudeHUD/Views/IdeaCapture/TextCaptureView.swift` - Modal text input
-   - `apps/swift/Sources/ClaudeHUD/Views/Ideas/IdeaCardView.swift` - Compact card (60px height)
-   - Update `apps/swift/Sources/ClaudeHUD/Models/AppState.swift` - Add `@Published var ideas: [String: [Idea]]`
-   - Update `apps/swift/Sources/ClaudeHUD/Views/Projects/ProjectsView.swift` - Show ideas inline
+   - `apps/swift/Sources/Capacitor/Views/IdeaCapture/TextCaptureView.swift` - Modal text input
+   - `apps/swift/Sources/Capacitor/Views/Ideas/IdeaCardView.swift` - Compact card (60px height)
+   - Update `apps/swift/Sources/Capacitor/Models/AppState.swift` - Add `@Published var ideas: [String: [Idea]]`
+   - Update `apps/swift/Sources/Capacitor/Views/Projects/ProjectsView.swift` - Show ideas inline
 
 6. Add file watcher:
    - Use `FSEventStreamCreate` or similar to watch `.claude/ideas.local.md`

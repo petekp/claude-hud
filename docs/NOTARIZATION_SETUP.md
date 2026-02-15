@@ -1,6 +1,6 @@
 # macOS Notarization Setup Guide
 
-This guide walks you through setting up code signing and notarization for Claude HUD distribution.
+This guide walks you through setting up code signing and notarization for Capacitor distribution.
 
 ## Prerequisites
 
@@ -33,7 +33,7 @@ Apple requires an app-specific password for notarization (not your Apple ID pass
 1. Go to [appleid.apple.com](https://appleid.apple.com)
 2. Sign in and go to **Security** → **App-Specific Passwords**
 3. Click **Generate an app-specific password**
-4. Name it something like "ClaudeHUD Notarization"
+4. Name it something like "Capacitor Notarization"
 5. **Copy the password** — you'll only see it once!
 
 ## Step 3: Find Your Team ID
@@ -49,18 +49,18 @@ Alternatively, find it at:
 Run this command, replacing the placeholders:
 
 ```bash
-xcrun notarytool store-credentials "ClaudeHUD" \
+xcrun notarytool store-credentials "Capacitor" \
   --apple-id "your-apple-id@email.com" \
   --team-id "YOUR_TEAM_ID" \
   --password "xxxx-xxxx-xxxx-xxxx"
 ```
 
-This stores the credentials securely in your macOS Keychain under the profile name "ClaudeHUD".
+This stores the credentials securely in your macOS Keychain under the profile name "Capacitor".
 
 ### Verify Credentials
 
 ```bash
-xcrun notarytool history --keychain-profile "ClaudeHUD"
+xcrun notarytool history --keychain-profile "Capacitor"
 ```
 
 If credentials are valid, you'll see your notarization history (or an empty list if this is your first time).
@@ -93,12 +93,12 @@ If credentials are valid, you'll see your notarization history (or an empty list
 
 - Ensure hardened runtime is enabled (the scripts do this automatically)
 - Check that all binaries are signed, including dylibs in Frameworks/
-- Run: `codesign -dvvv ClaudeHUD.app` to inspect the signature
+- Run: `codesign -dvvv Capacitor.app` to inspect the signature
 
 ### Notarization takes too long
 
 - Typical time: 5-15 minutes
-- Check status: `xcrun notarytool history --keychain-profile "ClaudeHUD"`
+- Check status: `xcrun notarytool history --keychain-profile "Capacitor"`
 - Apple's servers occasionally have delays
 
 ## Security Notes

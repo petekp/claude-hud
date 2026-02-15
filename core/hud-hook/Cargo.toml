@@ -1,6 +1,6 @@
 [package]
 name = "hud-hook"
-description = "CLI hook handler for Claude HUD session state tracking"
+description = "CLI hook handler for Capacitor session state tracking"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

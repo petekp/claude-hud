@@ -1,4 +1,4 @@
-# Claude HUD Vision — January 2026
+# Capacitor Vision — January 2026
 
 ## The Problem
 

@@ -513,7 +513,7 @@ fileprivate struct FfiConverterString: FfiConverter {
 
 
 /**
- * The main engine for Claude HUD operations.
+ * The main engine for Capacitor operations.
  *
  * Provides a unified API for all HUD functionality, suitable for any client type.
  * This is the primary FFI interface for Swift/Kotlin/Python clients.
@@ -871,7 +871,7 @@ public protocol HudEngineProtocol : AnyObject {
 }
 
 /**
- * The main engine for Claude HUD operations.
+ * The main engine for Capacitor operations.
  *
  * Provides a unified API for all HUD functionality, suitable for any client type.
  * This is the primary FFI interface for Swift/Kotlin/Python clients.

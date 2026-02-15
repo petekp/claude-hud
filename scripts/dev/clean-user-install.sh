@@ -79,9 +79,8 @@ fi
 # 6. Check for UserDefaults (setupComplete flag)
 # UserDefaults may be stored under different bundle identifiers depending on version
 for prefs in "$HOME/Library/Preferences/com.capacitor.app.plist" \
-             "$HOME/Library/Preferences/Capacitor.plist" \
-             "$HOME/Library/Preferences/com.claudehud.app.plist" \
-             "$HOME/Library/Preferences/ClaudeHUD.plist"; do
+             "$HOME/Library/Preferences/com.capacitor.app.debug.plist" \
+             "$HOME/Library/Preferences/Capacitor.plist"; do
     if [[ -f "$prefs" ]]; then
         echo -e "${YELLOW}Found:${NC} App preferences: $(basename "$prefs")"
         ITEMS_TO_CLEAN+=("$prefs")
