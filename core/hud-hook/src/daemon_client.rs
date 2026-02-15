@@ -342,14 +342,13 @@ fn parent_app_string(app: ParentApp) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_support::env_lock;
     use capacitor_daemon_protocol::{Request, Response};
     use std::sync::{
         atomic::{AtomicUsize, Ordering},
-        Arc, Mutex, OnceLock,
+        Arc, Mutex,
     };
-    use std::time::{Duration, Instant};
-
-    static ENV_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+    use std::time::Duration;
 
     struct EnvGuard {
         key: &'static str,
@@ -378,10 +377,6 @@ mod tests {
                 std::env::remove_var(self.key);
             }
         }
-    }
-
-    fn env_lock() -> std::sync::MutexGuard<'static, ()> {
-        ENV_LOCK.get_or_init(|| Mutex::new(())).lock().unwrap()
     }
 
     fn read_request(stream: &mut UnixStream) {
@@ -468,34 +463,23 @@ mod tests {
         let _ = std::fs::remove_file(&socket_path);
 
         let listener = std::os::unix::net::UnixListener::bind(&socket_path).unwrap();
-        listener.set_nonblocking(true).unwrap();
 
         let attempt_count = std::sync::Arc::new(AtomicUsize::new(0));
         let attempt_count_clone = attempt_count.clone();
 
         let server = std::thread::spawn(move || {
-            let start = Instant::now();
-            let mut handled = 0;
-            while handled < 2 && start.elapsed() < Duration::from_secs(5) {
-                match listener.accept() {
-                    Ok((mut stream, _)) => {
-                        handled += 1;
-                        attempt_count_clone.fetch_add(1, Ordering::SeqCst);
-                        read_request(&mut stream);
-                        let response = if handled == 1 {
-                            Response::error(None, "test_error", "simulated")
-                        } else {
-                            Response::ok(None, serde_json::json!({"status": "ok"}))
-                        };
-                        let mut payload = serde_json::to_vec(&response).unwrap();
-                        payload.push(b'\n');
-                        let _ = stream.write_all(&payload);
-                    }
-                    Err(err) if err.kind() == std::io::ErrorKind::WouldBlock => {
-                        std::thread::sleep(Duration::from_millis(10));
-                    }
-                    Err(_) => break,
-                }
+            for handled in 1..=2 {
+                let (mut stream, _) = listener.accept().expect("accept daemon request");
+                attempt_count_clone.fetch_add(1, Ordering::SeqCst);
+                read_request(&mut stream);
+                let response = if handled == 1 {
+                    Response::error(None, "test_error", "simulated")
+                } else {
+                    Response::ok(None, serde_json::json!({"status": "ok"}))
+                };
+                let mut payload = serde_json::to_vec(&response).unwrap();
+                payload.push(b'\n');
+                let _ = stream.write_all(&payload);
             }
         });
 
@@ -513,7 +497,7 @@ mod tests {
             None,
         );
 
-        assert!(result.is_ok());
+        assert!(result.is_ok(), "expected retry to succeed, got {result:?}");
 
         server.join().unwrap();
 
@@ -536,32 +520,21 @@ mod tests {
         let _ = std::fs::remove_file(&socket_path);
 
         let listener = std::os::unix::net::UnixListener::bind(&socket_path).unwrap();
-        listener.set_nonblocking(true).unwrap();
 
         let attempt_ids: Arc<Mutex<Vec<Option<String>>>> = Arc::new(Mutex::new(Vec::new()));
         let attempt_ids_clone = Arc::clone(&attempt_ids);
 
         let server = std::thread::spawn(move || {
-            let start = Instant::now();
-            let mut handled = 0;
-            while handled < 2 && start.elapsed() < Duration::from_secs(5) {
-                match listener.accept() {
-                    Ok((mut stream, _)) => {
-                        handled += 1;
-                        let request_id = read_request_id(&mut stream);
-                        attempt_ids_clone.lock().unwrap().push(request_id);
+            for handled in 1..=2 {
+                let (mut stream, _) = listener.accept().expect("accept daemon request");
+                let request_id = read_request_id(&mut stream);
+                attempt_ids_clone.lock().unwrap().push(request_id);
 
-                        if handled == 2 {
-                            let response = Response::ok(None, serde_json::json!({"status": "ok"}));
-                            let mut payload = serde_json::to_vec(&response).unwrap();
-                            payload.push(b'\n');
-                            let _ = stream.write_all(&payload);
-                        }
-                    }
-                    Err(err) if err.kind() == std::io::ErrorKind::WouldBlock => {
-                        std::thread::sleep(Duration::from_millis(10));
-                    }
-                    Err(_) => break,
+                if handled == 2 {
+                    let response = Response::ok(None, serde_json::json!({"status": "ok"}));
+                    let mut payload = serde_json::to_vec(&response).unwrap();
+                    payload.push(b'\n');
+                    let _ = stream.write_all(&payload);
                 }
             }
         });

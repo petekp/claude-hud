@@ -15,6 +15,20 @@ mod logging;
 
 use clap::{Parser, Subcommand};
 
+#[cfg(test)]
+pub(crate) mod test_support {
+    use std::sync::{Mutex, MutexGuard, OnceLock};
+
+    static ENV_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+
+    pub(crate) fn env_lock() -> MutexGuard<'static, ()> {
+        match ENV_LOCK.get_or_init(|| Mutex::new(())).lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => poisoned.into_inner(),
+        }
+    }
+}
+
 #[derive(Parser)]
 #[command(name = "hud-hook")]
 #[command(about = "Capacitor session state tracker")]

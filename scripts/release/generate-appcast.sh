@@ -81,19 +81,19 @@ PUB_DATE=$(date -R)
 
 echo -e "${YELLOW}Generating appcast.xml...${NC}"
 
-SIGNATURE=""
 ED_SIGNATURE=""
 if [ "$SIGN_APPCAST" = true ]; then
     SPARKLE_BIN="$SWIFT_DIR/.build/artifacts/sparkle/Sparkle/bin"
 
     if [ -f "$SPARKLE_BIN/sign_update" ]; then
         echo -e "${YELLOW}Signing with Sparkle's sign_update tool...${NC}"
-        SIGN_OUTPUT=$("$SPARKLE_BIN/sign_update" "$ZIP_PATH" 2>&1)
-        if [ $? -eq 0 ]; then
+        if SIGN_OUTPUT=$("$SPARKLE_BIN/sign_update" "$ZIP_PATH" 2>&1); then
             ED_SIGNATURE=$(echo "$SIGN_OUTPUT" | grep -o 'sparkle:edSignature="[^"]*"' | sed 's/sparkle:edSignature="//;s/"$//')
             if [ -n "$ED_SIGNATURE" ]; then
                 echo -e "${GREEN}✓ Signature generated${NC}"
             fi
+        else
+            echo -e "${YELLOW}⚠ sign_update failed. Continuing with unsigned appcast.${NC}"
         fi
     fi
 

@@ -1889,7 +1889,7 @@ emit_diagnostics = false
         let config = HemRuntimeConfig::default();
 
         let without_penalty = synthesize_project_states_shadow_with_capabilities(
-            &[record.clone()],
+            std::slice::from_ref(&record),
             now,
             &config,
             &HemEffectiveCapabilities::from_config(&config),
