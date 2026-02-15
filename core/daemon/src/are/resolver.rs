@@ -761,8 +761,10 @@ mod tests {
     #[test]
     fn resolver_does_not_use_stale_session_name_exact_fallback() {
         let now = test_now();
-        let mut config = RoutingConfig::default();
-        config.tmux_signal_fresh_ms = 1_000;
+        let config = RoutingConfig {
+            tmux_signal_fresh_ms: 1_000,
+            ..RoutingConfig::default()
+        };
         let tmux_registry = TmuxRegistry {
             clients: vec![],
             sessions: vec![TmuxSessionSignal {

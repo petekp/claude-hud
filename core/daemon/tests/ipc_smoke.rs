@@ -727,7 +727,7 @@ fn daemon_ipc_health_and_liveness_smoke() {
     let session_project_id = session
         .get("project_id")
         .and_then(|value| value.as_str())
-        .map(|value| canonicalize_path(value));
+        .map(canonicalize_path);
     assert_eq!(
         session_project_id.as_deref(),
         Some(expected_project_path.as_str())
@@ -757,11 +757,11 @@ fn daemon_ipc_health_and_liveness_smoke() {
     let project_path_value = project
         .get("project_path")
         .and_then(|value| value.as_str())
-        .map(|value| canonicalize_path(value));
+        .map(canonicalize_path);
     let project_id_value = project
         .get("project_id")
         .and_then(|value| value.as_str())
-        .map(|value| canonicalize_path(value));
+        .map(canonicalize_path);
     assert_eq!(
         project_path_value.as_deref(),
         Some(expected_project_path.as_str())

@@ -717,10 +717,10 @@ mod tests {
         let tmp = create_test_dir();
         let path_with_slash = format!("{}/", tmp.path().display());
 
-        let result = canonicalize_path(&path_with_slash);
-
-        assert!(result.is_ok());
-        assert!(!result.unwrap().ends_with('/'));
+        match canonicalize_path(&path_with_slash) {
+            Ok(path) => assert!(!path.ends_with('/')),
+            Err(error) => panic!("expected canonicalized path, got error: {error}"),
+        }
     }
 
     #[test]
@@ -729,12 +729,8 @@ mod tests {
         if let Some(home) = dirs::home_dir() {
             // We can't easily test ~ expansion without a real path
             // but we can test the logic by checking if ~/. resolves to home
-            let result = canonicalize_path("~");
-            if result.is_ok() {
-                assert_eq!(
-                    result.unwrap(),
-                    home.to_string_lossy().trim_end_matches('/')
-                );
+            if let Ok(path) = canonicalize_path("~") {
+                assert_eq!(path, home.to_string_lossy().trim_end_matches('/'));
             }
         }
     }

@@ -640,13 +640,10 @@ fn parse_ps_metrics(pid: u32) -> Option<(u64, f64)> {
     Some((rss_kb, cpu_pct))
 }
 
-fn start_resource_sampler(
-    pid: u32,
-) -> (
-    Arc<AtomicBool>,
-    Arc<Mutex<(u64, f64)>>,
-    thread::JoinHandle<()>,
-) {
+type SamplerPeaks = Arc<Mutex<(u64, f64)>>;
+type ResourceSampler = (Arc<AtomicBool>, SamplerPeaks, thread::JoinHandle<()>);
+
+fn start_resource_sampler(pid: u32) -> ResourceSampler {
     let stop = Arc::new(AtomicBool::new(false));
     let peaks = Arc::new(Mutex::new((0_u64, 0.0_f64)));
     let stop_flag = Arc::clone(&stop);
