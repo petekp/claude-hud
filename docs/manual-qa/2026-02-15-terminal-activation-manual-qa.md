@@ -234,12 +234,14 @@
     - `testLaunchTerminalOverlappingRequestsStaleAfterPrimaryEmitsCanonicalStaleMarker` + overlap suite (`P2-3` overlap suppression) -> pass
     - `testLaunchTerminalRepeatedSameCardRapidClicksCoalesceToSingleOutcome` (`P2-4`) -> pass
     - `testActivateHostThenSwitchTmuxNoClientAttachedGhosttyZeroWindowsFallsBackToEnsureSession` (`P2-5`) -> pass
+    - `testAERoutingActionMappingDetachedUnknownTerminalAppLaunchesNewTerminal` (`G8`) -> pass
+    - `testLaunchTerminalStalePrimaryFailureDoesNotLaunchFallbackAfterNewerClick` (`G12`) -> pass
     - `testLaunchTerminalSnapshotFailureFallbackLaunchFailureReturnsUnsuccessfulResult` (`P2-8`) -> pass
   - Rust daemon resolver (`core/daemon`):
     - `resolver_ambiguity_is_stable_across_repeated_runs` (`P2-6`) -> pass
     - `resolver_treats_trailing_slash_paths_as_exact_match` and `resolver_does_not_assume_case_or_symlink_path_equivalence` (`P2-7`) -> pass
   - Test runs:
-    - `swift test` -> pass (`241` tests)
+    - `swift test` -> pass (`243` tests)
     - `cargo test -p capacitor-daemon resolver_ -- --nocapture` -> pass (`13` resolver tests)
     - `cargo test -p capacitor-daemon` -> pass (`149` unit + `4` bench-harness assertions + `1` IPC smoke)
 
@@ -259,6 +261,29 @@
   - Green verification:
     - `swift test --filter testActivateHostThenSwitchTmuxNoClientAttachedGhosttyZeroWindowsFallsBackToEnsureSession` -> pass
     - `swift test --filter ActivationActionExecutorTests` -> pass
-    - `swift test` -> pass (`241` tests)
+    - `swift test` -> pass (`243` tests)
   - Manual note:
     - A live zero-window Ghostty state still could not be forced deterministically on this host automation path, but the critical behavior contract is now closed by deterministic unit coverage for the no-client branch (`no dead click; recover via ensure/fallback`).
+
+- `G8` deterministic closure (test-first):
+  - Red test added first: `TerminalLauncherTests.testAERoutingActionMappingDetachedUnknownTerminalAppLaunchesNewTerminal`.
+  - Reproduced failure before fix:
+    - Detached snapshot with `target.kind=terminal_app`, `target.value=Hyper` mapped to `.activateApp(appName: "Hyper")`, risking unsupported-owner no-op path.
+  - Patch:
+    - `apps/swift/Sources/Capacitor/Models/TerminalLauncher.swift`
+    - `activationActionFromAERSnapshot(...)` now activates app targets only when `target.value` matches alpha-supported terminals (`Ghostty`, `iTerm`, `Terminal.app` aliases); unknown terminal-app values degrade directly to `launchNewTerminal(...)`.
+  - Green verification:
+    - `swift test --filter testAERoutingActionMappingDetachedUnknownTerminalAppLaunchesNewTerminal` -> pass
+    - `swift test --filter TerminalLauncherTests` -> pass
+    - `swift test` -> pass (`243` tests)
+
+- `G12` deterministic closure (test-first):
+  - Guard test added: `TerminalLauncherTests.testLaunchTerminalStalePrimaryFailureDoesNotLaunchFallbackAfterNewerClick`.
+  - Scenario:
+    - Request `A` enters a failing primary path while delayed; request `B` arrives and wins.
+  - Assertion:
+    - Stale `A` must not execute `launchNewTerminal` fallback after `B` wins.
+    - Final emitted outcome remains `B` only.
+  - Green verification:
+    - `swift test --filter testLaunchTerminalStalePrimaryFailureDoesNotLaunchFallbackAfterNewerClick` -> pass
+    - `swift test` -> pass (`243` tests)

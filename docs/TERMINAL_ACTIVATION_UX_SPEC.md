@@ -194,6 +194,8 @@ These decisions are now the intended product behavior. If implementation diverge
 | `O3` | `testLaunchTerminalSequentialRequestsExecuteInOrder` in `apps/swift/Tests/CapacitorTests/TerminalLauncherTests.swift` |
 | `F2/F3/F4/D5` | `testLaunchTerminalPrimaryFailureExecutesSingleFallbackLaunch`, `testLaunchTerminalPrimaryLaunchFailureDoesNotChainSecondFallback`, `testLaunchTerminalSnapshotFetchFailureLaunchesFallbackWithSuccessOutcome`, `testLaunchTerminalSnapshotFailureFallbackIsDebouncedAcrossRapidRepeatedClicks` in `apps/swift/Tests/CapacitorTests/TerminalLauncherTests.swift` |
 | `UX-I1/G4` | `testLaunchTerminalLatestClickEmitsSingleFinalOutcomeSequence`, `testLaunchTerminalRepeatedSameCardRapidClicksCoalesceToSingleOutcome` in `apps/swift/Tests/CapacitorTests/TerminalLauncherTests.swift` |
+| `G8` | `testAERoutingActionMappingDetachedUnknownTerminalAppLaunchesNewTerminal` in `apps/swift/Tests/CapacitorTests/TerminalLauncherTests.swift` |
+| `G12` | `testLaunchTerminalStalePrimaryFailureDoesNotLaunchFallbackAfterNewerClick` in `apps/swift/Tests/CapacitorTests/TerminalLauncherTests.swift` |
 | `G11` | `testLaunchTerminalSnapshotFailureFallbackLaunchFailureReturnsUnsuccessfulResult` in `apps/swift/Tests/CapacitorTests/TerminalLauncherTests.swift` |
 
 ### Host ownership and reuse tests (Swift executor)

@@ -638,10 +638,21 @@ final class TerminalLauncher: ActivationActionDependencies {
            let appName = snapshot.target.value,
            !appName.isEmpty
         {
-            return .activateApp(appName: appName)
+            if isSupportedSnapshotTerminalApp(appName) {
+                return .activateApp(appName: appName)
+            }
         }
 
         return .launchNewTerminal(projectPath: projectPath, projectName: projectName)
+    }
+
+    private static func isSupportedSnapshotTerminalApp(_ appName: String) -> Bool {
+        let lower = appName.lowercased()
+        return ParentApp.alphaSupportedTerminals.contains { terminal in
+            terminal.runningAppMatchNames.contains { candidate in
+                lower.contains(candidate.lowercased())
+            }
+        }
     }
 
     private static func tmuxHostTTY(from snapshot: DaemonRoutingSnapshot) -> String? {

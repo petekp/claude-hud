@@ -478,6 +478,34 @@ final class TerminalLauncherTests: XCTestCase {
         }
     }
 
+    func testAERoutingActionMappingDetachedUnknownTerminalAppLaunchesNewTerminal() {
+        let snapshot = DaemonRoutingSnapshot(
+            version: 1,
+            workspaceId: "workspace-1",
+            projectPath: "/Users/pete/Code/capacitor",
+            status: "detached",
+            target: DaemonRoutingTarget(kind: "terminal_app", value: "Hyper"),
+            confidence: "low",
+            reasonCode: "SHELL_FALLBACK_ACTIVE",
+            reason: "fallback",
+            evidence: [],
+            updatedAt: "2026-02-14T15:00:00Z",
+        )
+
+        let action = TerminalLauncher.activationActionFromAERSnapshot(
+            snapshot,
+            projectPath: "/Users/pete/Code/capacitor",
+            projectName: "capacitor",
+        )
+        switch action {
+        case let .launchNewTerminal(projectPath, projectName):
+            XCTAssertEqual(projectPath, "/Users/pete/Code/capacitor")
+            XCTAssertEqual(projectName, "capacitor")
+        default:
+            XCTFail("Expected launchNewTerminal for unsupported terminal app target, got \(String(describing: action))")
+        }
+    }
+
     func testAERoutingActionMappingUnavailableLaunchesNewTerminal() {
         let snapshot = DaemonRoutingSnapshot(
             version: 1,
@@ -1018,6 +1046,74 @@ final class TerminalLauncherTests: XCTestCase {
                 $0.contains(projectA.path)
         }
         XCTAssertTrue(sawStaleSuppression, "Expected stale suppression marker for superseded request.")
+    }
+
+    func testLaunchTerminalStalePrimaryFailureDoesNotLaunchFallbackAfterNewerClick() async {
+        let projectA = makeProject(name: "project-a", path: "/Users/pete/Code/project-a")
+        let projectB = makeProject(name: "project-b", path: "/Users/pete/Code/project-b")
+        var executedActions: [(path: String, action: ActivationAction)] = []
+        var results: [TerminalActivationResult] = []
+
+        let launcher = TerminalLauncher(
+            appleScript: StubAppleScriptClient(shouldSucceed: true),
+            fetchRoutingSnapshot: { projectPath, _ in
+                if projectPath == projectA.path {
+                    return DaemonRoutingSnapshot(
+                        version: 1,
+                        workspaceId: "workspace-1",
+                        projectPath: projectA.path,
+                        status: "detached",
+                        target: DaemonRoutingTarget(kind: "tmux_session", value: "project-a"),
+                        confidence: "medium",
+                        reasonCode: "TMUX_SESSION_DETACHED",
+                        reason: "detached session",
+                        evidence: [],
+                        updatedAt: "2026-02-15T03:00:00Z",
+                    )
+                }
+                return Self.makeAttachedTerminalAppSnapshot(
+                    projectPath: projectPath,
+                    appName: "Ghostty",
+                )
+            },
+            executeActivationActionOverride: { action, projectPath, _ in
+                executedActions.append((projectPath, action))
+                if projectPath == projectA.path {
+                    if case .ensureTmuxSession = action {
+                        try? await _Concurrency.Task.sleep(nanoseconds: 220_000_000)
+                        return false
+                    }
+                    if case .launchNewTerminal = action {
+                        return true
+                    }
+                }
+                return true
+            },
+        )
+
+        launcher.onActivationResult = { result in
+            results.append(result)
+        }
+
+        launcher.launchTerminal(for: projectA)
+        try? await _Concurrency.Task.sleep(nanoseconds: 30_000_000)
+        launcher.launchTerminal(for: projectB)
+        try? await _Concurrency.Task.sleep(nanoseconds: 500_000_000)
+
+        let staleFallbackLaunches = executedActions.filter { entry in
+            guard entry.path == projectA.path else { return false }
+            if case .launchNewTerminal = entry.action {
+                return true
+            }
+            return false
+        }
+
+        XCTAssertTrue(
+            staleFallbackLaunches.isEmpty,
+            "Stale request must not launch fallback after a newer click wins.",
+        )
+        XCTAssertEqual(results.count, 1)
+        XCTAssertEqual(results.first?.projectPath, projectB.path)
     }
 
     private static func makeAttachedTerminalAppSnapshot(projectPath: String, appName: String) -> DaemonRoutingSnapshot {
