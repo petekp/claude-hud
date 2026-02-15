@@ -392,6 +392,7 @@ final class TerminalLauncher: ActivationActionDependencies {
         projectPath: String,
         runScript: (String) async -> (exitCode: Int32, output: String?),
         activateTerminal: (String?) async -> Bool,
+        launchWhenNoClient: (() -> Bool)? = nil,
     ) async -> Bool {
         let clientTty = await resolveAttachedTmuxClientTty(runScript: runScript)
         let escapedSession = shellEscape(sessionName)
@@ -407,17 +408,24 @@ final class TerminalLauncher: ActivationActionDependencies {
             return await activateTerminal(clientTty)
         }
 
+        let hasSessionResult = await runScript("tmux has-session -t \(escapedSession) 2>/dev/null")
         let escapedPath = shellEscape(projectPath)
-        let createResult = await runScript(
-            "tmux new-session -d -s \(escapedSession) -c \(escapedPath) 2>&1",
-        )
-        if createResult.exitCode != 0 {
-            return false
+        if hasSessionResult.exitCode != 0 {
+            let createResult = await runScript(
+                "tmux new-session -d -s \(escapedSession) -c \(escapedPath) 2>&1",
+            )
+            if createResult.exitCode != 0 {
+                return false
+            }
         }
 
         let retryResult = await runScript(switchCommand)
         if retryResult.exitCode == 0 {
             return await activateTerminal(clientTty)
+        }
+
+        if clientTty == nil, let launchWhenNoClient {
+            return launchWhenNoClient()
         }
 
         return false
@@ -540,7 +548,7 @@ final class TerminalLauncher: ActivationActionDependencies {
 
             let primarySuccess = await executeActivationAction(primary, projectPath: project.path, projectName: project.name)
             guard shouldProcessLaunchRequest(requestID) else {
-                debugLog("ARE primary action completed for stale request id=\(requestID) path=\(project.path)")
+                debugLog("ARE snapshot ignored for stale request id=\(requestID) path=\(project.path) stage=post_primary")
                 return true
             }
             var fallbackSuccess = false
@@ -567,7 +575,7 @@ final class TerminalLauncher: ActivationActionDependencies {
 
             let finalSuccess = primarySuccess || fallbackSuccess
             guard shouldProcessLaunchRequest(requestID) else {
-                debugLog("ARE outcome dropped for stale request id=\(requestID) path=\(project.path)")
+                debugLog("ARE snapshot ignored for stale request id=\(requestID) path=\(project.path) stage=post_outcome")
                 return true
             }
             Telemetry.emit("activation_outcome", "are_snapshot_activation", payload: [
@@ -704,6 +712,12 @@ final class TerminalLauncher: ActivationActionDependencies {
             projectPath: projectPath,
             runScript: { await runBashScriptWithResultAsync($0) },
             activateTerminal: { tty in await self.activateTerminalAfterTmuxSwitch(clientTty: tty) },
+            launchWhenNoClient: { [weak self] in
+                guard let self else { return false }
+                debugLog("ensureTmuxSession no attached client; launching terminal with tmux session=\(sessionName)")
+                launchTerminalWithTmuxSession(sessionName, projectPath: projectPath)
+                return true
+            },
         )
         if !succeeded {
             logger.warning("  ▸ tmux ensure/create failed for session '\(sessionName)'")

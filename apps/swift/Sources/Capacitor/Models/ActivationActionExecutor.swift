@@ -92,20 +92,31 @@ final class ActivationActionExecutor {
     func activateHostThenSwitchTmux(
         hostTty: String,
         sessionName: String,
-        projectPath _: String,
+        projectPath: String,
     ) async -> Bool {
-        guard dependencies != nil else {
+        guard let deps = dependencies else {
             return false
         }
 
         let anyClientAttached = await tmuxClient.hasAnyClientAttached()
         if !anyClientAttached {
             if terminalDiscovery.isGhosttyRunning() {
+                if terminalDiscovery.countGhosttyWindows() == 0 {
+                    return await deps.ensureTmuxSession(sessionName: sessionName, projectPath: projectPath)
+                }
+
                 _ = terminalDiscovery.activateAppByName("Ghostty")
                 let heuristicClientTty = hostTty.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                     ? nil
                     : hostTty
-                return await tmuxClient.switchClient(to: sessionName, clientTty: heuristicClientTty)
+                if await tmuxClient.switchClient(to: sessionName, clientTty: heuristicClientTty) {
+                    return true
+                }
+
+                // Stale host TTY evidence can point to a detached/non-existent client.
+                // Recover through ensure semantics so upstream does not fall back to
+                // generic launch-new-terminal behavior.
+                return await deps.ensureTmuxSession(sessionName: sessionName, projectPath: projectPath)
             }
 
             terminalLauncher.launchTerminalWithTmux(sessionName: sessionName)

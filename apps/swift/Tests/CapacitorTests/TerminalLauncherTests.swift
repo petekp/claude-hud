@@ -142,6 +142,53 @@ final class TerminalLauncherTests: XCTestCase {
         )
     }
 
+    func testEnsureTmuxSessionLaunchesWhenNoClientAttachedAfterEnsuringSession() async {
+        var activateCalls = 0
+        var launched = 0
+        var scripts: [String] = []
+
+        let result = await TerminalLauncher.performEnsureTmuxSession(
+            sessionName: "cap",
+            projectPath: "/Users/pete/Code/cap",
+            runScript: { script in
+                scripts.append(script)
+                if script.contains("display-message -p '#{client_tty}'") {
+                    return (1, nil)
+                }
+                if script.contains("list-clients -F '#{client_tty}'") {
+                    return (0, "")
+                }
+                if script.contains("tmux switch-client -t 'cap'") {
+                    return (1, "no current client")
+                }
+                if script.contains("tmux has-session -t 'cap'") {
+                    return (0, nil)
+                }
+                if script.contains("tmux new-session -d -s 'cap'") {
+                    XCTFail("Did not expect session creation when has-session succeeds")
+                    return (1, nil)
+                }
+                return (1, nil)
+            },
+            activateTerminal: { _ in
+                activateCalls += 1
+                return true
+            },
+            launchWhenNoClient: {
+                launched += 1
+                return true
+            },
+        )
+
+        XCTAssertTrue(result)
+        XCTAssertEqual(activateCalls, 0, "No tmux client is attached, so terminal activation callback should not run")
+        XCTAssertEqual(launched, 1, "Expected a single terminal launch to attach the ensured session")
+        XCTAssertTrue(
+            scripts.contains { $0.contains("tmux has-session -t 'cap'") },
+            "Expected has-session check before deciding whether creation is needed",
+        )
+    }
+
     func testSwitchTmuxSessionDoesNotActivateOnFailure() async {
         var activateCalls = 0
 
@@ -547,6 +594,62 @@ final class TerminalLauncherTests: XCTestCase {
         }
 
         XCTAssertTrue(foundMarker, "Expected stale overlap marker for superseded request.")
+    }
+
+    func testLaunchTerminalOverlappingRequestsStaleAfterPrimaryEmitsCanonicalStaleMarker() async {
+        let projectA = makeProject(name: "project-a", path: "/Users/pete/Code/project-a")
+        let projectB = makeProject(name: "project-b", path: "/Users/pete/Code/project-b")
+        let collector = LogCollector()
+        var resultPaths: [String] = []
+
+        DebugLog.setTestObserver { line in
+            _Concurrency.Task {
+                await collector.append(line)
+            }
+        }
+        defer { DebugLog.setTestObserver(nil) }
+
+        let launcher = TerminalLauncher(
+            appleScript: StubAppleScriptClient(shouldSucceed: true),
+            fetchRoutingSnapshot: { projectPath, _ in
+                Self.makeAttachedTerminalAppSnapshot(
+                    projectPath: projectPath,
+                    appName: "Ghostty",
+                )
+            },
+            executeActivationActionOverride: { _, projectPath, _ in
+                if projectPath == projectA.path {
+                    try? await _Concurrency.Task.sleep(nanoseconds: 220_000_000)
+                }
+                return true
+            },
+        )
+
+        launcher.onActivationResult = { result in
+            resultPaths.append(result.projectPath)
+        }
+
+        launcher.launchTerminal(for: projectA)
+        try? await _Concurrency.Task.sleep(nanoseconds: 30_000_000)
+        launcher.launchTerminal(for: projectB)
+        try? await _Concurrency.Task.sleep(nanoseconds: 500_000_000)
+
+        XCTAssertEqual(
+            resultPaths,
+            [projectB.path],
+            "Only the latest request should emit a final outcome after overlap.",
+        )
+        let foundCanonicalMarker = await collector.contains {
+            ($0.contains("[TerminalLauncher] ARE snapshot request canceled/stale") ||
+                $0.contains("[TerminalLauncher] ARE snapshot ignored for stale request") ||
+                $0.contains("[TerminalLauncher] launchTerminalAsync ignored stale request")) &&
+                $0.contains(projectA.path)
+        }
+
+        XCTAssertTrue(
+            foundCanonicalMarker,
+            "Expected canonical stale suppression marker when a request becomes stale during primary action.",
+        )
     }
 
     func testLaunchTerminalSequentialRequestsExecuteInOrder() async {

@@ -120,3 +120,145 @@
 - Release-gate interpretation after drift reconciliation:
   - P0 overlap scenarios pass when any canonical stale-suppression marker is present (not only `ARE snapshot request canceled/stale`).
   - `P1-3` is a conditional evidence path; absence of detached `tmux_client` evidence routes validation to `P1-4` by design.
+
+#### Addendum (2026-02-15): P0 Overlap Marker Hardening (Live Regression -> TDD Fix -> Revalidation)
+- Regression observed during fresh `CapacitorDebug` alpha rerun:
+  - P0 rapid scenarios produced stale-request logs only as `ARE primary action completed for stale request ...`, which is not a canonical stale marker in the UX contract/manual matrix.
+  - Evidence before fix:
+    - `P0-4-RERUN2-20260215T154431Z` and `P0-5-RERUN2-20260215T154441Z` slices showed stale-after-primary logs without canonical markers.
+    - No `launchNewTerminal` fan-out was observed in those slices (`launchNewTerminal=0`), but stale-marker contract was not met.
+- Test-first coverage added in Swift:
+  - New red test: `TerminalLauncherTests.testLaunchTerminalOverlappingRequestsStaleAfterPrimaryEmitsCanonicalStaleMarker`.
+  - Test reproduces overlap where request A becomes stale while request B completes, and asserts canonical stale marker presence plus latest-only final outcome emission.
+  - Red -> green after launcher patch.
+- Launcher patch:
+  - File: `apps/swift/Sources/Capacitor/Models/TerminalLauncher.swift`
+  - Updated stale-after-primary and stale-before-outcome logging to canonical marker form:
+    - `ARE snapshot ignored for stale request ... stage=post_primary`
+    - `ARE snapshot ignored for stale request ... stage=post_outcome`
+- Automated verification:
+  - `swift test --filter testLaunchTerminalOverlappingRequestsStaleAfterPrimaryEmitsCanonicalStaleMarker` -> pass.
+  - `swift test --filter TerminalLauncherTests` -> pass.
+  - `swift test --filter ActivationActionExecutorTests` -> pass.
+  - `swift test --filter HookDiagnosticPresentationTests` -> pass.
+- Live manual revalidation after app restart:
+  - `P0-4-POSTFIX4-20260215T154901Z` (`~/.capacitor/daemon/app-debug.log:90266-90307`)
+    - Canonical stale marker present at `90283`.
+    - `launchNewTerminal=0`.
+  - `P0-5-POSTFIX4-20260215T154903Z` (`~/.capacitor/daemon/app-debug.log:90309-90338`)
+    - Canonical stale markers present at `90334` and `90336`.
+    - `launchNewTerminal=0`.
+- Outcome:
+  - P0 overlap log-contract gap is closed.
+  - Latest-click suppression is now represented by canonical stale markers even in stale-after-primary timing.
+
+#### Addendum (2026-02-15): P1 Continuation (Live Regression -> TDD Fix -> Revalidation)
+- Scope: continue manual matrix from P1 upward with strict issue-first workflow (reproduce -> red test -> fix -> retest -> continue).
+
+- P1-1 regression reproduced (`no client attached`, Ghostty running):
+  - Repro marker: `P1-1-BURST-20260215T155052Z` (`~/.capacitor/daemon/app-debug.log:91568-91634`)
+  - Evidence:
+    - `activateHostThenSwitchTmux(hostTty: "/dev/ttys062", sessionName: "agentic-canvas")` executed with detached/no-client state.
+    - Primary path fell through to generic fallback (`executeActivationAction action=launchNewTerminal(...)` + `launchNewTerminal path=...`) within the same scenario block.
+  - UX impact: fallback behavior could surface generic launch behavior from stale host-tty evidence instead of recovering through tmux ensure semantics.
+
+- Test-first fix for P1-1 regression:
+  - Added red test first: `ActivationActionExecutorTests.testActivateHostThenSwitchTmuxNoClientAttachedSwitchFailureFallsBackToEnsureSession`.
+  - Patched `apps/swift/Sources/Capacitor/Models/ActivationActionExecutor.swift`:
+    - In `activateHostThenSwitchTmux(...)`, when `anyClientAttached == false` and Ghostty is running, a failed heuristic `switchClient` now falls back to `deps.ensureTmuxSession(sessionName:projectPath:)` instead of returning failure.
+  - Green verification:
+    - `swift test --filter testActivateHostThenSwitchTmuxNoClientAttachedSwitchFailureFallsBackToEnsureSession` -> pass.
+    - `swift test --filter ActivationActionExecutorTests` -> pass.
+    - `swift test --filter TerminalLauncherTests` -> pass.
+
+- P1-1 post-fix manual revalidation:
+  - Marker: `P1-1-BURST-POSTFIX2-20260215T155539Z` (`~/.capacitor/daemon/app-debug.log:94678-94725`)
+  - Evidence:
+    - No generic fallback launch action/path logs in block (`executeActivationAction action=launchNewTerminal` absent).
+    - Ensure/tmux attach path observed (`ensureTmuxSession ...` + `launchTerminalWithTmuxSession ...`).
+  - Result: PASS for targeted regression condition (no generic launch fallback loop under repeated clicks).
+
+- P1-2 (`no tmux client`, `no terminal running`) recheck:
+  - Marker: `P1-2-POSTFIX1-20260215T155643Z` (`~/.capacitor/daemon/app-debug.log:95429-95453`)
+  - Evidence: `ensureTmuxSession ... no attached client; launching terminal with tmux ...`
+  - Result: PASS.
+
+- P1-3 classification probe (conditional path):
+  - Attached-state probe marker: `P1-3-CLASSIFY` (`~/.capacitor/daemon/app-debug.log:98559`) -> `status=attached`, evidence includes `tmux_client`.
+  - Detached-state probe marker: `P1-3-CLASSIFY-DETACHED` (`~/.capacitor/daemon/app-debug.log:98648`) -> `status=detached`, evidence `["tmux_session"]` (no `tmux_client` evidence).
+  - Interpretation: detached snapshots without `tmux_client` evidence are evaluated under P1-4 by policy.
+
+- P1-4 (`detached` without client evidence):
+  - Marker: `P1-4-POSTFIX1-20260215T155716Z` (`~/.capacitor/daemon/app-debug.log:95817-95828`)
+  - Evidence: `ensureTmuxSession` attempted before fallback path.
+  - Result: PASS.
+
+- P1-5 (`snapshot unavailable`) deterministic outage simulation:
+  - Marker: `P1-5-SOCKETCUT-20260215T155846Z` (`~/.capacitor/daemon/app-debug.log:96790-96812`)
+  - Setup: removed daemon socket path prior to click; restored daemon after scenario.
+  - Evidence:
+    - `DaemonClient.sendAndReceive posix finish error=... Code=2 "No such file or directory"` on `get_routing_snapshot`.
+    - Fallback launch executed in same block (`launchNewTerminal ...`).
+  - Result: PASS (no dead click; fallback path triggered under routing snapshot unavailability).
+
+- P1-6 ambiguous host density (multi-Ghostty-process stress in lieu of true 2+ window telemetry):
+  - Marker: `P1-6-DENSEHOST-20260215T155937Z` (`~/.capacitor/daemon/app-debug.log:97375-97426`)
+  - Host context: `ghostty_processes=6` during scenario.
+  - Evidence:
+    - Reuse-path actions only (`activateHostThenSwitchTmux`, `ensureTmuxSession`).
+    - Canonical stale markers present for superseded overlap requests.
+    - No `launchNewTerminal` in block.
+  - Result: PASS (no fan-out loop under dense host conditions).
+
+- P1-7 iTerm ownership precedence:
+  - Marker: `P1-7-ITERM-POSTFIX1-20260215T160013Z` (`~/.capacitor/daemon/app-debug.log:97812-97831`)
+  - Evidence:
+    - `discoverTerminalOwningTTY iTerm owns tty=/dev/ttys060`
+    - `activateTerminalByTTYDiscovery found terminal=iTerm2 ...`
+  - Result: PASS.
+
+- P1-8 Terminal.app ownership precedence:
+  - Marker: `P1-8-TERMINAL-POSTFIX1-20260215T160038Z` (`~/.capacitor/daemon/app-debug.log:98103-98135`)
+  - Evidence:
+    - `discoverTerminalOwningTTY Terminal owns tty=/dev/ttys075`
+    - `activateTerminalByTTYDiscovery found terminal=Terminal.app ...`
+  - Result: PASS.
+
+#### Addendum (2026-02-15): P2 Hardening Coverage
+- P2 hardening scenarios were validated through existing and newly-added automated contract tests, plus manual outage simulation where feasible.
+
+- Automated coverage status:
+  - Swift (`apps/swift`):
+    - `testLaunchTerminalPrimaryFailureExecutesSingleFallbackLaunch` (`P2-1`) -> pass
+    - `testLaunchTerminalPrimaryLaunchFailureDoesNotChainSecondFallback` (`P2-2`) -> pass
+    - `testLaunchTerminalOverlappingRequestsStaleAfterPrimaryEmitsCanonicalStaleMarker` + overlap suite (`P2-3` overlap suppression) -> pass
+    - `testLaunchTerminalRepeatedSameCardRapidClicksCoalesceToSingleOutcome` (`P2-4`) -> pass
+    - `testActivateHostThenSwitchTmuxNoClientAttachedGhosttyZeroWindowsFallsBackToEnsureSession` (`P2-5`) -> pass
+    - `testLaunchTerminalSnapshotFailureFallbackLaunchFailureReturnsUnsuccessfulResult` (`P2-8`) -> pass
+  - Rust daemon resolver (`core/daemon`):
+    - `resolver_ambiguity_is_stable_across_repeated_runs` (`P2-6`) -> pass
+    - `resolver_treats_trailing_slash_paths_as_exact_match` and `resolver_does_not_assume_case_or_symlink_path_equivalence` (`P2-7`) -> pass
+  - Test runs:
+    - `swift test` -> pass (`241` tests)
+    - `cargo test -p capacitor-daemon resolver_ -- --nocapture` -> pass (`13` resolver tests)
+    - `cargo test -p capacitor-daemon` -> pass (`149` unit + `4` bench-harness assertions + `1` IPC smoke)
+
+- Manual outage hardening evidence (`P2-8`-adjacent behavior / `P1-5` mechanics):
+  - Marker: `P1-5-SOCKETCUT-20260215T155846Z` (`~/.capacitor/daemon/app-debug.log:96790-96812`)
+  - Evidence in block:
+    - Daemon IPC failures on routing request (`NSPOSIXErrorDomain Code=2`, missing socket path).
+    - Fallback launch still executed (no dead click).
+
+- `P2-5` deterministic closure (test-first):
+  - Red test added first: `ActivationActionExecutorTests.testActivateHostThenSwitchTmuxNoClientAttachedGhosttyZeroWindowsFallsBackToEnsureSession`.
+  - Reproduced failure before fix:
+    - zero-window/no-client Ghostty path attempted stale host-tty switch heuristic and did not invoke ensure recovery.
+  - Patch:
+    - `apps/swift/Sources/Capacitor/Models/ActivationActionExecutor.swift`
+    - In `activateHostThenSwitchTmux(...)`, when `anyClientAttached == false` and Ghostty is running with `windowCount == 0`, activation now bypasses switch heuristics and goes directly to `ensureTmuxSession(...)`.
+  - Green verification:
+    - `swift test --filter testActivateHostThenSwitchTmuxNoClientAttachedGhosttyZeroWindowsFallsBackToEnsureSession` -> pass
+    - `swift test --filter ActivationActionExecutorTests` -> pass
+    - `swift test` -> pass (`241` tests)
+  - Manual note:
+    - A live zero-window Ghostty state still could not be forced deterministically on this host automation path, but the critical behavior contract is now closed by deterministic unit coverage for the no-client branch (`no dead click; recover via ensure/fallback`).
