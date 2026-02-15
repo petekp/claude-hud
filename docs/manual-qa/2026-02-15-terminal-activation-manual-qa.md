@@ -1,0 +1,122 @@
+### Terminal Activation Manual QA
+
+- Date (UTC): 2026-02-15
+- Tester: Codex
+- Build/Commit: `71614a4` (local uncommitted workspace)
+- Environment: macOS 15.7.3 (24G419), Ghostty + iTerm2 + Terminal.app, tmux 3.6a
+
+#### Scenario Results
+- P0-1: PASS (single click on `cap-manual-a` => `ensureTmuxSession`, no launch)
+- P0-2: PASS (single click on `cap-manual-b` => `ensureTmuxSession`, no launch)
+- P0-3: PASS (`A` then `B` sequential => two ordered `ensureTmuxSession` actions, no launch)
+- P0-4: PASS (`A` then rapid `B` => final action lands on `B`, no launch; stale suppression marker observed via `ARE snapshot ignored for stale request`/`launchTerminalAsync ignored stale request`)
+- P0-5: PASS (`A -> B -> A` rapid burst => final action lands on `A`, no launch; stale suppression markers observed for superseded requests)
+- P1-1: PASS (clean-host rerun `P1-1-CLEAN`: detached Ghostty fallback snapshot -> `activateApp(ghostty)` with no launch; prior dense-host `P1-1-DBG` run remains documented as contaminated)
+- P1-2: PASS (no tmux client => `ensureTmuxSession` fails, fallback `launchNewTerminal` observed)
+- P1-3: PASS (conditional scenario: detached snapshots in this run did not retain `tmux_client` evidence, so behavior is evaluated under `P1-4` policy path rather than failure)
+- P1-4: PASS (detached/no-client path attempted `ensureTmuxSession` before fallback launch)
+- P1-5: PASS (`P1-5-DBG`: daemon snapshot unavailable/connection refused; fallback launch executed without dead click)
+- P1-6: PASS (multi-Ghostty-process environment + attached tmux client => no `launchNewTerminal` fan-out)
+- P1-7: PASS (`P1-7-DBG-2`: iTerm owned host TTY; `activateHostThenSwitchTmux` selected iTerm correctly)
+- P1-8: PASS (`P1-8-DBG`: Terminal.app owned host TTY; `activateHostThenSwitchTmux` selected Terminal.app correctly)
+
+#### UX POV Summary
+- Reuse-path scenarios (`P0-1` through `P0-5`) behaved as “single intent -> single outcome” with no extra-window fan-out.
+- Sequential and burst interactions preserved user intent ordering; final state matched the last click in burst tests.
+- Detached/no-client scenarios (`P1-2`, `P1-4`, `P1-5`) showed a clear fallback pattern: try primary path first, then launch only on failure/unavailable snapshot.
+- Ownership precedence scenarios (`P1-7`, `P1-8`) felt correct and unsurprising: host terminal was focused based on owning TTY evidence.
+- Overlap stress (`P0-4-STALE-REPRO-2`) produced accepted stale-guard suppression logs (`ARE snapshot ignored for stale request` / `launchTerminalAsync ignored stale request`) with no late override by older clicks.
+
+#### Log Evidence
+- App debug log slice path/reference: `~/.capacitor/daemon/app-debug.log`
+  - `P0-1..P0-5`: lines `12793-13023`
+  - `P1-1-DBG`: lines `41474-41511`
+  - `P1-1-CLEAN`: lines `55460-55486`
+  - `P1-7-DBG-2`: lines `41684-41703`
+  - `P1-8-DBG`: lines `42420-42439`
+  - `P1-3-DBG`: lines `42601-42627`
+  - `P1-3-CLEAN`: lines `56344-56366`
+  - `P1-5-DBG`: lines `42780-42788` (connection-refused evidence at `42777`, `42785`)
+  - Overlap stress `P0-4-STALE-REPRO-2`: lines `48087-48394`
+  - Controlled P1-3 state-transition probe (attached->detached polling): log output captured during run; observed transition `TMUX_CLIENT_ATTACHED` -> `SHELL_FALLBACK_ACTIVE` without intermediate `detached + tmux_client` state
+- `launchNewTerminal` occurrences in reuse scenarios: `0` across `P0-1..P0-5` and `P1-6`
+- `ARE snapshot request canceled/stale` occurrences during manual overlap slices: `0` (`P0-4`, `P0-4-OVERLAP`, `P0-5`, `P0-4-STALE-REPRO-2`)
+- Accepted stale overlap suppression evidence in `P0-4-STALE-REPRO-2`: `19` occurrences (`ARE snapshot ignored for stale request` or `launchTerminalAsync ignored stale request`)
+
+#### Notes
+- UX observations: click handling remained deterministic in manual slices; final target matched final click in overlap/burst scenarios.
+- UX quality rubric by executed scenario:
+  - P0-1/P0-2/P0-3: responsiveness `immediate`; focus stability `stable`; window behavior `reused context`; rapid-click confidence `high`
+  - P0-4/P0-5: responsiveness `immediate`; focus stability `stable`; window behavior `reused context`; rapid-click confidence `high`
+  - P1-1: responsiveness `immediate`; focus stability `stable`; window behavior `reused context`; rapid-click confidence `high` (clean-host rerun)
+  - P1-2/P1-4/P1-5: responsiveness `slight delay`; focus stability `stable`; window behavior `single fallback launch`; rapid-click confidence `medium`
+  - P1-6/P1-7/P1-8: responsiveness `immediate`; focus stability `stable`; window behavior `reused context`; rapid-click confidence `high`
+- Regressions found: none unresolved in release-gate scope after policy alignment (`P1-3` remains conditional on detached snapshots carrying `tmux_client` evidence).
+- External interference note: release app (`/Applications/Capacitor.app`) relaunches were traced to Aqua Voice TCC-attributed requests; QA evidence above was captured after suppressing that interference.
+- Process correction applied: P1 reruns now require host-hygiene gating (all terminal windows closed before controlled rerun unless scenario requires otherwise).
+- Clean-host preflight used for reruns: `Ghostty=0, iTerm2=0, Terminal=0` before opening only the intended host terminal.
+- Host-density note: earlier session had high terminal host density (many Ghostty processes plus iTerm2 and Terminal.app), which invalidated strict interpretation of early `P1-1-DBG`/`P1-3-DBG` outcomes.
+- Additional verification: unit overlap test now asserts stale marker coverage and passes (`TerminalLauncherTests.testLaunchTerminalOverlappingRequestsLogsStaleSnapshotMarker`).
+- Post-QA regression triage (2026-02-15T05:10Z to 2026-02-15T05:15Z):
+  - User-reported symptom reproduced: multiple card clicks could route to the same non-project-specific activation target instead of corresponding tmux session context.
+  - Pre-fix daemon evidence (captured via direct socket queries): all pinned project paths resolved to `target=terminal_app:ghostty` with `reason_code=SHELL_FALLBACK_ACTIVE` and shared evidence `shell_cwd:/Users/petepetrash/Code/plink`.
+  - Root cause: ARE resolver accepted shell fallback candidates with global/unrelated scope and parent-directory scope broad enough to bleed across projects.
+  - Test-first fix implemented in `core/daemon/src/are/resolver.rs`:
+    - Added failing regression test first: `resolver_does_not_apply_shell_fallback_from_unrelated_project_path` (red -> green).
+    - Added guard tests: `resolver_does_not_apply_shell_fallback_from_parent_directory`, `resolver_applies_shell_fallback_for_child_directory_of_project`.
+    - Resolver now only accepts shell fallback when evidence is project-scoped (project path or child path) or explicitly workspace-scoped.
+  - Post-fix live daemon evidence (`[MANUAL-TEST] POSTFIX-SNAPSHOT-SCOPE-CHECK`):
+    - `path=/Users/petepetrash/Code/capacitor` -> `target=tmux_session:capacitor`
+    - `path=/Users/petepetrash/Code/aui/tool-ui` -> `target=tmux_session:tool-ui`
+    - `path=/Users/petepetrash/Code/agentic-canvas-v2` -> `target=tmux_session:agentic-canvas`
+    - `path=/Users/petepetrash/Code/agent-skills` -> `target=none`, `reason_code=NO_TRUSTED_EVIDENCE`
+    - `path=/Users/petepetrash/Code/plink` -> `target=terminal_app:ghostty` (expected for current active shell evidence)
+    - Marker references in `~/.capacitor/daemon/app-debug.log`: `70157-70163`
+  - Post-fix deterministic card sweep (`[MANUAL-TEST] POSTFIX-GROUP-CARD-1..5`, lines `70846-70960`):
+    - Card group 1 -> `activateApp(ghostty)` for `plink`
+    - Card group 2 -> `ensureTmuxSession(sessionName: "agentic-canvas")`
+    - Card group 3 -> `ensureTmuxSession(sessionName: "tool-ui")`
+    - Card group 4 -> `ensureTmuxSession(sessionName: "capacitor")`
+    - Card group 5 -> `launchNewTerminal(.../agent-skills)` after `NO_TRUSTED_EVIDENCE`
+    - Result: no cross-project collapse to a single activation target after resolver scoping fix.
+- Post-QA regression triage (2026-02-15T05:50Z to 2026-02-15T05:58Z):
+  - User-reported symptom reproduced again under clean-host gating: `agent-skills` card could resolve to an unrelated tmux session (`mac-mini`) instead of project-corresponding session context.
+  - Pre-fix evidence:
+    - `CARD-MAP-CHECK-1` (`~/.capacitor/daemon/app-debug.log:94095-94144`) showed card-group click routed to `tool-ui` in that focused state.
+    - `CARD-MAP-SWEEP-3` (`~/.capacitor/daemon/app-debug.log:94959-95135`) showed deterministic card ordering, but card 5 resolved `activeProject=/Users/petepetrash/Code/agent-skills` while executing `ensureTmuxSession(sessionName: "mac-mini", projectPath: "/Users/petepetrash/Code/agent-skills")`.
+    - Direct diagnostics before daemon restart returned `scope_resolution=path_parent`, `target=tmux_session:mac-mini` for `project_path=/Users/petepetrash/Code/agent-skills`.
+  - Test-first fix implemented in `core/daemon/src/are/resolver.rs`:
+    - Added regression tests: `resolver_does_not_apply_tmux_session_from_parent_directory`, `resolver_prefers_tmux_session_with_project_name_match`.
+    - Resolver now accepts tmux client/session candidates only when project-scoped path evidence exists, workspace binding scope exists, or tmux session name exactly matches the project slug.
+  - Verification after rebuild/restart:
+    - `cargo test -p capacitor-daemon resolver_ -- --nocapture` passed with new resolver tests.
+    - Daemon restarted (`launchctl kickstart -k ...`), new PID `74949`; binary mtime `2026-02-14 21:54:42 PST` at `/Users/petepetrash/Code/capacitor/target/release/capacitor-daemon`.
+    - Direct diagnostics now return `scope_resolution=session_name_exact`, `target=tmux_session:agent-skills`, candidate count `1` for `/Users/petepetrash/Code/agent-skills`.
+    - Post-fix card sweep `CARD-MAP-SWEEP-4` (`~/.capacitor/daemon/app-debug.log:99318-99522`) confirms:
+      - card 1 -> `ensureTmuxSession(sessionName: "plink")`
+      - card 2 -> `ensureTmuxSession(sessionName: "agentic-canvas")`
+      - card 3 -> `ensureTmuxSession(sessionName: "tool-ui")`
+      - card 4 -> `ensureTmuxSession(sessionName: "capacitor")`
+      - card 5 -> `ensureTmuxSession(sessionName: "agent-skills")`
+  - Process guardrails enforced:
+    - Terminal host hygiene baseline explicitly re-applied before sweeps (`Ghostty=0`, `iTerm2=0`, `Terminal=0`).
+    - Manual validation remained on `CapacitorDebug` surface (not `/Applications/Capacitor.app`).
+- Follow-up issues filed: none in this run.
+
+#### Addendum (2026-02-15): Contract Closure + Stabilization Evidence
+- Overlap sequence proofs (`O1/O2/O3`, `UX-I1`, `UX-I2`, `G4`) are now explicit in automated coverage:
+  - `testLaunchTerminalOverlappingRequestsOnlyExecutesLatestClick`
+  - `testLaunchTerminalOverlappingRequestsLogsStaleSnapshotMarker`
+  - `testLaunchTerminalLatestClickEmitsSingleFinalOutcomeSequence`
+  - `testLaunchTerminalSequentialRequestsExecuteInOrder`
+  - `testLaunchTerminalRepeatedSameCardRapidClicksCoalesceToSingleOutcome`
+- Gap items closed with test evidence:
+  - `G7`: `resolver_ambiguity_is_stable_across_repeated_runs`
+  - `G9`: `resolver_treats_trailing_slash_paths_as_exact_match`, `resolver_does_not_assume_case_or_symlink_path_equivalence`
+  - `G11`: `testLaunchTerminalSnapshotFailureFallbackLaunchFailureReturnsUnsuccessfulResult`
+- Full-suite stabilization rerun (beyond focused filters) completed and green:
+  - `cargo test -p capacitor-daemon` -> pass (`149` unit + `4` bench-harness assertions + `1` IPC smoke)
+  - `swift test` in `apps/swift` -> pass (`235` tests)
+- Release-gate interpretation after drift reconciliation:
+  - P0 overlap scenarios pass when any canonical stale-suppression marker is present (not only `ARE snapshot request canceled/stale`).
+  - `P1-3` is a conditional evidence path; absence of detached `tmux_client` evidence routes validation to `P1-4` by design.

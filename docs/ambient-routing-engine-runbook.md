@@ -10,6 +10,10 @@ This runbook covers rollout gating and cutover decisions for daemon-owned routin
 - Legacy Swift shell-routing heuristics and shadow-compare runtime path are removed.
 - Dual-run compares daemon snapshot output against daemon-side legacy decisioning for rollout health.
 
+Manual interaction validation for project-card activation is documented in:
+
+- `docs/TERMINAL_ACTIVATION_MANUAL_TESTING.md` (canonical)
+
 ## Flags
 
 Daemon (`~/.capacitor/daemon/hem-v2.toml`):
