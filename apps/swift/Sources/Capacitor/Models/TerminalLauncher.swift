@@ -535,6 +535,9 @@ final class TerminalLauncher: ActivationActionDependencies {
                 projectPath: project.path,
                 projectName: project.name,
             )
+            if snapshot.status == "unavailable", snapshot.reasonCode == "NO_TRUSTED_EVIDENCE" {
+                debugLog("ARE no-trusted-evidence fallback launch path=\(project.path)")
+            }
             logger.info(
                 "ARE launcher snapshot: status=\(snapshot.status) target=\(snapshot.target.kind):\(snapshot.target.value ?? "nil") reason_code=\(snapshot.reasonCode)",
             )
@@ -657,11 +660,22 @@ final class TerminalLauncher: ActivationActionDependencies {
 
     private static func tmuxHostTTY(from snapshot: DaemonRoutingSnapshot) -> String? {
         snapshot.evidence
-            .first(where: { $0.evidenceType == "tmux_client" })
-            .flatMap { evidence in
+            .compactMap { evidence -> (tty: String, trustRank: UInt8, ageMs: UInt64)? in
+                guard evidence.evidenceType == "tmux_client" else { return nil }
                 let trimmed = evidence.value.trimmingCharacters(in: .whitespacesAndNewlines)
-                return trimmed.isEmpty ? nil : trimmed
+                guard !trimmed.isEmpty else { return nil }
+                return (trimmed, evidence.trustRank, evidence.ageMs)
             }
+            .min { left, right in
+                if left.trustRank != right.trustRank {
+                    return left.trustRank < right.trustRank
+                }
+                if left.ageMs != right.ageMs {
+                    return left.ageMs < right.ageMs
+                }
+                return left.tty < right.tty
+            }?
+            .tty
     }
 
     // MARK: - Action Execution

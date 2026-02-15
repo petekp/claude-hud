@@ -287,3 +287,45 @@
   - Green verification:
     - `swift test --filter testLaunchTerminalStalePrimaryFailureDoesNotLaunchFallbackAfterNewerClick` -> pass
     - `swift test` -> pass (`243` tests)
+
+#### Addendum (2026-02-15): G6 + G10 Targeted Hardening Slice
+- Scope:
+  - Close remaining gap coverage for `G6` (multi-client host-selection determinism) and `G10` (cold-start/empty-evidence fallback clarity).
+
+- `G6` (test-first, deterministic host evidence winner):
+  - Red -> green (Swift mapping):
+    - Added `TerminalLauncherTests.testAERoutingActionMappingAttachedTmuxWithMultipleClientEvidenceUsesMostTrustedFreshestHostTTY`.
+    - Reproduced failure before fix: snapshot with two `tmux_client` evidence rows selected first entry (`/dev/ttys-old`) instead of trusted/fresh row.
+    - Patch: `TerminalLauncher.tmuxHostTTY(from:)` now selects deterministically by `trust_rank` (best), then `age_ms` (freshest), then TTY lexicographic tiebreak.
+  - Red -> green (daemon resolver determinism):
+    - Added `resolver_selects_stable_tmux_client_evidence_for_equal_same_session_candidates`.
+    - Reproduced failure before fix: winning `tmux_client` evidence flipped when candidate order was reversed.
+    - Patch: resolver `pick_best_candidate(...)` now adds deterministic tmux-client evidence tiebreak (`tmux_client` value).
+  - Evidence markers:
+    - `~/.capacitor/daemon/app-debug.log:129859`
+      - `[MANUAL-TEST][G6-MULTI-CLIENT-DETERMINISM-20260215T164757Z] ... outcome=pass ...`
+
+- `G10` (test-first, cold-start no-evidence clarity + no-stall path):
+  - Red -> green (Swift launcher):
+    - Added `TerminalLauncherTests.testLaunchTerminalColdStartNoTrustedEvidenceLogsFallbackMarkerAndLaunchesWithoutStall`.
+    - Reproduced failure before fix: no explicit cold-start/no-evidence fallback marker.
+    - Patch: `launchTerminalWithAERSnapshot(...)` emits canonical marker
+      - `ARE no-trusted-evidence fallback launch path=<project_path>`
+      when `status=unavailable` and `reason_code=NO_TRUSTED_EVIDENCE`.
+  - Coverage extension (daemon baseline):
+    - Added `resolver_returns_unavailable_when_routing_registries_are_empty`.
+    - Confirms empty-registry contract: `status=unavailable`, `target=none`, `reason_code=NO_TRUSTED_EVIDENCE`.
+  - Evidence markers:
+    - `~/.capacitor/daemon/app-debug.log:128441`
+    - `~/.capacitor/daemon/app-debug.log:129283`
+    - `~/.capacitor/daemon/app-debug.log:129309`
+      - `[TerminalLauncher] ARE no-trusted-evidence fallback launch path=/Users/pete/Code/project-a`
+    - `~/.capacitor/daemon/app-debug.log:129860`
+      - `[MANUAL-TEST][G10-COLDSTART-NO-EVIDENCE-20260215T164757Z] ... outcome=pass ...`
+
+- Verification runs (post-fix):
+  - `swift test --filter 'TerminalLauncherTests/(testAERoutingActionMappingAttachedTmuxWithMultipleClientEvidenceUsesMostTrustedFreshestHostTTY|testLaunchTerminalColdStartNoTrustedEvidenceLogsFallbackMarkerAndLaunchesWithoutStall)'` -> pass
+  - `swift test --filter TerminalLauncherTests` -> pass (`41` tests)
+  - `cargo test -p capacitor-daemon resolver_selects_stable_tmux_client_evidence_for_equal_same_session_candidates -- --nocapture` -> pass
+  - `cargo test -p capacitor-daemon resolver_returns_unavailable_when_routing_registries_are_empty -- --nocapture` -> pass
+  - `cargo test -p capacitor-daemon resolver_ -- --nocapture` -> pass (`15` resolver tests)

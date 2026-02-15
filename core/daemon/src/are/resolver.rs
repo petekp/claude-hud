@@ -417,6 +417,8 @@ fn collect_conflicts(candidates: &[ResolvedCandidate], best: &ResolvedCandidate)
 
 fn pick_best_candidate(candidates: &[ResolvedCandidate]) -> Option<&ResolvedCandidate> {
     candidates.iter().max_by(|left, right| {
+        let left_tmux_tty = candidate_evidence_value(left, "tmux_client");
+        let right_tmux_tty = candidate_evidence_value(right, "tmux_client");
         left.scope_quality
             .cmp(&right.scope_quality)
             .then_with(|| right.trust_rank.cmp(&left.trust_rank))
@@ -426,7 +428,17 @@ fn pick_best_candidate(candidates: &[ResolvedCandidate]) -> Option<&ResolvedCand
                 let right_value = right.target.value.as_deref().unwrap_or("");
                 right_value.cmp(left_value)
             })
+            .then_with(|| right_tmux_tty.cmp(left_tmux_tty))
     })
+}
+
+fn candidate_evidence_value<'a>(candidate: &'a ResolvedCandidate, evidence_type: &str) -> &'a str {
+    candidate
+        .evidence
+        .iter()
+        .find(|evidence| evidence.evidence_type == evidence_type)
+        .map(|evidence| evidence.value.as_str())
+        .unwrap_or("")
 }
 
 fn candidate_scope_quality(
@@ -1062,5 +1074,92 @@ mod tests {
             }
         );
         assert_eq!(diagnostics.snapshot.reason_code, "SHELL_FALLBACK_ACTIVE");
+    }
+
+    #[test]
+    fn resolver_selects_stable_tmux_client_evidence_for_equal_same_session_candidates() {
+        let now = test_now();
+        let config = RoutingConfig::default();
+        let build_registry = |first_tty: &str, second_tty: &str| TmuxRegistry {
+            clients: vec![
+                TmuxClientSignal {
+                    client_tty: first_tty.to_string(),
+                    session_name: "caps".to_string(),
+                    pane_current_path: Some("/Users/petepetrash/Code/capacitor".to_string()),
+                    captured_at: now - Duration::milliseconds(200),
+                },
+                TmuxClientSignal {
+                    client_tty: second_tty.to_string(),
+                    session_name: "caps".to_string(),
+                    pane_current_path: Some("/Users/petepetrash/Code/capacitor".to_string()),
+                    captured_at: now - Duration::milliseconds(200),
+                },
+            ],
+            sessions: vec![],
+        };
+
+        let diagnostics_a = resolve(ResolveInput {
+            project_path: "/Users/petepetrash/Code/capacitor",
+            workspace_id: "workspace-g6-a",
+            now,
+            config: &config,
+            shell_registry: &ShellRegistry::default(),
+            tmux_registry: &build_registry("/dev/ttys200", "/dev/ttys100"),
+        });
+
+        let diagnostics_b = resolve(ResolveInput {
+            project_path: "/Users/petepetrash/Code/capacitor",
+            workspace_id: "workspace-g6-b",
+            now,
+            config: &config,
+            shell_registry: &ShellRegistry::default(),
+            tmux_registry: &build_registry("/dev/ttys100", "/dev/ttys200"),
+        });
+
+        let client_tty_a = diagnostics_a
+            .snapshot
+            .evidence
+            .iter()
+            .find(|evidence| evidence.evidence_type == "tmux_client")
+            .map(|evidence| evidence.value.clone());
+        let client_tty_b = diagnostics_b
+            .snapshot
+            .evidence
+            .iter()
+            .find(|evidence| evidence.evidence_type == "tmux_client")
+            .map(|evidence| evidence.value.clone());
+
+        assert_eq!(diagnostics_a.snapshot.target, diagnostics_b.snapshot.target);
+        assert_eq!(client_tty_a, client_tty_b);
+        assert_eq!(client_tty_a, Some("/dev/ttys100".to_string()));
+    }
+
+    #[test]
+    fn resolver_returns_unavailable_when_routing_registries_are_empty() {
+        let now = test_now();
+        let config = RoutingConfig::default();
+
+        let diagnostics = resolve(ResolveInput {
+            project_path: "/Users/petepetrash/Code/capacitor",
+            workspace_id: "workspace-g10",
+            now,
+            config: &config,
+            shell_registry: &ShellRegistry::default(),
+            tmux_registry: &TmuxRegistry::default(),
+        });
+
+        assert_eq!(diagnostics.snapshot.status, RoutingStatus::Unavailable);
+        assert_eq!(
+            diagnostics.snapshot.target,
+            RoutingTarget {
+                kind: RoutingTargetKind::None,
+                value: None,
+            }
+        );
+        assert_eq!(diagnostics.snapshot.reason_code, "NO_TRUSTED_EVIDENCE");
+        assert!(diagnostics.snapshot.evidence.is_empty());
+        assert!(diagnostics.candidate_targets.is_empty());
+        assert!(diagnostics.conflicts.is_empty());
+        assert_eq!(diagnostics.scope_resolution, "global_fallback");
     }
 }
