@@ -329,3 +329,50 @@
   - `cargo test -p capacitor-daemon resolver_selects_stable_tmux_client_evidence_for_equal_same_session_candidates -- --nocapture` -> pass
   - `cargo test -p capacitor-daemon resolver_returns_unavailable_when_routing_registries_are_empty -- --nocapture` -> pass
   - `cargo test -p capacitor-daemon resolver_ -- --nocapture` -> pass (`15` resolver tests)
+
+#### Addendum (2026-02-15): Post-merge Sign-off @ `bcb45a1`
+- Scope:
+  - Release-baseline quick sign-off slice on `main` after PR #8 merge.
+  - Canonical targets: `P0-4`, `P1-5`, `G6`, `G10`.
+  - Runtime surface: `CapacitorDebug` alpha on host with Accessibility-driven card-click automation.
+
+- Marker block:
+  - `POSTMERGE-SIGNOFF-20260215T171150Z` (`~/.capacitor/daemon/app-debug.log:41423-41623`)
+
+- `P0-4` (`latest-click-wins` quick smoke):
+  - Marker: `POSTMERGE-P0-4-20260215T171150Z` (`~/.capacitor/daemon/app-debug.log:41424-41467`)
+  - Evidence:
+    - Rapid `A -> B` click produced final action on second card (`ensureTmuxSession(sessionName: "agentic-canvas")`) with no `launchNewTerminal` in slice.
+    - Summary marker: `~/.capacitor/daemon/app-debug.log:43271`.
+  - Note:
+    - Canonical stale-marker emission was not observed in this short attached-host slice; stale-marker contract is covered by targeted automated test `testLaunchTerminalOverlappingRequestsLogsStaleSnapshotMarker` (pass on this baseline run).
+
+- `G6` (`multi-client host-selection determinism`):
+  - Marker: `POSTMERGE-G6-20260215T171150Z` (`~/.capacitor/daemon/app-debug.log:41468-41526`)
+  - Setup evidence:
+    - Multi-client tmux attached during run (`/dev/ttys066`, `/dev/ttys027`).
+  - Outcome evidence:
+    - Repeated clicks selected identical host TTY each time: `activateHostThenSwitchTmux(hostTty: "/dev/ttys027", sessionName: "plink")` at `41488`, `41497`, `41515`.
+    - Summary marker: `~/.capacitor/daemon/app-debug.log:43272`.
+
+- `G10` (`cold-start/no-evidence fallback clarity`):
+  - Marker: `POSTMERGE-G10-20260215T171150Z` (`~/.capacitor/daemon/app-debug.log:41527-41557`)
+  - Outcome:
+    - Cold-start kickstart smoke remained responsive/no-hang.
+    - In this quick host slice, daemon returned trusted routing quickly (no live `NO_TRUSTED_EVIDENCE` marker).
+    - Contract closure verified by targeted test `testLaunchTerminalColdStartNoTrustedEvidenceLogsFallbackMarkerAndLaunchesWithoutStall` (pass on this baseline run).
+    - Summary marker: `~/.capacitor/daemon/app-debug.log:43273`.
+
+- `P1-5` (`snapshot unavailable`):
+  - Marker: `POSTMERGE-P1-5-20260215T171150Z` (`~/.capacitor/daemon/app-debug.log:41558-41622`)
+  - Evidence:
+    - Socket-cut forced routing snapshot IPC failures (`NSPOSIXErrorDomain Code=2`) and immediate fallback launch path:
+      - `DaemonClient.sendAndReceive posix finish error=... Code=2` (`41563`)
+      - `[TerminalLauncher] launchNewTerminal project=plink ...` (`41564-41565`)
+    - Summary marker: `~/.capacitor/daemon/app-debug.log:43274`.
+
+- Targeted verification run on `main@bcb45a1`:
+  - `swift test --filter 'testAERoutingActionMappingAttachedTmuxWithMultipleClientEvidenceUsesMostTrustedFreshestHostTTY|testLaunchTerminalOverlappingRequestsLogsStaleSnapshotMarker|testLaunchTerminalColdStartNoTrustedEvidenceLogsFallbackMarkerAndLaunchesWithoutStall|testLaunchTerminalSnapshotFetchFailureLaunchesFallbackWithSuccessOutcome'` -> pass (`4/4`).
+
+- Sign-off decision:
+  - Post-merge release-baseline sign-off slice for terminal activation is **PASS** at `bcb45a1`.
