@@ -89,10 +89,12 @@ struct SetupStatusCard: View {
             testHookButton
                 .padding(.horizontal, 12)
 
-            if let issue = diagnostic.primaryIssue, isPolicyBlocked(issue) {
-                policyBlockedMessage
+            if let message = diagnostic.setupCardGuidanceMessage {
+                guidanceMessage(message)
                     .padding(.horizontal, 12)
-            } else if diagnostic.canAutoFix {
+            }
+
+            if diagnostic.canAutoFix {
                 fixButton
                     .padding(.horizontal, 12)
             }
@@ -193,16 +195,11 @@ struct SetupStatusCard: View {
         }
     }
 
-    private var policyBlockedMessage: some View {
+    private func guidanceMessage(_ message: String) -> some View {
         VStack(alignment: .leading, spacing: 4) {
-            if case let .policyBlocked(reason) = diagnostic.primaryIssue {
-                Text(reason)
-                    .font(AppTypography.captionSmall)
-                    .foregroundColor(.white.opacity(0.6))
-                Text("Remove this setting to enable session tracking.")
-                    .font(AppTypography.captionSmall)
-                    .foregroundColor(.white.opacity(0.5))
-            }
+            Text(message)
+                .font(AppTypography.captionSmall)
+                .foregroundColor(.white.opacity(0.58))
         }
     }
 
@@ -332,30 +329,44 @@ struct SetupStatusCard: View {
         if diagnostic.isFirstRun {
             return "hand.wave.fill"
         }
-        if let issue = diagnostic.primaryIssue, isPolicyBlocked(issue) {
+        if diagnostic.setupCardIsPolicyBlocked {
             return "lock.fill"
         }
-        return "exclamationmark.triangle.fill"
+        switch diagnostic.primaryIssue {
+        case .binaryMissing:
+            return "wrench.and.screwdriver.fill"
+        case .binaryBroken, .symlinkBroken:
+            return "exclamationmark.octagon.fill"
+        case .configMissing:
+            return "slider.horizontal.3"
+        case .notFiring:
+            return "bolt.slash.fill"
+        case .policyBlocked:
+            return "lock.fill"
+        case nil:
+            return "exclamationmark.triangle.fill"
+        }
     }
 
     private var headerMessage: String {
-        if diagnostic.isFirstRun {
-            return "Let's get you set up"
-        }
-        if let issue = diagnostic.primaryIssue, isPolicyBlocked(issue) {
-            return "Hooks disabled by policy"
-        }
-        return "Session tracking unavailable"
+        diagnostic.setupCardHeaderMessage
     }
 
     private var cardBackgroundColor: Color {
         if diagnostic.isFirstRun {
             return .blue
         }
-        if let issue = diagnostic.primaryIssue, isPolicyBlocked(issue) {
+        if diagnostic.setupCardIsPolicyBlocked {
             return .purple
         }
-        return .orange
+        switch diagnostic.primaryIssue {
+        case .binaryBroken, .symlinkBroken:
+            return .red
+        case .configMissing:
+            return .yellow
+        default:
+            return .orange
+        }
     }
 
     private var accessibilityDescription: String {
@@ -363,12 +374,5 @@ struct SetupStatusCard: View {
             return "Setup required. \(headerMessage)"
         }
         return "Warning. \(headerMessage)"
-    }
-
-    private func isPolicyBlocked(_ issue: HookIssue) -> Bool {
-        if case .policyBlocked = issue {
-            return true
-        }
-        return false
     }
 }

@@ -15,6 +15,27 @@ The dev environment masks problems:
 
 ## The Checklist
 
+### 0. Terminal Activation QA (When Activation/Routing Changed)
+
+If the release includes changes to terminal activation, tmux switching, or daemon routing snapshots, run:
+
+- `docs/TERMINAL_ACTIVATION_UX_SPEC.md` (canonical UX contract)
+- `docs/TERMINAL_ACTIVATION_MANUAL_TESTING.md` (canonical guide)
+
+Required sign-off artifacts:
+
+- [ ] Manual QA report attached to PR/issue (using canonical reporting template)
+- [ ] All P0 scenarios pass (or explicit triage documented)
+- [ ] Reuse scenarios show no unexpected `launchNewTerminal`
+- [ ] Host-hygiene gate enforced for P1 evidence (controlled terminal density or explicit isolation strategy documented)
+- [ ] P2 edge/failure scenarios reviewed (fixed or explicitly accepted with rationale)
+- [ ] UX POV summary included in report:
+  - [ ] One-click confidence (immediate, predictable acknowledgment)
+  - [ ] Context continuity (reuse existing terminal context first)
+  - [ ] No surprise fan-out (new windows only as fallback)
+  - [ ] Last-intent-wins confidence under rapid clicks
+  - [ ] Focus stability (no post-action focus drift)
+
 ### 1. Pre-Build Checks
 
 - [ ] **Rust code compiles**: `cargo build -p hud-core --release`

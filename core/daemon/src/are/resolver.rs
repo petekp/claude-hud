@@ -38,9 +38,28 @@ pub fn resolve(input: ResolveInput<'_>) -> RoutingDiagnostics {
             Some(client.session_name.as_str()),
             client.pane_current_path.as_deref(),
         );
-        if scope_quality == 0 {
+        let workspace_scoped = scope_name.starts_with("workspace_binding_");
+        let path_scoped = client
+            .pane_current_path
+            .as_deref()
+            .map(|path| shell_path_is_within_project(input.project_path, path))
+            .unwrap_or(false);
+        let session_scoped =
+            session_name_matches_project(input.project_path, client.session_name.as_str());
+        let session_name_fallback = session_scoped && !workspace_scoped && !path_scoped;
+        if scope_quality == 0 || (!workspace_scoped && !path_scoped && !session_scoped) {
             continue;
         }
+        let effective_scope_quality = if session_scoped {
+            scope_quality.max(3)
+        } else {
+            scope_quality
+        };
+        let effective_scope_name = if session_scoped && scope_quality < 3 {
+            "session_name_exact".to_string()
+        } else {
+            scope_name
+        };
         tmux_candidates.push(ResolvedCandidate {
             target: RoutingTarget {
                 kind: RoutingTargetKind::TmuxSession,
@@ -71,10 +90,18 @@ pub fn resolve(input: ResolveInput<'_>) -> RoutingDiagnostics {
                 },
             ],
             trust_rank: 1,
-            scope_quality,
+            scope_quality: effective_scope_quality,
             age_ms,
-            scope_resolution: scope_name,
+            scope_resolution: effective_scope_name,
+            session_name_fallback,
         });
+    }
+
+    if tmux_candidates
+        .iter()
+        .any(|candidate| !candidate.session_name_fallback)
+    {
+        tmux_candidates.retain(|candidate| !candidate.session_name_fallback);
     }
 
     if let Some(age) = freshest_tmux_age {
@@ -110,9 +137,29 @@ pub fn resolve(input: ResolveInput<'_>) -> RoutingDiagnostics {
             Some(session.session_name.as_str()),
             first_path,
         );
-        if scope_quality == 0 {
+        let workspace_scoped = scope_name.starts_with("workspace_binding_");
+        let path_scoped = first_path
+            .map(|path| shell_path_is_within_project(input.project_path, path))
+            .unwrap_or(false);
+        let session_scoped =
+            session_name_matches_project(input.project_path, session.session_name.as_str());
+        let session_name_fallback = session_scoped && !workspace_scoped && !path_scoped;
+        if session_name_fallback && age_ms > input.config.tmux_signal_fresh_ms {
             continue;
         }
+        if scope_quality == 0 || (!workspace_scoped && !path_scoped && !session_scoped) {
+            continue;
+        }
+        let effective_scope_quality = if session_scoped {
+            scope_quality.max(3)
+        } else {
+            scope_quality
+        };
+        let effective_scope_name = if session_scoped && scope_quality < 3 {
+            "session_name_exact".to_string()
+        } else {
+            scope_name
+        };
         tmux_session_candidates.push(ResolvedCandidate {
             target: RoutingTarget {
                 kind: RoutingTargetKind::TmuxSession,
@@ -132,10 +179,18 @@ pub fn resolve(input: ResolveInput<'_>) -> RoutingDiagnostics {
                 trust_rank: 1,
             }],
             trust_rank: 1,
-            scope_quality,
+            scope_quality: effective_scope_quality,
             age_ms,
-            scope_resolution: scope_name,
+            scope_resolution: effective_scope_name,
+            session_name_fallback,
         });
+    }
+
+    if tmux_session_candidates
+        .iter()
+        .any(|candidate| !candidate.session_name_fallback)
+    {
+        tmux_session_candidates.retain(|candidate| !candidate.session_name_fallback);
     }
 
     candidate_targets.extend(
@@ -173,7 +228,12 @@ pub fn resolve(input: ResolveInput<'_>) -> RoutingDiagnostics {
             shell.tmux_session.as_deref(),
             Some(shell.cwd.as_str()),
         );
-        if scope_quality == 0 {
+        let workspace_scoped = scope_name.starts_with("workspace_binding_");
+        let path_scoped = shell_path_is_within_project(input.project_path, shell.cwd.as_str());
+        if scope_quality <= 1 || (!workspace_scoped && !path_scoped) {
+            // Shell fallback must be project/workspace scoped.
+            // Global shell fallback causes cross-project misrouting where all cards
+            // collapse to the same terminal app/session target.
             continue;
         }
         let target = if let Some(session) = shell.tmux_session.as_ref() {
@@ -214,6 +274,7 @@ pub fn resolve(input: ResolveInput<'_>) -> RoutingDiagnostics {
             scope_quality,
             age_ms,
             scope_resolution: scope_name,
+            session_name_fallback: false,
         };
         if age_ms <= input.config.shell_signal_fresh_ms {
             shell_candidates.push(candidate);
@@ -297,6 +358,7 @@ struct ResolvedCandidate {
     scope_quality: u8,
     age_ms: u64,
     scope_resolution: String,
+    session_name_fallback: bool,
 }
 
 fn build_result(
@@ -439,6 +501,23 @@ fn sanitize_parent_app(value: Option<&str>) -> Option<&str> {
     })
 }
 
+fn shell_path_is_within_project(project_path: &str, shell_cwd: &str) -> bool {
+    let normalized_project = normalize_path(project_path);
+    let normalized_shell = normalize_path(shell_cwd);
+    normalized_shell == normalized_project
+        || normalized_shell.starts_with(&(normalized_project + "/"))
+}
+
+fn session_name_matches_project(project_path: &str, session_name: &str) -> bool {
+    let normalized_project = normalize_path(project_path);
+    let project_name = normalized_project
+        .rsplit('/')
+        .next()
+        .unwrap_or(normalized_project.as_str());
+    let normalized_session = normalize_path(session_name);
+    !project_name.is_empty() && normalized_session == project_name
+}
+
 fn age_ms(now: DateTime<Utc>, observed_at: DateTime<Utc>) -> u64 {
     now.signed_duration_since(observed_at)
         .num_milliseconds()
@@ -448,7 +527,9 @@ fn age_ms(now: DateTime<Utc>, observed_at: DateTime<Utc>) -> u64 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::are::registry::{ShellSignal, TmuxClientSignal, WorkspaceBinding};
+    use crate::are::registry::{
+        ShellSignal, TmuxClientSignal, TmuxSessionSignal, WorkspaceBinding,
+    };
     use crate::are::state::RoutingConfig;
     use chrono::Duration;
 
@@ -590,5 +671,396 @@ mod tests {
                 value: Some("alpha".to_string())
             }
         );
+    }
+
+    #[test]
+    fn resolver_does_not_apply_tmux_session_from_parent_directory() {
+        let now = test_now();
+        let config = RoutingConfig::default();
+        let tmux_registry = TmuxRegistry {
+            clients: vec![],
+            sessions: vec![TmuxSessionSignal {
+                session_name: "mac-mini".to_string(),
+                pane_paths: vec!["/Users/petepetrash".to_string()],
+                captured_at: now - Duration::milliseconds(300),
+            }],
+        };
+
+        let diagnostics = resolve(ResolveInput {
+            project_path: "/Users/petepetrash/Code/agent-skills",
+            workspace_id: "workspace-4a",
+            now,
+            config: &config,
+            shell_registry: &ShellRegistry::default(),
+            tmux_registry: &tmux_registry,
+        });
+
+        assert_eq!(diagnostics.snapshot.status, RoutingStatus::Unavailable);
+        assert_eq!(
+            diagnostics.snapshot.target,
+            RoutingTarget {
+                kind: RoutingTargetKind::None,
+                value: None,
+            }
+        );
+        assert_eq!(diagnostics.snapshot.reason_code, "NO_TRUSTED_EVIDENCE");
+    }
+
+    #[test]
+    fn resolver_prefers_tmux_session_with_project_name_match() {
+        let now = test_now();
+        let config = RoutingConfig::default();
+        let tmux_registry = TmuxRegistry {
+            clients: vec![],
+            sessions: vec![
+                TmuxSessionSignal {
+                    session_name: "mac-mini".to_string(),
+                    pane_paths: vec!["/Users/petepetrash".to_string()],
+                    captured_at: now - Duration::milliseconds(300),
+                },
+                TmuxSessionSignal {
+                    session_name: "agent-skills".to_string(),
+                    pane_paths: vec!["/Users/petepetrash/Code/claude-code-setup".to_string()],
+                    captured_at: now - Duration::milliseconds(500),
+                },
+            ],
+        };
+
+        let diagnostics = resolve(ResolveInput {
+            project_path: "/Users/petepetrash/Code/agent-skills",
+            workspace_id: "workspace-4b",
+            now,
+            config: &config,
+            shell_registry: &ShellRegistry::default(),
+            tmux_registry: &tmux_registry,
+        });
+
+        assert_eq!(diagnostics.snapshot.status, RoutingStatus::Detached);
+        assert_eq!(
+            diagnostics.snapshot.target,
+            RoutingTarget {
+                kind: RoutingTargetKind::TmuxSession,
+                value: Some("agent-skills".to_string()),
+            }
+        );
+        assert_eq!(diagnostics.snapshot.reason_code, "TMUX_SESSION_DETACHED");
+    }
+
+    #[test]
+    fn resolver_does_not_use_stale_session_name_exact_fallback() {
+        let now = test_now();
+        let mut config = RoutingConfig::default();
+        config.tmux_signal_fresh_ms = 1_000;
+        let tmux_registry = TmuxRegistry {
+            clients: vec![],
+            sessions: vec![TmuxSessionSignal {
+                session_name: "agent-skills".to_string(),
+                pane_paths: vec!["/Users/petepetrash/Code/unrelated".to_string()],
+                captured_at: now - Duration::seconds(5),
+            }],
+        };
+
+        let diagnostics = resolve(ResolveInput {
+            project_path: "/Users/petepetrash/Code/agent-skills",
+            workspace_id: "workspace-4c",
+            now,
+            config: &config,
+            shell_registry: &ShellRegistry::default(),
+            tmux_registry: &tmux_registry,
+        });
+
+        assert_eq!(diagnostics.snapshot.status, RoutingStatus::Unavailable);
+        assert_eq!(
+            diagnostics.snapshot.target,
+            RoutingTarget {
+                kind: RoutingTargetKind::None,
+                value: None,
+            }
+        );
+        assert_eq!(diagnostics.snapshot.reason_code, "NO_TRUSTED_EVIDENCE");
+    }
+
+    #[test]
+    fn resolver_prefers_project_path_scoped_tmux_session_over_session_name_fallback() {
+        let now = test_now();
+        let config = RoutingConfig::default();
+        let tmux_registry = TmuxRegistry {
+            clients: vec![],
+            sessions: vec![
+                TmuxSessionSignal {
+                    session_name: "agent-skills".to_string(),
+                    pane_paths: vec!["/Users/petepetrash/Code/unrelated".to_string()],
+                    captured_at: now - Duration::milliseconds(100),
+                },
+                TmuxSessionSignal {
+                    session_name: "zzz-project-context".to_string(),
+                    pane_paths: vec!["/Users/petepetrash/Code/agent-skills".to_string()],
+                    captured_at: now - Duration::milliseconds(500),
+                },
+            ],
+        };
+
+        let diagnostics = resolve(ResolveInput {
+            project_path: "/Users/petepetrash/Code/agent-skills",
+            workspace_id: "workspace-4d",
+            now,
+            config: &config,
+            shell_registry: &ShellRegistry::default(),
+            tmux_registry: &tmux_registry,
+        });
+
+        assert_eq!(diagnostics.snapshot.status, RoutingStatus::Detached);
+        assert_eq!(
+            diagnostics.snapshot.target,
+            RoutingTarget {
+                kind: RoutingTargetKind::TmuxSession,
+                value: Some("zzz-project-context".to_string()),
+            }
+        );
+        assert_eq!(diagnostics.snapshot.reason_code, "TMUX_SESSION_DETACHED");
+    }
+
+    #[test]
+    fn resolver_ambiguity_is_stable_across_repeated_runs() {
+        let now = test_now();
+        let config = RoutingConfig::default();
+        let tmux_registry = TmuxRegistry {
+            clients: vec![
+                TmuxClientSignal {
+                    client_tty: "/dev/ttys100".to_string(),
+                    session_name: "zeta".to_string(),
+                    pane_current_path: Some("/Users/petepetrash/Code/capacitor".to_string()),
+                    captured_at: now - Duration::milliseconds(300),
+                },
+                TmuxClientSignal {
+                    client_tty: "/dev/ttys101".to_string(),
+                    session_name: "alpha".to_string(),
+                    pane_current_path: Some("/Users/petepetrash/Code/capacitor".to_string()),
+                    captured_at: now - Duration::milliseconds(300),
+                },
+            ],
+            sessions: vec![],
+        };
+
+        for _ in 0..20 {
+            let diagnostics = resolve(ResolveInput {
+                project_path: "/Users/petepetrash/Code/capacitor",
+                workspace_id: "workspace-7",
+                now,
+                config: &config,
+                shell_registry: &ShellRegistry::default(),
+                tmux_registry: &tmux_registry,
+            });
+
+            assert_eq!(diagnostics.snapshot.status, RoutingStatus::Attached);
+            assert_eq!(
+                diagnostics.snapshot.target,
+                RoutingTarget {
+                    kind: RoutingTargetKind::TmuxSession,
+                    value: Some("alpha".to_string()),
+                }
+            );
+            assert_eq!(diagnostics.scope_resolution, "workspace_ambiguous");
+            assert!(diagnostics
+                .conflicts
+                .iter()
+                .any(|value| value == "ROUTING_CONFLICT_DETECTED"));
+            assert!(diagnostics
+                .conflicts
+                .iter()
+                .any(|value| value == "ROUTING_SCOPE_AMBIGUOUS"));
+        }
+    }
+
+    #[test]
+    fn resolver_treats_trailing_slash_paths_as_exact_match() {
+        let now = test_now();
+        let config = RoutingConfig::default();
+        let tmux_registry = TmuxRegistry {
+            clients: vec![],
+            sessions: vec![TmuxSessionSignal {
+                session_name: "caps".to_string(),
+                pane_paths: vec!["/Users/petepetrash/Code/capacitor/".to_string()],
+                captured_at: now - Duration::milliseconds(300),
+            }],
+        };
+
+        let diagnostics = resolve(ResolveInput {
+            project_path: "/Users/petepetrash/Code/capacitor",
+            workspace_id: "workspace-8",
+            now,
+            config: &config,
+            shell_registry: &ShellRegistry::default(),
+            tmux_registry: &tmux_registry,
+        });
+
+        assert_eq!(diagnostics.snapshot.status, RoutingStatus::Detached);
+        assert_eq!(
+            diagnostics.snapshot.target,
+            RoutingTarget {
+                kind: RoutingTargetKind::TmuxSession,
+                value: Some("caps".to_string()),
+            }
+        );
+        assert_eq!(diagnostics.scope_resolution, "path_exact");
+    }
+
+    #[test]
+    fn resolver_does_not_assume_case_or_symlink_path_equivalence() {
+        let now = test_now();
+        let config = RoutingConfig::default();
+
+        let case_variant_registry = TmuxRegistry {
+            clients: vec![],
+            sessions: vec![TmuxSessionSignal {
+                session_name: "caps-case".to_string(),
+                pane_paths: vec!["/Users/petepetrash/Code/CAPACITOR".to_string()],
+                captured_at: now - Duration::milliseconds(300),
+            }],
+        };
+
+        let case_variant = resolve(ResolveInput {
+            project_path: "/Users/petepetrash/Code/capacitor",
+            workspace_id: "workspace-9a",
+            now,
+            config: &config,
+            shell_registry: &ShellRegistry::default(),
+            tmux_registry: &case_variant_registry,
+        });
+
+        assert_eq!(case_variant.snapshot.status, RoutingStatus::Unavailable);
+        assert_eq!(case_variant.snapshot.reason_code, "NO_TRUSTED_EVIDENCE");
+
+        let symlink_like_registry = TmuxRegistry {
+            clients: vec![],
+            sessions: vec![TmuxSessionSignal {
+                session_name: "caps-symlink".to_string(),
+                pane_paths: vec!["/tmp/capacitor".to_string()],
+                captured_at: now - Duration::milliseconds(300),
+            }],
+        };
+
+        let symlink_like = resolve(ResolveInput {
+            project_path: "/private/tmp/capacitor",
+            workspace_id: "workspace-9b",
+            now,
+            config: &config,
+            shell_registry: &ShellRegistry::default(),
+            tmux_registry: &symlink_like_registry,
+        });
+
+        assert_eq!(symlink_like.snapshot.status, RoutingStatus::Unavailable);
+        assert_eq!(symlink_like.snapshot.reason_code, "NO_TRUSTED_EVIDENCE");
+    }
+
+    #[test]
+    fn resolver_does_not_apply_shell_fallback_from_unrelated_project_path() {
+        let now = test_now();
+        let config = RoutingConfig::default();
+        let mut shell_registry = ShellRegistry::default();
+        shell_registry.upsert(ShellSignal {
+            pid: 42,
+            proc_start: Some(200),
+            cwd: "/Users/petepetrash/Code/plink".to_string(),
+            tty: "/dev/ttys040".to_string(),
+            parent_app: Some("ghostty".to_string()),
+            tmux_session: None,
+            tmux_client_tty: None,
+            tmux_pane: None,
+            recorded_at: now - Duration::milliseconds(500),
+        });
+
+        let diagnostics = resolve(ResolveInput {
+            project_path: "/Users/petepetrash/Code/capacitor",
+            workspace_id: "workspace-4",
+            now,
+            config: &config,
+            shell_registry: &shell_registry,
+            tmux_registry: &TmuxRegistry::default(),
+        });
+
+        assert_eq!(diagnostics.snapshot.status, RoutingStatus::Unavailable);
+        assert_eq!(
+            diagnostics.snapshot.target,
+            RoutingTarget {
+                kind: RoutingTargetKind::None,
+                value: None,
+            }
+        );
+        assert_eq!(diagnostics.snapshot.reason_code, "NO_TRUSTED_EVIDENCE");
+    }
+
+    #[test]
+    fn resolver_does_not_apply_shell_fallback_from_parent_directory() {
+        let now = test_now();
+        let config = RoutingConfig::default();
+        let mut shell_registry = ShellRegistry::default();
+        shell_registry.upsert(ShellSignal {
+            pid: 43,
+            proc_start: Some(201),
+            cwd: "/Users/petepetrash".to_string(),
+            tty: "/dev/ttys041".to_string(),
+            parent_app: Some("vscode".to_string()),
+            tmux_session: None,
+            tmux_client_tty: None,
+            tmux_pane: None,
+            recorded_at: now - Duration::milliseconds(500),
+        });
+
+        let diagnostics = resolve(ResolveInput {
+            project_path: "/Users/petepetrash/Code/agent-skills",
+            workspace_id: "workspace-5",
+            now,
+            config: &config,
+            shell_registry: &shell_registry,
+            tmux_registry: &TmuxRegistry::default(),
+        });
+
+        assert_eq!(diagnostics.snapshot.status, RoutingStatus::Unavailable);
+        assert_eq!(
+            diagnostics.snapshot.target,
+            RoutingTarget {
+                kind: RoutingTargetKind::None,
+                value: None,
+            }
+        );
+        assert_eq!(diagnostics.snapshot.reason_code, "NO_TRUSTED_EVIDENCE");
+    }
+
+    #[test]
+    fn resolver_applies_shell_fallback_for_child_directory_of_project() {
+        let now = test_now();
+        let config = RoutingConfig::default();
+        let mut shell_registry = ShellRegistry::default();
+        shell_registry.upsert(ShellSignal {
+            pid: 44,
+            proc_start: Some(202),
+            cwd: "/Users/petepetrash/Code/capacitor/apps/swift".to_string(),
+            tty: "/dev/ttys042".to_string(),
+            parent_app: Some("ghostty".to_string()),
+            tmux_session: None,
+            tmux_client_tty: None,
+            tmux_pane: None,
+            recorded_at: now - Duration::milliseconds(500),
+        });
+
+        let diagnostics = resolve(ResolveInput {
+            project_path: "/Users/petepetrash/Code/capacitor",
+            workspace_id: "workspace-6",
+            now,
+            config: &config,
+            shell_registry: &shell_registry,
+            tmux_registry: &TmuxRegistry::default(),
+        });
+
+        assert_eq!(diagnostics.snapshot.status, RoutingStatus::Detached);
+        assert_eq!(
+            diagnostics.snapshot.target,
+            RoutingTarget {
+                kind: RoutingTargetKind::TerminalApp,
+                value: Some("ghostty".to_string()),
+            }
+        );
+        assert_eq!(diagnostics.snapshot.reason_code, "SHELL_FALLBACK_ACTIVE");
     }
 }

@@ -141,3 +141,7 @@ capacitor/
 ## Development
 
 See `scripts/dev/` for setup and run helpers. The app uses a Rust core with UniFFI bindings.
+
+Manual terminal activation QA guide:
+
+- `docs/TERMINAL_ACTIVATION_MANUAL_TESTING.md`

@@ -132,6 +132,14 @@ Hook handling is implemented in Rust (`core/hud-hook/`) and forwarded to the dae
    ./scripts/sync-hooks.sh --force
    ```
 
+## Manual QA: Terminal Activation
+
+Canonical manual QA guide:
+
+- `docs/TERMINAL_ACTIVATION_MANUAL_TESTING.md`
+
+Use this guide for all project-card click activation validation. Legacy terminal matrix docs under `.claude/docs/` are compatibility pointers only.
+
 ## Modifying Statistics Parsing
 
 - Update regex patterns in `parse_stats_from_content()` (`core/hud-core/src/stats.rs`)
