@@ -430,3 +430,149 @@
 - Revalidation decision:
   - `agent-skills` no-new-window regression is resolved in both normal and outage paths.
   - Required outage sub-scenarios `P1-5A/P1-5B/P1-5C` are covered with live daemon log evidence and pass expected signal contracts.
+
+#### Addendum (2026-02-15): Full Matrix Closure @ `2b03717` (Fresh Session)
+- Scope:
+  - Complete canonical matrix closure on pushed `main` commit `2b03717` with release-quality evidence.
+  - Preserve strict host-hygiene gate and explicit triage for any non-repeatable live scenario.
+
+- Preflight + host hygiene (fresh):
+  - Commit check: `2b03717`.
+  - Daemon healthy + socket present (`launchctl state=running`, `daemon.sock` exists).
+  - Host-hygiene marker: `FMX-2b03717-CLOSURE` (`~/.capacitor/daemon/app-debug.log:141832-141834`):
+    - `ghostty_windows=0`, `iterm_windows=0`, `terminal_windows=0`, `total_windows=0`.
+    - Process baseline (same run): one background Ghostty process with zero visible windows.
+
+- Live manual evidence captured on `2b03717`:
+  - P0 run marker: `FMX-2b03717-20260215T192418Z` (`~/.capacitor/daemon/app-debug.log:119076-119206`).
+    - `P0-1` marker range: `119122-119153`.
+    - `P0-2` marker range: `119154-119164`.
+    - `P0-3` marker range: `119165-119205`.
+    - `P0-4` start marker: `119206`; stale suppression + latest-wins signals in same slice:
+      - `executeActivationAction ... tool-ui/capacitor` (`119230`, `119238`)
+      - `ARE snapshot ignored for stale request ... stage=post_primary` (`119249`)
+  - Required outage scenarios already captured on this commit:
+    - `P1-5A`: `103244-103271` (path-scoped tmux recovery success; no launch).
+    - `P1-5B`: `103388-103420` (exact session-name recovery success; no launch).
+    - `P1-5C`: `103604-103643` (single fallback launch acceptable).
+  - Normal `agent-skills` click revalidation:
+    - `AGENT-SKILLS-NORMAL2-20260215T190218Z`: `104128-104161`.
+
+- Fresh-session blocker (explicit triage record):
+  - Multiple input-injection attempts in this fresh session produced no activation actions:
+    - `COORD-CALIBRATE` (`137664-137904`)
+    - `COORD-SWEEP` (`138564-138626`)
+    - `COORD-CONVERT` (`140065-140104`)
+    - `COORD-CAL-2` (`140869-140927`)
+    - `KEYBOARD-SWEEP` (`141510-141563`)
+  - During these slices, no corresponding `TerminalLauncher` action lines were emitted between start/end markers.
+  - Accessibility hit-testing in this session resolves to `AXApplication` only (menu tree visible, project-card controls not exposed), so automated click replay is currently non-deterministic on this host.
+
+- Deterministic contract closure (same commit, same session):
+  - `swift test --filter TerminalLauncherTests` -> pass (`43/43`).
+  - `swift test --filter ActivationActionExecutorTests` -> pass (`15/15`).
+  - `cargo test -p capacitor-daemon resolver_ -- --nocapture` -> pass (`15/15` resolver tests).
+
+- Canonical matrix status @ `2b03717`:
+  - `P0-1`: PASS (live marker evidence).
+  - `P0-2`: PASS (live marker evidence).
+  - `P0-3`: PASS (live marker evidence).
+  - `P0-4`: PASS (live stale-suppression/latest-wins signal in run slice; start marker present).
+  - `P0-5`: TRIAGED (live replay blocked in fresh session; covered by overlap/burst launcher tests:
+    - `testLaunchTerminalRepeatedSameCardRapidClicksCoalesceToSingleOutcome`
+    - `testLaunchTerminalLatestClickEmitsSingleFinalOutcomeSequence`).
+  - `P1-1`: TRIAGED (covered by executor/launcher no-client reuse/fallback tests; fresh live replay blocked).
+  - `P1-2`: TRIAGED (covered by ensure+launch fallback tests; fresh live replay blocked).
+  - `P1-3`: TRIAGED-CONDITIONAL (policy remains conditional on detached `tmux_client` evidence; deterministic mapping tests pass).
+  - `P1-4`: TRIAGED (deterministic detached ensure-first mapping tests pass; fresh live replay blocked).
+  - `P1-5A`: PASS (live outage marker evidence).
+  - `P1-5B`: PASS (live outage marker evidence).
+  - `P1-5C`: PASS (live outage marker evidence).
+  - `P1-6`: TRIAGED (deterministic Ghostty multi-window/no-fan-out tests pass; fresh live replay blocked).
+  - `P1-7`: TRIAGED (TTY discovery / terminal ownership contract tests pass; fresh live replay blocked).
+  - `P1-8`: TRIAGED (TTY discovery / terminal ownership contract tests pass; fresh live replay blocked).
+  - `P2-1..P2-8`: PASS (deterministic test coverage complete; launcher + resolver suites green in this session).
+
+- Release confidence decision:
+  - Functional contract confidence: **high** (all deterministic `P2`/overlap/outage paths green on `2b03717`, required `P1-5A/B/C` live evidence present).
+  - UX click-surface confidence in this fresh host session: **partially blocked** due non-deterministic input injection/AX surface exposure.
+  - Accepted triage for this run: treat blocked live items as covered by deterministic contracts plus existing same-commit live outage evidence above.
+
+#### Addendum (2026-02-15): Human-Driven Full Matrix Rerun @ `2b03717` (Operator Final)
+- Run metadata:
+  - Commit: `2b03717`
+  - Operator: human manual clicks (Pete), Codex instrumentation/log extraction
+  - Run ID: `FMX-2b03717-HUMAN-20260215T215443Z`
+  - Run markers: `~/.capacitor/daemon/app-debug.log:90644-104881`
+
+- Preflight + strict host hygiene:
+  - Restarted alpha app and verified daemon/socket health.
+  - Enforced strict host cleanup (quit/kill Ghostty, iTerm2, Terminal.app) before controlled scenarios.
+  - Baseline before run: `Ghostty=0`, `iTerm2=0`, `Terminal=0`.
+
+- P0 (live, human-driven):
+  - `P0-1`: PASS (`90758-91603`)
+    - `activateHostThenSwitchTmux(... sessionName: "tool-ui")`, no `launchNewTerminal`.
+  - `P0-2`: PASS (`91762-92134`)
+    - `ensureTmuxSession(sessionName: "capacitor")`, no `launchNewTerminal`.
+  - `P0-3`: PASS (`92135-92481`)
+    - ordered sequential actions: `tool-ui` then `capacitor`, no launch fallback.
+  - `P0-4`: PASS (`92482-92770`)
+    - rapid `tool-ui -> capacitor` lands on latest click; no `launchNewTerminal`.
+  - `P0-5`: PASS (`92771-93217`)
+    - rapid `tool-ui -> capacitor -> tool-ui` final action returns to `tool-ui`; no `launchNewTerminal`.
+
+- P1 (live, human-driven):
+  - `P1-1`: PASS (`93221-94147`)
+    - no-client branch: `ensureTmuxSession -> launchTerminalWithTmuxSession`, no generic launch.
+  - `P1-2`: PASS (`95120-95471`)
+    - with no terminal apps running, fallback path is `launchTerminalWithTmuxSession` (expected), no generic launch.
+  - `P1-3`: CONDITIONAL ROUTE (`95768-96060`)
+    - no detached `tmux_client` evidence in slice; evaluated under `P1-4` policy path.
+  - `P1-4`: INVALID FIRST ATTEMPT (`96061-96388`)
+    - attached-client action (`activateHostThenSwitchTmux`) contaminated detached/no-client expectation.
+  - `P1-4-RERUN`: PASS (`96580-96900`)
+    - detached/no-client setup enforced; `ensureTmuxSession -> launchTerminalWithTmuxSession`.
+  - `P1-5A`: PASS (`96989-97275`)
+    - outage (`Code=2`) + recovery success: `snapshot_unavailable_tmux_recovery success ... session=capacitor`, no `launchNewTerminal`.
+  - `P1-5B`: PASS (`97606-97875`)
+    - outage (`Code=2`) + exact-name fixture (`agent-skills` with mismatched pane path) recovered via:
+      - `snapshot_unavailable_tmux_recovery session=agent-skills ...`
+      - `ensureTmuxSession session=agent-skills`
+      - success marker; no `launchNewTerminal`.
+  - `P1-5C`: PASS (`98122-98503`)
+    - outage (`Code=2`) + removed `tool-ui` session produced one fallback launch attempt:
+      - `launchNewTerminal project=tool-ui ...` (`107`)
+      - companion script line (`108`)
+    - no recovery-success marker (expected).
+  - `P1-6`: PASS (constrained-host) (`98905-100114`)
+    - host had `tmux_clients_before=3` and `ghostty_windows_before=1`;
+    - no `launchNewTerminal` fan-out; reuse path remained deterministic.
+    - Note: this host did not expose 2+ Ghostty windows despite explicit staging attempts.
+  - `P1-7`: PASS (`101646-101998`)
+    - iTerm ownership precedence validated:
+      - `discoverTerminalOwningTTY iTerm owns tty=/dev/ttys076`
+      - `activateTerminalByTTYDiscovery found terminal=iTerm2 ...`
+  - `P1-8`: PASS (`102247-102891`)
+    - Terminal.app ownership precedence validated:
+      - `discoverTerminalOwningTTY Terminal owns tty=/dev/ttys074`
+      - `activateTerminalByTTYDiscovery found terminal=Terminal.app ...`
+
+- P2 (deterministic closure in same session/run window):
+  - Swift launcher contracts:
+    - `swift test --filter 'TerminalLauncherTests/(testLaunchTerminalPrimaryFailureExecutesSingleFallbackLaunch|testLaunchTerminalPrimaryLaunchFailureDoesNotChainSecondFallback|testLaunchTerminalOverlappingRequestsLogsStaleSnapshotMarker|testLaunchTerminalRepeatedSameCardRapidClicksCoalesceToSingleOutcome|testLaunchTerminalSnapshotFailureFallbackLaunchFailureReturnsUnsuccessfulResult|testLaunchTerminalStalePrimaryFailureDoesNotLaunchFallbackAfterNewerClick|testLaunchTerminalSnapshotFetchFailureLaunchesFallbackWithSuccessOutcome|testAERoutingActionMappingDetachedUnknownTerminalAppLaunchesNewTerminal)'`
+    - Result: `8/8` pass.
+  - Swift executor contracts:
+    - `swift test --filter 'ActivationActionExecutorTests/(testActivateHostThenSwitchTmuxNoClientAttachedGhosttyZeroWindowsFallsBackToEnsureSession|testActivateHostThenSwitchTmuxNoClientAttachedSwitchFailureFallsBackToEnsureSession)'`
+    - Result: `2/2` pass.
+  - Daemon resolver hardening:
+    - `cargo test -p capacitor-daemon resolver_ -- --nocapture`
+    - Result: `15/15` pass.
+
+- Final human smoke (required final operator step):
+  - `FINAL-SMOKE-P0-4`: PASS (`103309-104518`)
+  - Rapid `tool-ui -> capacitor` produced latest-intent action with no `launchNewTerminal`.
+
+- Human rerun decision:
+  - Full human-driven P0/P1 matrix completed on `2b03717` with required `P1-5A/B/C` outage evidence.
+  - P2 hardening remains fully green under deterministic contracts in the same session.
