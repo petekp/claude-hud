@@ -35,3 +35,25 @@ teardown() {
     run grep -q "Capacitor-v1.2.3-$(uname -m).zip" "$TEST_DIR/dist/appcast.xml"
     [ "$status" -eq 0 ]
 }
+
+@test "generate-appcast --sign falls back to unsigned output when sign_update fails" {
+    if [ "$(uname -m)" != "arm64" ]; then
+        skip "generate-appcast.sh requires arm64"
+    fi
+
+    mkdir -p "$TEST_DIR/apps/swift/.build/artifacts/sparkle/Sparkle/bin"
+    cat > "$TEST_DIR/apps/swift/.build/artifacts/sparkle/Sparkle/bin/sign_update" <<'EOF'
+#!/bin/bash
+echo "mock signature failure" >&2
+exit 7
+EOF
+    chmod +x "$TEST_DIR/apps/swift/.build/artifacts/sparkle/Sparkle/bin/sign_update"
+
+    run env CI=1 "$TEST_DIR/scripts/release/generate-appcast.sh" --sign
+    [ "$status" -eq 0 ]
+    [ -f "$TEST_DIR/dist/appcast.xml" ]
+    [[ "$output" == *"Signed: No"* ]]
+
+    run grep -q "sparkle:edSignature=" "$TEST_DIR/dist/appcast.xml"
+    [ "$status" -eq 1 ]
+}

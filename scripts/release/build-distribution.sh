@@ -40,8 +40,6 @@ fi
 SWIFT_DIR="$PROJECT_ROOT/apps/swift"
 APP_BUNDLE="$SWIFT_DIR/Capacitor.app"
 DIST_DIR="$PROJECT_ROOT/dist"
-APP_NAME="Capacitor"
-BUNDLE_ID="com.capacitor.app"
 
 # Read version from VERSION file
 VERSION_FILE="$PROJECT_ROOT/VERSION"
