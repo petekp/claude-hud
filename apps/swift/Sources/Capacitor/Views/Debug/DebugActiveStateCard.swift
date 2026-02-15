@@ -4,17 +4,6 @@ import SwiftUI
     struct DebugActiveStateCard: View {
         @Environment(AppState.self) var appState: AppState
 
-        private var mostRecentShellSummary: String {
-            guard let shell = appState.shellStateStore.mostRecentShell else {
-                return "none"
-            }
-            return "pid=\(shell.pid) cwd=\(shell.entry.cwd) tty=\(shell.entry.tty)"
-        }
-
-        private var shellCount: Int {
-            appState.shellStateStore.state?.shells.count ?? 0
-        }
-
         var body: some View {
             VStack(alignment: .leading, spacing: 6) {
                 Text("Debug: Active Resolver")
@@ -26,10 +15,6 @@ import SwiftUI
                     .foregroundColor(.white.opacity(0.9))
 
                 Text("activeSource=\(String(describing: appState.activeSource))")
-                    .font(.caption)
-                    .foregroundColor(.white.opacity(0.9))
-
-                Text("shells=\(shellCount) mostRecent=\(mostRecentShellSummary)")
                     .font(.caption)
                     .foregroundColor(.white.opacity(0.9))
             }

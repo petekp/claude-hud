@@ -6,10 +6,65 @@ struct DaemonHealth: Decodable {
     let pid: Int
     let version: String
     let protocolVersion: Int
+    let routing: DaemonRoutingHealth?
 
     enum CodingKeys: String, CodingKey {
-        case status, pid, version
+        case status, pid, version, routing
         case protocolVersion = "protocol_version"
+    }
+}
+
+struct DaemonRoutingHealth: Decodable {
+    let enabled: Bool
+    let dualRunEnabled: Bool
+    let snapshotsEmitted: UInt64
+    let legacyVsAreStatusMismatch: UInt64
+    let legacyVsAreTargetMismatch: UInt64
+    let rollout: DaemonRoutingRollout?
+
+    enum CodingKeys: String, CodingKey {
+        case enabled
+        case dualRunEnabled = "dual_run_enabled"
+        case snapshotsEmitted = "snapshots_emitted"
+        case legacyVsAreStatusMismatch = "legacy_vs_are_status_mismatch"
+        case legacyVsAreTargetMismatch = "legacy_vs_are_target_mismatch"
+        case rollout
+    }
+}
+
+struct DaemonRoutingRollout: Decodable {
+    let agreementGateTarget: Double
+    let minComparisonsRequired: UInt64?
+    let minWindowHoursRequired: UInt64?
+    let comparisons: UInt64
+    let volumeGateMet: Bool?
+    let windowGateMet: Bool?
+    let statusAgreementRate: Double?
+    let targetAgreementRate: Double?
+    let firstComparisonAt: String?
+    let lastComparisonAt: String?
+    let windowElapsedHours: UInt64?
+    let statusGateMet: Bool
+    let targetGateMet: Bool
+    let statusRowDefaultReady: Bool
+    let launcherDefaultReady: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case agreementGateTarget = "agreement_gate_target"
+        case minComparisonsRequired = "min_comparisons_required"
+        case minWindowHoursRequired = "min_window_hours_required"
+        case comparisons
+        case volumeGateMet = "volume_gate_met"
+        case windowGateMet = "window_gate_met"
+        case statusAgreementRate = "status_agreement_rate"
+        case targetAgreementRate = "target_agreement_rate"
+        case firstComparisonAt = "first_comparison_at"
+        case lastComparisonAt = "last_comparison_at"
+        case windowElapsedHours = "window_elapsed_hours"
+        case statusGateMet = "status_gate_met"
+        case targetGateMet = "target_gate_met"
+        case statusRowDefaultReady = "status_row_default_ready"
+        case launcherDefaultReady = "launcher_default_ready"
     }
 }
 

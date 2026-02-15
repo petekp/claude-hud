@@ -50,7 +50,7 @@ fn can_bind_socket(home: &Path) -> bool {
 fn wait_for_socket(path: &Path, timeout: Duration) {
     let deadline = Instant::now() + timeout;
     while Instant::now() < deadline {
-        if path.exists() {
+        if path.exists() && UnixStream::connect(path).is_ok() {
             return;
         }
         sleep(Duration::from_millis(25));
@@ -111,7 +111,7 @@ fn daemon_ipc_health_and_liveness_smoke() {
         return;
     }
     let child = spawn_daemon(home.path());
-    let _guard = DaemonGuard { child };
+    let mut guard = Some(DaemonGuard { child });
 
     wait_for_socket(&socket, Duration::from_secs(5));
 
@@ -288,6 +288,80 @@ fn daemon_ipc_health_and_liveness_smoke() {
             .get("snapshots_emitted")
             .and_then(|value| value.as_u64()),
         Some(0)
+    );
+    let rollout = routing
+        .get("rollout")
+        .and_then(|value| value.as_object())
+        .expect("routing rollout object");
+    assert_eq!(
+        rollout
+            .get("agreement_gate_target")
+            .and_then(|value| value.as_f64()),
+        Some(0.995)
+    );
+    assert_eq!(
+        rollout
+            .get("min_comparisons_required")
+            .and_then(|value| value.as_u64()),
+        Some(1_000)
+    );
+    assert_eq!(
+        rollout
+            .get("min_window_hours_required")
+            .and_then(|value| value.as_u64()),
+        Some(168)
+    );
+    assert_eq!(
+        rollout.get("comparisons").and_then(|value| value.as_u64()),
+        Some(0)
+    );
+    assert_eq!(
+        rollout
+            .get("volume_gate_met")
+            .and_then(|value| value.as_bool()),
+        Some(false)
+    );
+    assert_eq!(
+        rollout
+            .get("window_gate_met")
+            .and_then(|value| value.as_bool()),
+        Some(false)
+    );
+    assert!(
+        rollout.get("status_agreement_rate").is_none()
+            || rollout
+                .get("status_agreement_rate")
+                .is_some_and(|value| value.is_null())
+    );
+    assert!(
+        rollout.get("target_agreement_rate").is_none()
+            || rollout
+                .get("target_agreement_rate")
+                .is_some_and(|value| value.is_null())
+    );
+    assert_eq!(
+        rollout
+            .get("status_gate_met")
+            .and_then(|value| value.as_bool()),
+        Some(false)
+    );
+    assert_eq!(
+        rollout
+            .get("target_gate_met")
+            .and_then(|value| value.as_bool()),
+        Some(false)
+    );
+    assert_eq!(
+        rollout
+            .get("status_row_default_ready")
+            .and_then(|value| value.as_bool()),
+        Some(false)
+    );
+    assert_eq!(
+        rollout
+            .get("launcher_default_ready")
+            .and_then(|value| value.as_bool()),
+        Some(false)
     );
 
     let config = send_request(
@@ -517,6 +591,110 @@ fn daemon_ipc_health_and_liveness_smoke() {
             .and_then(|value| value.as_u64()),
         Some(1)
     );
+    let rollout_after = routing_after
+        .get("rollout")
+        .and_then(|value| value.as_object())
+        .expect("routing rollout health after snapshot");
+    assert_eq!(
+        rollout_after
+            .get("comparisons")
+            .and_then(|value| value.as_u64()),
+        Some(1)
+    );
+    assert_eq!(
+        rollout_after
+            .get("status_agreement_rate")
+            .and_then(|value| value.as_f64()),
+        Some(1.0)
+    );
+    assert_eq!(
+        rollout_after
+            .get("target_agreement_rate")
+            .and_then(|value| value.as_f64()),
+        Some(1.0)
+    );
+    assert_eq!(
+        rollout_after
+            .get("status_row_default_ready")
+            .and_then(|value| value.as_bool()),
+        Some(false)
+    );
+    assert_eq!(
+        rollout_after
+            .get("launcher_default_ready")
+            .and_then(|value| value.as_bool()),
+        Some(false)
+    );
+    assert_eq!(
+        rollout_after
+            .get("volume_gate_met")
+            .and_then(|value| value.as_bool()),
+        Some(false)
+    );
+    assert_eq!(
+        rollout_after
+            .get("window_gate_met")
+            .and_then(|value| value.as_bool()),
+        Some(false)
+    );
+    let first_comparison_before_restart = rollout_after
+        .get("first_comparison_at")
+        .and_then(|value| value.as_str())
+        .map(str::to_string);
+    let last_comparison_before_restart = rollout_after
+        .get("last_comparison_at")
+        .and_then(|value| value.as_str())
+        .map(str::to_string);
+    assert!(first_comparison_before_restart.is_some());
+    assert!(last_comparison_before_restart.is_some());
+
+    drop(guard.take());
+    guard = Some(DaemonGuard {
+        child: spawn_daemon(home.path()),
+    });
+    wait_for_socket(&socket, Duration::from_secs(5));
+
+    let health_after_restart = send_request(
+        &socket,
+        Request {
+            protocol_version: PROTOCOL_VERSION,
+            method: Method::GetHealth,
+            id: Some("health-after-restart".to_string()),
+            params: None,
+        },
+    );
+    assert!(
+        health_after_restart.ok,
+        "health after restart response was not ok"
+    );
+    let routing_after_restart = health_after_restart
+        .data
+        .as_ref()
+        .and_then(|data| data.get("routing"))
+        .and_then(|value| value.as_object())
+        .expect("routing health after restart");
+    let rollout_after_restart = routing_after_restart
+        .get("rollout")
+        .and_then(|value| value.as_object())
+        .expect("routing rollout after restart");
+    assert_eq!(
+        rollout_after_restart
+            .get("comparisons")
+            .and_then(|value| value.as_u64()),
+        Some(1)
+    );
+    assert_eq!(
+        rollout_after_restart
+            .get("first_comparison_at")
+            .and_then(|value| value.as_str()),
+        first_comparison_before_restart.as_deref()
+    );
+    assert_eq!(
+        rollout_after_restart
+            .get("last_comparison_at")
+            .and_then(|value| value.as_str()),
+        last_comparison_before_restart.as_deref()
+    );
 
     let sessions = send_request(
         &socket,
@@ -741,4 +919,5 @@ fn daemon_ipc_health_and_liveness_smoke() {
         tombstone.get("session_id").and_then(|value| value.as_str()),
         Some("session-test-1")
     );
+    drop(guard.take());
 }

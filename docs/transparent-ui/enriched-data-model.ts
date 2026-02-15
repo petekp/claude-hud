@@ -562,10 +562,10 @@ interface FailureCatalogEntry {
  *    - Code comments with "IMPORTANT" or "BUG FIX"
  *
  * 5. Add live data integration:
- *    - Fetch daemon state snapshot
- *    - Fetch activation trace from /activation-trace endpoint
- *    - Highlight current state in state machines
- *    - Annotate policy table with last decision
+ *    - Fetch daemon state snapshot from /daemon-snapshot
+ *    - Fetch routing snapshot/diagnostics from /routing-snapshot + /routing-diagnostics
+ *    - Fetch rollout gate state from /routing-rollout
+ *    - Overlay activation outcome events from /telemetry-stream
  */
 
 export type {

@@ -32,7 +32,7 @@ final class ActiveProjectResolverTests: XCTestCase {
             ),
         ])
 
-        let resolver = ActiveProjectResolver(sessionStateManager: sessionStateManager, shellStateStore: ShellStateStore())
+        let resolver = ActiveProjectResolver(sessionStateManager: sessionStateManager)
         resolver.updateProjects([projectA, projectB])
         resolver.resolve()
 
@@ -68,7 +68,7 @@ final class ActiveProjectResolverTests: XCTestCase {
             ),
         ])
 
-        let resolver = ActiveProjectResolver(sessionStateManager: sessionStateManager, shellStateStore: ShellStateStore())
+        let resolver = ActiveProjectResolver(sessionStateManager: sessionStateManager)
         resolver.updateProjects([projectA, projectB])
         resolver.resolve()
 
@@ -76,64 +76,16 @@ final class ActiveProjectResolverTests: XCTestCase {
         XCTAssertEqual(resolver.activeSource, .claude(sessionId: "session-b"))
     }
 
-    func testShellWorktreeMapsToOnlyPinnedWorkspaceInRepo() throws {
-        let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
-        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
-        defer { try? FileManager.default.removeItem(at: tempDir) }
-
-        let repoRoot = tempDir.appendingPathComponent("assistant-ui")
-        let repoGit = repoRoot.appendingPathComponent(".git")
-        let pinnedPath = repoRoot.appendingPathComponent("apps/docs")
-
-        try FileManager.default.createDirectory(at: repoGit, withIntermediateDirectories: true)
-        try FileManager.default.createDirectory(at: pinnedPath, withIntermediateDirectories: true)
-
-        let worktreeRoot = tempDir.appendingPathComponent("assistant-ui-wt")
-        try FileManager.default.createDirectory(at: worktreeRoot, withIntermediateDirectories: true)
-
-        let worktreeGitDir = repoGit.appendingPathComponent("worktrees/feat-docs")
-        try FileManager.default.createDirectory(at: worktreeGitDir, withIntermediateDirectories: true)
-        let commondirPath = worktreeGitDir.appendingPathComponent("commondir")
-        try "../..".write(to: commondirPath, atomically: true, encoding: .utf8)
-
-        let gitFile = worktreeRoot.appendingPathComponent(".git")
-        let gitFileContents = "gitdir: \(worktreeGitDir.path)\n"
-        try gitFileContents.write(to: gitFile, atomically: true, encoding: .utf8)
-
-        let project = makeProject(name: "assistant-ui-docs", path: pinnedPath.path)
-
-        let pinnedInfo = GitRepositoryInfo.resolve(for: pinnedPath.path)
-        XCTAssertNotNil(pinnedInfo)
-        let worktreeInfo = GitRepositoryInfo.resolve(for: worktreeRoot.path)
-        XCTAssertNotNil(worktreeInfo)
-        XCTAssertEqual(pinnedInfo?.commonDir, worktreeInfo?.commonDir)
-
+    func testResolveReturnsNoneWhenNoSessionOrOverride() {
+        let project = makeProject(name: "A", path: "/tmp/project-a")
         let sessionStateManager = SessionStateManager()
         sessionStateManager.setSessionStatesForTesting([:])
-
-        let shellStateStore = ShellStateStore()
-        shellStateStore.setStateForTesting(
-            ShellCwdState(
-                version: 1,
-                shells: [
-                    "123": ShellEntry(
-                        cwd: worktreeRoot.path,
-                        tty: "/dev/ttys001",
-                        parentApp: "terminal",
-                        tmuxSession: nil,
-                        tmuxClientTty: nil,
-                        updatedAt: Date(),
-                    ),
-                ],
-            ),
-        )
-
-        let resolver = ActiveProjectResolver(sessionStateManager: sessionStateManager, shellStateStore: shellStateStore)
+        let resolver = ActiveProjectResolver(sessionStateManager: sessionStateManager)
         resolver.updateProjects([project])
         resolver.resolve()
 
-        XCTAssertEqual(resolver.activeProject?.path, project.path)
-        XCTAssertEqual(resolver.activeSource, .shell(pid: "123", app: "terminal"))
+        XCTAssertNil(resolver.activeProject)
+        XCTAssertEqual(resolver.activeSource, .none)
     }
 
     private func makeProject(name: String, path: String) -> Project {

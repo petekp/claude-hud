@@ -2,57 +2,32 @@
 import XCTest
 
 final class TerminalRoutingStatusCopyTests: XCTestCase {
-    func testTmuxSummaryUsesTmuxSpecificStaleCopy() {
-        let now = Date(timeIntervalSince1970: 10000)
-        let stale = now.addingTimeInterval(-(23 * 60))
-        let status = ShellRoutingStatus(
-            hasActiveShells: false,
-            hasAttachedTmuxClient: false,
-            hasAnyShells: true,
-            tmuxClientTty: nil,
-            targetParentApp: "tmux",
-            targetTmuxSession: "capacitor",
-            lastSeenAt: stale,
-            isUsingLastKnownTarget: true,
-        )
-
-        let summary = TerminalRoutingStatusCopy.tmuxSummary(status, referenceDate: now)
-        XCTAssertEqual(summary, "tmux telemetry stale (23m ago)")
+    func testUnavailablePresentationUsesUnavailableDefaults() {
+        let presentation = TerminalRoutingStatusCopy.unavailablePresentation()
+        XCTAssertEqual(presentation.tmuxSummary, "routing unavailable")
+        XCTAssertEqual(presentation.targetSummary, "target unknown")
+        XCTAssertEqual(presentation.tooltip, "Routing snapshot unavailable.")
+        XCTAssertFalse(presentation.isAttached)
     }
 
-    func testTargetSummaryUsesLastTargetPrefixWhenStale() {
-        let status = ShellRoutingStatus(
-            hasActiveShells: false,
-            hasAttachedTmuxClient: false,
-            hasAnyShells: true,
-            tmuxClientTty: nil,
-            targetParentApp: "tmux",
-            targetTmuxSession: "tool-ui",
-            lastSeenAt: Date(timeIntervalSince1970: 10000),
-            isUsingLastKnownTarget: true,
+    func testAERRoutingPresentationUsesTerminalTargetSummary() {
+        let snapshot = DaemonRoutingSnapshot(
+            version: 1,
+            workspaceId: "workspace-1",
+            projectPath: "/Users/petepetrash/Code/capacitor",
+            status: "detached",
+            target: DaemonRoutingTarget(kind: "terminal_app", value: "ghostty"),
+            confidence: "high",
+            reasonCode: "SHELL_FALLBACK_ACTIVE",
+            reason: "fallback",
+            evidence: [],
+            updatedAt: "2026-02-14T15:00:00Z",
         )
 
-        let summary = TerminalRoutingStatusCopy.targetSummary(status)
-        XCTAssertEqual(summary, "last target tmux:tool-ui")
-    }
-
-    func testTooltipIncludesAgeAndLastSeenWhenStale() {
-        let now = Date(timeIntervalSince1970: 20000)
-        let stale = now.addingTimeInterval(-(11 * 60))
-        let status = ShellRoutingStatus(
-            hasActiveShells: false,
-            hasAttachedTmuxClient: false,
-            hasAnyShells: true,
-            tmuxClientTty: nil,
-            targetParentApp: "ghostty",
-            targetTmuxSession: nil,
-            lastSeenAt: stale,
-            isUsingLastKnownTarget: true,
-        )
-
-        let tooltip = TerminalRoutingStatusCopy.tooltip(status, referenceDate: now)
-        XCTAssertTrue(tooltip.contains("Telemetry is stale"))
-        XCTAssertTrue(tooltip.contains("11m ago"))
-        XCTAssertTrue(tooltip.contains("Showing the last known target."))
+        let presentation = TerminalRoutingStatusCopy.arePresentation(snapshot)
+        XCTAssertEqual(presentation.tmuxSummary, "tmux detached")
+        XCTAssertEqual(presentation.targetSummary, "target ghostty")
+        XCTAssertEqual(presentation.tooltip, "Using fresh shell telemetry fallback for routing.")
+        XCTAssertFalse(presentation.isAttached)
     }
 }

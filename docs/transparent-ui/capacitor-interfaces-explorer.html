@@ -1243,7 +1243,7 @@ body {
   <!-- ═══ LIVE TAB ═══ -->
   <div class="tab-content" id="tab-live">
     <section class="live-controls" id="live-controls">
-      <label style="font-size:11px;color:var(--muted);">Trace URL:</label>
+      <label style="font-size:11px;color:var(--muted);">Live SSE URL:</label>
       <input type="text" id="live-url" style="width:260px;padding:3px 6px;background:var(--card);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font:inherit;font-size:11px;">
       <button class="ctrl" id="live-toggle">Connect</button>
       <span id="live-status" style="font-size:10px;color:var(--muted);"></span>
@@ -1518,9 +1518,28 @@ const contracts = [
    PART 2: URL DEFAULTS + STATE + DOM REFS
    ═══════════════════════════════════════════════════════════════ */
 const params = new URLSearchParams(window.location.search);
-const defaultLiveUrl = params.get("live") || "http://localhost:9133/activation-trace";
+const defaultLiveUrl = params.get("live") || params.get("telemetry_stream") || "http://localhost:9133/telemetry-stream";
 const defaultSnapshotUrl = params.get("snapshot") || "http://localhost:9133/daemon-snapshot";
 const defaultTelemetryUrl = params.get("telemetry") || "http://localhost:9133/telemetry";
+
+function toTelemetryStreamUrl(url) {
+  if (!url) return "";
+  if (url.indexOf("/activation-trace") !== -1) {
+    return url.replace("/activation-trace", "/telemetry-stream");
+  }
+  return url.replace(/\/telemetry(?:\?.*)?$/, "/telemetry-stream");
+}
+
+function toTelemetryCollectionUrl(url) {
+  if (!url) return "";
+  if (url.indexOf("/activation-trace") !== -1) {
+    return url.replace(/\/activation-trace(?:\?.*)?$/, "/telemetry");
+  }
+  if (url.indexOf("/telemetry-stream") !== -1) {
+    return url.replace(/\/telemetry-stream(?:\?.*)?$/, "/telemetry");
+  }
+  return url;
+}
 
 const state = {
   activeTab: "learn",
@@ -1562,6 +1581,7 @@ const state = {
   machinePreviousBySession: {},
   machineLatestSessions: [],
   machineLatestProjects: [],
+  lastRoutingDigest: "",
   lastDecision: null,
   trace: []
 };
@@ -1668,9 +1688,92 @@ function classifyTraceKind(payload, edge) {
 function classifyEventSource(event) {
   const name = (event.name || event.type || event.event || "").toLowerCase();
   if (name.includes("hook") || name.includes("cwd")) return "hook";
-  if (name.includes("daemon") || name.includes("ipc") || name.includes("health")) return "daemon";
+  if (name.includes("daemon") || name.includes("ipc") || name.includes("health") || name.includes("routing") || name.includes("rollout")) return "daemon";
   if (name.includes("activation") || name.includes("swift") || name.includes("ui")) return "swift";
   return "telemetry";
+}
+
+function deriveActivationDecisionFromRouting(routing) {
+  if (!routing || !routing.snapshot || !routing.snapshot.target) return null;
+  var snapshot = routing.snapshot;
+  var target = snapshot.target || {};
+  var targetKind = target.kind || "unknown";
+  var targetValue = target.value || "";
+  var status = snapshot.status || "unknown";
+  var reasonCode = snapshot.reason_code || "unknown";
+  var selectedPid = targetValue || targetKind;
+  var primaryAction = "launch_new_terminal";
+  if (targetKind === "tmux_session") {
+    primaryAction = status === "attached" ? "switch_tmux_session" : "ensure_tmux_session";
+  } else if (targetKind === "terminal_app") {
+    primaryAction = "activate_app";
+  }
+  return {
+    outcome: "primary",
+    prefer_tmux: targetKind === "tmux_session",
+    policy_order: ["daemon_snapshot", "status", "reason_code", "target"],
+    selected_pid: selectedPid,
+    primary: {
+      action: primaryAction,
+      target: targetValue || targetKind
+    },
+    candidates: [{
+      pid: selectedPid,
+      match: reasonCode,
+      match_rank: 1,
+      live: status === "attached",
+      tmux: targetKind === "tmux_session",
+      has_tmux: targetKind === "tmux_session",
+      updated_at: snapshot.updated_at || snapshot.timestamp || new Date().toISOString(),
+      parent: targetKind,
+      cwd: routing.project_path || "--",
+      rank_key: [
+        "status=" + status,
+        "reason_code=" + reasonCode,
+        "target=" + targetKind + ":" + (targetValue || "--")
+      ],
+      selected: true
+    }]
+  };
+}
+
+function deriveActivationDecisionFromTelemetry(event) {
+  if (!event || !event.type || !event.payload || typeof event.payload !== "object") return null;
+  if (event.type !== "activation_decision" && event.type !== "activation_outcome") return null;
+  var payload = event.payload || {};
+  var targetKind = payload.target_kind || "";
+  var targetValue = payload.target_value || "";
+  if (!targetKind && !targetValue) return null;
+  var status = payload.status || "unknown";
+  var reasonCode = payload.reason_code || event.message || "telemetry";
+  var selectedPid = targetValue || targetKind;
+  return {
+    outcome: payload.success === false ? "fallback" : "primary",
+    prefer_tmux: targetKind === "tmux_session",
+    policy_order: ["activation_telemetry", "status", "reason_code", "target"],
+    selected_pid: selectedPid,
+    primary: {
+      action: payload.primary_action || (targetKind === "tmux_session" ? "switch_tmux_session" : (targetKind === "terminal_app" ? "activate_app" : "launch_new_terminal")),
+      target: targetValue || targetKind
+    },
+    candidates: [{
+      pid: selectedPid,
+      match: reasonCode,
+      match_rank: 1,
+      live: status === "attached",
+      tmux: targetKind === "tmux_session",
+      has_tmux: targetKind === "tmux_session",
+      updated_at: event.timestamp || event.received_at || new Date().toISOString(),
+      parent: targetKind || "unknown",
+      cwd: payload.path || "--",
+      rank_key: [
+        "status=" + status,
+        "reason_code=" + reasonCode,
+        "target=" + (targetKind || "--") + ":" + (targetValue || "--")
+      ],
+      selected: true
+    }]
+  };
 }
 
 // NOTE: This is a standalone local debugging tool (not user-facing).
@@ -2649,9 +2752,16 @@ function renderLiveState(data) {
   var shellsMap = data.shell_state && data.shell_state.shells ? data.shell_state.shells : {};
   var shells = Object.entries(shellsMap).map(function(pair) { return Object.assign({ pid: pair[0] }, pair[1]); });
   var health = data.health && typeof data.health === "object" ? data.health : null;
+  var routing = data.routing && typeof data.routing === "object" ? data.routing : null;
+  var routingSnapshot = routing && routing.snapshot && typeof routing.snapshot === "object" ? routing.snapshot : null;
+  var routingRollout = routing && routing.rollout && typeof routing.rollout === "object" ? routing.rollout : null;
+  var routingDiagnostics = routing && routing.diagnostics && typeof routing.diagnostics === "object" ? routing.diagnostics : null;
   sessionsEl.textContent = sessions.length;
   var activeProj = projects.find(function(p) { return p.state === "Active"; });
-  projectEl.textContent = activeProj ? (activeProj.project_path || "").split("/").pop() : (projects.length ? projects[0].project_path.split("/").pop() : "--");
+  var routingProjectPath = routing && routing.project_path ? routing.project_path : "";
+  projectEl.textContent = routingProjectPath
+    ? routingProjectPath.split("/").pop()
+    : (activeProj ? (activeProj.project_path || "").split("/").pop() : (projects.length ? projects[0].project_path.split("/").pop() : "--"));
   shellsEl.textContent = shells.length;
   var daemonHealthy = Boolean(health && String(health.status || "").toLowerCase() === "ok");
   daemonEl.textContent = daemonHealthy ? "OK" : (health && health.status ? String(health.status).toUpperCase() : "UNK");
@@ -2688,6 +2798,35 @@ function renderLiveState(data) {
     html += '<div class="snapshot-item">' + formatPayload({ pid: s.pid, cwd: s.cwd || "--", parent: s.parent_app || s.parentApp || "--" }) + '</div>';
   });
   html += '</div>';
+  if (routing) {
+    html += '<div class="data-section-header">Routing (ARE)</div><div class="data-section-body">';
+    html += '<div class="snapshot-item">' + formatPayload({
+      project_path: routing.project_path || "--",
+      workspace_id: routing.workspace_id || "--",
+      status: routingSnapshot ? routingSnapshot.status || "--" : "--",
+      reason_code: routingSnapshot ? routingSnapshot.reason_code || "--" : "--",
+      target_kind: routingSnapshot && routingSnapshot.target ? routingSnapshot.target.kind || "--" : "--",
+      target_value: routingSnapshot && routingSnapshot.target ? routingSnapshot.target.value || "--" : "--"
+    }) + '</div>';
+    if (routingRollout) {
+      html += '<div class="snapshot-item">' + formatPayload({
+        comparisons: routingRollout.comparisons || 0,
+        status_agreement_rate: routingRollout.status_agreement_rate || "--",
+        target_agreement_rate: routingRollout.target_agreement_rate || "--",
+        status_row_default_ready: routingRollout.status_row_default_ready,
+        launcher_default_ready: routingRollout.launcher_default_ready
+      }) + '</div>';
+    }
+    if (routingDiagnostics) {
+      html += '<div class="snapshot-item">' + formatPayload({
+        status_match: routingDiagnostics.status_match,
+        target_match: routingDiagnostics.target_match,
+        comparison_reason: routingDiagnostics.comparison_reason || "--",
+        compared_at: routingDiagnostics.compared_at || routingDiagnostics.updated_at || "--"
+      }) + '</div>';
+    }
+    html += '</div>';
+  }
   // Daemon health + reconcile telemetry
   if (health) {
     var reconcile = health.dead_session_reconcile && typeof health.dead_session_reconcile === "object"
@@ -2723,6 +2862,9 @@ function renderLiveState(data) {
   state.machineLatestProjects = projects;
   updateMachineHistoryFromSessions(state.machineLatestSessions);
   updateMachineHistoryFromActivity(activity);
+  if (routingSnapshot) {
+    state.lastDecision = deriveActivationDecisionFromRouting(routing);
+  }
   renderMachinePanel();
 }
 
@@ -2736,6 +2878,35 @@ async function fetchSnapshot() {
     state.snapshotError = null;
     state.snapshotLastSuccess = Date.now();
     renderLiveState(data);
+    var routing = data && data.routing && typeof data.routing === "object" ? data.routing : null;
+    var routingSnapshot = routing && routing.snapshot && typeof routing.snapshot === "object" ? routing.snapshot : null;
+    if (routingSnapshot) {
+      var digest = [
+        routing.project_path || "",
+        routingSnapshot.status || "",
+        routingSnapshot.reason_code || "",
+        routingSnapshot.target ? routingSnapshot.target.kind || "" : "",
+        routingSnapshot.target ? routingSnapshot.target.value || "" : "",
+        routingSnapshot.updated_at || ""
+      ].join("|");
+      if (digest !== state.lastRoutingDigest) {
+        state.lastRoutingDigest = digest;
+        mergeIntoUnifiedTimeline({
+          id: "routing_snapshot_" + (routingSnapshot.updated_at || Date.now()),
+          type: "routing_snapshot",
+          message: "daemon_routing_snapshot",
+          timestamp: data.timestamp || new Date().toISOString(),
+          payload: {
+            project_path: routing.project_path || "--",
+            status: routingSnapshot.status || "--",
+            reason_code: routingSnapshot.reason_code || "--",
+            target: routingSnapshot.target || null,
+            rollout: routing && routing.rollout ? routing.rollout : null
+          },
+          decision: deriveActivationDecisionFromRouting(routing)
+        }, "daemon");
+      }
+    }
   } catch (error) {
     state.snapshotError = error ? String(error) : "fetch failed";
     renderLiveState(null);
@@ -2749,12 +2920,14 @@ function startSnapshotPolling() { stopSnapshotPolling(); if (!state.snapshotAuto
    PART 11: UNIFIED TIMELINE
    ═══════════════════════════════════════════════════════════════ */
 function mergeIntoUnifiedTimeline(event, sourceHint) {
-  var id = event.id || event.event_id || (event.type + "_" + (event.timestamp || Date.now()) + "_" + Math.random().toString(36).slice(2,6));
+  var eventType = event.type || event.name || event.event || "event";
+  var id = event.id || event.event_id || (eventType + "_" + (event.timestamp || Date.now()) + "_" + Math.random().toString(36).slice(2,6));
   if (state.unifiedEventIds.has(id)) return;
   state.unifiedEventIds.add(id);
   var source = sourceHint || classifyEventSource(event);
-  var name = event.name || event.type || event.event || "event";
+  var name = event.type || event.name || event.event || "event";
   var ts = event.received_at || event.timestamp || event.time || new Date().toISOString();
+  var decision = event.decision || (event.payload && event.payload.decision) || deriveActivationDecisionFromTelemetry(event);
 
   // Coalesce: if same event name appeared within last 30s, update in place
   var now = Date.now();
@@ -2767,7 +2940,7 @@ function mergeIntoUnifiedTimeline(event, sourceHint) {
     existing.timestamp = ts;
     existing.detail = event.message || event.detail || event.summary || existing.detail;
     existing.payload = event.payload || existing.payload;
-    if (event.decision) state.lastDecision = event.decision;
+    if (decision) state.lastDecision = decision;
     renderUnifiedTimeline();
     renderActivationTrace();
     return;
@@ -2787,7 +2960,7 @@ function mergeIntoUnifiedTimeline(event, sourceHint) {
     var removed = state.unifiedEvents.pop();
     if (removed) state.unifiedEventIds.delete(removed.id);
   }
-  if (event.decision) state.lastDecision = event.decision;
+  if (decision) state.lastDecision = decision;
   renderUnifiedTimeline();
   renderActivationTrace();
 }
@@ -3045,7 +3218,7 @@ function renderActivationTrace() {
 /* Telemetry SSE + polling */
 function connectTelemetrySSE() {
   if (state.telemetrySseSource) return;
-  var url = state.telemetryUrl.replace(/\/telemetry$/, "/telemetry-stream");
+  var url = toTelemetryStreamUrl(state.telemetryUrl);
   try {
     var source = new EventSource(url);
     state.telemetrySseSource = source;
@@ -3065,7 +3238,10 @@ function disconnectTelemetrySSE() {
 async function fetchTelemetry() {
   if (!state.telemetryUrl) return;
   try {
-    var response = await fetch(state.telemetryUrl + "?limit=50", { cache: "no-store" });
+    var baseUrl = toTelemetryCollectionUrl(state.telemetryUrl);
+    var requestUrl = new URL(baseUrl, window.location.href);
+    requestUrl.searchParams.set("limit", "50");
+    var response = await fetch(requestUrl.toString(), { cache: "no-store" });
     if (!response.ok) return;
     var data = await response.json();
     var events = data && data.events ? data.events : [];
@@ -3088,7 +3264,7 @@ function disconnectLive() {
 
 function connectLive() {
   disconnectLive();
-  var url = state.liveUrl;
+  var url = toTelemetryStreamUrl(state.liveUrl);
   if (!url) { state.liveError = "missing URL"; return; }
   var statusEl = document.getElementById("live-status");
   if (url.startsWith("ws")) {
@@ -3122,7 +3298,6 @@ function handleLivePayload(payload) {
   }
   if (data && typeof data === "object") {
     mergeIntoUnifiedTimeline(data, classifyEventSource(data));
-    if (data.decision) state.lastDecision = data.decision;
     renderActivationTrace();
   }
 }
@@ -3292,7 +3467,7 @@ function init() {
 
   timelineFilterEl.addEventListener("input", function() { state.timelineFilter = timelineFilterEl.value; renderUnifiedTimeline(); });
   timelineSourceEl.addEventListener("change", function() { state.timelineSourceFilter = timelineSourceEl.value; renderUnifiedTimeline(); });
-  timelineClearEl.addEventListener("click", function() { state.unifiedEvents = []; state.unifiedEventIds = new Set(); state.lastDecision = null; renderUnifiedTimeline(); renderActivationTrace(); });
+  timelineClearEl.addEventListener("click", function() { state.unifiedEvents = []; state.unifiedEventIds = new Set(); state.lastDecision = null; state.lastRoutingDigest = ""; renderUnifiedTimeline(); renderActivationTrace(); });
 
   var traceTestBtn = document.getElementById("trace-test-btn");
   if (traceTestBtn) traceTestBtn.addEventListener("click", function() {

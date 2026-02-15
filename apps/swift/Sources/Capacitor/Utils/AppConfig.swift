@@ -38,9 +38,6 @@ struct FeatureFlags: Equatable, Codable {
     var workstreams: Bool
     var projectCreation: Bool
     var llmFeatures: Bool
-    var areStatusRow: Bool
-    var areLauncher: Bool
-    var areShadowCompare: Bool
 
     static func defaults(for channel: AppChannel) -> FeatureFlags {
         switch channel {
@@ -51,9 +48,6 @@ struct FeatureFlags: Equatable, Codable {
                 workstreams: false,
                 projectCreation: false,
                 llmFeatures: false,
-                areStatusRow: false,
-                areLauncher: false,
-                areShadowCompare: false,
             )
         case .dev, .beta, .prod:
             FeatureFlags(
@@ -62,9 +56,6 @@ struct FeatureFlags: Equatable, Codable {
                 workstreams: true,
                 projectCreation: true,
                 llmFeatures: true,
-                areStatusRow: false,
-                areLauncher: false,
-                areShadowCompare: false,
             )
         }
     }
@@ -90,12 +81,6 @@ struct FeatureFlags: Equatable, Codable {
             projectCreation = enabled
         case .llmFeatures:
             llmFeatures = enabled
-        case .areStatusRow:
-            areStatusRow = enabled
-        case .areLauncher:
-            areLauncher = enabled
-        case .areShadowCompare:
-            areShadowCompare = enabled
         }
     }
 }
@@ -265,9 +250,6 @@ private enum FeatureKey: String, CaseIterable {
     case workstreams
     case projectCreation = "projectcreation"
     case llmFeatures = "llmfeatures"
-    case areStatusRow = "arestatusrow"
-    case areLauncher = "arelauncher"
-    case areShadowCompare = "areshadowcompare"
 
     static func parse(_ raw: String?) -> FeatureKey? {
         guard let raw else { return nil }

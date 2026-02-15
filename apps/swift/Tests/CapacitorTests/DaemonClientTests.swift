@@ -106,6 +106,34 @@ final class DaemonClientTests: XCTestCase {
         XCTAssertEqual(config.tmuxPollIntervalMs, 1000)
     }
 
+    func testFetchHealthDecodesRoutingRolloutGates() async throws {
+        var capturedMethod: String?
+        let client = DaemonClient(transport: { requestData in
+            let requestJson = try JSONSerialization.jsonObject(with: requestData, options: [])
+            let requestObject = requestJson as? [String: Any]
+            capturedMethod = requestObject?["method"] as? String
+            return Self.makeHealthResponseWithRoutingRollout()
+        })
+
+        let health = try await client.fetchHealth()
+        XCTAssertEqual(capturedMethod, "get_health")
+        XCTAssertEqual(health.status, "ok")
+        XCTAssertEqual(health.routing?.dualRunEnabled, true)
+        XCTAssertEqual(health.routing?.snapshotsEmitted, 1000)
+        XCTAssertEqual(health.routing?.rollout?.agreementGateTarget, 0.995)
+        XCTAssertEqual(health.routing?.rollout?.minComparisonsRequired, 1000)
+        XCTAssertEqual(health.routing?.rollout?.minWindowHoursRequired, 168)
+        XCTAssertEqual(health.routing?.rollout?.statusAgreementRate, 0.999)
+        XCTAssertEqual(health.routing?.rollout?.targetAgreementRate, 0.994)
+        XCTAssertEqual(health.routing?.rollout?.volumeGateMet, true)
+        XCTAssertEqual(health.routing?.rollout?.windowGateMet, true)
+        XCTAssertEqual(health.routing?.rollout?.firstComparisonAt, "2026-02-01T09:00:00Z")
+        XCTAssertEqual(health.routing?.rollout?.lastComparisonAt, "2026-02-14T09:00:00Z")
+        XCTAssertEqual(health.routing?.rollout?.windowElapsedHours, 312)
+        XCTAssertEqual(health.routing?.rollout?.statusRowDefaultReady, true)
+        XCTAssertEqual(health.routing?.rollout?.launcherDefaultReady, false)
+    }
+
     private func makeProjectStatesResponse() -> Data {
         let json = """
         {"ok":true,"id":"test","data":[{"project_path":"/tmp/project","state":"working","updated_at":"2026-02-02T19:00:00Z","state_changed_at":"2026-02-02T19:00:00Z","session_id":null,"session_count":1,"active_count":1,"has_session":false}]}
@@ -136,6 +164,15 @@ final class DaemonClientTests: XCTestCase {
     private static func makeRoutingConfigResponse() -> Data {
         let json = """
         {"ok":true,"id":"test","data":{"tmux_signal_fresh_ms":5000,"shell_signal_fresh_ms":600000,"shell_retention_hours":24,"tmux_poll_interval_ms":1000}}
+        """
+        var data = Data(json.utf8)
+        data.append(0x0A)
+        return data
+    }
+
+    private static func makeHealthResponseWithRoutingRollout() -> Data {
+        let json = """
+        {"ok":true,"id":"test","data":{"status":"ok","pid":12345,"version":"0.1.0","protocol_version":1,"routing":{"enabled":true,"dual_run_enabled":true,"snapshots_emitted":1000,"legacy_vs_are_status_mismatch":1,"legacy_vs_are_target_mismatch":6,"confidence_high":900,"confidence_medium":80,"confidence_low":20,"rollout":{"agreement_gate_target":0.995,"min_comparisons_required":1000,"min_window_hours_required":168,"comparisons":1000,"volume_gate_met":true,"window_gate_met":true,"status_agreement_rate":0.999,"target_agreement_rate":0.994,"first_comparison_at":"2026-02-01T09:00:00Z","last_comparison_at":"2026-02-14T09:00:00Z","window_elapsed_hours":312,"status_gate_met":true,"target_gate_met":false,"status_row_default_ready":true,"launcher_default_ready":false}}}}
         """
         var data = Data(json.utf8)
         data.append(0x0A)

@@ -11,6 +11,7 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 
 use crate::activity::ActivityEntry;
+use crate::are::metrics::PersistedRoutingRolloutState;
 use crate::process::get_process_start_time;
 use crate::reducer::{SessionRecord, SessionState};
 use crate::state::{ProcessLivenessRow, ShellEntry, ShellState};
@@ -898,6 +899,105 @@ impl Db {
         })
     }
 
+    pub fn load_routing_rollout_state(
+        &self,
+    ) -> Result<Option<PersistedRoutingRolloutState>, String> {
+        self.with_connection(|conn| {
+            conn.query_row(
+                "SELECT \
+                    dual_run_comparisons, \
+                    legacy_vs_are_status_mismatch, \
+                    legacy_vs_are_target_mismatch, \
+                    first_comparison_at, \
+                    last_comparison_at, \
+                    last_snapshot_at \
+                 FROM routing_rollout_state \
+                 WHERE id = 1",
+                [],
+                |row| {
+                    Ok((
+                        row.get::<_, i64>(0)?,
+                        row.get::<_, i64>(1)?,
+                        row.get::<_, i64>(2)?,
+                        row.get::<_, Option<String>>(3)?,
+                        row.get::<_, Option<String>>(4)?,
+                        row.get::<_, Option<String>>(5)?,
+                    ))
+                },
+            )
+            .optional()
+            .map_err(|err| format!("Failed to query routing rollout state: {}", err))
+            .and_then(|row| {
+                row.map(
+                    |(
+                        dual_run_comparisons,
+                        legacy_vs_are_status_mismatch,
+                        legacy_vs_are_target_mismatch,
+                        first_comparison_at,
+                        last_comparison_at,
+                        last_snapshot_at,
+                    )| {
+                        Ok(PersistedRoutingRolloutState {
+                            dual_run_comparisons: i64_to_u64(
+                                dual_run_comparisons,
+                                "dual_run_comparisons",
+                            )?,
+                            legacy_vs_are_status_mismatch: i64_to_u64(
+                                legacy_vs_are_status_mismatch,
+                                "legacy_vs_are_status_mismatch",
+                            )?,
+                            legacy_vs_are_target_mismatch: i64_to_u64(
+                                legacy_vs_are_target_mismatch,
+                                "legacy_vs_are_target_mismatch",
+                            )?,
+                            first_comparison_at,
+                            last_comparison_at,
+                            last_snapshot_at,
+                        })
+                    },
+                )
+                .transpose()
+            })
+        })
+    }
+
+    pub fn upsert_routing_rollout_state(
+        &self,
+        state: &PersistedRoutingRolloutState,
+    ) -> Result<(), String> {
+        self.with_connection(|conn| {
+            conn.execute(
+                "INSERT INTO routing_rollout_state \
+                    (id, dual_run_comparisons, legacy_vs_are_status_mismatch, legacy_vs_are_target_mismatch, first_comparison_at, last_comparison_at, last_snapshot_at) \
+                 VALUES \
+                    (1, ?1, ?2, ?3, ?4, ?5, ?6) \
+                 ON CONFLICT(id) DO UPDATE SET \
+                    dual_run_comparisons = excluded.dual_run_comparisons, \
+                    legacy_vs_are_status_mismatch = excluded.legacy_vs_are_status_mismatch, \
+                    legacy_vs_are_target_mismatch = excluded.legacy_vs_are_target_mismatch, \
+                    first_comparison_at = excluded.first_comparison_at, \
+                    last_comparison_at = excluded.last_comparison_at, \
+                    last_snapshot_at = excluded.last_snapshot_at",
+                params![
+                    u64_to_i64(state.dual_run_comparisons, "dual_run_comparisons")?,
+                    u64_to_i64(
+                        state.legacy_vs_are_status_mismatch,
+                        "legacy_vs_are_status_mismatch"
+                    )?,
+                    u64_to_i64(
+                        state.legacy_vs_are_target_mismatch,
+                        "legacy_vs_are_target_mismatch"
+                    )?,
+                    state.first_comparison_at,
+                    state.last_comparison_at,
+                    state.last_snapshot_at
+                ],
+            )
+            .map_err(|err| format!("Failed to upsert routing rollout state: {}", err))?;
+            Ok(())
+        })
+    }
+
     fn init_schema(&self) -> Result<(), String> {
         self.with_connection(|conn| {
             conn.execute_batch(
@@ -962,6 +1062,15 @@ impl Db {
                     hem_state TEXT,
                     confidence_delta REAL,
                     detail_json TEXT
+                 );
+                 CREATE TABLE IF NOT EXISTS routing_rollout_state (
+                    id INTEGER PRIMARY KEY CHECK (id = 1),
+                    dual_run_comparisons INTEGER NOT NULL,
+                    legacy_vs_are_status_mismatch INTEGER NOT NULL,
+                    legacy_vs_are_target_mismatch INTEGER NOT NULL,
+                    first_comparison_at TEXT,
+                    last_comparison_at TEXT,
+                    last_snapshot_at TEXT
                  );
                  CREATE INDEX IF NOT EXISTS idx_hem_shadow_mismatches_observed_at
                     ON hem_shadow_mismatches(observed_at);
@@ -1063,6 +1172,14 @@ fn parse_rfc3339(value: String) -> Option<DateTime<Utc>> {
     DateTime::parse_from_rfc3339(&value)
         .ok()
         .map(|dt| dt.with_timezone(&Utc))
+}
+
+fn i64_to_u64(value: i64, field: &str) -> Result<u64, String> {
+    u64::try_from(value).map_err(|_| format!("{} contains negative value {}", field, value))
+}
+
+fn u64_to_i64(value: u64, field: &str) -> Result<i64, String> {
+    i64::try_from(value).map_err(|_| format!("{} overflows sqlite integer: {}", field, value))
 }
 
 #[cfg(test)]
@@ -1322,6 +1439,73 @@ mod tests {
         assert!(tables.contains(&"activity".to_string()));
         assert!(tables.contains(&"tombstones".to_string()));
         assert!(tables.contains(&"hem_shadow_mismatches".to_string()));
+        assert!(tables.contains(&"routing_rollout_state".to_string()));
+    }
+
+    #[test]
+    fn upserts_and_loads_routing_rollout_state() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let db_path = temp_dir.path().join("state.db");
+        let db = Db::new(db_path).expect("db init");
+
+        let input = crate::are::metrics::PersistedRoutingRolloutState {
+            dual_run_comparisons: 1_234,
+            legacy_vs_are_status_mismatch: 2,
+            legacy_vs_are_target_mismatch: 3,
+            first_comparison_at: Some("2026-02-01T10:00:00Z".to_string()),
+            last_comparison_at: Some("2026-02-14T12:00:00Z".to_string()),
+            last_snapshot_at: Some("2026-02-14T12:00:00Z".to_string()),
+        };
+        db.upsert_routing_rollout_state(&input)
+            .expect("upsert routing rollout");
+
+        let loaded = db
+            .load_routing_rollout_state()
+            .expect("load routing rollout")
+            .expect("routing rollout row");
+
+        assert_eq!(loaded, input);
+    }
+
+    #[test]
+    fn init_schema_creates_routing_rollout_table_for_existing_db() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let db_path = temp_dir.path().join("state.db");
+        {
+            let conn = Connection::open(&db_path).expect("open raw sqlite");
+            conn.execute_batch(
+                "BEGIN;
+                 CREATE TABLE IF NOT EXISTS events (
+                    id TEXT PRIMARY KEY,
+                    recorded_at TEXT NOT NULL,
+                    event_type TEXT NOT NULL,
+                    session_id TEXT,
+                    pid INTEGER,
+                    payload TEXT NOT NULL
+                 );
+                 COMMIT;",
+            )
+            .expect("seed legacy schema");
+        }
+
+        let db = Db::new(db_path).expect("db init migration");
+        let tables = db
+            .with_connection(|conn| {
+                let mut stmt = conn
+                    .prepare("SELECT name FROM sqlite_master WHERE type = 'table'")
+                    .map_err(|err| format!("Failed to query sqlite_master: {}", err))?;
+                let rows = stmt
+                    .query_map([], |row| row.get::<_, String>(0))
+                    .map_err(|err| format!("Failed to read sqlite_master rows: {}", err))?;
+                let mut names = Vec::new();
+                for row in rows {
+                    names.push(row.map_err(|err| format!("Failed to decode table name: {}", err))?);
+                }
+                Ok(names)
+            })
+            .expect("tables");
+
+        assert!(tables.contains(&"routing_rollout_state".to_string()));
     }
 
     #[test]

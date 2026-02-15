@@ -32,49 +32,6 @@ final class WorkstreamsLifecycleIntegrationTests: XCTestCase {
         let shellPath = PathNormalizer.normalize(worktree.path + "/apps/docs")
         try fileManager.createDirectory(atPath: shellPath, withIntermediateDirectories: true)
 
-        let project = Project(
-            name: "repo-docs",
-            path: pinnedPath.path,
-            displayPath: pinnedPath.path,
-            lastActive: nil,
-            claudeMdPath: nil,
-            claudeMdPreview: nil,
-            hasLocalSettings: false,
-            taskCount: 0,
-            stats: nil,
-            isMissing: false,
-        )
-
-        let sessionStateManager = SessionStateManager()
-        sessionStateManager.setSessionStatesForTesting([:])
-
-        let shellStateStore = ShellStateStore()
-        shellStateStore.setStateForTesting(
-            ShellCwdState(
-                version: 1,
-                shells: [
-                    "123": ShellEntry(
-                        cwd: shellPath,
-                        tty: "/dev/ttys001",
-                        parentApp: "terminal",
-                        tmuxSession: nil,
-                        tmuxClientTty: nil,
-                        updatedAt: Date(),
-                    ),
-                ],
-            ),
-        )
-
-        let resolver = ActiveProjectResolver(
-            sessionStateManager: sessionStateManager,
-            shellStateStore: shellStateStore,
-        )
-        resolver.updateProjects([project])
-        resolver.resolve()
-
-        XCTAssertEqual(resolver.activeProject?.path, project.path)
-        XCTAssertEqual(resolver.activeSource, .shell(pid: "123", app: "terminal"))
-
         do {
             try service.removeManagedWorktree(
                 in: repoRoot.path,

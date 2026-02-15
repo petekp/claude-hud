@@ -112,7 +112,6 @@ struct CapacitorApp: App {
                     Divider()
                     ProjectDebugPanelMenuButton()
                     UITuningPanelMenuButton()
-                    ShellMatrixPanelMenuButton()
 
                     Button("Show Welcome Screen") {
                         withAnimation(.easeInOut(duration: 0.4)) {
@@ -202,15 +201,6 @@ struct CapacitorApp: App {
             .windowResizability(.contentSize)
             .defaultPosition(.topTrailing)
             .defaultSize(width: 580, height: 720)
-
-            Window("Shell Matrix", id: "shell-matrix-panel") {
-                ShellMatrixPanel()
-                    .preferredColorScheme(.dark)
-            }
-            .windowStyle(.hiddenTitleBar)
-            .windowResizability(.contentSize)
-            .defaultPosition(.topLeading)
-            .defaultSize(width: 680, height: 760)
 
             Window("Project Debug Panel", id: "project-debug-panel") {
                 DebugProjectListPanel()
@@ -341,17 +331,6 @@ struct CapacitorApp: App {
                 openWindow(id: "ui-tuning-panel")
             }
             .keyboardShortcut("U", modifiers: [.command, .shift])
-        }
-    }
-
-    struct ShellMatrixPanelMenuButton: View {
-        @Environment(\.openWindow) private var openWindow
-
-        var body: some View {
-            Button("Shell Matrix Panel") {
-                openWindow(id: "shell-matrix-panel")
-            }
-            .keyboardShortcut("M", modifiers: [.command, .shift])
         }
     }
 

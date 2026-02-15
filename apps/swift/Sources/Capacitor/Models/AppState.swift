@@ -54,6 +54,7 @@ class AppState {
 
     private(set) var channel: AppChannel = AppConfig.defaultChannel
     private(set) var featureFlags: FeatureFlags = .defaults(for: AppConfig.defaultChannel)
+    private(set) var routingRollout: DaemonRoutingRollout?
 
     var isIdeaCaptureEnabled: Bool {
         featureFlags.ideaCapture
@@ -183,6 +184,7 @@ class AppState {
         let config = AppConfig.current()
         channel = config.channel
         featureFlags = config.featureFlags
+        refreshAERoutingRuntimeFlags(with: nil)
         loadLayoutMode()
         loadDormantOverrides()
         ProjectOrderStore.migrateIfNeeded()
@@ -193,7 +195,6 @@ class AppState {
 
         activeProjectResolver = ActiveProjectResolver(
             sessionStateManager: sessionStateManager,
-            shellStateStore: shellStateStore,
         )
         sessionStateManager.onVisualStateChanged = { [weak self] in
             guard let self else { return }
@@ -316,6 +317,8 @@ class AppState {
         sessionStateManager.refreshSessionStates(for: projects)
         refreshProjectStatuses()
         activeProjectResolver.resolve()
+        let routingProjectPath = daemonStatus?.isHealthy == true ? activeProjectPath : nil
+        shellStateStore.setRoutingProjectPath(routingProjectPath)
         reconcileProjectGroups()
         #if DEBUG
             DiagnosticsSnapshotLogger.updateContext(
@@ -413,6 +416,7 @@ class AppState {
                 pid: nil,
                 version: nil,
             )
+            refreshAERoutingRuntimeFlags(with: nil)
             Telemetry.emit("daemon_health", "Daemon disabled", payload: [
                 "enabled": false,
             ])
@@ -430,6 +434,7 @@ class AppState {
                         result: .success(health),
                     ) {
                         self.daemonStatus = status
+                        self.refreshAERoutingRuntimeFlags(with: health)
                         Telemetry.emit("daemon_health", "Daemon healthy", payload: [
                             "enabled": true,
                             "healthy": true,
@@ -450,6 +455,7 @@ class AppState {
                         result: .failure(error),
                     ) {
                         self.daemonStatus = status
+                        self.refreshAERoutingRuntimeFlags(with: nil)
                         Telemetry.emit("daemon_health", "Daemon unhealthy", payload: [
                             "enabled": true,
                             "healthy": false,
@@ -523,6 +529,12 @@ class AppState {
                 ])
             }
         }
+    }
+
+    private func refreshAERoutingRuntimeFlags(with health: DaemonHealth?) {
+        routingRollout = health?.routing?.rollout
+        let routingProjectPath = health?.status == "ok" ? activeProjectPath : nil
+        shellStateStore.setRoutingProjectPath(routingProjectPath)
     }
 
     private func quickFeedbackContext() -> QuickFeedbackContext {
@@ -857,15 +869,11 @@ class AppState {
     func launchTerminal(for project: Project) {
         activeProjectResolver.setManualOverride(project)
         activeProjectResolver.resolve()
-        terminalLauncher.launchTerminal(for: project, shellState: shellStateStore.state)
+        terminalLauncher.launchTerminal(for: project)
     }
 
     private func activeWorktreePathsForGuardrails() -> Set<String> {
         var paths: Set<String> = []
-
-        if let shellPath = shellStateStore.mostRecentShell?.entry.cwd {
-            paths.insert(PathNormalizer.normalize(shellPath))
-        }
 
         for (projectPath, state) in sessionStateManager.sessionStates where state.state == .working {
             paths.insert(PathNormalizer.normalize(projectPath))

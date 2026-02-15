@@ -21,6 +21,10 @@ import SwiftUI
                         if let status = appState.daemonStatus, status.isEnabled {
                             DaemonStatusBadge(status: status)
                                 .padding(.bottom, 2)
+                            if let rollout = appState.routingRollout {
+                                RoutingRolloutBadge(rollout: rollout)
+                                    .padding(.bottom, 2)
+                            }
                         }
 
                         DebugActiveStateCard()

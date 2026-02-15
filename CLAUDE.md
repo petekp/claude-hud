@@ -73,13 +73,16 @@ Use the local telemetry hub when debugging runtime behavior or feeding context t
 
 - **Launch UI + server:** `./scripts/run-transparent-ui.sh` (opens `docs/transparent-ui/capacitor-interfaces-explorer.html`)
 - **Headless server:** `node scripts/transparent-ui-server.mjs`
+- **Dashboard UX:** Learn/Live interface is the default again (architecture walkthrough + live observability)
 - **Agent briefing (compact):** `GET /agent-briefing?limit=200&shells=recent&shell_limit=25`
 - **Agent briefing (full shells):** `GET /agent-briefing?shells=all`
+- **Routing rollout health:** `GET /routing-rollout`
+- **Routing snapshot (project-scoped):** `GET /routing-snapshot?project_path=/abs/path`
+- **Live stream endpoint:** `GET /telemetry-stream` (replaces `/activation-trace`)
 
 Server runs on `http://localhost:9133` by default. See `docs/transparent-ui/README.md` for full endpoint list and env vars.
 - **Port conflict:** `lsof -ti :9133 | xargs kill -9` to kill stale server before restart
-- **`/activation-trace` is SSE** (streams), not JSON — use `/daemon-snapshot` for one-shot data
-- **"Test Trace" button** on Live tab injects mock activation data for UI development
+- **Use `/daemon-snapshot` for one-shot state** (includes routing snapshot + rollout projection)
 
 ## Common Gotchas
 

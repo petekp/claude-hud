@@ -1,26 +1,17 @@
 #!/usr/bin/env node
 import http from "http";
-import fs from "fs";
 import os from "os";
 import path from "path";
 import net from "net";
 
 const PORT = Number(process.env.PORT || 9133);
-const LOG_PATH = process.env.CAPACITOR_TRACE_LOG
-  || path.join(os.homedir(), ".capacitor", "daemon", "app-debug.log");
 const SOCKET_PATH = process.env.CAPACITOR_DAEMON_SOCK
   || path.join(os.homedir(), ".capacitor", "daemon.sock");
 const TELEMETRY_LIMIT = Number(process.env.CAPACITOR_TELEMETRY_LIMIT || 500);
 const BRIEFING_SHELL_LIMIT = Number(process.env.CAPACITOR_BRIEFING_SHELL_LIMIT || 25);
 
-const sseClients = new Set();
 const telemetryClients = new Set();
 const telemetryEvents = [];
-let filePosition = 0;
-let currentTrace = null;
-let flushTimer = null;
-let lastShellState = null;
-let lastShellStateAt = 0;
 
 function jsonResponse(res, status, payload) {
   const body = JSON.stringify(payload);
@@ -33,16 +24,6 @@ function jsonResponse(res, status, payload) {
 
 function sendSse(res, payload) {
   res.write(`data: ${JSON.stringify(payload)}\n\n`);
-}
-
-function broadcast(payload) {
-  sseClients.forEach(res => {
-    try {
-      sendSse(res, payload);
-    } catch {
-      sseClients.delete(res);
-    }
-  });
 }
 
 function broadcastTelemetry(payload) {
@@ -103,218 +84,106 @@ function normalizeShellState(shellState, options = {}) {
   };
 }
 
-function parsePreferLine(line) {
-  const match = line.match(/ActivationTrace preferTmux=(true|false) selectedPid=([0-9]+|nil)/);
-  if (!match) return null;
-  return {
-    prefer_tmux: match[1] === "true",
-    selected_pid: match[2] === "nil" ? null : Number(match[2]),
-    policy_order: [],
-    candidates: []
-  };
+function chooseRoutingProjectPath(projectStates = [], sessions = []) {
+  const normalizedStates = Array.isArray(projectStates) ? projectStates : [];
+  const normalizedSessions = Array.isArray(sessions) ? sessions : [];
+
+  const workingProject = normalizedStates
+    .filter(entry => String(entry?.state || "").toLowerCase() === "working")
+    .sort((a, b) => parseTimestamp(b?.updated_at) - parseTimestamp(a?.updated_at))[0];
+  if (workingProject?.project_path) return workingProject.project_path;
+
+  const recentSession = normalizedSessions
+    .filter(entry => typeof entry?.project_path === "string" && entry.project_path.length > 0)
+    .sort((a, b) => parseTimestamp(b?.updated_at) - parseTimestamp(a?.updated_at))[0];
+  if (recentSession?.project_path) return recentSession.project_path;
+
+  return normalizedStates.find(entry => entry?.project_path)?.project_path || null;
 }
 
-function parsePolicyLine(line) {
-  const match = line.match(/ActivationTrace policyOrder=(.*)/);
-  if (!match) return null;
-  return match[1].split(" | ").map(value => value.trim()).filter(Boolean);
-}
-
-function parseCandidateLine(line) {
-  const match = line.match(
-    /ActivationTrace candidate pid=([0-9]+) match=([^ ]+) rank=([0-9]+) live=(true|false) tmux=(true|false) updatedAt=([^ ]+) parent=(.*)/
-  );
-  if (!match) return null;
-  return {
-    pid: Number(match[1]),
-    match: match[2],
-    match_rank: Number(match[3]),
-    live: match[4] === "true",
-    tmux: match[5] === "true",
-    updated_at: match[6],
-    parent: match[7],
-    rank_key: []
-  };
-}
-
-function parseRankKeyLine(line) {
-  const match = line.match(/ActivationTrace rankKey=(.*)/);
-  if (!match) return null;
-  return match[1].split(", ").map(item => item.trim()).filter(Boolean);
-}
-
-function scheduleFlush() {
-  if (flushTimer) clearTimeout(flushTimer);
-  flushTimer = setTimeout(() => {
-    flushTimer = null;
-    flushTrace();
-  }, 200);
-}
-
-async function requestDaemon(method, params = {}) {
+async function requestDaemon(method, params = undefined) {
   return new Promise((resolve, reject) => {
     const socket = net.createConnection(SOCKET_PATH);
     let data = "";
+    let settled = false;
+
+    const finish = (fn, value) => {
+      if (settled) return;
+      settled = true;
+      try {
+        socket.destroy();
+      } catch {
+        // ignore
+      }
+      fn(value);
+    };
+
+    socket.setTimeout(2000);
+
     socket.on("connect", () => {
       const payload = {
         protocol_version: 1,
         method,
-        id: `req-${Date.now()}`,
-        params
+        id: `req-${Date.now()}-${Math.random().toString(16).slice(2, 6)}`
       };
+      if (params !== undefined) payload.params = params;
       socket.write(`${JSON.stringify(payload)}\n`);
     });
+
     socket.on("data", chunk => {
       data += chunk.toString("utf8");
+      if (data.includes("\n")) {
+        const line = data.split("\n", 1)[0];
+        try {
+          finish(resolve, JSON.parse(line));
+        } catch (error) {
+          finish(reject, error);
+        }
+      }
     });
+
+    socket.on("timeout", () => finish(reject, new Error("daemon request timeout")));
+    socket.on("error", error => finish(reject, error));
     socket.on("end", () => {
+      if (settled) return;
       try {
-        resolve(JSON.parse(data));
+        const trimmed = data.trim();
+        finish(resolve, trimmed ? JSON.parse(trimmed) : {});
       } catch (error) {
-        reject(error);
+        finish(reject, error);
       }
     });
-    socket.on("error", reject);
   });
 }
 
-async function getShellState() {
-  const now = Date.now();
-  if (lastShellState && now - lastShellStateAt < 2000) {
-    return lastShellState;
-  }
+function parseRoutingParams(url) {
+  const projectPath = url.searchParams.get("project_path") || "";
+  const workspaceId = url.searchParams.get("workspace_id") || undefined;
+  return { projectPath: projectPath.trim(), workspaceId };
+}
+
+async function requestRoutingSnapshot(projectPath, workspaceId) {
+  if (!projectPath) return null;
+  const params = { project_path: projectPath };
+  if (workspaceId) params.workspace_id = workspaceId;
   try {
-    const response = await requestDaemon("get_shell_state");
-    if (response && response.ok) {
-      lastShellState = response.data;
-      lastShellStateAt = now;
-      return response.data;
-    }
+    const response = await requestDaemon("get_routing_snapshot", params);
+    return response && response.ok ? response.data : null;
   } catch {
-    // ignore
-  }
-  return null;
-}
-
-async function flushTrace() {
-  if (!currentTrace) return;
-  const trace = currentTrace;
-  currentTrace = null;
-
-  const shellState = await getShellState();
-  const shells = shellState && shellState.shells ? shellState.shells : {};
-
-  const candidates = trace.candidates.map(candidate => {
-    const shell = shells[String(candidate.pid)] || {};
-    return {
-      pid: candidate.pid,
-      cwd: shell.cwd,
-      tty: shell.tty,
-      match: candidate.match,
-      match_rank: candidate.match_rank,
-      live: candidate.live,
-      tmux: candidate.tmux,
-      parent: shell.parent_app || candidate.parent,
-      rank_key: candidate.rank_key
-    };
-  });
-
-  const decision = {
-    prefer_tmux: trace.prefer_tmux,
-    policy_order: trace.policy_order,
-    selected_pid: trace.selected_pid,
-    candidates
-  };
-
-  broadcast({
-    flowId: "activation",
-    edgeId: "e11",
-    action: "activation-trace",
-    detail: `ActivationTrace selectedPid=${trace.selected_pid ?? "nil"}`,
-    decision
-  });
-}
-
-function handleTraceLine(line) {
-  if (!line.includes("ActivationTrace")) return;
-
-  const prefer = parsePreferLine(line);
-  if (prefer) {
-    if (currentTrace) {
-      flushTrace();
-    }
-    currentTrace = prefer;
-    scheduleFlush();
-    return;
-  }
-
-  if (!currentTrace) return;
-
-  const policy = parsePolicyLine(line);
-  if (policy) {
-    currentTrace.policy_order = policy;
-    scheduleFlush();
-    return;
-  }
-
-  const candidate = parseCandidateLine(line);
-  if (candidate) {
-    currentTrace.candidates.push(candidate);
-    scheduleFlush();
-    return;
-  }
-
-  const rankKey = parseRankKeyLine(line);
-  if (rankKey && currentTrace.candidates.length > 0) {
-    currentTrace.candidates[currentTrace.candidates.length - 1].rank_key = rankKey;
-    scheduleFlush();
+    return null;
   }
 }
 
-async function readNewLines() {
+async function requestRoutingDiagnostics(projectPath, workspaceId) {
+  if (!projectPath) return null;
+  const params = { project_path: projectPath };
+  if (workspaceId) params.workspace_id = workspaceId;
   try {
-    const stats = await fs.promises.stat(LOG_PATH);
-    if (stats.size < filePosition) {
-      filePosition = 0;
-    }
-    if (stats.size === filePosition) return;
-
-    const handle = await fs.promises.open(LOG_PATH, "r");
-    const length = stats.size - filePosition;
-    const buffer = Buffer.alloc(length);
-    await handle.read(buffer, 0, length, filePosition);
-    await handle.close();
-    filePosition = stats.size;
-
-    const chunk = buffer.toString("utf8");
-    chunk.split(/\r?\n/).forEach(line => {
-      if (line.trim().length > 0) {
-        handleTraceLine(line.trim());
-      }
-    });
+    const response = await requestDaemon("get_routing_diagnostics", params);
+    return response && response.ok ? response.data : null;
   } catch {
-    // ignore if file doesn't exist yet
+    return null;
   }
-}
-
-async function startTail() {
-  try {
-    const stats = await fs.promises.stat(LOG_PATH);
-    filePosition = stats.size;
-  } catch {
-    filePosition = 0;
-  }
-
-  try {
-    fs.watch(path.dirname(LOG_PATH), (event, filename) => {
-      if (!filename || filename !== path.basename(LOG_PATH)) return;
-      readNewLines();
-    });
-  } catch {
-    // directory may not exist yet; polling will still pick up changes
-  }
-
-  setInterval(readNewLines, 1000);
 }
 
 async function buildSnapshot(options = {}) {
@@ -326,19 +195,41 @@ async function buildSnapshot(options = {}) {
       requestDaemon("get_health"),
       requestDaemon("get_activity", { limit: 120 })
     ]);
+
+    const sessionsData = sessions && sessions.ok ? sessions.data : [];
+    const projectStatesData = projectStates && projectStates.ok ? projectStates.data : [];
     const shellData = shellState && shellState.ok ? shellState.data : { version: 1, shells: {} };
+    const healthData = health && health.ok ? health.data : null;
+    const activityData = activity && activity.ok ? activity.data : [];
+
     const normalizedShellState = normalizeShellState(shellData, {
       mode: options.shellsMode || "all",
       limit: options.shellLimit
     });
+
+    const projectPath = options.projectPath || chooseRoutingProjectPath(projectStatesData, sessionsData);
+    const workspaceId = options.workspaceId;
+    const [routingSnapshot, routingDiagnostics] = await Promise.all([
+      requestRoutingSnapshot(projectPath, workspaceId),
+      requestRoutingDiagnostics(projectPath, workspaceId)
+    ]);
+
     return {
       ok: true,
       timestamp: new Date().toISOString(),
-      sessions: sessions && sessions.ok ? sessions.data : [],
-      project_states: projectStates && projectStates.ok ? projectStates.data : [],
-      activity: activity && activity.ok ? activity.data : [],
+      sessions: sessionsData,
+      project_states: projectStatesData,
+      activity: activityData,
       shell_state: normalizedShellState,
-      health: health && health.ok ? health.data : null
+      health: healthData,
+      routing: {
+        project_path: projectPath,
+        workspace_id: workspaceId || null,
+        snapshot: routingSnapshot,
+        diagnostics: routingDiagnostics,
+        rollout: healthData && healthData.routing ? healthData.routing.rollout || null : null,
+        health: healthData && healthData.routing ? healthData.routing : null
+      }
     };
   } catch (error) {
     return {
@@ -353,20 +244,31 @@ async function buildBriefing(options = {}) {
   const limit = Number.isFinite(options.limit) ? options.limit : 200;
   const shellsMode = options.shellsMode === "all" ? "all" : "recent";
   const shellLimit = Number.isFinite(options.shellLimit) ? options.shellLimit : BRIEFING_SHELL_LIMIT;
-  const snapshot = await buildSnapshot();
+
+  const snapshot = await buildSnapshot({
+    shellsMode,
+    shellLimit,
+    projectPath: options.projectPath,
+    workspaceId: options.workspaceId
+  });
+
   if (snapshot && snapshot.shell_state) {
     snapshot.shell_state = normalizeShellState(snapshot.shell_state, {
       mode: shellsMode,
       limit: shellLimit
     });
   }
+
   const sessions = Array.isArray(snapshot.sessions) ? snapshot.sessions : [];
   const projects = Array.isArray(snapshot.project_states) ? snapshot.project_states : [];
   const shellState = snapshot.shell_state || {};
   const health = snapshot.health && typeof snapshot.health === "object" ? snapshot.health : null;
+  const routing = snapshot.routing || {};
+
   const totalShells = Number.isFinite(shellState.total_count) ? shellState.total_count : 0;
   const recentShells = Number.isFinite(shellState.recent_count) ? shellState.recent_count : 0;
   const telemetry = telemetryEvents.slice(0, limit);
+
   return {
     ok: true,
     timestamp: new Date().toISOString(),
@@ -386,18 +288,30 @@ async function buildBriefing(options = {}) {
         pid: health && Number.isFinite(health.pid) ? health.pid : null,
         version: health && typeof health.version === "string" ? health.version : null
       },
+      routing: {
+        project_path: routing.project_path || null,
+        status: routing.snapshot ? routing.snapshot.status : null,
+        reason_code: routing.snapshot ? routing.snapshot.reason_code : null,
+        comparisons: routing.rollout ? routing.rollout.comparisons : null,
+        status_row_default_ready: routing.rollout ? routing.rollout.status_row_default_ready : null,
+        launcher_default_ready: routing.rollout ? routing.rollout.launcher_default_ready : null
+      },
       telemetry: { count: telemetry.length, limit }
     },
     request: {
       limit,
       shells: shellsMode,
-      shell_limit: shellLimit
+      shell_limit: shellLimit,
+      project_path: options.projectPath || null,
+      workspace_id: options.workspaceId || null
     },
     endpoints: {
-      activationTrace: "/activation-trace",
       telemetry: "/telemetry",
       telemetryStream: "/telemetry-stream",
       daemonSnapshot: "/daemon-snapshot",
+      routingSnapshot: "/routing-snapshot",
+      routingDiagnostics: "/routing-diagnostics",
+      routingRollout: "/routing-rollout",
       agentBriefing: "/agent-briefing"
     }
   };
@@ -430,24 +344,11 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  if (req.url.startsWith("/activation-trace")) {
-    res.writeHead(200, {
-      "Content-Type": "text/event-stream",
-      "Cache-Control": "no-cache",
-      "Connection": "keep-alive",
-      "Access-Control-Allow-Origin": "*"
-    });
-    res.write(": connected\n\n");
-    sseClients.add(res);
-    req.on("close", () => sseClients.delete(res));
-    return;
-  }
-
   if (req.url.startsWith("/telemetry-stream")) {
     res.writeHead(200, {
       "Content-Type": "text/event-stream",
       "Cache-Control": "no-cache",
-      "Connection": "keep-alive",
+      Connection: "keep-alive",
       "Access-Control-Allow-Origin": "*"
     });
     res.write(": connected\n\n");
@@ -479,6 +380,92 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  if (req.url.startsWith("/routing-snapshot")) {
+    const url = new URL(req.url, `http://localhost:${PORT}`);
+    const { projectPath, workspaceId } = parseRoutingParams(url);
+    if (!projectPath) {
+      jsonResponse(res, 400, {
+        ok: false,
+        error: "project_path query param is required"
+      });
+      return;
+    }
+    try {
+      const params = { project_path: projectPath };
+      if (workspaceId) params.workspace_id = workspaceId;
+      const response = await requestDaemon("get_routing_snapshot", params);
+      jsonResponse(res, 200, {
+        ok: Boolean(response && response.ok),
+        timestamp: new Date().toISOString(),
+        project_path: projectPath,
+        workspace_id: workspaceId || null,
+        response
+      });
+    } catch (error) {
+      jsonResponse(res, 200, {
+        ok: false,
+        timestamp: new Date().toISOString(),
+        project_path: projectPath,
+        workspace_id: workspaceId || null,
+        error: String(error)
+      });
+    }
+    return;
+  }
+
+  if (req.url.startsWith("/routing-diagnostics")) {
+    const url = new URL(req.url, `http://localhost:${PORT}`);
+    const { projectPath, workspaceId } = parseRoutingParams(url);
+    if (!projectPath) {
+      jsonResponse(res, 400, {
+        ok: false,
+        error: "project_path query param is required"
+      });
+      return;
+    }
+    try {
+      const params = { project_path: projectPath };
+      if (workspaceId) params.workspace_id = workspaceId;
+      const response = await requestDaemon("get_routing_diagnostics", params);
+      jsonResponse(res, 200, {
+        ok: Boolean(response && response.ok),
+        timestamp: new Date().toISOString(),
+        project_path: projectPath,
+        workspace_id: workspaceId || null,
+        response
+      });
+    } catch (error) {
+      jsonResponse(res, 200, {
+        ok: false,
+        timestamp: new Date().toISOString(),
+        project_path: projectPath,
+        workspace_id: workspaceId || null,
+        error: String(error)
+      });
+    }
+    return;
+  }
+
+  if (req.url.startsWith("/routing-rollout")) {
+    try {
+      const health = await requestDaemon("get_health");
+      const routing = health && health.ok && health.data ? health.data.routing || null : null;
+      jsonResponse(res, 200, {
+        ok: Boolean(health && health.ok),
+        timestamp: new Date().toISOString(),
+        routing,
+        rollout: routing ? routing.rollout || null : null
+      });
+    } catch (error) {
+      jsonResponse(res, 200, {
+        ok: false,
+        timestamp: new Date().toISOString(),
+        error: String(error)
+      });
+    }
+    return;
+  }
+
   if (req.url.startsWith("/agent-briefing")) {
     const url = new URL(req.url, `http://localhost:${PORT}`);
     const limit = Math.min(Number(url.searchParams.get("limit") || 200), TELEMETRY_LIMIT);
@@ -488,13 +475,24 @@ const server = http.createServer(async (req, res) => {
     const shellLimit = Number.isFinite(shellLimitParam) && shellLimitParam > 0
       ? shellLimitParam
       : BRIEFING_SHELL_LIMIT;
-    const briefing = await buildBriefing({ limit, shellsMode, shellLimit });
+    const projectPath = (url.searchParams.get("project_path") || "").trim() || undefined;
+    const workspaceId = (url.searchParams.get("workspace_id") || "").trim() || undefined;
+    const briefing = await buildBriefing({ limit, shellsMode, shellLimit, projectPath, workspaceId });
     jsonResponse(res, 200, briefing);
     return;
   }
 
   if (req.url.startsWith("/daemon-snapshot")) {
-    const snapshot = await buildSnapshot();
+    const url = new URL(req.url, `http://localhost:${PORT}`);
+    const shellsParam = url.searchParams.get("shells");
+    const shellsMode = shellsParam === "all" ? "all" : "recent";
+    const shellLimitParam = Number(url.searchParams.get("shell_limit"));
+    const shellLimit = Number.isFinite(shellLimitParam) && shellLimitParam > 0
+      ? shellLimitParam
+      : BRIEFING_SHELL_LIMIT;
+    const projectPath = (url.searchParams.get("project_path") || "").trim() || undefined;
+    const workspaceId = (url.searchParams.get("workspace_id") || "").trim() || undefined;
+    const snapshot = await buildSnapshot({ shellsMode, shellLimit, projectPath, workspaceId });
     jsonResponse(res, 200, snapshot);
     return;
   }
@@ -502,31 +500,24 @@ const server = http.createServer(async (req, res) => {
   jsonResponse(res, 200, {
     ok: true,
     endpoints: {
-      activationTrace: "/activation-trace",
       telemetry: "/telemetry",
       telemetryStream: "/telemetry-stream",
-      agentBriefing: "/agent-briefing",
-      daemonSnapshot: "/daemon-snapshot"
+      daemonSnapshot: "/daemon-snapshot",
+      routingSnapshot: "/routing-snapshot",
+      routingDiagnostics: "/routing-diagnostics",
+      routingRollout: "/routing-rollout",
+      agentBriefing: "/agent-briefing"
     },
-    logPath: LOG_PATH,
     socketPath: SOCKET_PATH
   });
 });
 
 server.listen(PORT, () => {
   console.log(`transparent-ui server listening on http://localhost:${PORT}`);
-  console.log(`trace log: ${LOG_PATH}`);
   console.log(`daemon sock: ${SOCKET_PATH}`);
 });
 
 setInterval(() => {
-  sseClients.forEach(res => {
-    try {
-      res.write(": ping\n\n");
-    } catch {
-      sseClients.delete(res);
-    }
-  });
   telemetryClients.forEach(res => {
     try {
       res.write(": ping\n\n");
@@ -535,5 +526,3 @@ setInterval(() => {
     }
   });
 }, 15000);
-
-startTail();

@@ -171,6 +171,13 @@ impl SharedState {
 
         let routing_config = hem_config.routing_config();
         let routing_shell_registry = build_routing_shell_registry(&shell_state);
+        let persisted_routing_rollout = match db.load_routing_rollout_state() {
+            Ok(value) => value,
+            Err(err) => {
+                tracing::warn!(error = %err, "Failed to load persisted routing rollout state");
+                None
+            }
+        };
 
         let shared = Self {
             db,
@@ -178,7 +185,10 @@ impl SharedState {
             routing_config: routing_config.clone(),
             shell_state: Mutex::new(shell_state),
             routing_state: Mutex::new(crate::are::state::RoutingState::default()),
-            routing_metrics: Mutex::new(crate::are::metrics::RoutingMetrics::new(&routing_config)),
+            routing_metrics: Mutex::new(crate::are::metrics::RoutingMetrics::from_persisted(
+                &routing_config,
+                persisted_routing_rollout,
+            )),
             routing_shell_registry: Mutex::new(routing_shell_registry),
             routing_tmux_registry: Mutex::new(crate::are::registry::TmuxRegistry::default()),
             routing_process_registry: Mutex::new(crate::are::registry::ProcessRegistry::default()),
@@ -473,6 +483,8 @@ impl SharedState {
         let diagnostics = self.resolve_routing(project_path, workspace_id_param)?;
         self.emit_routing_observability(&diagnostics);
         let snapshot = diagnostics.snapshot.clone();
+        let mut persisted_rollout_state: Option<crate::are::metrics::PersistedRoutingRolloutState> =
+            None;
 
         if let Ok(mut state) = self.routing_state.lock() {
             state.cache_snapshot(snapshot.clone());
@@ -483,9 +495,16 @@ impl SharedState {
             if self.routing_config.feature_flags.dual_run {
                 let legacy = self.legacy_routing_decision(project_path);
                 metrics.record_divergence(&legacy, &snapshot);
+                persisted_rollout_state = Some(metrics.persisted_rollout_state());
             }
         } else {
             tracing::warn!("Failed to update routing metrics (poisoned lock)");
+        }
+
+        if let Some(state) = persisted_rollout_state {
+            if let Err(err) = self.db.upsert_routing_rollout_state(&state) {
+                tracing::warn!(error = %err, "Failed to persist routing rollout state");
+            }
         }
 
         Ok(snapshot)
@@ -1902,6 +1921,53 @@ mod tests {
         assert_eq!(snapshot.reason_code, "TMUX_CLIENT_ATTACHED");
         assert_eq!(snapshot.target.kind, RoutingTargetKind::TmuxSession);
         assert_eq!(snapshot.target.value.as_deref(), Some("caps"));
+    }
+
+    #[test]
+    fn routing_rollout_state_survives_shared_state_restart() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let db_path = temp_dir.path().join("state.db");
+
+        let before_restart = {
+            let db = Db::new(db_path.clone()).expect("db init");
+            let state = SharedState::new(db);
+
+            let snapshot = state
+                .routing_snapshot("/repo", Some("workspace-1"))
+                .expect("routing snapshot");
+            assert_eq!(snapshot.version, 1);
+
+            let before = state.routing_metrics_snapshot();
+            assert_eq!(before.rollout.comparisons, 1);
+            assert!(before.rollout.first_comparison_at.is_some());
+            assert!(before.rollout.last_comparison_at.is_some());
+            before
+        };
+
+        let db = Db::new(db_path).expect("db init restart");
+        let restarted = SharedState::new(db);
+        let after_restart = restarted.routing_metrics_snapshot();
+
+        assert_eq!(
+            after_restart.dual_run_comparisons,
+            before_restart.dual_run_comparisons,
+        );
+        assert_eq!(
+            after_restart.legacy_vs_are_status_mismatch,
+            before_restart.legacy_vs_are_status_mismatch,
+        );
+        assert_eq!(
+            after_restart.legacy_vs_are_target_mismatch,
+            before_restart.legacy_vs_are_target_mismatch,
+        );
+        assert_eq!(
+            after_restart.rollout.first_comparison_at,
+            before_restart.rollout.first_comparison_at,
+        );
+        assert_eq!(
+            after_restart.rollout.last_comparison_at,
+            before_restart.rollout.last_comparison_at,
+        );
     }
 
     #[test]

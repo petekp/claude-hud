@@ -41,7 +41,7 @@ final class DaemonStatusEvaluatorTests: XCTestCase {
 
     func testReportsHealthyWhenDaemonResponds() {
         var evaluator = DaemonStatusEvaluator()
-        let health = DaemonHealth(status: "ok", pid: 42, version: "1.0.0", protocolVersion: 1)
+        let health = DaemonHealth(status: "ok", pid: 42, version: "1.0.0", protocolVersion: 1, routing: nil)
 
         let status = evaluator.statusForHealthResult(
             isEnabled: true,
