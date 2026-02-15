@@ -139,8 +139,10 @@ final class ActivationActionExecutorTests: XCTestCase {
     @MainActor
     private final class StubTerminalLauncherClient: TerminalLauncherClient {
         var launchedSession: String?
+        var launchCount = 0
         func launchTerminalWithTmux(sessionName: String) {
             launchedSession = sessionName
+            launchCount += 1
         }
     }
 
@@ -387,5 +389,72 @@ final class ActivationActionExecutorTests: XCTestCase {
 
         XCTAssertFalse(result)
         XCTAssertNil(launcher.launchedSession)
+    }
+
+    func testActivateHostThenSwitchTmuxNoClientAttachedButGhosttyRunningDoesNotSpawnNewWindow() async {
+        let deps = StubDependencies()
+        let tmux = StubTmuxClient()
+        tmux.hasClientAttached = false
+        tmux.currentClientTty = nil
+        tmux.switchResult = true
+
+        let terminalDiscovery = StubTerminalDiscovery()
+        terminalDiscovery.activateByTtyResult = false
+        terminalDiscovery.ghosttyRunning = true
+        terminalDiscovery.ghosttyWindows = 1
+
+        let launcher = StubTerminalLauncherClient()
+        let executor = ActivationActionExecutor(
+            dependencies: deps,
+            tmuxClient: tmux,
+            terminalDiscovery: terminalDiscovery,
+            terminalLauncher: launcher,
+        )
+
+        let result = await executor.activateHostThenSwitchTmux(
+            hostTty: "/dev/ttys021",
+            sessionName: "cap",
+            projectPath: "/Users/pete/Code/cap",
+        )
+
+        XCTAssertTrue(result)
+        XCTAssertEqual(terminalDiscovery.lastActivatedApp, "Ghostty")
+        XCTAssertEqual(launcher.launchCount, 0, "Expected reuse of existing Ghostty context with no new window")
+    }
+
+    func testActivateHostThenSwitchTmuxSequentialRequestsReuseExistingGhosttyContext() async {
+        let deps = StubDependencies()
+        let tmux = StubTmuxClient()
+        tmux.hasClientAttached = false
+        tmux.currentClientTty = nil
+        tmux.switchResult = true
+
+        let terminalDiscovery = StubTerminalDiscovery()
+        terminalDiscovery.activateByTtyResult = false
+        terminalDiscovery.ghosttyRunning = true
+        terminalDiscovery.ghosttyWindows = 1
+
+        let launcher = StubTerminalLauncherClient()
+        let executor = ActivationActionExecutor(
+            dependencies: deps,
+            tmuxClient: tmux,
+            terminalDiscovery: terminalDiscovery,
+            terminalLauncher: launcher,
+        )
+
+        let first = await executor.activateHostThenSwitchTmux(
+            hostTty: "/dev/ttys021",
+            sessionName: "project-a",
+            projectPath: "/Users/pete/Code/project-a",
+        )
+        let second = await executor.activateHostThenSwitchTmux(
+            hostTty: "/dev/ttys021",
+            sessionName: "project-b",
+            projectPath: "/Users/pete/Code/project-b",
+        )
+
+        XCTAssertTrue(first)
+        XCTAssertTrue(second)
+        XCTAssertEqual(launcher.launchCount, 0, "Sequential project clicks should switch context without spawning windows")
     }
 }

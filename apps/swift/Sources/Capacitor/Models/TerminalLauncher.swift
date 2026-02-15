@@ -270,20 +270,32 @@ final class TerminalLauncher: ActivationActionDependencies {
         self.appleScript = appleScript
     }
 
-    func launchTerminal(for project: Project, shellState: ShellCwdState? = nil) {
+    func launchTerminal(for project: Project) {
         _Concurrency.Task {
-            await launchTerminalAsync(for: project, shellState: shellState)
+            await launchTerminalAsync(for: project)
         }
     }
 
-    private func launchTerminalAsync(for project: Project, shellState: ShellCwdState? = nil) async {
-        if AppConfig.current().featureFlags.areLauncher {
-            let handledWithARE = await launchTerminalWithAERSnapshot(for: project)
-            if handledWithARE {
-                return
-            }
+    private func launchTerminalAsync(for project: Project) async {
+        let handledWithARE = await launchTerminalWithAERSnapshot(for: project)
+        if handledWithARE {
+            return
         }
-        await launchTerminalWithRustResolver(for: project, shellState: shellState)
+
+        // Hard cutover fallback: if snapshot fetch is unavailable, open a fresh terminal.
+        launchNewTerminal(for: project)
+        Telemetry.emit("activation_outcome", "snapshot_unavailable_fallback", payload: [
+            "project": project.name,
+            "path": project.path,
+            "used_fallback": true,
+            "success": true,
+        ])
+        onActivationResult?(TerminalActivationResult(
+            projectName: project.name,
+            projectPath: project.path,
+            success: true,
+            usedFallback: true,
+        ))
     }
 
     static func performSwitchTmuxSession(
@@ -482,6 +494,19 @@ final class TerminalLauncher: ActivationActionDependencies {
             }
 
             let finalSuccess = primarySuccess || fallbackSuccess
+            Telemetry.emit("activation_outcome", "are_snapshot_activation", payload: [
+                "project": project.name,
+                "path": project.path,
+                "status": snapshot.status,
+                "target_kind": snapshot.target.kind,
+                "target_value": snapshot.target.value ?? "",
+                "reason_code": snapshot.reasonCode,
+                "primary_action": String(describing: primary),
+                "primary_success": primarySuccess,
+                "used_fallback": usedFallback,
+                "fallback_success": fallbackSuccess,
+                "success": finalSuccess,
+            ])
             onActivationResult?(TerminalActivationResult(
                 projectName: project.name,
                 projectPath: project.path,
@@ -509,10 +534,10 @@ final class TerminalLauncher: ActivationActionDependencies {
            let sessionName = snapshot.target.value,
            !sessionName.isEmpty
         {
+            if let hostTty = tmuxHostTTY(from: snapshot) {
+                return .activateHostThenSwitchTmux(hostTty: hostTty, sessionName: sessionName)
+            }
             if snapshot.status == "attached" {
-                if let hostTty = tmuxHostTTY(from: snapshot) {
-                    return .activateHostThenSwitchTmux(hostTty: hostTty, sessionName: sessionName)
-                }
                 return .switchTmuxSession(sessionName: sessionName)
             }
             if snapshot.status == "detached" {
@@ -540,168 +565,6 @@ final class TerminalLauncher: ActivationActionDependencies {
             }
     }
 
-    private func launchTerminalWithRustResolver(for project: Project, shellState: ShellCwdState? = nil) async {
-        logger.info("━━━ ACTIVATION START: \(project.name) ━━━")
-        telemetry(" ━━━ ACTIVATION START: \(project.name) ━━━", payload: [
-            "project": project.name,
-            "path": project.path,
-        ])
-        Telemetry.emit("activation_start", "Activation started", payload: [
-            "project": project.name,
-            "path": project.path,
-        ])
-        logger.info("  Project path: \(project.path)")
-
-        if !ParentApp.alphaSupportedTerminals.contains(where: \.isInstalled) {
-            logger.error("  No supported terminals installed")
-            telemetry(" Activation failed: no supported terminals installed", payload: [
-                "project": project.name,
-                "path": project.path,
-            ])
-            onActivationResult?(TerminalActivationResult(
-                projectName: project.name,
-                projectPath: project.path,
-                success: false,
-                usedFallback: false,
-            ))
-            return
-        }
-
-        if let state = shellState {
-            logger.info("  Shell state provided: \(state.shells.count) shells")
-            for (pid, entry) in state.shells {
-                let isLive = isLiveShell((pid, entry))
-                logger.debug("    pid=\(pid) cwd=\(entry.cwd) tty=\(entry.tty) parent=\(entry.parentApp ?? "nil") live=\(isLive)")
-            }
-        } else {
-            logger.info("  Shell state: nil")
-        }
-
-        let ffiShellState = shellState.map { convertToFfi($0) }
-        let tmuxContext = await queryTmuxContext(projectPath: project.path)
-
-        logger.info("  Tmux context: session=\(tmuxContext.sessionAtPath ?? "nil"), hasClients=\(tmuxContext.hasAttachedClient)")
-
-        guard let engine = try? HudEngine() else {
-            logger.warning("Failed to create HudEngine, launching new terminal as fallback")
-            launchNewTerminal(for: project)
-            return
-        }
-
-        let traceEnabled = Self.activationTraceEnabled
-        let decision = traceEnabled
-            ? engine.resolveActivationWithTrace(
-                projectPath: project.path,
-                shellState: ffiShellState,
-                tmuxContext: tmuxContext,
-                includeTrace: true,
-            )
-            : engine.resolveActivation(
-                projectPath: project.path,
-                shellState: ffiShellState,
-                tmuxContext: tmuxContext,
-            )
-
-        logger.info("  Decision: \(decision.reason)")
-        telemetry(" Decision: \(decision.reason)", payload: [
-            "reason": decision.reason,
-        ])
-        logger.info("  Primary action: \(String(describing: decision.primary))")
-        telemetry(" Primary action: \(String(describing: decision.primary))", payload: [
-            "primary": String(describing: decision.primary),
-            "fallback": decision.fallback.map { String(describing: $0) } ?? "none",
-        ])
-        Telemetry.emit("activation_decision", decision.reason, payload: [
-            "primary": String(describing: decision.primary),
-            "fallback": decision.fallback.map { String(describing: $0) } ?? "none",
-        ])
-        if let fallback = decision.fallback {
-            logger.info("  Fallback action: \(String(describing: fallback))")
-        }
-        if traceEnabled, let trace = decision.trace {
-            logActivationTrace(trace)
-        }
-
-        let primarySuccess = await executeActivationAction(decision.primary, projectPath: project.path, projectName: project.name)
-        logger.info("  Primary action result: \(primarySuccess ? "SUCCESS" : "FAILED")")
-        telemetry(" Primary action result: \(primarySuccess ? "SUCCESS" : "FAILED")", payload: [
-            "result": primarySuccess ? "success" : "failed",
-        ])
-        Telemetry.emit("activation_primary_result", primarySuccess ? "success" : "failed", payload: [
-            "project": project.name,
-            "path": project.path,
-        ])
-
-        var fallbackSuccess = false
-        if !primarySuccess, let fallback = decision.fallback {
-            logger.info("  ▸ Primary failed, executing fallback: \(String(describing: fallback))")
-            fallbackSuccess = await executeActivationAction(fallback, projectPath: project.path, projectName: project.name)
-            logger.info("  Fallback result: \(fallbackSuccess ? "SUCCESS" : "FAILED")")
-            Telemetry.emit("activation_fallback_result", fallbackSuccess ? "success" : "failed", payload: [
-                "project": project.name,
-                "path": project.path,
-            ])
-        }
-        let finalSuccess = primarySuccess || fallbackSuccess
-        let usedFallback = !primarySuccess && decision.fallback != nil
-        let result = TerminalActivationResult(
-            projectName: project.name,
-            projectPath: project.path,
-            success: finalSuccess,
-            usedFallback: usedFallback,
-        )
-        onActivationResult?(result)
-        logger.info("━━━ ACTIVATION END ━━━")
-    }
-
-    // MARK: - Type Conversion to FFI
-
-    private func convertToFfi(_ state: ShellCwdState) -> ShellCwdStateFfi {
-        var ffiShells: [String: ShellEntryFfi] = [:]
-
-        for (pid, entry) in state.shells {
-            let parentApp = ParentApp(fromString: entry.parentApp)
-            let sanitizedParentApp = parentApp.isAlphaSupportedTerminal || parentApp.category == .multiplexer
-                ? parentApp
-                : .unknown
-            let formatter = ISO8601DateFormatter()
-            formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-
-            // Check liveness and pass to Rust instead of filtering here
-            let isLive = isLiveShell((pid, entry))
-
-            ffiShells[pid] = ShellEntryFfi(
-                cwd: entry.cwd,
-                tty: entry.tty,
-                parentApp: sanitizedParentApp,
-                tmuxSession: entry.tmuxSession,
-                tmuxClientTty: entry.tmuxClientTty,
-                updatedAt: formatter.string(from: entry.updatedAt),
-                isLive: isLive,
-            )
-        }
-
-        return ShellCwdStateFfi(version: UInt32(state.version), shells: ffiShells)
-    }
-
-    private func queryTmuxContext(projectPath: String) async -> TmuxContextFfi {
-        let sessionAtPath = await findTmuxSessionForPath(projectPath)
-        logger.debug("  queryTmuxContext: findTmuxSessionForPath('\(projectPath)') → \(sessionAtPath ?? "nil")")
-
-        // Check if ANY tmux client is attached (regardless of which session).
-        // This is crucial: if a client is viewing session A and we want to activate
-        // session B, we can still `tmux switch-client` to B. We only need to launch
-        // a new terminal if NO clients exist at all.
-        let hasAttached = await hasAnyClientAttachedInternal()
-        logger.debug("  queryTmuxContext: hasTmuxClientAttached() → \(hasAttached)")
-
-        return TmuxContextFfi(
-            sessionAtPath: sessionAtPath,
-            hasAttachedClient: hasAttached,
-            homeDir: NSHomeDirectory(),
-        )
-    }
-
     // MARK: - Action Execution
 
     private func executeActivationAction(_ action: ActivationAction, projectPath: String, projectName: String) async -> Bool {
@@ -710,15 +573,6 @@ final class TerminalLauncher: ActivationActionDependencies {
         let result = await executor.execute(action, projectPath: projectPath, projectName: projectName)
         logger.debug("Activation action result: \(result ? "SUCCESS" : "FAILED")")
         return result
-    }
-
-    private func logActivationTrace(_ trace: DecisionTraceFfi) {
-        let formatted = formatActivationTrace(trace: trace)
-        debugLog(formatted)
-        onActivationTrace?(formatted)
-        Telemetry.emit("activation_trace", "Activation trace", payload: [
-            "trace": formatted,
-        ])
     }
 
     // MARK: - Action Helpers
@@ -1130,11 +984,6 @@ final class TerminalLauncher: ActivationActionDependencies {
             }
         }
         return bestMatch?.session
-    }
-
-    private func isLiveShell(_ entry: (key: String, value: ShellEntry)) -> Bool {
-        guard let pid = Int32(entry.key) else { return false }
-        return kill(pid, 0) == 0
     }
 
     // MARK: - IDE Activation

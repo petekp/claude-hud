@@ -100,6 +100,11 @@ final class ActivationActionExecutor {
 
         let anyClientAttached = await tmuxClient.hasAnyClientAttached()
         if !anyClientAttached {
+            if terminalDiscovery.isGhosttyRunning() {
+                _ = terminalDiscovery.activateAppByName("Ghostty")
+                return await tmuxClient.switchClient(to: sessionName, clientTty: nil)
+            }
+
             terminalLauncher.launchTerminalWithTmux(sessionName: sessionName)
             return true
         }

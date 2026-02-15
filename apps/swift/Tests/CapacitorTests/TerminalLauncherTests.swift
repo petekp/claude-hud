@@ -353,6 +353,41 @@ final class TerminalLauncherTests: XCTestCase {
         }
     }
 
+    func testAERoutingActionMappingDetachedTmuxWithClientEvidenceUsesHostThenSwitch() {
+        let snapshot = DaemonRoutingSnapshot(
+            version: 1,
+            workspaceId: "workspace-1",
+            projectPath: "/Users/pete/Code/capacitor",
+            status: "detached",
+            target: DaemonRoutingTarget(kind: "tmux_session", value: "caps"),
+            confidence: "high",
+            reasonCode: "TMUX_CLIENT_EVIDENCE_AVAILABLE",
+            reason: "detached snapshot with attached client evidence",
+            evidence: [
+                DaemonRoutingEvidence(
+                    evidenceType: "tmux_client",
+                    value: "/dev/ttys019",
+                    ageMs: 40,
+                    trustRank: 1,
+                ),
+            ],
+            updatedAt: "2026-02-15T01:10:00Z",
+        )
+
+        let action = TerminalLauncher.activationActionFromAERSnapshot(
+            snapshot,
+            projectPath: "/Users/pete/Code/capacitor",
+            projectName: "capacitor",
+        )
+        switch action {
+        case let .activateHostThenSwitchTmux(hostTty, sessionName):
+            XCTAssertEqual(hostTty, "/dev/ttys019")
+            XCTAssertEqual(sessionName, "caps")
+        default:
+            XCTFail("Expected activateHostThenSwitchTmux, got \(String(describing: action))")
+        }
+    }
+
     func testAERoutingActionMappingDetachedTerminalAppActivatesApp() {
         let snapshot = DaemonRoutingSnapshot(
             version: 1,
