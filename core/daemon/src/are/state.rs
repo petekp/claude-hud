@@ -10,6 +10,7 @@ pub const DEFAULT_TMUX_POLL_INTERVAL_MS: u64 = 1_000;
 #[derive(Debug, Clone)]
 pub struct RoutingFeatureFlags {
     pub dual_run: bool,
+    #[allow(dead_code)]
     pub emit_diagnostics: bool,
 }
 
@@ -67,9 +68,5 @@ impl RoutingState {
     pub fn cache_snapshot(&mut self, snapshot: RoutingSnapshot) {
         self.snapshots
             .insert(snapshot.workspace_id.clone(), snapshot);
-    }
-
-    pub fn snapshot_for_workspace(&self, workspace_id: &str) -> Option<&RoutingSnapshot> {
-        self.snapshots.get(workspace_id)
     }
 }

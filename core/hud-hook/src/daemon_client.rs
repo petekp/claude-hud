@@ -84,6 +84,7 @@ pub fn send_handle_event(
     send_event_with_retry(build_envelope, "session event").is_ok()
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn send_shell_cwd_event(
     pid: u32,
     cwd: &str,

@@ -7,6 +7,7 @@ const TMUX_FIELD_DELIMITER: &str = "__CAP_DELIM__";
 
 #[derive(Debug, Clone)]
 pub struct TmuxSnapshot {
+    #[allow(dead_code)]
     pub captured_at: DateTime<Utc>,
     pub clients: Vec<TmuxClientSignal>,
     pub sessions: Vec<TmuxSessionSignal>,

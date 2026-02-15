@@ -1572,10 +1572,10 @@ fn mismatch_severity_rank(category: &str) -> u8 {
     }
 }
 
-fn select_mismatches_for_persistence<'a>(
-    mismatches: &'a [HemShadowMismatch],
+fn select_mismatches_for_persistence(
+    mismatches: &[HemShadowMismatch],
     limit: usize,
-) -> Vec<&'a HemShadowMismatch> {
+) -> Vec<&HemShadowMismatch> {
     if limit == 0 || mismatches.is_empty() {
         return Vec::new();
     }
