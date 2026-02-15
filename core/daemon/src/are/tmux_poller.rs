@@ -1,7 +1,9 @@
 use crate::are::registry::{TmuxClientSignal, TmuxSessionSignal};
 use chrono::{DateTime, Utc};
 use std::collections::{BTreeSet, HashMap};
+use std::io;
 use std::process::Command;
+const TMUX_FIELD_DELIMITER: &str = "__CAP_DELIM__";
 
 #[derive(Debug, Clone)]
 pub struct TmuxSnapshot {
@@ -23,19 +25,21 @@ impl TmuxAdapter for CommandTmuxAdapter {
         let clients_output = run_tmux([
             "list-clients",
             "-F",
-            "#{client_tty}\t#{session_name}\t#{pane_current_path}",
+            "#{client_tty}__CAP_DELIM__#{session_name}__CAP_DELIM__#{pane_current_path}",
         ])?;
         let panes_output = run_tmux([
             "list-panes",
             "-a",
             "-F",
-            "#{session_name}\t#{pane_current_path}",
+            "#{session_name}__CAP_DELIM__#{pane_current_path}",
         ])?;
+        let clients = parse_tmux_clients(&clients_output, captured_at);
+        let sessions = parse_tmux_panes(&panes_output, captured_at);
 
         Ok(TmuxSnapshot {
             captured_at,
-            clients: parse_tmux_clients(&clients_output, captured_at),
-            sessions: parse_tmux_panes(&panes_output, captured_at),
+            clients,
+            sessions,
         })
     }
 }
@@ -139,29 +143,51 @@ pub fn compute_diff(previous: Option<&TmuxSnapshot>, current: &TmuxSnapshot) -> 
 }
 
 fn run_tmux<const N: usize>(args: [&str; N]) -> Result<String, String> {
-    match Command::new("tmux").args(args).output() {
-        Ok(output) if output.status.success() => {
-            Ok(String::from_utf8_lossy(&output.stdout).to_string())
+    run_tmux_with_runner(args, |binary, args| {
+        Command::new(binary).args(args).output()
+    })
+}
+
+fn run_tmux_with_runner<const N: usize, F>(args: [&str; N], mut runner: F) -> Result<String, String>
+where
+    F: FnMut(&str, [&str; N]) -> io::Result<std::process::Output>,
+{
+    for binary in tmux_binary_candidates() {
+        match runner(binary, args) {
+            Ok(output) if output.status.success() => {
+                return Ok(String::from_utf8_lossy(&output.stdout).to_string());
+            }
+            Ok(_output) => {
+                // Continue across candidates because PATH "tmux" may point to a
+                // binary that cannot talk to the active server/socket.
+                continue;
+            }
+            Err(err) if err.kind() == io::ErrorKind::NotFound => continue,
+            Err(_err) => continue,
         }
-        Ok(_) => Ok(String::new()),
-        Err(_) => Ok(String::new()),
     }
+
+    Ok(String::new())
+}
+
+fn tmux_binary_candidates() -> &'static [&'static str] {
+    &[
+        "tmux",
+        "/opt/homebrew/bin/tmux",
+        "/usr/local/bin/tmux",
+        "/opt/local/bin/tmux",
+        "/usr/bin/tmux",
+    ]
 }
 
 fn parse_tmux_clients(output: &str, captured_at: DateTime<Utc>) -> Vec<TmuxClientSignal> {
     let mut clients = output
         .lines()
         .filter_map(|line| {
-            let mut parts = line.split('\t');
-            let client_tty = parts.next()?.trim();
-            let session_name = parts.next()?.trim();
+            let (client_tty, session_name, pane_current_path) = parse_client_line(line)?;
             if client_tty.is_empty() || session_name.is_empty() {
                 return None;
             }
-            let pane_current_path = parts
-                .next()
-                .map(str::trim)
-                .filter(|value| !value.is_empty());
             Some(TmuxClientSignal {
                 client_tty: client_tty.to_string(),
                 session_name: session_name.to_string(),
@@ -177,19 +203,7 @@ fn parse_tmux_clients(output: &str, captured_at: DateTime<Utc>) -> Vec<TmuxClien
 fn parse_tmux_panes(output: &str, captured_at: DateTime<Utc>) -> Vec<TmuxSessionSignal> {
     let mut session_paths: HashMap<String, BTreeSet<String>> = HashMap::new();
     for line in output.lines() {
-        let mut parts = line.split('\t');
-        let Some(session_name) = parts
-            .next()
-            .map(str::trim)
-            .filter(|value| !value.is_empty())
-        else {
-            continue;
-        };
-        let Some(pane_path) = parts
-            .next()
-            .map(str::trim)
-            .filter(|value| !value.is_empty())
-        else {
+        let Some((session_name, pane_path)) = parse_session_line(line) else {
             continue;
         };
         let entry = session_paths.entry(session_name.to_string()).or_default();
@@ -208,11 +222,49 @@ fn parse_tmux_panes(output: &str, captured_at: DateTime<Utc>) -> Vec<TmuxSession
     sessions
 }
 
+fn parse_client_line(line: &str) -> Option<(&str, &str, Option<&str>)> {
+    if let Some((client_tty, session_name, pane_path)) = split_fields(line, 3) {
+        let pane_current_path = pane_path.filter(|value| !value.is_empty());
+        return Some((client_tty, session_name, pane_current_path));
+    }
+    None
+}
+
+fn parse_session_line(line: &str) -> Option<(&str, &str)> {
+    if let Some((session_name, pane_path, _)) = split_fields(line, 2) {
+        if pane_path.is_empty() {
+            return None;
+        }
+        return Some((session_name, pane_path));
+    }
+    None
+}
+
+fn split_fields(line: &str, expected: usize) -> Option<(&str, &str, Option<&str>)> {
+    if line.contains(TMUX_FIELD_DELIMITER) {
+        return split_fields_with_delimiter(line, TMUX_FIELD_DELIMITER, expected);
+    }
+    split_fields_with_delimiter(line, "\t", expected)
+}
+
+fn split_fields_with_delimiter<'a>(
+    line: &'a str,
+    delimiter: &str,
+    expected: usize,
+) -> Option<(&'a str, &'a str, Option<&'a str>)> {
+    let mut parts = line.splitn(expected, delimiter);
+    let first = parts.next()?.trim();
+    let second = parts.next()?.trim();
+    let third = parts.next().map(str::trim);
+    Some((first, second, third))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use chrono::Duration;
     use std::collections::VecDeque;
+    use std::os::unix::process::ExitStatusExt;
     use std::sync::{Arc, Mutex};
 
     fn at(value: &str) -> DateTime<Utc> {
@@ -328,6 +380,26 @@ invalid\n";
     }
 
     #[test]
+    fn parse_tmux_clients_supports_custom_delimiter_format() {
+        let captured_at = at("2026-02-14T10:00:00Z");
+        let raw = "\
+/dev/ttys001__CAP_DELIM__alpha__CAP_DELIM__/Users/pete/Code/capacitor\n\
+/dev/ttys002__CAP_DELIM__beta__CAP_DELIM__\n";
+
+        let parsed = parse_tmux_clients(raw, captured_at);
+        assert_eq!(parsed.len(), 2);
+        assert_eq!(parsed[0].client_tty, "/dev/ttys001");
+        assert_eq!(parsed[0].session_name, "alpha");
+        assert_eq!(
+            parsed[0].pane_current_path.as_deref(),
+            Some("/Users/pete/Code/capacitor")
+        );
+        assert_eq!(parsed[1].client_tty, "/dev/ttys002");
+        assert_eq!(parsed[1].session_name, "beta");
+        assert!(parsed[1].pane_current_path.is_none());
+    }
+
+    #[test]
     fn parse_tmux_panes_groups_paths_by_session() {
         let captured_at = at("2026-02-14T10:00:00Z");
         let raw = "\
@@ -336,6 +408,31 @@ alpha\t/Users/pete/Code/a\n\
 alpha\t/Users/pete/Code/a/sub\n\
 beta\t/Users/pete/Code/b\n\
 invalid\n";
+
+        let sessions = parse_tmux_panes(raw, captured_at);
+        assert_eq!(sessions.len(), 2);
+        assert_eq!(sessions[0].session_name, "alpha");
+        assert_eq!(
+            sessions[0].pane_paths,
+            vec![
+                "/Users/pete/Code/a".to_string(),
+                "/Users/pete/Code/a/sub".to_string()
+            ]
+        );
+        assert_eq!(sessions[1].session_name, "beta");
+        assert_eq!(
+            sessions[1].pane_paths,
+            vec!["/Users/pete/Code/b".to_string()]
+        );
+    }
+
+    #[test]
+    fn parse_tmux_panes_supports_custom_delimiter_format() {
+        let captured_at = at("2026-02-14T10:00:00Z");
+        let raw = "\
+alpha__CAP_DELIM__/Users/pete/Code/a\n\
+alpha__CAP_DELIM__/Users/pete/Code/a/sub\n\
+beta__CAP_DELIM__/Users/pete/Code/b\n";
 
         let sessions = parse_tmux_panes(raw, captured_at);
         assert_eq!(sessions.len(), 2);
@@ -431,5 +528,81 @@ invalid\n";
         assert_eq!(second_diff.clients_updated, 1);
         assert_eq!(second_diff.sessions_added, 1);
         assert_eq!(second_diff.sessions_updated, 1);
+    }
+
+    #[test]
+    fn run_tmux_falls_back_to_absolute_binary_when_tmux_not_in_path() {
+        let attempted = Arc::new(Mutex::new(Vec::<String>::new()));
+        let attempted_clone = Arc::clone(&attempted);
+
+        let output = run_tmux_with_runner(["list-clients"], move |binary, _args| {
+            attempted_clone
+                .lock()
+                .expect("lock attempted binaries")
+                .push(binary.to_string());
+
+            if binary == "tmux" {
+                return Err(io::Error::new(io::ErrorKind::NotFound, "tmux not found"));
+            }
+
+            if binary == "/opt/homebrew/bin/tmux" {
+                let mut out = std::process::Output {
+                    status: std::process::ExitStatus::from_raw(0),
+                    stdout: Vec::new(),
+                    stderr: Vec::new(),
+                };
+                out.stdout = b"/dev/ttys010\tcaps\t/Users/pete/Code/capacitor\n".to_vec();
+                return Ok(out);
+            }
+
+            Err(io::Error::new(io::ErrorKind::NotFound, "missing"))
+        })
+        .expect("runner should return output");
+
+        let attempted = attempted.lock().expect("lock attempted binaries");
+        assert_eq!(
+            attempted.as_slice(),
+            ["tmux".to_string(), "/opt/homebrew/bin/tmux".to_string()]
+        );
+        assert!(output.contains("/dev/ttys010"));
+    }
+
+    #[test]
+    fn run_tmux_falls_back_after_non_success_status_on_first_binary() {
+        let attempted = Arc::new(Mutex::new(Vec::<String>::new()));
+        let attempted_clone = Arc::clone(&attempted);
+
+        let output = run_tmux_with_runner(["list-clients"], move |binary, _args| {
+            attempted_clone
+                .lock()
+                .expect("lock attempted binaries")
+                .push(binary.to_string());
+
+            if binary == "tmux" {
+                return Ok(std::process::Output {
+                    status: std::process::ExitStatus::from_raw(1 << 8),
+                    stdout: Vec::new(),
+                    stderr: b"protocol version mismatch".to_vec(),
+                });
+            }
+
+            if binary == "/opt/homebrew/bin/tmux" {
+                return Ok(std::process::Output {
+                    status: std::process::ExitStatus::from_raw(0),
+                    stdout: b"/dev/ttys020\tcaps\t/Users/pete/Code/capacitor\n".to_vec(),
+                    stderr: Vec::new(),
+                });
+            }
+
+            Err(io::Error::new(io::ErrorKind::NotFound, "missing"))
+        })
+        .expect("runner should return output");
+
+        let attempted = attempted.lock().expect("lock attempted binaries");
+        assert_eq!(
+            attempted.as_slice(),
+            ["tmux".to_string(), "/opt/homebrew/bin/tmux".to_string()]
+        );
+        assert!(output.contains("/dev/ttys020"));
     }
 }

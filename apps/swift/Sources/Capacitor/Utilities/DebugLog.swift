@@ -14,6 +14,13 @@ enum DebugLog {
 
     private static let fallbackURL = URL(fileURLWithPath: "/tmp/capacitor-app-debug.log")
     private static let lock = NSLock()
+    private static var testObserver: ((String) -> Void)?
+
+    static func setTestObserver(_ observer: ((String) -> Void)?) {
+        lock.lock()
+        testObserver = observer
+        lock.unlock()
+    }
 
     static func write(
         _ message: String,
@@ -27,6 +34,13 @@ enum DebugLog {
         let data = Data(line.utf8)
 
         let targetURL = primaryURL ?? logURL
+
+        let observer: ((String) -> Void)? = {
+            lock.lock()
+            defer { lock.unlock() }
+            return testObserver
+        }()
+        observer?(line)
 
         lock.lock()
         defer { lock.unlock() }

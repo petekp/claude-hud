@@ -312,7 +312,7 @@ final class ActivationActionExecutorTests: XCTestCase {
         XCTAssertNil(launcher.launchedSession)
     }
 
-    func testActivateHostThenSwitchTmuxGhosttyFallbackLaunchesNewWhenMultipleWindows() async {
+    func testActivateHostThenSwitchTmuxGhosttyFallbackActivatesAppWhenMultipleWindows() async {
         let deps = StubDependencies()
         let tmux = StubTmuxClient()
         tmux.switchResult = true
@@ -420,6 +420,36 @@ final class ActivationActionExecutorTests: XCTestCase {
         XCTAssertTrue(result)
         XCTAssertEqual(terminalDiscovery.lastActivatedApp, "Ghostty")
         XCTAssertEqual(launcher.launchCount, 0, "Expected reuse of existing Ghostty context with no new window")
+    }
+
+    func testActivateHostThenSwitchTmuxNoClientAttachedUsesHostTtyHeuristicWhenAvailable() async {
+        let deps = StubDependencies()
+        let tmux = StubTmuxClient()
+        tmux.hasClientAttached = false
+        tmux.currentClientTty = nil
+        tmux.switchResult = true
+
+        let terminalDiscovery = StubTerminalDiscovery()
+        terminalDiscovery.ghosttyRunning = true
+
+        let launcher = StubTerminalLauncherClient()
+        let executor = ActivationActionExecutor(
+            dependencies: deps,
+            tmuxClient: tmux,
+            terminalDiscovery: terminalDiscovery,
+            terminalLauncher: launcher,
+        )
+
+        let result = await executor.activateHostThenSwitchTmux(
+            hostTty: "/dev/ttys021",
+            sessionName: "cap",
+            projectPath: "/Users/pete/Code/cap",
+        )
+
+        XCTAssertTrue(result)
+        XCTAssertEqual(terminalDiscovery.lastActivatedApp, "Ghostty")
+        XCTAssertEqual(tmux.lastSwitchedClientTty, "/dev/ttys021")
+        XCTAssertEqual(launcher.launchCount, 0)
     }
 
     func testActivateHostThenSwitchTmuxSequentialRequestsReuseExistingGhosttyContext() async {

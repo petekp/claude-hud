@@ -209,9 +209,13 @@ final class TerminalLauncher: ActivationActionDependencies {
         static let activationDelaySeconds: Double = 0.3
         static let homebrewPaths = "/opt/homebrew/bin:/usr/local/bin"
         static let ghosttySessionCacheDuration: TimeInterval = 30.0
+        static let snapshotFailureFallbackDebounceSeconds: TimeInterval = 1.0
     }
 
     private let appleScript: AppleScriptClient
+    private let fetchRoutingSnapshot: (String, String?) async throws -> DaemonRoutingSnapshot
+    private let executeActivationActionOverride: ((ActivationAction, String, String) async -> Bool)?
+    private let launchNewTerminalOverride: ((String, String) -> Bool)?
     var onActivationTrace: ((String) -> Void)?
     var onActivationResult: ((TerminalActivationResult) -> Void)?
     private lazy var executor: ActivationActionExecutor = {
@@ -264,38 +268,101 @@ final class TerminalLauncher: ActivationActionDependencies {
         return value == "1" || value == "true" || value == "yes"
     }()
 
+    private var lastSnapshotFailureFallbackLaunchByProjectPath: [String: Date] = [:]
+    private var latestLaunchRequestID: UInt64 = 0
+    private var launchTask: _Concurrency.Task<Void, Never>?
+
     // MARK: - Public API
 
-    init(appleScript: AppleScriptClient = DefaultAppleScriptClient()) {
+    init(
+        appleScript: AppleScriptClient = DefaultAppleScriptClient(),
+        fetchRoutingSnapshot: @escaping (String, String?) async throws -> DaemonRoutingSnapshot = { projectPath, workspaceId in
+            try await DaemonClient.shared.fetchRoutingSnapshot(
+                projectPath: projectPath,
+                workspaceId: workspaceId,
+            )
+        },
+        executeActivationActionOverride: ((ActivationAction, String, String) async -> Bool)? = nil,
+        launchNewTerminalOverride: ((String, String) -> Bool)? = nil,
+    ) {
         self.appleScript = appleScript
+        self.fetchRoutingSnapshot = fetchRoutingSnapshot
+        self.executeActivationActionOverride = executeActivationActionOverride
+        self.launchNewTerminalOverride = launchNewTerminalOverride
     }
 
     func launchTerminal(for project: Project) {
-        _Concurrency.Task {
-            await launchTerminalAsync(for: project)
+        latestLaunchRequestID &+= 1
+        let requestID = latestLaunchRequestID
+        launchTask?.cancel()
+        launchTask = _Concurrency.Task { [weak self] in
+            await self?.launchTerminalAsync(for: project, requestID: requestID)
         }
     }
 
-    private func launchTerminalAsync(for project: Project) async {
-        let handledWithARE = await launchTerminalWithAERSnapshot(for: project)
+    private func launchTerminalAsync(for project: Project, requestID: UInt64) async {
+        guard shouldProcessLaunchRequest(requestID) else {
+            debugLog("launchTerminalAsync ignored stale request id=\(requestID) path=\(project.path)")
+            return
+        }
+
+        let handledWithARE = await launchTerminalWithAERSnapshot(for: project, requestID: requestID)
         if handledWithARE {
+            return
+        }
+        guard shouldProcessLaunchRequest(requestID) else {
+            debugLog("launchTerminalAsync skipped fallback for stale request id=\(requestID) path=\(project.path)")
             return
         }
 
         // Hard cutover fallback: if snapshot fetch is unavailable, open a fresh terminal.
-        launchNewTerminal(for: project)
-        Telemetry.emit("activation_outcome", "snapshot_unavailable_fallback", payload: [
-            "project": project.name,
-            "path": project.path,
-            "used_fallback": true,
-            "success": true,
-        ])
+        let shouldAttemptFallbackLaunch = shouldLaunchSnapshotFailureFallbackLaunch(for: project.path)
+        let finalSuccess: Bool
+        if shouldAttemptFallbackLaunch {
+            let launchSucceeded = launchNewTerminal(for: project)
+            finalSuccess = launchSucceeded
+            Telemetry.emit("activation_outcome", "snapshot_unavailable_fallback", payload: [
+                "project": project.name,
+                "path": project.path,
+                "used_fallback": true,
+                "fallback_debounced": false,
+                "success": launchSucceeded,
+            ])
+        } else {
+            finalSuccess = true
+            debugLog("snapshot_unavailable_fallback debounced path=\(project.path)")
+            Telemetry.emit("activation_outcome", "snapshot_unavailable_fallback_debounced", payload: [
+                "project": project.name,
+                "path": project.path,
+                "used_fallback": true,
+                "fallback_debounced": true,
+                "success": true,
+            ])
+        }
         onActivationResult?(TerminalActivationResult(
             projectName: project.name,
             projectPath: project.path,
-            success: true,
+            success: finalSuccess,
             usedFallback: true,
         ))
+    }
+
+    private func shouldProcessLaunchRequest(_ requestID: UInt64) -> Bool {
+        requestID == latestLaunchRequestID && !_Concurrency.Task.isCancelled
+    }
+
+    private func shouldLaunchSnapshotFailureFallbackLaunch(for projectPath: String) -> Bool {
+        let now = Date()
+        lastSnapshotFailureFallbackLaunchByProjectPath = lastSnapshotFailureFallbackLaunchByProjectPath.filter { _, value in
+            now.timeIntervalSince(value) <= Constants.snapshotFailureFallbackDebounceSeconds
+        }
+        if let lastLaunch = lastSnapshotFailureFallbackLaunchByProjectPath[projectPath],
+           now.timeIntervalSince(lastLaunch) < Constants.snapshotFailureFallbackDebounceSeconds
+        {
+            return false
+        }
+        lastSnapshotFailureFallbackLaunchByProjectPath[projectPath] = now
+        return true
     }
 
     static func performSwitchTmuxSession(
@@ -448,12 +515,13 @@ final class TerminalLauncher: ActivationActionDependencies {
 
     // MARK: - Rust Resolver Path
 
-    private func launchTerminalWithAERSnapshot(for project: Project) async -> Bool {
+    private func launchTerminalWithAERSnapshot(for project: Project, requestID: UInt64) async -> Bool {
         do {
-            let snapshot = try await DaemonClient.shared.fetchRoutingSnapshot(
-                projectPath: project.path,
-                workspaceId: nil,
-            )
+            let snapshot = try await fetchRoutingSnapshot(project.path, nil)
+            guard shouldProcessLaunchRequest(requestID) else {
+                debugLog("ARE snapshot ignored for stale request id=\(requestID) path=\(project.path)")
+                return true
+            }
             let primary = Self.activationActionFromAERSnapshot(
                 snapshot,
                 projectPath: project.path,
@@ -471,6 +539,10 @@ final class TerminalLauncher: ActivationActionDependencies {
             ])
 
             let primarySuccess = await executeActivationAction(primary, projectPath: project.path, projectName: project.name)
+            guard shouldProcessLaunchRequest(requestID) else {
+                debugLog("ARE primary action completed for stale request id=\(requestID) path=\(project.path)")
+                return true
+            }
             var fallbackSuccess = false
             var usedFallback = false
             if !primarySuccess {
@@ -479,7 +551,7 @@ final class TerminalLauncher: ActivationActionDependencies {
                 } else {
                     false
                 }
-                if !primaryIsLaunchNew {
+                if !primaryIsLaunchNew, shouldProcessLaunchRequest(requestID) {
                     usedFallback = true
                     let fallback = ActivationAction.launchNewTerminal(
                         projectPath: project.path,
@@ -494,6 +566,10 @@ final class TerminalLauncher: ActivationActionDependencies {
             }
 
             let finalSuccess = primarySuccess || fallbackSuccess
+            guard shouldProcessLaunchRequest(requestID) else {
+                debugLog("ARE outcome dropped for stale request id=\(requestID) path=\(project.path)")
+                return true
+            }
             Telemetry.emit("activation_outcome", "are_snapshot_activation", payload: [
                 "project": project.name,
                 "path": project.path,
@@ -515,6 +591,10 @@ final class TerminalLauncher: ActivationActionDependencies {
             ))
             return true
         } catch {
+            if error is CancellationError || !shouldProcessLaunchRequest(requestID) {
+                debugLog("ARE snapshot request canceled/stale id=\(requestID) path=\(project.path)")
+                return true
+            }
             logger.warning("ARE launcher snapshot unavailable, falling back to resolver: \(error.localizedDescription)")
             Telemetry.emit("activation_decision", "are_snapshot_fetch_failed", payload: [
                 "project": project.name,
@@ -568,6 +648,9 @@ final class TerminalLauncher: ActivationActionDependencies {
     // MARK: - Action Execution
 
     private func executeActivationAction(_ action: ActivationAction, projectPath: String, projectName: String) async -> Bool {
+        if let executeActivationActionOverride {
+            return await executeActivationActionOverride(action, projectPath, projectName)
+        }
         debugLog("executeActivationAction action=\(String(describing: action))")
         logger.debug("Executing activation action: \(String(describing: action))")
         let result = await executor.execute(action, projectPath: projectPath, projectName: projectName)
@@ -652,9 +735,9 @@ final class TerminalLauncher: ActivationActionDependencies {
     private func launchNewTerminalAction(projectPath: String, projectName: String) -> Bool {
         logger.info("  ▸ launchNewTerminal: path=\(projectPath), name=\(projectName)")
         debugLog("launchNewTerminal path=\(projectPath) name=\(projectName)")
-        launchNewTerminal(forPath: projectPath, name: projectName)
-        logger.info("  ▸ launchNewTerminal: launched")
-        return true
+        let launched = launchNewTerminal(forPath: projectPath, name: projectName)
+        logger.info("  ▸ launchNewTerminal result: \(launched ? "SUCCESS" : "FAILED")")
+        return launched
     }
 
     private func activatePriorityFallbackAction() -> Bool {
@@ -1283,9 +1366,9 @@ final class TerminalLauncher: ActivationActionDependencies {
 
     // MARK: - New Terminal Launch
 
-    private func launchNewTerminal(for project: Project) {
+    private func launchNewTerminal(for project: Project) -> Bool {
         debugLog("launchNewTerminal project=\(project.name) path=\(project.path)")
-        launchNewTerminal(forPath: project.path, name: project.name)
+        return launchNewTerminal(forPath: project.path, name: project.name)
     }
 
     static func launchNewTerminalScript(projectPath: String, projectName: String, claudePath: String) -> String {
@@ -1296,7 +1379,10 @@ final class TerminalLauncher: ActivationActionDependencies {
         )
     }
 
-    private func launchNewTerminal(forPath path: String, name: String) {
+    private func launchNewTerminal(forPath path: String, name: String) -> Bool {
+        if let launchNewTerminalOverride {
+            return launchNewTerminalOverride(path, name)
+        }
         _Concurrency.Task {
             let claudePath = await getClaudePath()
             debugLog("launchNewTerminal script path=\(path) name=\(name) claudePath=\(claudePath)")
@@ -1308,6 +1394,7 @@ final class TerminalLauncher: ActivationActionDependencies {
             runBashScript(script)
             scheduleTerminalActivation()
         }
+        return true
     }
 
     private func getClaudePath() async -> String {
