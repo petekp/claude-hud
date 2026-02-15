@@ -388,6 +388,47 @@ final class TerminalLauncherTests: XCTestCase {
         }
     }
 
+    func testAERoutingActionMappingAttachedTmuxWithMultipleClientEvidenceUsesMostTrustedFreshestHostTTY() {
+        let snapshot = DaemonRoutingSnapshot(
+            version: 1,
+            workspaceId: "workspace-1",
+            projectPath: "/Users/pete/Code/capacitor",
+            status: "attached",
+            target: DaemonRoutingTarget(kind: "tmux_session", value: "caps"),
+            confidence: "high",
+            reasonCode: "TMUX_CLIENT_ATTACHED",
+            reason: "attached with multiple clients",
+            evidence: [
+                DaemonRoutingEvidence(
+                    evidenceType: "tmux_client",
+                    value: "/dev/ttys-old",
+                    ageMs: 900,
+                    trustRank: 2,
+                ),
+                DaemonRoutingEvidence(
+                    evidenceType: "tmux_client",
+                    value: "/dev/ttys-best",
+                    ageMs: 50,
+                    trustRank: 1,
+                ),
+            ],
+            updatedAt: "2026-02-15T03:45:00Z",
+        )
+
+        let action = TerminalLauncher.activationActionFromAERSnapshot(
+            snapshot,
+            projectPath: "/Users/pete/Code/capacitor",
+            projectName: "capacitor",
+        )
+        switch action {
+        case let .activateHostThenSwitchTmux(hostTty, sessionName):
+            XCTAssertEqual(hostTty, "/dev/ttys-best")
+            XCTAssertEqual(sessionName, "caps")
+        default:
+            XCTFail("Expected activateHostThenSwitchTmux, got \(String(describing: action))")
+        }
+    }
+
     func testAERoutingActionMappingDetachedTmuxEnsuresSession() {
         let snapshot = DaemonRoutingSnapshot(
             version: 1,
@@ -860,6 +901,73 @@ final class TerminalLauncherTests: XCTestCase {
         XCTAssertEqual(results.first?.projectPath, project.path)
         XCTAssertEqual(results.first?.success, true)
         XCTAssertEqual(results.first?.usedFallback, true)
+    }
+
+    func testLaunchTerminalColdStartNoTrustedEvidenceLogsFallbackMarkerAndLaunchesWithoutStall() async {
+        let project = makeProject(name: "project-a", path: "/Users/pete/Code/project-a")
+        var actions: [ActivationAction] = []
+        var results: [TerminalActivationResult] = []
+        var elapsed: TimeInterval?
+        let collector = LogCollector()
+        let startedAt = Date()
+
+        DebugLog.setTestObserver { line in
+            _Concurrency.Task {
+                await collector.append(line)
+            }
+        }
+        defer { DebugLog.setTestObserver(nil) }
+
+        let launcher = TerminalLauncher(
+            appleScript: StubAppleScriptClient(shouldSucceed: true),
+            fetchRoutingSnapshot: { _, _ in
+                DaemonRoutingSnapshot(
+                    version: 1,
+                    workspaceId: "workspace-1",
+                    projectPath: project.path,
+                    status: "unavailable",
+                    target: DaemonRoutingTarget(kind: "none", value: nil),
+                    confidence: "low",
+                    reasonCode: "NO_TRUSTED_EVIDENCE",
+                    reason: "cold-start empty registries",
+                    evidence: [],
+                    updatedAt: "2026-02-15T03:50:00Z",
+                )
+            },
+            executeActivationActionOverride: { action, _, _ in
+                actions.append(action)
+                return true
+            },
+        )
+
+        launcher.onActivationResult = { result in
+            results.append(result)
+            elapsed = Date().timeIntervalSince(startedAt)
+        }
+
+        launcher.launchTerminal(for: project)
+        try? await _Concurrency.Task.sleep(nanoseconds: 250_000_000)
+
+        XCTAssertEqual(actions.count, 1)
+        if let firstAction = actions.first {
+            if case let .launchNewTerminal(path, name) = firstAction {
+                XCTAssertEqual(path, project.path)
+                XCTAssertEqual(name, project.name)
+            } else {
+                XCTFail("Expected launchNewTerminal for cold-start empty evidence, got \(String(describing: firstAction))")
+            }
+        }
+        XCTAssertEqual(results.count, 1)
+        XCTAssertLessThan(
+            elapsed ?? .infinity,
+            0.5,
+            "Cold-start empty-evidence fallback should resolve quickly without apparent stall.",
+        )
+
+        let foundMarker = await collector.contains {
+            $0.contains("[TerminalLauncher] ARE no-trusted-evidence fallback launch path=\(project.path)")
+        }
+        XCTAssertTrue(foundMarker, "Expected explicit no-trusted-evidence fallback marker for cold-start clarity.")
     }
 
     func testLaunchTerminalSnapshotFailureFallbackIsDebouncedAcrossRapidRepeatedClicks() async {
