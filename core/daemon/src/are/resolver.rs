@@ -118,7 +118,7 @@ pub fn resolve(input: ResolveInput<'_>) -> RoutingDiagnostics {
         conflicts.extend(collect_conflicts(&tmux_candidates, best));
         return build_result(
             input,
-            &best,
+            best,
             signal_ages_ms,
             candidate_targets,
             conflicts,
@@ -203,7 +203,7 @@ pub fn resolve(input: ResolveInput<'_>) -> RoutingDiagnostics {
         conflicts.extend(collect_conflicts(&tmux_session_candidates, best));
         return build_result(
             input,
-            &best,
+            best,
             signal_ages_ms,
             candidate_targets,
             conflicts,
@@ -297,7 +297,7 @@ pub fn resolve(input: ResolveInput<'_>) -> RoutingDiagnostics {
         conflicts.extend(collect_conflicts(&shell_candidates, best));
         return build_result(
             input,
-            &best,
+            best,
             signal_ages_ms,
             candidate_targets,
             conflicts,
@@ -315,7 +315,7 @@ pub fn resolve(input: ResolveInput<'_>) -> RoutingDiagnostics {
         conflicts.extend(collect_conflicts(&stale_shell_candidates, best));
         return build_result(
             input,
-            &best,
+            best,
             signal_ages_ms,
             candidate_targets,
             conflicts,

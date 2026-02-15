@@ -192,15 +192,17 @@ impl RoutingMetrics {
         let should_update_first = self
             .first_comparison_at
             .as_ref()
-            .is_none_or(|current| parsed < *current);
+            .map(|current| parsed < *current)
+            .unwrap_or(true);
         if should_update_first {
-            self.first_comparison_at = Some(parsed.clone());
+            self.first_comparison_at = Some(parsed);
         }
 
         let should_update_last = self
             .last_comparison_at
             .as_ref()
-            .is_none_or(|current| parsed > *current);
+            .map(|current| parsed > *current)
+            .unwrap_or(true);
         if should_update_last {
             self.last_comparison_at = Some(parsed);
         }
@@ -266,10 +268,7 @@ fn window_elapsed_hours(
         return None;
     };
 
-    let elapsed = last
-        .clone()
-        .signed_duration_since(first.clone())
-        .num_hours();
+    let elapsed = (*last).signed_duration_since(*first).num_hours();
     Some(elapsed.max(0) as u64)
 }
 

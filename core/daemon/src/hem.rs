@@ -10,17 +10,12 @@ use crate::reducer::{SessionRecord, SessionState};
 
 const DEFAULT_HEM_CONFIG_RELATIVE_PATH: &str = ".capacitor/daemon/hem-v2.toml";
 
-#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum HemMode {
+    #[default]
     Shadow,
     Primary,
-}
-
-impl Default for HemMode {
-    fn default() -> Self {
-        Self::Shadow
-    }
 }
 
 fn default_hem_engine_mode() -> HemMode {
@@ -69,17 +64,12 @@ pub struct HemCapabilitiesConfig {
     pub tool_use_id_consistency: String,
 }
 
-#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum HemCapabilityDetectionStrategy {
+    #[default]
     RuntimeHandshake,
     ConfigOnly,
-}
-
-impl Default for HemCapabilityDetectionStrategy {
-    fn default() -> Self {
-        Self::RuntimeHandshake
-    }
 }
 
 #[derive(Debug, Clone, Deserialize)]
