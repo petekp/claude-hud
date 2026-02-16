@@ -2,9 +2,15 @@
 
 # Capacitor
 
-Capacitor is a companion app for [Claude Code](https://claude.ai/claude-code). I built it for myself to make it easier (and more fun) to work on multiple projects in parallel. Capacitor tracks all your active sessions and with a click you can instantly jump to the right session in your terminal.
+Capacitor is a companion app for [Claude Code](https://claude.ai/claude-code). I built it because I was tired of coding agent tools that try to be the terminal, the editor, the git client, and the chat window all at once. None of those things end up as good as the tools you already use.
 
-Capacitor gives you one surface to see what is active, what is idle, and where to jump next. This is just the foundation. Upcoming releases will offer worktree support, and new ways to capture your ideas as they come with automatic triage, prioritization, and more.
+If you've ever lost track of which terminal window or tmux pane has which session, that's what Capacitor is for. It keeps your sessions visible and one click away.
+
+## Download
+
+**[Download the latest alpha release](https://github.com/petekp/capacitor/releases/latest)** (Apple Silicon, macOS 14+)
+
+> Capacitor is in early alpha. Expect rough edges. [Report issues here.](https://github.com/petekp/capacitor/issues)
 
 ## Why use it
 
@@ -26,7 +32,7 @@ With more on the way if there's demand...
 
 ## Install
 
-1. Download the latest DMG from [Releases](https://github.com/petekp/capacitor/releases).
+1. Download the latest DMG from the [Releases page](https://github.com/petekp/capacitor/releases).
 2. Drag `Capacitor.app` into `/Applications`.
 3. Launch the app.
 

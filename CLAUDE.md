@@ -1,6 +1,6 @@
 # Capacitor
 
-Native macOS dashboard for Claude Code—displays project statistics, session states, and helps you context-switch between projects instantly.
+A fun, glanceable, bring-your-own terminal UI for navigating multiple coding agent sessions in parallel.
 
 ## Stack
 
