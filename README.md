@@ -35,7 +35,7 @@ If a matching session or pane exists, Capacitor focuses it. If there's an existi
 
 Only Ghostty, iTerm2, and Terminal.app are supported right now. More on the way if there's demand.
 
-**Known rough edges:** multi-window ambiguity is currently a Ghostty-specific limitation. We're patiently awaiting Ghostty AppleScript support to enable reliable per-window targeting there.
+**Known rough edges:** multi-window ambiguity is currently a Ghostty-specific limitation. I'm patiently awaiting Ghostty AppleScript support to enable reliable per-window targeting there.
 
 ## Install
 
