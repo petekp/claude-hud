@@ -27,6 +27,31 @@ final class FooterControlsRegressionTests: XCTestCase {
         )
     }
 
+    func testLogoReleasePathMatchesAlphaDebugAppearanceDefaults() throws {
+        let source = try loadFooterViewSource()
+
+        XCTAssertTrue(
+            source.contains("releaseLogoContent(nsImage: nsImage)"),
+            "Release logo rendering should use a dedicated parity path instead of the simplified static fallback.",
+        )
+        XCTAssertTrue(
+            source.contains("private let releaseLogoScale: CGFloat = 0.84"),
+            "Release logo scale should match alpha debug defaults to avoid oversized branding in production.",
+        )
+        XCTAssertTrue(
+            source.contains("private let releaseLogoOpacity: Double = 0.22"),
+            "Release logo opacity should match alpha debug defaults to preserve intended vibrancy.",
+        )
+        XCTAssertTrue(
+            source.contains("private let releaseLogoBlendMode: BlendMode = .overlay"),
+            "Release logo blend mode should match alpha debug defaults for color richness.",
+        )
+        XCTAssertTrue(
+            source.contains("material: .menu"),
+            "Release logo vibrancy material should match alpha debug defaults.",
+        )
+    }
+
     private func loadFooterViewSource() throws -> String {
         let testsDir = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()

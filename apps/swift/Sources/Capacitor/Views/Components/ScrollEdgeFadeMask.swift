@@ -87,6 +87,38 @@ struct ScrollEdgeFadeMask: View {
     }
 }
 
+private struct ProjectListScrollMaskModifier: ViewModifier {
+    let scrollbarWidth: CGFloat
+    let topInset: CGFloat
+    let bottomInset: CGFloat
+    let topFade: CGFloat
+    let bottomFade: CGFloat
+
+    func body(content: Content) -> some View {
+        content.mask {
+            GeometryReader { proxy in
+                let sizes = ScrollMaskLayout.sizes(
+                    totalWidth: proxy.size.width,
+                    scrollbarWidth: scrollbarWidth,
+                )
+
+                HStack(spacing: 0) {
+                    ScrollEdgeFadeMask(
+                        topInset: topInset,
+                        bottomInset: bottomInset,
+                        topFade: topFade,
+                        bottomFade: bottomFade,
+                    )
+                    .frame(width: sizes.content, height: proxy.size.height)
+
+                    Color.white
+                        .frame(width: sizes.scrollbar, height: proxy.size.height)
+                }
+            }
+        }
+    }
+}
+
 extension View {
     func scrollEdgeFadeMask(
         topInset: CGFloat = 0,
@@ -96,6 +128,24 @@ extension View {
     ) -> some View {
         mask(
             ScrollEdgeFadeMask(
+                topInset: topInset,
+                bottomInset: bottomInset,
+                topFade: topFade,
+                bottomFade: bottomFade,
+            ),
+        )
+    }
+
+    func projectListScrollMask(
+        scrollbarWidth: CGFloat,
+        topInset: CGFloat = 0,
+        bottomInset: CGFloat = 0,
+        topFade: CGFloat,
+        bottomFade: CGFloat,
+    ) -> some View {
+        modifier(
+            ProjectListScrollMaskModifier(
+                scrollbarWidth: scrollbarWidth,
                 topInset: topInset,
                 bottomInset: bottomInset,
                 topFade: topFade,

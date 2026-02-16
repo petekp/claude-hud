@@ -179,6 +179,11 @@ struct LogoView: View {
     #endif
 
     private let baseHeight: CGFloat = 14
+    #if !DEBUG
+        private let releaseLogoScale: CGFloat = 0.84
+        private let releaseLogoOpacity: Double = 0.22
+        private let releaseLogoBlendMode: BlendMode = .overlay
+    #endif
 
     private static let cachedLogoImage: NSImage? = {
         guard let url = ResourceBundle.url(forResource: "logo-small", withExtension: "pdf") else {
@@ -234,12 +239,7 @@ struct LogoView: View {
                 logoContent(nsImage: nsImage)
                     .id(config.logoConfigHash)
             #else
-                Image(nsImage: nsImage)
-                    .renderingMode(.template)
-                    .resizable()
-                    .aspectRatio(contentMode: .fit)
-                    .frame(height: baseHeight)
-                    .foregroundStyle(.white.opacity(0.7))
+                releaseLogoContent(nsImage: nsImage)
             #endif
         }
     }
@@ -277,6 +277,31 @@ struct LogoView: View {
                     .foregroundStyle(.white.opacity(config.logoOpacity))
                     .blendMode(selectedSwiftUIBlendMode)
             }
+        }
+    #endif
+
+    #if !DEBUG
+        private func releaseLogoContent(nsImage: NSImage) -> some View {
+            let logoShape = Image(nsImage: nsImage)
+                .renderingMode(.template)
+                .resizable()
+                .aspectRatio(contentMode: .fit)
+                .frame(height: baseHeight * releaseLogoScale)
+
+            return ZStack {
+                VibrancyView(
+                    material: .menu,
+                    blendingMode: .behindWindow,
+                    isEmphasized: false,
+                    forceDarkAppearance: true,
+                )
+                .mask(logoShape)
+
+                logoShape
+                    .foregroundStyle(.white.opacity(releaseLogoOpacity))
+                    .blendMode(releaseLogoBlendMode)
+            }
+            .fixedSize()
         }
     #endif
 }

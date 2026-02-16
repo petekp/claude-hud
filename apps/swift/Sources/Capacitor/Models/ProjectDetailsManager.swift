@@ -112,6 +112,23 @@ final class ProjectDetailsManager {
         }
     }
 
+    func loadAllIdeasIncrementally(
+        for projects: [Project],
+        batchSize: Int = 2,
+    ) async {
+        guard batchSize > 0 else {
+            loadAllIdeas(for: projects)
+            return
+        }
+
+        for (index, project) in projects.enumerated() {
+            loadIdeas(for: project)
+            if (index + 1) % batchSize == 0 {
+                await _Concurrency.Task.yield()
+            }
+        }
+    }
+
     func checkIdeasFileChanges(for projects: [Project]) {
         let now = Date()
         guard now.timeIntervalSince(lastIdeasCheck) >= Constants.ideasCheckIntervalSeconds else { return }

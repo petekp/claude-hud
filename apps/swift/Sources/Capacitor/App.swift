@@ -174,6 +174,16 @@ struct CapacitorApp: App {
 
                     Divider()
 
+                    Section("Onboarding Testing") {
+                        Button("Return to Setup Screen") {
+                            withAnimation(.easeInOut(duration: 0.4)) {
+                                setupComplete = false
+                            }
+                        }
+                    }
+
+                    Divider()
+
                     Section("State Testing") {
                         Button("Clear All Projects (Empty State)") {
                             for project in appState.projects {

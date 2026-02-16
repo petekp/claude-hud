@@ -288,9 +288,11 @@ class AppState {
 
     // MARK: - Data Loading
 
-    func loadDashboard() {
+    func loadDashboard(hydrateIdeas: Bool = true, showLoadingState: Bool = true) {
         guard let engine else { return }
-        isLoading = true
+        if showLoadingState {
+            isLoading = true
+        }
 
         do {
             dashboard = try engine.loadDashboard()
@@ -303,13 +305,17 @@ class AppState {
             }
             activeProjectResolver.updateProjects(projects)
             refreshSessionStates()
-            if isIdeaCaptureEnabled {
+            if hydrateIdeas, isIdeaCaptureEnabled {
                 projectDetailsManager.loadAllIdeas(for: projects)
             }
-            isLoading = false
+            if showLoadingState {
+                isLoading = false
+            }
         } catch {
             self.error = error.localizedDescription
-            isLoading = false
+            if showLoadingState {
+                isLoading = false
+            }
         }
     }
 
@@ -652,16 +658,42 @@ class AppState {
         )
     }
 
+    private func prependToProjectOrder(paths: [String]) {
+        let uniqueIncomingPaths = uniquePaths(paths)
+        guard !uniqueIncomingPaths.isEmpty else { return }
+
+        var newOrder = projectOrder
+        for path in uniqueIncomingPaths {
+            newOrder.removeAll { $0 == path }
+        }
+        newOrder.insert(contentsOf: uniqueIncomingPaths, at: 0)
+
+        setProjectOrder(
+            newOrder,
+            reason: "projects_added_batch",
+            extraPayload: ["pathCount": uniqueIncomingPaths.count],
+        )
+    }
+
     func connectProjectViaFileBrowser() {
         let panel = NSOpenPanel()
         panel.canChooseFiles = false
         panel.canChooseDirectories = true
-        panel.allowsMultipleSelection = false
+        panel.allowsMultipleSelection = true
         panel.message = "Select a project folder to connect"
         panel.prompt = "Connect"
 
-        guard panel.runModal() == .OK, let url = panel.url else { return }
+        guard panel.runModal() == .OK else { return }
 
+        let urls = panel.urls
+        guard !urls.isEmpty else { return }
+
+        if urls.count > 1 {
+            addProjectsFromDrop(urls)
+            return
+        }
+
+        guard let url = urls.first else { return }
         let path = url.path
         guard let result = validateProject(path) else { return }
 
@@ -778,13 +810,15 @@ class AppState {
                 }
 
                 if finalAddedCount > 0 {
-                    // Prepend newly added projects to the order (reversed so first dropped is at top)
-                    for path in finalAddedPaths.reversed() {
-                        self.prependToProjectOrder(path)
+                    // Batch prepend so order persistence/telemetry runs once for large imports.
+                    self.prependToProjectOrder(paths: finalAddedPaths)
+                    var fastSwapTransaction = Transaction(animation: nil)
+                    fastSwapTransaction.disablesAnimations = true
+                    withTransaction(fastSwapTransaction) {
+                        self.loadDashboard(hydrateIdeas: false, showLoadingState: false)
                     }
-                    withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                        self.loadDashboard()
-                    }
+                    self.scheduleDeferredIdeaHydration()
+                    self.pendingDragDropTip = true
                 }
 
                 // Show appropriate toast with error-first formatting
@@ -828,6 +862,19 @@ class AppState {
             return "\(failedPortion) (\(connectedCount) connected)"
         } else {
             return failedPortion
+        }
+    }
+
+    private func scheduleDeferredIdeaHydration() {
+        guard isIdeaCaptureEnabled else { return }
+
+        _Concurrency.Task { [weak self] in
+            guard let self else { return }
+
+            // Yield one frame so connect-state -> list transition can complete first.
+            await _Concurrency.Task.yield()
+            guard isIdeaCaptureEnabled else { return }
+            await projectDetailsManager.loadAllIdeasIncrementally(for: projects)
         }
     }
 
