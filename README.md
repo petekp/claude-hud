@@ -7,20 +7,16 @@ It shows live session state across your projects and lets you jump back to the r
 
 ## Status
 
-Capacitor is in a small public alpha focused on terminal activation reliability.
+Early public alpha (`0.2.0-alpha.1`). The focus right now is getting terminal activation solid — finding the right window, the right tmux session, every time.
 
-- Current workspace version: `0.2.0-alpha.1`
-- Audience: individual power users and small teams already running Claude Code locally
-- Release focus: reliable project-card activation, not broad feature surface
-
-## What you get in alpha
+## What's working
 
 - Live session state in a native macOS UI
 - Project list with pinning/reordering and active-vs-idle grouping
-- One-click activation — always opens the most recently clicked project
-- Finds your existing terminal or tmux session first, falls back to a new one if needed
+- One-click activation — click a project, land in its terminal
+- Finds your existing terminal or tmux session first, opens a new one if it can't
 
-These features are behind flags and off by default in alpha:
+Behind feature flags (off by default):
 
 - idea capture
 - project details
@@ -36,14 +32,14 @@ These features are behind flags and off by default in alpha:
 | iTerm2 | ✅ | ✅ | AppleScript window/tab activation |
 | Terminal.app | ✅ | ✅ | AppleScript window/tab activation |
 
-Other terminals and IDE-integrated terminals may partially work but haven't been tested for this release.
+Other terminals might work but haven't been tested yet.
 
 ## Requirements
 
 - Apple Silicon Mac (`arm64`)
 - macOS 14+
 - Claude Code installed
-- `tmux` installed for tmux-session reuse workflows
+- `tmux` if you want session reuse
 
 ## Install
 
@@ -62,8 +58,7 @@ cd capacitor
 
 ## First run setup
 
-On first launch, Capacitor walks you through installing the required hooks and shell integration.
-You can do it all from the app — editing `~/.claude/settings.json` by hand is optional.
+First launch walks you through hooks and shell integration. You can do it all from the app — no need to hand-edit `~/.claude/settings.json`.
 
 ## Daily usage
 
@@ -73,7 +68,7 @@ You can do it all from the app — editing `~/.claude/settings.json` by hand is 
 
 ## Activation reliability
 
-Terminal activation is manually tested across all supported terminals before each release.
+Terminal activation is manually tested across all supported terminals before each release. Still some kinks to iron out, but the core path is solid.
 
 ## Development
 
@@ -108,13 +103,13 @@ docs/                  Specs, ADRs, runbooks, and QA evidence
 scripts/               Bootstrap, run, release, and maintenance scripts
 ```
 
-## Known alpha limits
+## Rough edges
 
-- The alpha is deliberately small in scope — reliability over features.
-- Remote/SSH setups haven't been the focus and may not work well yet.
-- Multi-terminal edge cases outside the supported matrix may fall back to launching a new terminal.
+- Deliberately small scope — reliability over features.
+- Remote/SSH setups probably don't work well yet.
+- Multi-terminal edge cases outside the supported matrix might fall back to opening a new terminal.
 
-## Issue reporting
+## Issues
 
 Bug reports and feature requests: [GitHub Issues](https://github.com/petekp/capacitor/issues)
 
