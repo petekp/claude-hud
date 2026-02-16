@@ -284,6 +284,96 @@ final class TerminalLauncherTests: XCTestCase {
         )
     }
 
+    func testSwitchTmuxSessionFocusesProjectPaneWhenPresent() async {
+        var scripts: [String] = []
+
+        let result = await TerminalLauncher.performSwitchTmuxSession(
+            sessionName: "workspace",
+            projectPath: "/Users/pete/Code/project-b",
+            runScript: { script in
+                scripts.append(script)
+                if script.contains("display-message -p '#{client_tty}'") {
+                    return (0, "/dev/ttys072\n")
+                }
+                if script.contains("tmux switch-client -c '/dev/ttys072' -t 'workspace'") {
+                    return (0, nil)
+                }
+                if script.contains("tmux list-panes -t 'workspace' -F '#{session_name}\t#{window_index}\t#{pane_index}\t#{pane_current_path}'") {
+                    return (0, "workspace\t0\t0\t/Users/pete/Code/project-a\nworkspace\t0\t1\t/Users/pete/Code/project-b\n")
+                }
+                if script.contains("tmux switch-client -c '/dev/ttys072' -t 'workspace:0'") {
+                    return (0, nil)
+                }
+                if script.contains("tmux select-pane -t 'workspace:0.1'") {
+                    return (0, nil)
+                }
+                return (1, nil)
+            },
+            activateTerminal: { _ in true },
+        )
+
+        XCTAssertTrue(result)
+        XCTAssertTrue(
+            scripts.contains { $0.contains("tmux select-pane -t 'workspace:0.1'") },
+            "Expected switch flow to focus project-specific pane, got scripts: \(scripts)",
+        )
+    }
+
+    func testBestTmuxPaneTargetForProjectPathPrefersExactMatch() {
+        let output = "workspace\t0\t0\t/Users/pete/Code/project-a\nworkspace\t0\t1\t/Users/pete/Code/project-b\n"
+        let target = TerminalLauncher.bestTmuxPaneTargetForProjectPath(
+            output: output,
+            sessionName: "workspace",
+            projectPath: "/Users/pete/Code/project-b",
+            homeDirectory: "/Users/pete",
+        )
+        XCTAssertNotNil(target)
+        XCTAssertEqual(target?.windowIndex, "0")
+        XCTAssertEqual(target?.paneIndex, "1")
+    }
+
+    func testEnsureTmuxSessionFocusesProjectPaneWhenPresent() async {
+        var scripts: [String] = []
+        var callCount = 0
+
+        let result = await TerminalLauncher.performEnsureTmuxSession(
+            sessionName: "workspace",
+            projectPath: "/Users/pete/Code/project-b",
+            runScript: { script in
+                defer { callCount += 1 }
+                scripts.append(script)
+                if script.contains("display-message -p '#{client_tty}'") {
+                    return (0, "/dev/ttys072\n")
+                }
+                if script.contains("tmux switch-client -c '/dev/ttys072' -t 'workspace'") {
+                    // First switch attempt fails, retry after ensure succeeds.
+                    return callCount == 1 ? (1, "can't find session") : (0, nil)
+                }
+                if script.contains("tmux has-session -t 'workspace'") {
+                    return (0, nil)
+                }
+
+                if script.contains("tmux list-panes -t 'workspace' -F '#{session_name}\t#{window_index}\t#{pane_index}\t#{pane_current_path}'") {
+                    return (0, "workspace\t1\t0\t/Users/pete/Code/project-a\nworkspace\t1\t1\t/Users/pete/Code/project-b\n")
+                }
+                if script.contains("tmux switch-client -c '/dev/ttys072' -t 'workspace:1'") {
+                    return (0, nil)
+                }
+                if script.contains("tmux select-pane -t 'workspace:1.1'") {
+                    return (0, nil)
+                }
+                return (1, nil)
+            },
+            activateTerminal: { _ in true },
+        )
+
+        XCTAssertTrue(result)
+        XCTAssertTrue(
+            scripts.contains { $0.contains("tmux select-pane -t 'workspace:1.1'") },
+            "Expected ensure flow to focus project-specific pane, got scripts: \(scripts)",
+        )
+    }
+
     func testGhosttyOwnerPidForTTYFromProcessSnapshot() {
         let snapshot = """
          75868 75866 ttys072 tmux new-session -A -s writing -c /Users/pete/Code/writing
