@@ -7,13 +7,13 @@ It shows live session state across your projects and lets you jump back to the r
 
 ## Status
 
-Early public alpha (`0.2.0-alpha.1`). The focus right now is getting terminal activation solid — finding the right window, the right tmux session, every time.
+Early public alpha (`0.2.0-alpha.1`). The focus right now is getting terminal activation solid: finding the right window, the right tmux session, every time.
 
 ## What's working
 
 - Live session state in a native macOS UI
 - Project list with pinning/reordering and active-vs-idle grouping
-- One-click activation — click a project, land in its terminal
+- One-click activation. Click a project, land in its terminal.
 - Finds your existing terminal or tmux session first, opens a new one if it can't
 
 Behind feature flags (off by default):
@@ -58,7 +58,7 @@ cd capacitor
 
 ## First run setup
 
-First launch walks you through hooks and shell integration. You can do it all from the app — no need to hand-edit `~/.claude/settings.json`.
+First launch walks you through hooks and shell integration. You can do it all from the app. No need to hand-edit `~/.claude/settings.json`.
 
 ## Daily usage
 
@@ -103,16 +103,10 @@ docs/                  Specs, ADRs, runbooks, and QA evidence
 scripts/               Bootstrap, run, release, and maintenance scripts
 ```
 
-## Rough edges
-
-- Deliberately small scope — reliability over features.
-- Remote/SSH setups probably don't work well yet.
-- Multi-terminal edge cases outside the supported matrix might fall back to opening a new terminal.
-
 ## Issues
 
 Bug reports and feature requests: [GitHub Issues](https://github.com/petekp/capacitor/issues)
 
 ## License
 
-MIT — see [LICENSE](LICENSE) for details.
+MIT. See [LICENSE](LICENSE) for details.
