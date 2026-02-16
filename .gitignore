@@ -3,6 +3,7 @@
 
 # Editor / IDE
 .idea
+.vscode/
 *.sw?
 
 # Node.js (transparent-ui server)
@@ -10,6 +11,7 @@ node_modules
 logs
 *.log
 npm-debug.log*
+dist/
 
 # Rust
 target/
@@ -32,3 +34,6 @@ plan-*.md
 apps/swift/plan-*.md
 recover.md
 AGENT_CHANGELOG.md
+
+# Local runtime env with secrets
+scripts/dev/capacitor-ingest.local

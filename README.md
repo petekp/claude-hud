@@ -2,111 +2,48 @@
 
 # Capacitor
 
-Capacitor is a native macOS sidecar for [Claude Code](https://claude.ai/claude-code).
-It shows live session state across your projects and lets you jump back to the right terminal with one click.
+Capacitor is a companion app for [Claude Code](https://claude.ai/claude-code). I built it for myself to make it easier (and more fun) to work on multiple projects in parallel. Capacitor tracks all your active sessions and with a click you can instantly jump to the right session in your terminal.
 
-## Status
+Capacitor gives you one surface to see what is active, what is idle, and where to jump next. This is just the foundation. Upcoming releases will offer worktree support, and new ways to capture your ideas as they come with automatic triage, prioritization, and more.
 
-Early public alpha (`0.2.0-alpha.1`). The focus right now is getting terminal activation solid: finding the right window, the right tmux session, every time.
+## Why use it
 
-## What's working
-
-- Live session state in a native macOS UI
-- Project list with pinning/reordering and active-vs-idle grouping
-- One-click activation. Click a project, land in its terminal.
-- Finds your existing terminal or tmux session first, opens a new one if it can't
-
-Behind feature flags (off by default):
-
-- idea capture
-- project details
-- workstreams
-- project creation
-- llm features
+- Keep project context visible without terminal tab hunting
+- See live session state at a glance
+- Click a project card to return to the right terminal/tmux context
+- Stay focused when juggling multiple projects
+- It's _fun_!
 
 ## Supported terminals
 
-| Terminal | Session Tracking | One-Click Activation | Notes |
-| --- | --- | --- | --- |
-| Ghostty | ✅ | ✅ | Recommended default |
-| iTerm2 | ✅ | ✅ | AppleScript window/tab activation |
-| Terminal.app | ✅ | ✅ | AppleScript window/tab activation |
+| Terminal     | Session Tracking | One-Click Activation |
+| ------------ | ---------------- | -------------------- |
+| Ghostty      | ✅               | ✅                   |
+| iTerm2       | ✅               | ✅                   |
+| Terminal.app | ✅               | ✅                   |
 
-Other terminals might work but haven't been tested yet.
+With more on the way if there's demand...
+
+## Install
+
+1. Download the latest DMG from [Releases](https://github.com/petekp/capacitor/releases).
+2. Drag `Capacitor.app` into `/Applications`.
+3. Launch the app.
+
+## Quick Start
+
+1. Open Capacitor.
+2. Connect a project (or drag a project folder into the app).
+3. Run Claude Code in your terminal(s) as normal.
+4. Click project cards in Capacitor to jump to the right session.
 
 ## Requirements
 
 - Apple Silicon Mac (`arm64`)
 - macOS 14+
 - Claude Code installed
-- `tmux` if you want session reuse
+- `tmux` strongly recommended for the best experience
 
-## Install
+## Need Help Or Want To Report A Bug?
 
-### Release build
-
-Download the latest DMG from [Releases](https://github.com/petekp/capacitor/releases), then drag `Capacitor.app` to `/Applications`.
-
-### Build from source
-
-```bash
-git clone https://github.com/petekp/capacitor.git
-cd capacitor
-./scripts/dev/setup.sh
-./scripts/dev/restart-app.sh --channel alpha
-```
-
-## First run setup
-
-First launch walks you through hooks and shell integration. You can do it all from the app. No need to hand-edit `~/.claude/settings.json`.
-
-## Daily usage
-
-1. Connect a project from the UI (or drag a folder in).
-2. Keep Claude Code running in your terminals as usual.
-3. Click any project card to focus/switch to its terminal context.
-
-## Activation reliability
-
-Terminal activation is manually tested across all supported terminals before each release. Still some kinks to iron out, but the core path is solid.
-
-## Development
-
-### Useful commands
-
-```bash
-# One-time bootstrap
-./scripts/dev/setup.sh
-
-# Build + run debug app bundle
-./scripts/dev/restart-app.sh --channel alpha
-
-# Fast full local checks
-./scripts/dev/run-tests.sh
-
-# Swift-only test loop
-cd apps/swift && swift test
-
-# Resolver-focused daemon tests
-cargo test -p capacitor-daemon resolver_ -- --nocapture
-```
-
-### Project structure
-
-```text
-apps/swift/            SwiftUI macOS app
-core/daemon/           Rust daemon (routing, reducer, telemetry state)
-core/daemon-protocol/  Shared daemon protocol types
-core/hud-core/         Rust core library exposed via UniFFI to Swift
-core/hud-hook/         Hook CLI that forwards Claude events/CWD updates
-docs/                  Specs, ADRs, runbooks, and QA evidence
-scripts/               Bootstrap, run, release, and maintenance scripts
-```
-
-## Issues
-
-Bug reports and feature requests: [GitHub Issues](https://github.com/petekp/capacitor/issues)
-
-## License
-
-MIT. See [LICENSE](LICENSE) for details.
+- Use the in-app feedback form or open an issue: [GitHub Issues](https://github.com/petekp/capacitor/issues)
