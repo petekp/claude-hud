@@ -591,7 +591,10 @@ extension View {
 /// at runtime — SwiftUI shows yellow/not-allowed even when the effect renders.
 /// .bundle() uses the same code path as Xcode-compiled shaders.
 enum ShaderCache {
-    static let library: ShaderLibrary = .bundle(Bundle.module)
+    static let library: ShaderLibrary = {
+        let bundle = ResourceBundle.bundle ?? Bundle.main
+        return .bundle(bundle)
+    }()
 }
 
 /// Blocker indicator badge

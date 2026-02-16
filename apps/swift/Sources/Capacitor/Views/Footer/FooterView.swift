@@ -143,7 +143,7 @@ private struct AddProjectPillButton: View {
         Button {
             appState.connectProjectViaFileBrowser()
         } label: {
-            Image(systemName: "plus")
+            Image(systemName: "folder.badge.plus")
                 .font(.system(size: 14, weight: .medium))
                 .foregroundColor(.white.opacity(isHovered ? 0.7 : 0.4))
                 .frame(width: 36, height: 36)
@@ -161,8 +161,8 @@ private struct AddProjectPillButton: View {
                 )
         }
         .buttonStyle(.plain)
-        .help("Connect Project")
-        .accessibilityLabel("Connect project")
+        .help("Connect a project")
+        .accessibilityLabel("Browse folders to connect a project")
         .accessibilityHint("Opens file browser to select a project folder")
         .scaleEffect(isHovered && !reduceMotion ? 1.05 : 1.0)
         .onHover { hovering in
@@ -306,7 +306,7 @@ struct PinButton: View {
                 )
         }
         .buttonStyle(.plain)
-        .help(isPinned ? "Unpin window (⌘⇧P)" : "Pin window to stay on top (⌘⇧P)")
+        .help(isPinned ? "Unpin from top (⌘⇧P)" : "Pin to top (⌘⇧P)")
         .accessibilityLabel(isPinned ? "Unpin window" : "Pin window to stay on top")
         .accessibilityHint("Press Command Shift P to toggle")
         .accessibilityAddTraits(isPinned ? .isSelected : [])

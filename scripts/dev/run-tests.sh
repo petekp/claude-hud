@@ -92,6 +92,11 @@ if [ "$QUICK" = false ]; then
     install_name_tool -id "@rpath/libhud_core.dylib" target/release/libhud_core.dylib
 
     cd apps/swift
+    echo "Building Swift package and staging libhud_core.dylib for test runtime..."
+    swift build
+    SWIFT_BIN_PATH="$(swift build --show-bin-path)"
+    cp ../../target/release/libhud_core.dylib "$SWIFT_BIN_PATH/"
+
     if swift test 2>&1; then
         echo -e "${GREEN}✓ Swift tests passed${NC}"
     else

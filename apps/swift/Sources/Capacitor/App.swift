@@ -369,17 +369,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    /// Shows a custom About panel with the Capacitor logomark and version info
+    /// Shows a custom About panel with the app icon and version info
     @objc func showAboutPanel() {
-        let capacitorGreen = NSColor(red: 0x67 / 255.0, green: 0xFC / 255.0, blue: 0x94 / 255.0, alpha: 1.0)
-
-        // Load logomark from resource bundle (same approach as WelcomeView)
-        var aboutIcon: NSImage?
-        if let logomarkURL = ResourceBundle.url(forResource: "logomark", withExtension: "pdf"),
-           let logomark = NSImage(contentsOf: logomarkURL)
-        {
-            aboutIcon = logomark.tinted(with: capacitorGreen, size: NSSize(width: 48, height: 48))
-        }
+        // Use the app icon so About stays aligned with the current branded iconset.
+        let aboutIcon = NSImage(named: NSImage.applicationIconName) ?? NSApp.applicationIconImage
 
         // Get version from multiple sources (release builds have correct Info.plist, dev builds don't)
         let version = Self.getAppVersion()
@@ -389,9 +382,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             .applicationVersion: version,
         ]
 
-        if let icon = aboutIcon {
-            options[.applicationIcon] = icon
-        }
+        options[.applicationIcon] = aboutIcon
 
         NSApp.orderFrontStandardAboutPanel(options: options)
     }
@@ -495,29 +486,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         if let window = NSApp.windows.first {
             window.makeKeyAndOrderFront(nil)
         }
-    }
-}
-
-// MARK: - NSImage Tinting Extension
-
-extension NSImage {
-    /// Creates a new image tinted with the specified color at the given size
-    func tinted(with color: NSColor, size: NSSize) -> NSImage {
-        let image = NSImage(size: size)
-        image.lockFocus()
-
-        let rect = NSRect(origin: .zero, size: size)
-
-        // Draw the original image first
-        draw(in: rect, from: .zero, operation: .copy, fraction: 1.0)
-
-        // Apply tint color using sourceAtop (colors only where image has content)
-        color.set()
-        rect.fill(using: .sourceAtop)
-
-        image.unlockFocus()
-        image.isTemplate = false
-        return image
     }
 }
 
