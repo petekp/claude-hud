@@ -22,7 +22,7 @@ If you've ever lost track of which terminal window or tmux pane has which sessio
 
 ## Supported terminals
 
-| Terminal     | Session Tracking | One-Click Activation |
+| Terminal     | Session Tracking | Jump to session |
 | ------------ | ---------------- | -------------------- |
 | Ghostty      | ✅               | ✅                   |
 | iTerm2       | ✅               | ✅                   |
@@ -48,8 +48,8 @@ With more on the way if there's demand...
 - Apple Silicon Mac (`arm64`)
 - macOS 14+
 - Claude Code installed
-- `tmux` strongly recommended for the best experience
+- `tmux` recommended (Capacitor can restore exact pane context)
 
-## Need Help Or Want To Report A Bug?
+## Feedback
 
-- Use the in-app feedback form or open an issue: [GitHub Issues](https://github.com/petekp/capacitor/issues)
+Use the in-app feedback form, or open a [GitHub issue](https://github.com/petekp/capacitor/issues).
