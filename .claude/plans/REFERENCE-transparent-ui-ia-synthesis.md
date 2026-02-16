@@ -364,7 +364,7 @@ Edge click → Focus box shows boundary type, data shape, failure modes
 |-------|-------|-------------|------------------|
 | Competitive IA Patterns | competitive-researcher | `.claude/docs/transparent-ui-ia-research.md` | 3-layer hierarchy + persistent overview + 8 anti-patterns |
 | Gap Matrix | gap-analyst | `.claude/gap-matrix-explorer-vs-system.md` | 28 gaps in 4 tiers, 5 P0-critical |
-| User Journey IA | journey-architect | `.claude/plans/ACTIVE-task3-ux-architecture-design.md` | 3 journey designs, 22 total panels, 3 killer features |
+| User Journey IA | journey-architect | `.claude/plans/REFERENCE-task3-ux-architecture-design.md` | 3 journey designs, 22 total panels, 3 killer features |
 | Semantic Data Model | data-modeler | `docs/transparent-ui/enriched-data-model.ts` | TypeScript interfaces for enriched nodes/edges/flows |
 | **Synthesis** | **team lead** | **This document** | Unified recommendation with phased implementation |
 

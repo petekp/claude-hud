@@ -2,6 +2,8 @@
 
 Detailed implementation gotchas for Capacitor development. See CLAUDE.md for the most common ones.
 
+For multi-step debugging procedures, see [debugging-guide.md](debugging-guide.md).
+
 ## Rust
 
 ### Formatting Required
@@ -48,127 +50,46 @@ run_tmux_command(&["display-message", "-p", "#S\t#{client_tty}"])
 
 ### OSLog Not Captured for Debug Builds
 
-Swift's `Logger` (OSLog) writes to the unified logging system, but for unsigned debug builds run via `swift run`, these logs are NOT captured by `log show` or `log stream`.
-
-**Symptom:** `logger.info()` calls produce no output in Console.app or `log stream --predicate 'subsystem == "com.capacitor.app"'`.
-
-**Workaround:** For debugging sessions requiring telemetry, add explicit stderr output:
-```swift
-private func telemetry(_ message: String) {
-    FileHandle.standardError.write(Data("[TELEMETRY] \(message)\n".utf8))
-}
-```
-
-Then capture with: `./Capacitor 2> /tmp/telemetry.log &`
-
-**Note:** Remove telemetry helpers before committing—they're for debugging only.
+Swift's `Logger` (OSLog) doesn't output for unsigned debug builds via `swift run`. Use stderr or `DebugLog.write(...)` for debugging. See [debugging-guide.md](debugging-guide.md#debug-logs-for-debug-builds) for capture instructions.
 
 ### NSImage Tinting Compositing Order
 
-When tinting an NSImage with a color, the compositing order matters:
-
-**Wrong:** Fill color first, then draw image
-```swift
-color.set()
-rect.fill(using: .destinationIn)  // ❌ Results in blank image
-self.draw(in: rect, ...)
-```
-
-**Right:** Draw image first with `.copy`, then apply color with `.sourceAtop`
+Draw image first with `.copy`, then apply color with `.sourceAtop`:
 ```swift
 self.draw(in: rect, from: .zero, operation: .copy, fraction: 1.0)
 color.set()
-rect.fill(using: .sourceAtop)  // ✅ Colors only where image has content
+rect.fill(using: .sourceAtop)  // Colors only where image has content
 ```
-
-The `.sourceAtop` operation applies color only to non-transparent pixels of the already-drawn image.
+Wrong order (fill first, then draw) results in blank image.
 
 ### SwiftUI Hit Testing: Conditional Rendering vs Hidden Views
 
-Using `opacity(0)` with `allowsHitTesting(false)` still creates dead zones that block window dragging:
-
-**Wrong:**
-```swift
-BackButton()
-    .opacity(isOnListView ? 0 : 1)
-    .allowsHitTesting(!isOnListView)  // ❌ Still blocks window drag
-```
-
-**Right:**
-```swift
-if !isOnListView {
-    BackButton()  // ✅ Completely removed from view hierarchy
-}
-```
-
-**Why:** Even with hit testing disabled, invisible views can interfere with `NSWindow.isMovableByWindowBackground`. Use conditional rendering to fully remove views from the hierarchy.
+`opacity(0)` with `allowsHitTesting(false)` still creates dead zones that block window dragging. Use conditional rendering (`if`) to fully remove views from the hierarchy instead.
 
 ### SwiftUI Gestures Block NSView Events
 
-SwiftUI's `onTapGesture(count: 2)` intercepts the underlying `mouseDown` events, preventing `NSWindow.performDrag(with:)` from working:
-
-**Problem:** Adding double-click gesture to header breaks window dragging
-```swift
-.onTapGesture(count: 2) {
-    // This intercepts mouseDown, breaking window drag
-}
-```
-
-**Solutions:**
-1. Use `NSViewRepresentable` with `mouseDown` that checks `event.clickCount`
-2. Remove the gesture if window dragging is more important
-3. Apply gesture only to specific non-draggable areas
+`onTapGesture(count: 2)` intercepts `mouseDown` events, preventing `NSWindow.performDrag(with:)`. Solutions: use `NSViewRepresentable` with `mouseDown` checking `event.clickCount`, remove the gesture, or apply it only to non-draggable areas.
 
 ### SwiftUI GeometryReader Constraint Loops
 
-Reading from `@ObservedObject` or `@Observable` inside a `GeometryReader` can trigger infinite constraint update loops, crashing the app with `EXC_BREAKPOINT` in `_postWindowNeedsUpdateConstraints`.
-
-**Root cause:** Reading an observable during layout → triggers `objectWillChange` → view update → new layout pass → read observable → infinite loop.
-
-**Symptom:** Crash log shows recursive `_informContainerThatSubviewsNeedUpdateConstraints` calls (10+ levels deep).
-
-**Wrong:**
+Reading `@ObservedObject`/`@Observable` inside `GeometryReader` triggers infinite constraint update loops (`EXC_BREAKPOINT`). Capture observable values into `let` bindings **before** entering `GeometryReader`:
 ```swift
-var body: some View {
-    GeometryReader { geometry in
-        let spacing = glassConfig.cardSpacing  // ❌ @ObservedObject read during layout
-        LazyHStack(spacing: spacing) { ... }
-    }
+let spacing = glassConfig.cardSpacingRounded  // Before GeometryReader
+GeometryReader { geometry in
+    LazyHStack(spacing: spacing) { ... }
 }
 ```
-
-**Right:**
-```swift
-var body: some View {
-    // Capture layout values once at body evaluation
-    let spacing = glassConfig.cardSpacingRounded  // ✅ Evaluated before layout
-
-    GeometryReader { geometry in
-        LazyHStack(spacing: spacing) { ... }
-    }
-}
-```
-
-**Rule:** Always capture observable values into `let` bindings **before** entering `GeometryReader`, `scrollTransition`, or similar layout callbacks.
-
-**See:** `DockLayoutView.swift:20-22`, `ProjectsView.swift:37-41`, crash log `Capacitor-2026-01-29-102502.ips`
+**Rule:** Same applies to `scrollTransition` and similar layout callbacks.
 
 ### TimelineView + Material Blur Crashes WindowServer
 
-**Problem:** `TimelineView(.animation)` re-evaluates its closure every display frame (120fps on ProMotion). If the view hierarchy includes `.ultraThinMaterial` or other `Material` fills, each frame forces WindowServer to re-composite the real-time blur — a GPU-intensive operation. At sustained 120fps this can overwhelm WindowServer and force a macOS logout.
-
-**Symptom:** Dragging a file onto the app (or any action that shows a view with both `TimelineView(.animation)` and a material blur) causes the entire Mac to log out.
-
-**Solution:** Never use `TimelineView(.animation)` adjacent to or inside views with material blur. Use `@State` + `withAnimation(.linear.repeatForever)` instead — SwiftUI's animation system interpolates via Core Animation on the render server without re-evaluating the view body or invalidating the blur cache.
+`TimelineView(.animation)` at 120fps + `.ultraThinMaterial` overwhelms WindowServer, causing macOS logout. Use `@State` + `withAnimation(.linear.repeatForever)` instead—Core Animation interpolates without re-evaluating view body or invalidating blur cache.
 
 ```swift
-// BAD — re-renders material blur 120x/sec
-TimelineView(.animation) { timeline in
-    let phase = timeline.date.timeIntervalSinceReferenceDate * 30
-    shape.strokeBorder(style: StrokeStyle(dashPhase: CGFloat(phase)))
-}
+// BAD: re-renders blur 120x/sec
+TimelineView(.animation) { ... }
 
-// GOOD — Core Animation interpolates, blur stays cached
+// GOOD: Core Animation interpolates
 @State private var phase: CGFloat = 0
 shape.strokeBorder(style: StrokeStyle(dashPhase: phase))
     .onAppear {
@@ -178,78 +99,15 @@ shape.strokeBorder(style: StrokeStyle(dashPhase: phase))
     }
 ```
 
-**See:** `ContentView.swift` `MarchingAntsBorder`, Feb 2026.
-
 ### ScrollView Fade Mask Without Masking Scrollbars
 
-**Problem:** Applying `.mask` to a SwiftUI `ScrollView` also masks the scroll indicators, and AppKit clip-view masks can appear to “scroll” with content.
-
-**Cause:** SwiftUI masks apply to the entire view hierarchy (including scrollbars). AppKit masks on the clip view can follow document rendering instead of remaining fixed to the viewport.
-
-**Solution:** Keep a SwiftUI mask on the `ScrollView`, but reserve a right-hand strip for the scrollbar so it remains unmasked. Use `NSScroller.scrollerWidth(...)` to match the current scroller style and split the mask horizontally (gradient for content + solid white for scrollbar).
-
-```swift
-let scrollbarWidth = NSScroller.scrollerWidth(for: .regular, scrollerStyle: NSScroller.preferredScrollerStyle)
-
-ScrollView {
-    content
-}
-.mask {
-    GeometryReader { proxy in
-        let sizes = ScrollMaskLayout.sizes(totalWidth: proxy.size.width,
-                                           scrollbarWidth: scrollbarWidth)
-        HStack(spacing: 0) {
-            ScrollEdgeFadeMask(topInset: 0, bottomInset: 0,
-                               topFade: topFade, bottomFade: bottomFade)
-                .frame(width: sizes.content, height: proxy.size.height)
-            Color.white
-                .frame(width: sizes.scrollbar, height: proxy.size.height)
-        }
-    }
-}
-```
+Applying `.mask` to `ScrollView` also masks scroll indicators. Fix: split mask horizontally—gradient for content, solid white strip for scrollbar area using `NSScroller.scrollerWidth(...)`.
 
 ### SwiftUI Rapid State Changes Cause Recursive Layout Crashes
 
-When `objectWillChange.send()` is called synchronously during rapid state changes (e.g., killing multiple Claude Code sessions), SwiftUI can crash with `EXC_BREAKPOINT` in `-[NSWindow(NSDisplayCycle) _postWindowNeedsUpdateConstraints]`.
-
-**Root cause:** Multiple overlapping layout passes occur when:
-1. State changes trigger `objectWillChange.send()` immediately
-2. Views have `.animation()` modifiers that trigger layout on state changes
-3. Multiple sessions change state within the same frame
-
-**Symptom:** Crash log shows recursive `_informContainerThatSubviewsNeedUpdateConstraints` calls and `NSHostingView` geometry updates.
-
-**Solution:** Debounce `objectWillChange.send()` to coalesce rapid updates:
-```swift
-private var refreshDebounceWork: DispatchWorkItem?
-private var isRefreshScheduled = false
-
-func refreshSessionStates() {
-    // Update state synchronously
-    sessionStateManager.refreshSessionStates(for: projects)
-
-    // Debounce UI notification
-    guard !isRefreshScheduled else { return }
-    isRefreshScheduled = true
-
-    refreshDebounceWork?.cancel()
-    let workItem = DispatchWorkItem { [weak self] in
-        self?.isRefreshScheduled = false
-        self?.objectWillChange.send()
-    }
-    refreshDebounceWork = workItem
-
-    // 16ms (~1 frame at 60fps) coalesces updates within a single frame
-    DispatchQueue.main.asyncAfter(deadline: .now() + 0.016, execute: workItem)
-}
-```
-
-**See:** `AppState.swift:216-235`, crash log `Capacitor-2026-01-29-102502.ips`
+Multiple overlapping `objectWillChange.send()` calls during rapid state changes (e.g., killing multiple sessions) crash with `EXC_BREAKPOINT`. Fix: debounce `objectWillChange.send()` at ~16ms (one frame). See `AppState.swift:216-235`.
 
 ### Multi-Source Version Detection
-
-Release builds and dev builds have different "sources of truth" for version:
 
 | Context | Version Source |
 |---------|---------------|
@@ -257,45 +115,10 @@ Release builds and dev builds have different "sources of truth" for version:
 | Dev build (`swift run`) | `VERSION` file in project root |
 | Unknown | Hardcoded fallback (updated by `bump-version.sh`) |
 
-**Implementation pattern:**
-```swift
-private static func getAppVersion() -> String {
-    // 1. Try Info.plist (correct in release builds)
-    if let bundleVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String,
-       bundleVersion != "1.0" {
-        return bundleVersion
-    }
-
-    // 2. Dev build fallback: read VERSION file
-    if let versionData = FileManager.default.contents(atPath: "VERSION"),
-       let version = String(data: versionData, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) {
-        return version
-    }
-
-    // 3. Ultimate fallback (kept in sync by bump-version.sh)
-    return "X.Y.Z"
-}
-```
-
-**Why this works:** SPM debug builds don't get correct Info.plist values, but the VERSION file is accessible when running from the project directory. The fallback is automatically updated by `bump-version.sh`.
+Check `Info.plist` first → `VERSION` file → hardcoded fallback. SPM debug builds don't get correct Info.plist values.
 
 ### CI Smoke Test Fallbacks
-
-When scripts need resources that only exist in full builds (e.g., app bundle Info.plist), check for `$CI` environment variable to provide fallbacks:
-
-```bash
-if [ -z "$BUILD_NUMBER" ]; then
-    if [ -n "$CI" ]; then
-        BUILD_NUMBER=$(date +"%Y%m%d%H%M")
-        echo "⚠ Using generated build number for CI: $BUILD_NUMBER"
-    else
-        echo "ERROR: Build required"
-        exit 1
-    fi
-fi
-```
-
-GitHub Actions sets `$CI=true` automatically. This allows smoke tests to verify script logic without requiring full distribution builds.
+When scripts need resources from full builds, check `$CI` to provide fallbacks. GitHub Actions sets `$CI=true` automatically.
 
 ### Never Use Bundle.module
 Use `ResourceBundle.url(forResource:withExtension:)` instead—crashes in distributed builds.
@@ -310,144 +133,50 @@ Views initializing `@MainActor` types need `@MainActor` on the view struct.
 Use custom decoder with `.withFractionalSeconds`. See `ShellStateStore.swift`.
 
 ### UniFFI Task Shadows Swift Task
-UniFFI bindings define a `Task` type shadowing Swift's `_Concurrency.Task`. Always use `_Concurrency.Task` explicitly. Symptom: "cannot specialize non-generic type 'Task'" errors. Affected: `TerminalLauncher.swift`, `ShellStateStore.swift`.
+UniFFI bindings define a `Task` type shadowing Swift's `_Concurrency.Task`. Always use `_Concurrency.Task` explicitly. Symptom: "cannot specialize non-generic type 'Task'" errors.
 
 ### Swift Incremental Build Stale Binary
 
-Swift's incremental build tracks file modification times. If no `.swift` files changed since the last build, `swift build` reports "Build complete!" but **produces no new binary**. The running app uses the old binary.
-
-**Symptom:** Code changes don't appear after restart. Binary timestamp unchanged despite rebuild.
-
-**When this happens:**
-- Rust-only changes (dylib updated, Swift untouched)
-- Build interrupted then retried
-- IDE and CLI builds interleaved
-
-**Solution:** Use `--force` flag to invalidate the build cache:
+If no `.swift` files changed, `swift build` produces no new binary. Use `--force` flag:
 ```bash
 ./scripts/dev/restart-app.sh --force  # Touches App.swift to force recompilation
 ```
+Common when: Rust-only changes, interrupted builds, or interleaved IDE/CLI builds.
 
-**Manual equivalent:**
-```bash
-touch apps/swift/Sources/Capacitor/App.swift
-swift build
-```
-
-**Why touching App.swift works:** It's the entry point, so touching it forces Swift to recompile and relink everything.
+## Terminal Activation
 
 ### Rust Activation Resolver Is Sole Path
-Terminal activation now uses a single path: Rust decides (`engine.resolveActivation()`), Swift executes (`executeActivationAction()`). The legacy Swift-only strategy methods were removed in Jan 2026. All decision logic lives in `core/hud-core/src/activation.rs` (50+ unit tests).
+Terminal activation uses a single path: Rust decides (`engine.resolveActivation()`), Swift executes (`executeActivationAction()`). All decision logic lives in `core/hud-core/src/activation.rs` (50+ unit tests).
 
-### Terminal Activation: TTY Discovery First
-In `activateHostThenSwitchTmux`, always try TTY discovery before Ghostty-specific handling. Without this, Ghostty gets activated even when tmux is running in iTerm.
-
-**Correct order:**
-1. Try TTY discovery (works for iTerm, Terminal.app)
-2. If TTY found → switch tmux, done
-3. If TTY not found AND Ghostty running → use Ghostty window-count strategy
-4. Otherwise → trigger fallback
+### TTY Discovery Before Ghostty-Specific Handling
+In `activateHostThenSwitchTmux`, always try TTY discovery first. Without this, Ghostty gets activated even when tmux is running in iTerm. Order: TTY discovery → if not found AND Ghostty running → Ghostty window-count strategy → fallback.
 
 ### Shell Selection: Tmux Priority When Client Attached
-> **Daemon-only note (2026-02):** Shell selection uses the daemon shell snapshot (`get_shell_state`). Legacy files are non-authoritative.
-When multiple shells exist at the same path in the daemon shell snapshot (e.g., one tmux shell, two direct shells), the Rust `find_shell_at_path()` function uses this priority order:
+> **Daemon-only note (2026-02):** Shell selection uses the daemon shell snapshot (`get_shell_state`).
 
-1. **Live shells** beat dead shells
-2. **Tmux shells** beat non-tmux shells (only when tmux client is attached)
-3. **Most recent timestamp** as tiebreaker
-
-**Why this matters:** Without tmux priority, timestamp alone determines shell selection. If a user recently cd'd into a directory in a non-tmux shell, that shell gets selected—resulting in `ActivateByTty` instead of `ActivateHostThenSwitchTmux`. The tmux session then fails to switch.
-
-**Key insight:** "Tmux client attached" is a strong signal the user is actively using tmux and wants session switching. See `activation.rs:find_shell_at_path()` and test `test_prefers_tmux_shell_when_client_attached_even_if_older`.
+Priority order in `find_shell_at_path()`: live beats dead → tmux beats non-tmux (when client attached) → most recent timestamp. Without tmux priority, a recent non-tmux cd causes `ActivateByTty` instead of `ActivateHostThenSwitchTmux`.
 
 ### Shell Selection: Known Parent Beats Unknown
-
-**Problem:** Clicking a project doesn’t open Ghostty; activation falls back or does nothing.  
-**Cause:** The most recent shell entry can have `parent_app=unknown` (missing `TERM_PROGRAM`), which forces TTY discovery (iTerm/Terminal only). Ghostty can’t be identified, so activation fails even if an older shell entry is tagged `ghostty`.  
-**Solution:** In the activation resolver, rank shells with known `parent_app` ahead of unknown before timestamp tie-breakers.  
-**Where:** `core/hud-core/src/activation.rs`, test `test_known_terminal_beats_newer_unknown_shell`.
+Shells with known `parent_app` rank ahead of unknown before timestamp tie-breakers. Unknown parent forces TTY discovery which fails for Ghostty. See `activation.rs`, test `test_known_terminal_beats_newer_unknown_shell`.
 
 ### Shell Selection: HOME Excluded from Parent Matching
-
-Path matching supports parent-child relationships for monorepo support (shell at `/Code/monorepo` matches project `/Code/monorepo/packages/app`). However, HOME (`/Users/pete`) is explicitly **excluded** from parent matching.
-
-**Why:** HOME is a parent of nearly everything. Without exclusion, a shell at HOME matches all projects, causing:
-- Wrong shell selection (HOME shell instead of project-specific shell)
-- `ActivateByTty` instead of `ActivateHostThenSwitchTmux`
-- Terminal focuses but tmux session doesn't switch
-
-**Implementation:** `paths_match_excluding_home()` in `activation.rs` checks if the shorter path equals `home_dir` before allowing parent matching.
-
-**Test:** `test_home_shell_does_not_match_project` verifies this behavior.
+HOME is excluded from parent-child path matching (monorepo support). Without this, a shell at HOME matches all projects. See `paths_match_excluding_home()` in `activation.rs`.
 
 ### Tmux Context: "Has Client" Means ANY Client
-When building `TmuxContextFfi` for Rust, `hasAttachedClient` must mean "any tmux client exists anywhere" NOT "client attached to this specific session."
+`hasAttachedClient` must mean "any tmux client exists anywhere" NOT "client attached to this specific session." If ANY client exists, we can `tmux switch-client`. Only launch new terminal when NO clients exist.
 
-**Wrong:**
-```swift
-hasTmuxClientAttachedToSession(targetSession)  // ❌ Returns false if viewing different session
-```
+### Query Fresh Client TTY at Activation Time
+Daemon shell records include `tmux_client_tty` captured at hook time, which becomes stale when users reconnect. Always query fresh TTY at activation time with `tmux display-message -p '#{client_tty}'`. See `TerminalLauncher.swift:activateHostThenSwitchTmux`.
 
-**Right:**
-```swift
-hasTmuxClientAttached()  // ✅ Returns true if ANY client exists
-```
+### Shell Escaping for Injection Prevention
+Use `shellEscape()` (single-quote) and `bashDoubleQuoteEscape()` (double-quote) from `TerminalLauncher.swift` when interpolating user-controlled values into shell commands.
 
-**Why this matters:** If you're viewing session A and click project B, the old code reported "no client" (because no client was on B's session). Rust then decided `LaunchTerminalWithTmux` → spawned new windows.
-
-**Semantic:** "Has attached client" answers "can we use `tmux switch-client`?" If ANY client exists, we can switch it to the target session. Only launch new terminal when NO clients exist at all.
-
-### Terminal Activation: Query Fresh Client TTY
-
-Daemon shell records include `tmux_client_tty` captured at hook time. This TTY becomes **stale** when users reconnect to tmux—they get assigned new TTY devices (e.g., `/dev/ttys012` instead of `/dev/ttys000`).
-
-**Symptom:** TTY discovery fails, falls through to Ghostty window-count check, sees 0 windows (user is in Terminal.app/iTerm), spawns new terminal.
-
-**Fix:** Query fresh TTY at activation time:
-```swift
-private func getCurrentTmuxClientTty() async -> String? {
-    let result = await runBashScriptWithResultAsync("tmux display-message -p '#{client_tty}'")
-    guard result.exitCode == 0, let output = result.output else { return nil }
-    let tty = output.trimmingCharacters(in: .whitespacesAndNewlines)
-    return tty.isEmpty ? nil : tty
-}
-```
-
-**Where:** `TerminalLauncher.swift:activateHostThenSwitchTmux` — use `getCurrentTmuxClientTty() ?? hostTty` before TTY discovery.
-
-### Shell Escaping Utilities
-`TerminalLauncher.swift` provides two escaping functions for shell injection prevention:
-- `shellEscape()` — Single-quote escaping for shell arguments (e.g., `foo'bar` → `'foo'\''bar'`)
-- `bashDoubleQuoteEscape()` — Escape `\`, `"`, `$`, `` ` `` for double-quoted strings
-
-Always use these when interpolating user-controlled values (like tmux session names) into shell commands.
+For terminal activation debugging procedures, see [debugging-guide.md](debugging-guide.md#terminal-activation-not-working-wrong-window-focused).
 
 ## Tmux
 
 ### Use `new-session -A` for Idempotent Session Creation
-
-When launching a terminal that should attach to a tmux session, use `new-session -A` instead of `attach-session`:
-
-**Wrong:**
-```bash
-tmux attach-session -t 'my-session'  # ❌ Fails if session doesn't exist
-```
-
-**Right:**
-```bash
-tmux new-session -A -s 'my-session'  # ✅ Creates if missing, attaches if exists
-```
-
-**The `-A` flag** makes `new-session` behave like "attach-or-create"—idempotent and safe to call regardless of session state.
-
-**With working directory** (for new sessions):
-```bash
-tmux new-session -A -s 'my-session' -c '/path/to/project'
-```
-
-Note: `-c` only affects session creation. If the session already exists, it attaches without changing the working directory.
-
-**See:** `TerminalLauncher.swift:launchTerminalWithTmuxSession()`
+Use `tmux new-session -A -s 'session'` instead of `tmux attach-session -t 'session'`. The `-A` flag creates if missing, attaches if exists. Note: `-c '/path'` only affects creation, not existing sessions.
 
 ## State & Focus
 
@@ -460,11 +189,11 @@ Manual override persists until clicking different project OR navigating to direc
 Claude Code requires BOTH `"async": true` AND `"timeout": 30`. Missing either causes validation failure. Check `~/.claude/settings.json` for malformed entries. See `setup.rs:422-426`.
 
 ### Testing Unhealthy Hook States
-App auto-repairs hooks at startup. Claude Code interactions keep heartbeat fresh. To test SetupStatusCard visibility:
+App auto-repairs hooks at startup. To test SetupStatusCard visibility:
 1. Remove both `~/.local/bin/hud-hook` AND `apps/swift/.build/.../hud-hook` to prevent auto-repair, OR
 2. Add `disableAllHooks: true` to `~/.claude/settings.json`
 
-Heartbeat check allows a short grace window when an active daemon session exists, to avoid false alarms during quiet periods. See `check_hook_health()` in `engine.rs`.
+Heartbeat check allows a short grace window when an active daemon session exists. See `check_hook_health()` in `engine.rs`.
 
 ## Activity Tracking
 

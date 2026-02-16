@@ -1,6 +1,6 @@
 # App Renaming Checklist
 
-> **Decision Made:** The app will be renamed from **Capacitor** to **Capacitor** (see `ACTIVE-capacitor-global-storage.md`). Use this checklist when implementing the rename.
+> **Decision Made:** The app will be renamed from **Capacitor** to **Capacitor** (see `capacitor-global-storage.md`). Use this checklist when implementing the rename.
 
 ## What Needs to Change
 
