@@ -3,24 +3,14 @@ import SwiftUI
 
 @MainActor
 struct WelcomeView: View {
+    var onComplete: () -> Void
+
     @State private var manager = SetupRequirementsManager()
     @State private var checkID = UUID()
-    var onComplete: () -> Void
 
     #if DEBUG
         @State private var debugScenario: SetupPreviewScenario?
     #endif
-
-    private static let cachedLogomarkImage: NSImage? = {
-        guard let url = ResourceBundle.url(forResource: "logomark", withExtension: "pdf") else {
-            return nil
-        }
-        return NSImage(contentsOf: url)
-    }()
-
-    private var logomarkImage: NSImage? {
-        Self.cachedLogomarkImage
-    }
 
     private var userFirstName: String {
         NSFullUserName().components(separatedBy: " ").first ?? "there"
@@ -38,27 +28,23 @@ struct WelcomeView: View {
         } content: {
             // MARK: - Scrollable content: logo, greeting, then steps
 
-            VStack(spacing: 32) {
-                VStack(spacing: 16) {
-                    Group {
-                        if let nsImage = logomarkImage {
-                            Image(nsImage: nsImage)
-                                .resizable()
-                                .frame(width: 40, height: 40)
-                                .foregroundStyle(Color.accentColor)
-                        } else {
-                            Image(systemName: "sparkles")
-                                .font(.system(size: 40))
-                                .foregroundStyle(Color.accentColor)
-                        }
-                    }
+            VStack(spacing: OnboardingStyle.headerToContentSpacing) {
+                VStack(spacing: OnboardingStyle.logoToHeadingSpacing) {
+                    BrandLogomark(size: OnboardingStyle.logomarkSize)
 
-                    Text("Hi \(userFirstName)! Let's get you all set up.")
-                        .font(.title3.weight(.medium))
-                        .foregroundStyle(.primary)
+                    VStack(spacing: 4) {
+                        Text("Hi \(userFirstName)!")
+                            .font(AppTypography.onboardingHeading)
+                            .foregroundStyle(OnboardingStyle.headingColor)
+
+                        Text("Let's make sure you're all set up.")
+                            .font(AppTypography.onboardingSubtitle)
+                            .foregroundStyle(OnboardingStyle.subtitleColor)
+                    }
                 }
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: .infinity)
+                .padding(.top, 16)
 
                 VStack(spacing: 10) {
                     ForEach(Array(manager.steps.enumerated()), id: \.element.id) { index, step in

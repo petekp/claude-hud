@@ -398,6 +398,8 @@ private struct ProjectCardHeader: View {
                     .font(AppTypography.cardTitle.monospaced())
                     .foregroundStyle(nameColor)
                     .strikethrough(project.isMissing, color: .white.opacity(0.3))
+                    .lineLimit(1)
+                    .truncationMode(.tail)
             }
 
             Spacer()

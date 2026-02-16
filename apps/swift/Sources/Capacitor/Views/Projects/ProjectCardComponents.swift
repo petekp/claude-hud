@@ -345,6 +345,8 @@ struct ClickableProjectTitle: View {
                     .font(font)
                     .foregroundStyle(isHovered ? nameColor.opacity(1.0) : nameColor)
                     .strikethrough(isMissing, color: .white.opacity(0.3))
+                    .lineLimit(1)
+                    .truncationMode(.tail)
 
                 Image(systemName: "chevron.right")
                     .font(.system(size: 10, weight: .semibold))

@@ -44,6 +44,12 @@ struct FooterView: View {
     @Environment(\.floatingMode) private var floatingMode
     @Environment(\.prefersReducedMotion) private var reduceMotion
     @Binding var isPinned: Bool
+    @State private var footerWidth: CGFloat = .infinity
+    @State private var logoHidden = false
+
+    /// Hysteresis thresholds to prevent logo flicker during live resize.
+    private let logoHideThreshold: CGFloat = 205
+    private let logoShowThreshold: CGFloat = 220
 
     private enum FooterMode: Equatable {
         case normal
@@ -87,6 +93,23 @@ struct FooterView: View {
             .padding(.vertical, 6)
             .padding(.bottom, floatingMode ? 6 : 0)
             .background {
+                GeometryReader { geo in
+                    Color.clear
+                        .onAppear {
+                            footerWidth = geo.size.width
+                            logoHidden = footerWidth < logoHideThreshold
+                        }
+                        .onChange(of: geo.size.width) { _, newWidth in
+                            footerWidth = newWidth
+                            if !logoHidden, newWidth < logoHideThreshold {
+                                logoHidden = true
+                            } else if logoHidden, newWidth > logoShowThreshold {
+                                logoHidden = false
+                            }
+                        }
+                }
+            }
+            .background {
                 floatingMode ? Color.clear : Color.hudBackground
             }
         }
@@ -99,6 +122,11 @@ struct FooterView: View {
                 Spacer()
             }
             LogoView()
+                .padding(.horizontal, logoHidden ? -7 : 0)
+                .opacity(logoHidden ? 0 : 1)
+                .scaleEffect(logoHidden ? 0.9 : 1)
+                .blur(radius: logoHidden ? 4 : 0)
+                .animation(.linear(duration: 0.09), value: logoHidden)
             HStack {
                 Spacer()
                 AddProjectPillButton()
@@ -132,9 +160,11 @@ struct FooterView: View {
 }
 
 private struct BrowseProjectsButton: View {
-    let action: () -> Void
-    @State private var isHovered = false
     @Environment(\.prefersReducedMotion) private var reduceMotion
+
+    let action: () -> Void
+
+    @State private var isHovered = false
 
     var body: some View {
         Button(action: action) {
@@ -163,10 +193,12 @@ private struct BrowseProjectsButton: View {
 }
 
 private struct ConnectProjectsCTAButton: View {
+    @Environment(\.prefersReducedMotion) private var reduceMotion
+
     let count: Int
     let action: () -> Void
+
     @State private var isHovered = false
-    @Environment(\.prefersReducedMotion) private var reduceMotion
 
     var body: some View {
         Button(action: action) {
@@ -196,8 +228,9 @@ private struct ConnectProjectsCTAButton: View {
 
 private struct AddProjectPillButton: View {
     @Environment(AppState.self) var appState: AppState
-    @State private var isHovered = false
     @Environment(\.prefersReducedMotion) private var reduceMotion
+
+    @State private var isHovered = false
 
     var body: some View {
         Button {
@@ -367,9 +400,11 @@ struct LogoView: View {
 }
 
 struct PinButton: View {
-    @Binding var isPinned: Bool
-    @State private var isHovered = false
     @Environment(\.prefersReducedMotion) private var reduceMotion
+
+    @Binding var isPinned: Bool
+
+    @State private var isHovered = false
 
     var body: some View {
         Button(action: { isPinned.toggle() }) {

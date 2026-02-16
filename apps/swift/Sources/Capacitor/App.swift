@@ -636,7 +636,7 @@ struct LayoutModeFrameModifier: ViewModifier {
         switch layoutMode {
         case .vertical:
             content
-                .frame(minWidth: 280, maxWidth: 500,
+                .frame(minWidth: 200, maxWidth: 380,
                        minHeight: 400, maxHeight: .infinity)
         case .dock:
             content

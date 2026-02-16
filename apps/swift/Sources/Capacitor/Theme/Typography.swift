@@ -73,4 +73,35 @@ enum AppTypography {
 
     /// Badge text (notification counts, status indicators)
     static let badge: Font = .caption2.weight(.bold)
+
+    // MARK: - Onboarding
+
+    /// Heading on setup and empty-state screens
+    static let onboardingHeading: Font = .system(size: 18, weight: .semibold)
+
+    /// Subtitle / instruction text on onboarding screens
+    static let onboardingSubtitle: Font = .system(size: 13, weight: .medium)
+}
+
+// MARK: - Onboarding Style Tokens
+
+/// Shared visual constants for setup and empty-state screens.
+enum OnboardingStyle {
+    /// Logomark size used on all onboarding surfaces.
+    static let logomarkSize: CGFloat = 32
+
+    /// Spacing between logomark and heading text.
+    static let logoToHeadingSpacing: CGFloat = 10
+
+    /// Spacing between the header block (logo + heading + subtitle) and the content below.
+    static let headerToContentSpacing: CGFloat = 20
+
+    /// Heading text color.
+    static let headingColor: Color = .white.opacity(0.7)
+
+    /// Subtitle text color.
+    static let subtitleColor: Color = .white.opacity(0.4)
+
+    /// Subtitle text color on hover / emphasis.
+    static let subtitleEmphasisColor: Color = .white.opacity(0.55)
 }

@@ -20,11 +20,11 @@ import SwiftUI
 /// }
 /// ```
 struct PageScaffold<Header: View, Content: View, Footer: View>: View {
+    @Environment(\.floatingMode) private var floatingMode
+
     @ViewBuilder var header: Header
     @ViewBuilder var content: Content
     @ViewBuilder var footer: Footer
-
-    @Environment(\.floatingMode) private var floatingMode
 
     // MARK: - Layout values (matching ProjectsView)
 

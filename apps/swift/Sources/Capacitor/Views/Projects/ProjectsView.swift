@@ -773,56 +773,15 @@ struct EmptyProjectsView: View {
     @State private var hoveredPath: String?
 
     @State private var browseHovered = false
-    @State private var knobRotation: Double = 0
-    @State private var knobDragBase: Double = 0
-    @State private var knobHovered = false
-
-    private static let cachedLogomark: NSImage? = {
-        guard let url = ResourceBundle.url(forResource: "logomark", withExtension: "pdf") else {
-            return nil
-        }
-        return NSImage(contentsOf: url)
-    }()
-
-    @ViewBuilder
-    private var logomark: some View {
-        if let nsImage = Self.cachedLogomark {
-            Image(nsImage: nsImage)
-                .resizable()
-                .frame(width: 32, height: 32)
-                .foregroundStyle(.white.opacity(knobHovered ? 0.7 : 0.5))
-                .rotationEffect(.degrees(knobRotation))
-                .scaleEffect(knobHovered ? 1.08 : 1.0)
-                .animation(.spring(response: 0.25, dampingFraction: 0.6), value: knobHovered)
-                .gesture(
-                    DragGesture(minimumDistance: 2)
-                        .onChanged { value in
-                            // Vertical drag: up = counter-clockwise, down = clockwise
-                            // Sensitivity: ~1 degree per 2pt of drag
-                            let delta = value.translation.height * 0.5
-                            knobRotation = knobDragBase + delta
-                        }
-                        .onEnded { _ in
-                            knobDragBase = knobRotation
-                        },
-                )
-                .onHover { hovering in
-                    knobHovered = hovering
-                }
-                .preventWindowDrag()
-                .help("Give it a spin")
-                .accessibilityLabel("Capacitor logomark")
-        }
-    }
 
     var body: some View {
-        VStack(spacing: 20) {
-            VStack(spacing: 10) {
-                logomark
+        VStack(spacing: OnboardingStyle.headerToContentSpacing) {
+            VStack(spacing: OnboardingStyle.logoToHeadingSpacing) {
+                BrandLogomark(size: OnboardingStyle.logomarkSize)
 
                 Text("Connect your projects")
-                    .font(.system(size: 18, weight: .semibold))
-                    .foregroundColor(.white.opacity(0.7))
+                    .font(AppTypography.onboardingHeading)
+                    .foregroundColor(OnboardingStyle.headingColor)
 
                 instructionText
             }
@@ -863,11 +822,11 @@ struct EmptyProjectsView: View {
     private var instructionText: some View {
         HStack(spacing: 0) {
             Text("Drop a project folder here, or ")
-                .foregroundColor(.white.opacity(0.4))
+                .foregroundColor(OnboardingStyle.subtitleColor)
 
             Text("browse")
-                .foregroundColor(.white.opacity(browseHovered ? 0.7 : 0.55))
-                .underline(browseHovered, color: .white.opacity(0.4))
+                .foregroundColor(browseHovered ? OnboardingStyle.headingColor : OnboardingStyle.subtitleEmphasisColor)
+                .underline(browseHovered, color: OnboardingStyle.subtitleColor)
                 .onHover { hovering in
                     withAnimation(.easeOut(duration: 0.1)) {
                         browseHovered = hovering
@@ -877,7 +836,7 @@ struct EmptyProjectsView: View {
                     appState.connectProjectViaFileBrowser()
                 }
         }
-        .font(.system(size: 13, weight: .medium))
+        .font(AppTypography.onboardingSubtitle)
     }
 
     private var suggestedProjectsList: some View {
