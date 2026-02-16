@@ -71,13 +71,9 @@ You can complete setup from the app; manual editing of `~/.claude/settings.json`
 2. Keep Claude Code running in your terminals as usual.
 3. Click any project card to focus/switch to its terminal context.
 
-## Manual QA And Evidence
+## Activation Reliability
 
-Terminal activation behavior is governed by a strict UX contract and manual test matrix:
-
-- Contract: `docs/TERMINAL_ACTIVATION_UX_SPEC.md`
-- Manual matrix: `docs/TERMINAL_ACTIVATION_MANUAL_TESTING.md`
-- Latest full human rerun evidence: `docs/manual-qa/2026-02-15-terminal-activation-manual-qa.md`
+Terminal activation is governed by a strict UX contract and validated through a comprehensive manual test matrix across all supported terminals before each release.
 
 ## Development
 
@@ -120,4 +116,8 @@ scripts/               Bootstrap, run, release, and maintenance scripts
 
 ## Issue Reporting
 
-- Bug reports: [GitHub Issues](https://github.com/petekp/capacitor/issues)
+Bug reports and feature requests: [GitHub Issues](https://github.com/petekp/capacitor/issues)
+
+## License
+
+MIT — see [LICENSE](LICENSE) for details.
