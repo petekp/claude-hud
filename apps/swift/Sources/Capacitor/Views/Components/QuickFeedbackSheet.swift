@@ -106,6 +106,27 @@ struct QuickFeedbackSheet: View {
     }
 }
 
+final class QuickFeedbackTextView: NSTextView {
+    var onSelectNextKeyView: (() -> Void)?
+    var onSelectPreviousKeyView: (() -> Void)?
+
+    override func insertTab(_ sender: Any?) {
+        if let onSelectNextKeyView {
+            onSelectNextKeyView()
+            return
+        }
+        window?.selectNextKeyView(sender)
+    }
+
+    override func insertBacktab(_ sender: Any?) {
+        if let onSelectPreviousKeyView {
+            onSelectPreviousKeyView()
+            return
+        }
+        window?.selectPreviousKeyView(sender)
+    }
+}
+
 private struct StockFeedbackTextArea: NSViewRepresentable {
     @Binding var text: String
 
@@ -114,7 +135,7 @@ private struct StockFeedbackTextArea: NSViewRepresentable {
     }
 
     func makeNSView(context: Context) -> NSScrollView {
-        let scrollView = NSTextView.scrollableTextView()
+        let scrollView = QuickFeedbackTextView.scrollableTextView()
         scrollView.hasVerticalScroller = true
         scrollView.hasHorizontalScroller = false
         scrollView.drawsBackground = true

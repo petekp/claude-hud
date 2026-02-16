@@ -3,6 +3,7 @@
 
 # Editor / IDE
 .idea
+.cursor/
 .vscode/
 *.sw?
 

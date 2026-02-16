@@ -146,7 +146,7 @@ struct QuickFeedbackDraft: Equatable {
     }
 
     var canSubmit: Bool {
-        true
+        !normalized().summary.isEmpty
     }
 
     var completionCount: Int {

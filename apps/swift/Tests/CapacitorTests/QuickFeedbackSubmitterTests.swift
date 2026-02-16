@@ -3,7 +3,7 @@ import Foundation
 import XCTest
 
 final class QuickFeedbackSubmitterTests: XCTestCase {
-    func testDraftNormalizationTrimsInputAndAllowsEmptySummary() {
+    func testDraftNormalizationTrimsInputAndRequiresNonEmptySummary() {
         let draft = QuickFeedbackDraft(
             category: .bug,
             impact: .high,
@@ -29,7 +29,7 @@ final class QuickFeedbackSubmitterTests: XCTestCase {
             expectedBehavior: "",
             stepsToReproduce: "",
         )
-        XCTAssertTrue(empty.canSubmit)
+        XCTAssertFalse(empty.canSubmit)
     }
 
     func testBuildPayloadIncludesFormSnapshotAndRedactsPathsByDefault() {
