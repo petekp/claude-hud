@@ -70,7 +70,7 @@ struct CapacitorApp: App {
         .defaultSize(width: 360, height: 700)
         .windowResizability(.contentSize)
         .commands {
-            CommandGroup(replacing: .newItem) {}
+            // MARK: - Capacitor (app menu)
 
             CommandGroup(replacing: .appInfo) {
                 Button("About Capacitor") {
@@ -87,7 +87,24 @@ struct CapacitorApp: App {
                 }
             }
 
-            CommandGroup(before: .windowSize) {
+            // MARK: - File menu
+
+            CommandGroup(replacing: .newItem) {
+                Button("Connect Project...") {
+                    appState.connectProjectViaFileBrowser()
+                }
+                .keyboardShortcut("O", modifiers: .command)
+            }
+
+            // MARK: - Remove Edit menu
+
+            CommandGroup(replacing: .undoRedo) {}
+            CommandGroup(replacing: .pasteboard) {}
+            CommandGroup(replacing: .textEditing) {}
+
+            // MARK: - View menu (layout + appearance)
+
+            CommandGroup(replacing: .toolbar) {
                 Button("Vertical Layout") {
                     layoutMode = "vertical"
                     appState.layoutMode = .vertical
@@ -109,27 +126,9 @@ struct CapacitorApp: App {
 
                 Toggle("Always on Top", isOn: $alwaysOnTop)
                     .keyboardShortcut("P", modifiers: [.command, .shift])
-
-                #if DEBUG
-                    Divider()
-                    ProjectDebugPanelMenuButton()
-                    UITuningPanelMenuButton()
-
-                    Button("Show Welcome Screen") {
-                        withAnimation(.easeInOut(duration: 0.4)) {
-                            setupComplete = false
-                        }
-                    }
-                    .keyboardShortcut("W", modifiers: [.command, .shift, .option])
-
-                    Button("Reset Onboarding (Full)") {
-                        resetOnboardingFully()
-                    }
-                    .keyboardShortcut("R", modifiers: [.command, .shift, .option])
-                #endif
-
-                Divider()
             }
+
+            // MARK: - Help menu
 
             CommandGroup(replacing: .help) {
                 Link("Capacitor Help", destination: URL(string: "https://github.com/petekp/capacitor#readme")!)
@@ -137,11 +136,16 @@ struct CapacitorApp: App {
                 Link("Report a Bug...", destination: URL(string: "https://github.com/petekp/capacitor/issues/new")!)
             }
 
+            // MARK: - Debug menu (DEBUG only)
+
             #if DEBUG
                 CommandMenu("Debug") {
-                    Section("Project List Diagnostics") {
-                        Toggle("Show Diagnostics in Project List", isOn: $debugShowProjectListDiagnostics)
-                    }
+                    ProjectDebugPanelMenuButton()
+                    UITuningPanelMenuButton()
+
+                    Divider()
+
+                    Toggle("Show Diagnostics in Project List", isOn: $debugShowProjectListDiagnostics)
 
                     Divider()
 
@@ -176,25 +180,27 @@ struct CapacitorApp: App {
 
                     Divider()
 
-                    Section("Onboarding Testing") {
-                        Button("Return to Setup Screen") {
-                            withAnimation(.easeInOut(duration: 0.4)) {
-                                setupComplete = false
-                            }
+                    Button("Return to Setup Screen") {
+                        withAnimation(.easeInOut(duration: 0.4)) {
+                            setupComplete = false
                         }
                     }
+                    .keyboardShortcut("W", modifiers: [.command, .shift, .option])
+
+                    Button("Reset Onboarding (Full)") {
+                        resetOnboardingFully()
+                    }
+                    .keyboardShortcut("R", modifiers: [.command, .shift, .option])
 
                     Divider()
 
-                    Section("State Testing") {
-                        Button("Clear All Projects (Empty State)") {
-                            for project in appState.projects {
-                                appState.removeProject(project.path)
-                            }
+                    Button("Clear All Projects (Empty State)") {
+                        for project in appState.projects {
+                            appState.removeProject(project.path)
                         }
-                        Button("Connect Project via File Browser") {
-                            appState.connectProjectViaFileBrowser()
-                        }
+                    }
+                    Button("Connect Project via File Browser") {
+                        appState.connectProjectViaFileBrowser()
                     }
                 }
             #endif
@@ -213,6 +219,7 @@ struct CapacitorApp: App {
             .windowResizability(.contentSize)
             .defaultPosition(.topTrailing)
             .defaultSize(width: 580, height: 720)
+            .suppressedFromWindowMenu()
 
             Window("Project Debug Panel", id: "project-debug-panel") {
                 DebugProjectListPanel()
@@ -223,6 +230,7 @@ struct CapacitorApp: App {
             .windowResizability(.contentSize)
             .defaultPosition(.topTrailing)
             .defaultSize(width: 360, height: 520)
+            .suppressedFromWindowMenu()
         #endif
     }
 
@@ -817,4 +825,16 @@ extension EnvironmentValues {
     @Entry var floatingMode: Bool = false
 
     @Entry var alwaysOnTop: Bool = false
+}
+
+extension Scene {
+    /// Hides this Window from the auto-generated Window menu on macOS 15+.
+    /// On macOS 14 this is a no-op (the entry remains in the Window menu).
+    func suppressedFromWindowMenu() -> some Scene {
+        if #available(macOS 15.0, *) {
+            return defaultLaunchBehavior(.suppressed)
+        } else {
+            return self
+        }
+    }
 }
