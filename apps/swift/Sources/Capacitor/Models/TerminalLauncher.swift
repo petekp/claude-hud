@@ -455,7 +455,7 @@ final class TerminalLauncher: ActivationActionDependencies {
 
     static func performSwitchTmuxSession(
         sessionName: String,
-        projectPath _: String,
+        projectPath: String,
         runScript: (String) async -> (exitCode: Int32, output: String?),
         activateTerminal: (String?) async -> Bool,
     ) async -> Bool {
@@ -470,7 +470,15 @@ final class TerminalLauncher: ActivationActionDependencies {
         }
         let switchResult = await runScript(switchCommand)
         if switchResult.exitCode == 0 {
-            return await activateTerminal(clientTty)
+            let activated = await activateTerminal(clientTty)
+            guard activated else { return false }
+            _ = await focusTmuxPaneForProjectPathIfAvailable(
+                sessionName: sessionName,
+                projectPath: projectPath,
+                clientTty: clientTty,
+                runScript: runScript,
+            )
+            return true
         }
         return false
     }
@@ -500,7 +508,15 @@ final class TerminalLauncher: ActivationActionDependencies {
         }
         let switchResult = await runScript(switchCommand)
         if switchResult.exitCode == 0 {
-            return await activateTerminal(clientTty)
+            let activated = await activateTerminal(clientTty)
+            guard activated else { return false }
+            _ = await focusTmuxPaneForProjectPathIfAvailable(
+                sessionName: sessionName,
+                projectPath: projectPath,
+                clientTty: clientTty,
+                runScript: runScript,
+            )
+            return true
         }
 
         let hasSessionResult = await runScript("tmux has-session -t \(escapedSession) 2>/dev/null")
@@ -516,7 +532,15 @@ final class TerminalLauncher: ActivationActionDependencies {
 
         let retryResult = await runScript(switchCommand)
         if retryResult.exitCode == 0 {
-            return await activateTerminal(clientTty)
+            let activated = await activateTerminal(clientTty)
+            guard activated else { return false }
+            _ = await focusTmuxPaneForProjectPathIfAvailable(
+                sessionName: sessionName,
+                projectPath: projectPath,
+                clientTty: clientTty,
+                runScript: runScript,
+            )
+            return true
         }
 
         if clientTty == nil, let launchWhenNoClient {
@@ -555,6 +579,142 @@ final class TerminalLauncher: ActivationActionDependencies {
         }
 
         return nil
+    }
+
+    private nonisolated static func focusTmuxPaneForProjectPathIfAvailable(
+        sessionName: String,
+        projectPath: String,
+        clientTty: String?,
+        runScript: (String) async -> (exitCode: Int32, output: String?),
+    ) async -> Bool {
+        let escapedSession = shellEscape(sessionName)
+        let panesResult = await runScript(
+            "tmux list-panes -t \(escapedSession) -F '#{session_name}\t#{window_index}\t#{pane_index}\t#{pane_current_path}' 2>/dev/null",
+        )
+        guard panesResult.exitCode == 0,
+              let output = panesResult.output,
+              let paneTarget = bestTmuxPaneTargetForProjectPath(
+                  output: output,
+                  sessionName: sessionName,
+                  projectPath: projectPath,
+                  homeDirectory: NSHomeDirectory(),
+              )
+        else {
+            return false
+        }
+
+        let windowTarget = "\(sessionName):\(paneTarget.windowIndex)"
+        let fullPaneTarget = "\(windowTarget).\(paneTarget.paneIndex)"
+
+        if let clientTty {
+            let trimmedClientTty = clientTty.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !trimmedClientTty.isEmpty {
+                let escapedClientTty = shellEscape(trimmedClientTty)
+                let escapedWindowTarget = shellEscape(windowTarget)
+                let switchWindowResult = await runScript(
+                    "tmux switch-client -c \(escapedClientTty) -t \(escapedWindowTarget) 2>&1",
+                )
+                if switchWindowResult.exitCode != 0 {
+                    return false
+                }
+            }
+        }
+
+        let escapedPaneTarget = shellEscape(fullPaneTarget)
+        let selectPaneResult = await runScript("tmux select-pane -t \(escapedPaneTarget) 2>&1")
+        return selectPaneResult.exitCode == 0
+    }
+
+    nonisolated static func bestTmuxPaneTargetForProjectPath(
+        output: String,
+        sessionName: String,
+        projectPath: String,
+        homeDirectory: String,
+    ) -> (windowIndex: String, paneIndex: String)? {
+        func normalizePath(_ path: String) -> String {
+            if path == "/" { return "/" }
+            var normalized = path
+            while normalized.hasSuffix("/"), normalized != "/" {
+                normalized.removeLast()
+            }
+            return normalized.lowercased()
+        }
+
+        func pathComponentCount(_ path: String) -> Int {
+            path.split(separator: "/").count
+        }
+
+        func matchRankAndDistance(panePath: String, projectPath: String, homeDir: String) -> (rank: Int, distance: Int)? {
+            if panePath == projectPath {
+                return (2, 0)
+            }
+
+            if panePath == homeDir || projectPath == homeDir {
+                return nil
+            }
+
+            if panePath.hasPrefix(projectPath + "/") {
+                return (1, max(0, pathComponentCount(panePath) - pathComponentCount(projectPath)))
+            }
+
+            if projectPath.hasPrefix(panePath + "/") {
+                return (0, max(0, pathComponentCount(projectPath) - pathComponentCount(panePath)))
+            }
+
+            return nil
+        }
+
+        let normalizedSession = sessionName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedSession.isEmpty else { return nil }
+
+        let normalizedProjectPath = normalizePath(projectPath)
+        let normalizedHome = normalizePath(homeDirectory)
+        var bestMatch: (rank: Int, distance: Int, window: Int, pane: Int, windowIndex: String, paneIndex: String)?
+
+        for line in output.split(separator: "\n") {
+            let parts = line.split(separator: "\t", omittingEmptySubsequences: false)
+            guard parts.count == 4 else { continue }
+
+            let lineSession = String(parts[0]).trimmingCharacters(in: .whitespacesAndNewlines)
+            guard lineSession == normalizedSession else { continue }
+
+            let windowIndex = String(parts[1]).trimmingCharacters(in: .whitespacesAndNewlines)
+            let paneIndex = String(parts[2]).trimmingCharacters(in: .whitespacesAndNewlines)
+            guard let windowInt = Int(windowIndex), let paneInt = Int(paneIndex) else { continue }
+
+            let panePath = normalizePath(String(parts[3]))
+            guard let (rank, distance) = matchRankAndDistance(
+                panePath: panePath,
+                projectPath: normalizedProjectPath,
+                homeDir: normalizedHome,
+            ) else {
+                continue
+            }
+
+            let candidate = (
+                rank: rank,
+                distance: distance,
+                window: windowInt,
+                pane: paneInt,
+                windowIndex: windowIndex,
+                paneIndex: paneIndex,
+            )
+
+            if let best = bestMatch {
+                if candidate.rank > best.rank ||
+                    (candidate.rank == best.rank && candidate.distance < best.distance) ||
+                    (candidate.rank == best.rank && candidate.distance == best.distance && candidate.window < best.window) ||
+                    (candidate.rank == best.rank && candidate.distance == best.distance && candidate.window == best.window && candidate.pane < best.pane)
+                {
+                    bestMatch = candidate
+                }
+            } else {
+                bestMatch = candidate
+            }
+        }
+
+        guard let bestMatch else { return nil }
+        return (bestMatch.windowIndex, bestMatch.paneIndex)
     }
 
     nonisolated static func ghosttyOwnerPid(forTTY tty: String, processSnapshot: String) -> Int32? {

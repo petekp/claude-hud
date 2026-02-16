@@ -129,36 +129,67 @@ pub fn resolve(input: ResolveInput<'_>) -> RoutingDiagnostics {
     let mut tmux_session_candidates = Vec::new();
     for session in &input.tmux_registry.sessions {
         let age_ms = age_ms(input.now, session.captured_at);
-        let first_path = session.pane_paths.first().map(|value| value.as_str());
-        let (scope_quality, scope_name) = candidate_scope_quality(
-            input.config,
-            input.workspace_id,
-            input.project_path,
-            Some(session.session_name.as_str()),
-            first_path,
-        );
-        let workspace_scoped = scope_name.starts_with("workspace_binding_");
-        let path_scoped = first_path
-            .map(|path| shell_path_is_within_project(input.project_path, path))
-            .unwrap_or(false);
+        let mut best_scope_quality = 0_u8;
+        let mut best_scope_name = "global_fallback".to_string();
+        let mut workspace_scoped = false;
+        let mut path_scoped = false;
+        let mut matching_path: Option<String> = None;
+
+        let pane_path_candidates: Vec<Option<&str>> = if session.pane_paths.is_empty() {
+            vec![None]
+        } else {
+            session
+                .pane_paths
+                .iter()
+                .map(|path| Some(path.as_str()))
+                .collect()
+        };
+
+        for pane_path in pane_path_candidates {
+            let (scope_quality, scope_name) = candidate_scope_quality(
+                input.config,
+                input.workspace_id,
+                input.project_path,
+                Some(session.session_name.as_str()),
+                pane_path,
+            );
+            let candidate_workspace_scoped = scope_name.starts_with("workspace_binding_");
+            let candidate_path_scoped = pane_path
+                .map(|path| shell_path_is_within_project(input.project_path, path))
+                .unwrap_or(false);
+            let should_replace = scope_quality > best_scope_quality
+                || (scope_quality == best_scope_quality && candidate_path_scoped && !path_scoped)
+                || (scope_quality == best_scope_quality
+                    && candidate_path_scoped == path_scoped
+                    && candidate_workspace_scoped
+                    && !workspace_scoped);
+            if should_replace {
+                best_scope_quality = scope_quality;
+                best_scope_name = scope_name;
+                workspace_scoped = candidate_workspace_scoped;
+                path_scoped = candidate_path_scoped;
+                matching_path = pane_path.map(str::to_string);
+            }
+        }
+
         let session_scoped =
             session_name_matches_project(input.project_path, session.session_name.as_str());
         let session_name_fallback = session_scoped && !workspace_scoped && !path_scoped;
         if session_name_fallback && age_ms > input.config.tmux_signal_fresh_ms {
             continue;
         }
-        if scope_quality == 0 || (!workspace_scoped && !path_scoped && !session_scoped) {
+        if best_scope_quality == 0 || (!workspace_scoped && !path_scoped && !session_scoped) {
             continue;
         }
         let effective_scope_quality = if session_scoped {
-            scope_quality.max(3)
+            best_scope_quality.max(3)
         } else {
-            scope_quality
+            best_scope_quality
         };
-        let effective_scope_name = if session_scoped && scope_quality < 3 {
+        let effective_scope_name = if session_scoped && best_scope_quality < 3 {
             "session_name_exact".to_string()
         } else {
-            scope_name
+            best_scope_name
         };
         tmux_session_candidates.push(ResolvedCandidate {
             target: RoutingTarget {
@@ -172,12 +203,20 @@ pub fn resolve(input: ResolveInput<'_>) -> RoutingDiagnostics {
                 "Detached tmux session {} is available",
                 session.session_name
             ),
-            evidence: vec![RoutingEvidence {
-                evidence_type: "tmux_session".to_string(),
-                value: session.session_name.clone(),
-                age_ms,
-                trust_rank: 1,
-            }],
+            evidence: vec![
+                RoutingEvidence {
+                    evidence_type: "tmux_session".to_string(),
+                    value: session.session_name.clone(),
+                    age_ms,
+                    trust_rank: 1,
+                },
+                RoutingEvidence {
+                    evidence_type: "tmux_pane_path".to_string(),
+                    value: matching_path.unwrap_or_else(|| "unknown".to_string()),
+                    age_ms,
+                    trust_rank: 1,
+                },
+            ],
             trust_rank: 1,
             scope_quality: effective_scope_quality,
             age_ms,
@@ -832,6 +871,48 @@ mod tests {
             }
         );
         assert_eq!(diagnostics.snapshot.reason_code, "TMUX_SESSION_DETACHED");
+    }
+
+    #[test]
+    fn resolver_matches_tmux_session_when_non_first_pane_path_matches_project() {
+        let now = test_now();
+        let config = RoutingConfig::default();
+        let tmux_registry = TmuxRegistry {
+            clients: vec![],
+            sessions: vec![TmuxSessionSignal {
+                session_name: "cap-pane-focus".to_string(),
+                pane_paths: vec![
+                    "/Users/petepetrash/cap-manual/pane-a".to_string(),
+                    "/Users/petepetrash/cap-manual/pane-b".to_string(),
+                ],
+                captured_at: now - Duration::milliseconds(200),
+            }],
+        };
+
+        let diagnostics = resolve(ResolveInput {
+            project_path: "/Users/petepetrash/cap-manual/pane-b",
+            workspace_id: "workspace-pane-b",
+            now,
+            config: &config,
+            shell_registry: &ShellRegistry::default(),
+            tmux_registry: &tmux_registry,
+        });
+
+        assert_eq!(diagnostics.snapshot.status, RoutingStatus::Detached);
+        assert_eq!(
+            diagnostics.snapshot.target,
+            RoutingTarget {
+                kind: RoutingTargetKind::TmuxSession,
+                value: Some("cap-pane-focus".to_string()),
+            }
+        );
+        assert_eq!(diagnostics.snapshot.reason_code, "TMUX_SESSION_DETACHED");
+        assert!(diagnostics
+            .snapshot
+            .evidence
+            .iter()
+            .any(|evidence| evidence.evidence_type == "tmux_pane_path"
+                && evidence.value == "/Users/petepetrash/cap-manual/pane-b"));
     }
 
     #[test]
