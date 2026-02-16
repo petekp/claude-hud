@@ -4,11 +4,13 @@ struct SetupStepRow: View {
     let step: SetupStep
     let isCurrentStep: Bool
     var actionLabel: String = "Install"
+    var linkURL: URL?
+    var linkLabel: String = "Download"
     var onAction: (() -> Void)?
     var onRetry: (() -> Void)?
 
     var body: some View {
-        HStack(spacing: 12) {
+        HStack(alignment: .top, spacing: 12) {
             statusIcon
                 .frame(width: 24, height: 24)
 
@@ -16,15 +18,22 @@ struct SetupStepRow: View {
                 Text(step.title)
                     .font(.headline)
                     .foregroundStyle(titleColor)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .layoutPriority(1)
 
                 Text(step.statusDetail)
                     .font(.subheadline)
                     .foregroundStyle(detailColor)
+                    .lineLimit(nil)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .layoutPriority(1)
             }
 
             Spacer()
 
             actionButton
+                .fixedSize(horizontal: true, vertical: false)
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
@@ -76,18 +85,38 @@ struct SetupStepRow: View {
             }
 
         case .error:
-            if let onAction {
-                Button(actionLabel, action: onAction)
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
-            } else if let onRetry {
-                Button("Retry", action: onRetry)
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
+            ViewThatFits {
+                HStack(spacing: 6) {
+                    errorActions
+                }
+
+                VStack(alignment: .leading, spacing: 6) {
+                    errorActions
+                }
             }
+            .fixedSize(horizontal: true, vertical: false)
 
         default:
             EmptyView()
+        }
+    }
+
+    @ViewBuilder
+    private var errorActions: some View {
+        if let linkURL {
+            Link(linkLabel, destination: linkURL)
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+        }
+
+        if let onRetry {
+            Button("Retry", action: onRetry)
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+        } else if let onAction, linkURL == nil {
+            Button(actionLabel, action: onAction)
+                .buttonStyle(.bordered)
+                .controlSize(.small)
         }
     }
 
@@ -125,23 +154,23 @@ struct SetupStepRow: View {
     }
 }
 
-#Preview {
+#Preview("All States") {
     VStack(spacing: 12) {
         SetupStepRow(
             step: SetupStep(
-                id: "storage",
-                title: "Storage directory",
-                description: "~/.capacitor/",
-                status: .completed(detail: "~/.capacitor/ ready"),
+                id: "claude",
+                title: "Claude Code",
+                description: "Capacitor needs Claude Code to work",
+                status: .completed(detail: "/usr/local/bin/claude"),
             ),
             isCurrentStep: false,
         )
 
         SetupStepRow(
             step: SetupStep(
-                id: "tmux",
-                title: "tmux",
-                description: "Required for project tracking",
+                id: "hooks",
+                title: "Session hooks",
+                description: "Connect Capacitor to your Claude sessions",
                 status: .checking,
             ),
             isCurrentStep: true,
@@ -151,8 +180,8 @@ struct SetupStepRow: View {
             step: SetupStep(
                 id: "hooks",
                 title: "Session hooks",
-                description: "Required for live state tracking",
-                status: .actionNeeded(message: "Not installed yet"),
+                description: "Connect Capacitor to your Claude sessions",
+                status: .actionNeeded(message: "Install hooks to enable session tracking"),
             ),
             isCurrentStep: true,
             onAction: { print("Install tapped") },
@@ -160,21 +189,23 @@ struct SetupStepRow: View {
 
         SetupStepRow(
             step: SetupStep(
-                id: "tmux",
-                title: "tmux",
-                description: "Required for project tracking",
-                status: .error(message: "Not found. Install with: brew install tmux"),
+                id: "claude",
+                title: "Claude Code",
+                description: "Capacitor needs Claude Code to work",
+                status: .error(message: "Not found — download from claude.ai/download"),
             ),
-            isCurrentStep: false,
+            isCurrentStep: true,
+            linkURL: URL(string: "https://claude.ai/download"),
             onRetry: { print("Retry tapped") },
         )
 
         SetupStepRow(
             step: SetupStep(
-                id: "project",
-                title: "Add your first project",
-                description: "Waiting for hooks...",
+                id: "shell",
+                title: "Shell integration",
+                description: "Track which project you're working in",
                 status: .pending,
+                isOptional: true,
             ),
             isCurrentStep: false,
         )

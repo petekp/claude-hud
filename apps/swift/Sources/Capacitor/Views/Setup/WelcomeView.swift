@@ -7,6 +7,10 @@ struct WelcomeView: View {
     @State private var checkID = UUID()
     var onComplete: () -> Void
 
+    #if DEBUG
+        @State private var debugScenario: SetupPreviewScenario?
+    #endif
+
     private static let cachedLogomarkImage: NSImage? = {
         guard let url = ResourceBundle.url(forResource: "logomark", withExtension: "pdf") else {
             return nil
@@ -25,6 +29,10 @@ struct WelcomeView: View {
     var body: some View {
         ScrollView {
             VStack(spacing: 0) {
+                #if DEBUG
+                    debugScenarioPicker
+                #endif
+
                 Spacer()
                     .frame(height: 40)
 
@@ -46,8 +54,17 @@ struct WelcomeView: View {
             await manager.runChecks()
         }
         .onAppear {
+            #if DEBUG
+                guard debugScenario == nil else { return }
+            #endif
             manager = SetupRequirementsManager()
             checkID = UUID()
+        }
+        .sheet(isPresented: $manager.showShellInstructions) {
+            ShellInstructionsSheet(
+                isPresented: $manager.showShellInstructions,
+                onDismiss: { manager.dismissShellInstructions() },
+            )
         }
     }
 
@@ -83,6 +100,7 @@ struct WelcomeView: View {
                 SetupStepRow(
                     step: step,
                     isCurrentStep: manager.currentStepIndex == index,
+                    linkURL: step.id == "claude" ? URL(string: "https://claude.ai/download") : nil,
                     onAction: {
                         _Concurrency.Task {
                             await manager.executeStep(step.id)
@@ -134,12 +152,47 @@ struct WelcomeView: View {
     }
 }
 
-#Preview("All Complete") {
-    WelcomeView(onComplete: { print("Complete!") })
-        .preferredColorScheme(.dark)
-}
+// MARK: - Debug Scenario Picker
 
-#Preview("In Progress") {
-    WelcomeView(onComplete: { print("Complete!") })
-        .preferredColorScheme(.dark)
-}
+#if DEBUG
+    extension WelcomeView {
+        private var debugScenarioPicker: some View {
+            VStack(spacing: 6) {
+                HStack(spacing: 6) {
+                    Image(systemName: "ant.fill")
+                        .font(.system(size: 9))
+                        .foregroundStyle(.white.opacity(0.5))
+
+                    Text("Setup State")
+                        .font(.system(size: 10, weight: .medium, design: .monospaced))
+                        .foregroundStyle(.white.opacity(0.5))
+
+                    Spacer()
+
+                    Picker("", selection: $debugScenario) {
+                        Text("Live").tag(SetupPreviewScenario?.none)
+                        Divider()
+                        ForEach(SetupPreviewScenario.allCases) { scenario in
+                            Text(scenario.rawValue).tag(Optional(scenario))
+                        }
+                    }
+                    .pickerStyle(.menu)
+                    .controlSize(.mini)
+                    .frame(width: 140)
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(Color.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 6))
+            }
+            .padding(.top, 8)
+            .onChange(of: debugScenario) { _, newValue in
+                if let scenario = newValue {
+                    manager = .preview(scenario)
+                } else {
+                    manager = SetupRequirementsManager()
+                    checkID = UUID()
+                }
+            }
+        }
+    }
+#endif
