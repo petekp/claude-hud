@@ -12,6 +12,7 @@ final class ActivationActionExecutorTests: XCTestCase {
         var lastProjectPath: String?
         var lastProjectName: String?
         var lastIdeType: IdeType?
+        var lastPreferredClientTty: String?
 
         var activateByTtyResult = true
         var activateAppResult = true
@@ -60,6 +61,19 @@ final class ActivationActionExecutorTests: XCTestCase {
             lastAction = "ensureTmuxSession"
             lastSessionName = sessionName
             lastProjectPath = projectPath
+            lastPreferredClientTty = nil
+            return ensureTmuxResult
+        }
+
+        func ensureTmuxSession(
+            sessionName: String,
+            projectPath: String,
+            preferredClientTty: String?,
+        ) async -> Bool {
+            lastAction = "ensureTmuxSession"
+            lastSessionName = sessionName
+            lastProjectPath = projectPath
+            lastPreferredClientTty = preferredClientTty
             return ensureTmuxResult
         }
 
@@ -434,6 +448,7 @@ final class ActivationActionExecutorTests: XCTestCase {
         XCTAssertEqual(deps.lastAction, "ensureTmuxSession")
         XCTAssertEqual(deps.lastSessionName, "openclaw")
         XCTAssertEqual(deps.lastProjectPath, "/Users/pete/Code/openclaw")
+        XCTAssertEqual(deps.lastPreferredClientTty, "/dev/ttys042")
         XCTAssertEqual(launcher.launchCount, 0, "Should not spawn a new terminal window on recoverable switch failure.")
     }
 
@@ -471,6 +486,7 @@ final class ActivationActionExecutorTests: XCTestCase {
         XCTAssertEqual(deps.lastAction, "ensureTmuxSession")
         XCTAssertEqual(deps.lastSessionName, "openclaw")
         XCTAssertEqual(deps.lastProjectPath, "/Users/pete/Code/openclaw")
+        XCTAssertEqual(deps.lastPreferredClientTty, "/dev/ttys042")
         XCTAssertEqual(launcher.launchCount, 0, "Should not spawn a new terminal window on recoverable switch failure.")
     }
 
@@ -510,6 +526,7 @@ final class ActivationActionExecutorTests: XCTestCase {
         XCTAssertEqual(deps.lastAction, "ensureTmuxSession")
         XCTAssertEqual(deps.lastSessionName, "openclaw")
         XCTAssertEqual(deps.lastProjectPath, "/Users/pete/Code/openclaw")
+        XCTAssertEqual(deps.lastPreferredClientTty, "/dev/ttys042")
         XCTAssertEqual(launcher.launchCount, 0, "Should not spawn a new terminal window on recoverable switch failure.")
     }
 
