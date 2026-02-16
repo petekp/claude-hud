@@ -20,15 +20,22 @@ If you've ever lost track of which terminal window or tmux pane has which sessio
 - Stay focused when juggling multiple projects
 - It's _fun_!
 
-## Supported terminals
+## How terminal switching works
 
-| Terminal     | Session Tracking | Jump to session |
-| ------------ | ---------------- | -------------------- |
-| Ghostty      | ✅               | ✅                   |
-| iTerm2       | ✅               | ✅                   |
-| Terminal.app | ✅               | ✅                   |
+When you click a project card, Capacitor tries to get you back to the right place:
 
-With more on the way if there's demand...
+| Workflow | Ghostty | iTerm2 | Terminal.app |
+| --- | --- | --- | --- |
+| Single window, single pane | ✅ | ✅ | ✅ |
+| Multiple tmux panes | ✅ | ✅ | ✅ |
+| Switch between tmux sessions | ✅ | ✅ | ✅ |
+| Reattach detached tmux sessions | ✅ | ✅ | ✅ |
+
+If a matching session or pane exists, Capacitor focuses it. If there's an existing terminal window, it reuses it instead of spawning a new one. If nothing can be recovered, it falls back to opening a new window.
+
+Only Ghostty, iTerm2, and Terminal.app are supported right now. More on the way if there's demand.
+
+**Known rough edges:** multi-window ambiguity is currently a Ghostty-specific limitation. We're patiently awaiting Ghostty AppleScript support to enable reliable per-window targeting there.
 
 ## Install
 
