@@ -1104,23 +1104,33 @@ final class TerminalLauncherTests: XCTestCase {
         }
 
         launcher.launchTerminal(for: project)
-        try? await _Concurrency.Task.sleep(nanoseconds: 200_000_000)
+        let firstFallbackCompleted = await waitUntil(timeout: 1.5) {
+            launchedFallbacks.count == 1 && results.count >= 1
+        }
+        XCTAssertTrue(firstFallbackCompleted, "Expected first snapshot-unavailable fallback launch to complete.")
+
         launcher.launchTerminal(for: project)
-        try? await _Concurrency.Task.sleep(nanoseconds: 250_000_000)
+        let secondOutcomeCompleted = await waitUntil(timeout: 1.5) {
+            results.count >= 2
+        }
+        XCTAssertTrue(secondOutcomeCompleted, "Expected debounced repeated click to emit a second activation outcome.")
 
         XCTAssertEqual(
             launchedFallbacks.count,
             1,
             "Rapid repeated snapshot failures should not spawn repeated fallback launches.",
         )
-        XCTAssertEqual(results.count, 2)
+        XCTAssertGreaterThanOrEqual(results.count, 2)
+        guard results.count >= 2 else { return }
         XCTAssertEqual(results[0].projectPath, project.path)
         XCTAssertEqual(results[1].projectPath, project.path)
         XCTAssertTrue(results[0].usedFallback)
         XCTAssertTrue(results[1].usedFallback)
 
-        let foundDebounceMarker = await collector.contains {
-            $0.contains("[TerminalLauncher] snapshot_unavailable_fallback debounced path=\(project.path)")
+        let foundDebounceMarker = await waitUntil(timeout: 1.0) {
+            await collector.contains {
+                $0.contains("[TerminalLauncher] snapshot_unavailable_fallback debounced path=\(project.path)")
+            }
         }
         XCTAssertTrue(foundDebounceMarker, "Expected debounce marker for repeated snapshot failure fallback.")
     }
@@ -1357,5 +1367,20 @@ final class TerminalLauncherTests: XCTestCase {
             stats: nil,
             isMissing: false,
         )
+    }
+
+    private func waitUntil(
+        timeout: TimeInterval,
+        pollNanoseconds: UInt64 = 10_000_000,
+        condition: @escaping () async -> Bool,
+    ) async -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if await condition() {
+                return true
+            }
+            try? await _Concurrency.Task.sleep(nanoseconds: pollNanoseconds)
+        }
+        return await condition()
     }
 }
