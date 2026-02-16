@@ -10,7 +10,7 @@ If you've ever lost track of which terminal window or tmux pane has which sessio
 
 **[Download the latest alpha release](https://github.com/petekp/capacitor/releases/latest)** (Apple Silicon, macOS 14+)
 
-> Capacitor is in early alpha. Expect rough edges. [Report issues here.](https://github.com/petekp/capacitor/issues)
+Capacitor is in early alpha. Expect rough edges. [Report issues here.](https://github.com/petekp/capacitor/issues)
 
 ## Why use it
 
