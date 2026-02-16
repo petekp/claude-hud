@@ -35,9 +35,14 @@ Implementation plans for Capacitor. Files are prefixed by status.
 
 | Document | Purpose |
 |----------|---------|
+| `REFERENCE-alpha-release-checklist.md` | Alpha release checklist (completed) |
 | `REFERENCE-app-renaming-checklist.md` | Checklist for Capacitor → Capacitor rename |
+| `REFERENCE-dead-code-cleanup.md` | Dead code cleanup audit |
 | `REFERENCE-hud-vision-jan-2026.md` | Vision document for Capacitor direction |
 | `REFERENCE-idea-capture-bootstrap-prompt.md` | Bootstrap prompt for idea capture sessions |
+| `REFERENCE-task3-ux-architecture-design.md` | UX architecture design (completed) |
+| `REFERENCE-terminal-shell-state-audit-results.md` | Terminal shell state audit results |
+| `REFERENCE-transparent-ui-ia-synthesis.md` | Transparent UI IA research synthesis |
 
 ## Notes
 

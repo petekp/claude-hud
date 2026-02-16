@@ -2,6 +2,8 @@
 
 Procedures for debugging Capacitor components (daemon, hooks, app).
 
+For quick-reference gotchas (problem → fix patterns), see [gotchas.md](gotchas.md).
+
 ## General Debugging
 
 ```bash
@@ -138,7 +140,7 @@ Color.clear
 
 **Symptoms:** Clicking a project card focuses the wrong terminal window, or activates the app without selecting the correct tab.
 
-**CRITICAL FIRST STEP:** Before debugging code, check `.claude/docs/terminal-switching-matrix.md`:
+**CRITICAL FIRST STEP:** Before debugging code, check the terminal switching matrix:
 
 | Terminal | Tab Selection | Notes |
 |----------|--------------|-------|
@@ -247,6 +249,24 @@ If step 3 uses generic app activation, tmux can switch in one window while a dif
 ```bash
 printf '{"protocol_version":1,"method":"get_shell_state","id":"shell","params":null}\n' | nc -U ~/.capacitor/daemon.sock | jq '.data.shells | to_entries[] | select(.value.tmux_session != null) | {pid: .key, session: .value.tmux_session, tty: .value.tmux_client_tty}'
 ```
+
+### Stale Client TTY After Tmux Reconnect
+
+**Symptoms:** TTY discovery fails, falls through to Ghostty window-count check, sees 0 windows (user is in Terminal.app/iTerm), spawns new terminal instead of switching.
+
+**Root cause:** Daemon shell records include `tmux_client_tty` captured at hook time. This TTY becomes stale when users reconnect to tmux—they get assigned new TTY devices (e.g., `/dev/ttys012` instead of `/dev/ttys000`).
+
+**Fix:** Query fresh TTY at activation time instead of relying on recorded value:
+```swift
+private func getCurrentTmuxClientTty() async -> String? {
+    let result = await runBashScriptWithResultAsync("tmux display-message -p '#{client_tty}'")
+    guard result.exitCode == 0, let output = result.output else { return nil }
+    let tty = output.trimmingCharacters(in: .whitespacesAndNewlines)
+    return tty.isEmpty ? nil : tty
+}
+```
+
+**Where:** `TerminalLauncher.swift:activateHostThenSwitchTmux` — use `getCurrentTmuxClientTty() ?? hostTty` before TTY discovery.
 
 ### Ghostty Activated When Tmux Client Is in iTerm
 
@@ -379,8 +399,6 @@ The telemetry uses structured markers for easy filtering:
     activateByTtyAction: tty=<tty>, terminalType=<type>
     activateGhosttyWithHeuristic: tty=<tty>, windowCount=<n>
 ```
-
-### Debugging Workflow
 
 ### Telemetry Hub (Transparent UI)
 
@@ -539,7 +557,7 @@ Before modifying code:
 - [ ] Identified which layer (Rust/Swift) made the wrong decision
 - [ ] Inspected daemon shell snapshot (`get_shell_state`) for the relevant path
 - [ ] Checked tmux context (sessions, clients, TTYs)
-- [ ] Verified terminal app capabilities in `terminal-switching-matrix.md`
+- [ ] Verified terminal app capabilities (see "Terminal Activation Not Working" section above)
 - [ ] Added hypothesis to explain the misbehavior
 
 After fixing:
