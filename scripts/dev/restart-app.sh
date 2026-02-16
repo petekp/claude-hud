@@ -5,6 +5,9 @@ set -o pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
+# shellcheck source=/dev/null
+source "$SCRIPT_DIR/load-runtime-env.sh"
+
 # Parse flags
 FORCE_REBUILD=false
 SWIFT_ONLY=false

@@ -21,6 +21,9 @@ set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+
+# shellcheck source=/dev/null
+source "$SCRIPT_DIR/load-runtime-env.sh"
 CHANNEL="dev"
 while [[ $# -gt 0 ]]; do
     case $1 in

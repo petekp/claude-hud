@@ -45,7 +45,7 @@ struct SettingsView: View {
                     .accessibilityLabel("Include project paths for debugging")
                     .accessibilityHint("Only enable when support needs exact paths; otherwise paths stay redacted")
 
-                Text("Quick feedback always opens a GitHub issue draft. If a feedback API endpoint is configured, telemetry is sent there too.")
+                Text("Quick feedback always opens a GitHub issue draft. Telemetry context is optional, and project paths stay redacted unless you opt in.")
                     .font(.system(size: 11))
                     .foregroundStyle(.secondary)
             }

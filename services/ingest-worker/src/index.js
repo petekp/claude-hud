@@ -1,0 +1,231 @@
+import {
+  asObject,
+  isAuthorized,
+  normalizeFeedbackSubmission,
+  normalizeTelemetryEvent,
+} from "./lib.js";
+
+function withCors(headers = {}) {
+  return {
+    "access-control-allow-origin": "*",
+    "access-control-allow-methods": "POST, OPTIONS",
+    "access-control-allow-headers": "authorization, content-type",
+    ...headers,
+  };
+}
+
+function jsonResponse(status, payload) {
+  return new Response(JSON.stringify(payload), {
+    status,
+    headers: withCors({ "content-type": "application/json" }),
+  });
+}
+
+async function readJson(request) {
+  try {
+    const parsed = await request.json();
+    return { ok: true, body: asObject(parsed) };
+  } catch {
+    return { ok: false, body: null };
+  }
+}
+
+/**
+ * @param {Request} request
+ * @param {Env} env
+ */
+async function handleFeedback(request, env) {
+  const parsed = await readJson(request);
+  if (!parsed.ok) {
+    return jsonResponse(400, { ok: false, error: "invalid_json" });
+  }
+
+  const record = normalizeFeedbackSubmission(parsed.body, request);
+  if (!record.feedback_text) {
+    return jsonResponse(422, { ok: false, error: "feedback_required" });
+  }
+
+  await env.DB.prepare(
+    `INSERT INTO feedback_submissions (
+      feedback_id,
+      submitted_at,
+      feedback_text,
+      app_version,
+      build_number,
+      channel,
+      os_version,
+      include_telemetry,
+      include_project_paths,
+      daemon_enabled,
+      daemon_healthy,
+      daemon_version,
+      active_source,
+      project_count,
+      session_total,
+      session_working,
+      session_ready,
+      session_waiting,
+      session_compacting,
+      session_idle,
+      session_with_attached,
+      session_thinking,
+      activation_has_trace,
+      activation_trace_digest,
+      source_ip,
+      user_agent,
+      raw_json,
+      last_received_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+    ON CONFLICT(feedback_id) DO UPDATE SET
+      submitted_at = excluded.submitted_at,
+      feedback_text = excluded.feedback_text,
+      app_version = excluded.app_version,
+      build_number = excluded.build_number,
+      channel = excluded.channel,
+      os_version = excluded.os_version,
+      include_telemetry = excluded.include_telemetry,
+      include_project_paths = excluded.include_project_paths,
+      daemon_enabled = excluded.daemon_enabled,
+      daemon_healthy = excluded.daemon_healthy,
+      daemon_version = excluded.daemon_version,
+      active_source = excluded.active_source,
+      project_count = excluded.project_count,
+      session_total = excluded.session_total,
+      session_working = excluded.session_working,
+      session_ready = excluded.session_ready,
+      session_waiting = excluded.session_waiting,
+      session_compacting = excluded.session_compacting,
+      session_idle = excluded.session_idle,
+      session_with_attached = excluded.session_with_attached,
+      session_thinking = excluded.session_thinking,
+      activation_has_trace = excluded.activation_has_trace,
+      activation_trace_digest = excluded.activation_trace_digest,
+      source_ip = excluded.source_ip,
+      user_agent = excluded.user_agent,
+      raw_json = excluded.raw_json,
+      last_received_at = datetime('now')`,
+  )
+    .bind(
+      record.feedback_id,
+      record.submitted_at,
+      record.feedback_text,
+      record.app_version,
+      record.build_number,
+      record.channel,
+      record.os_version,
+      record.include_telemetry,
+      record.include_project_paths,
+      record.daemon_enabled,
+      record.daemon_healthy,
+      record.daemon_version,
+      record.active_source,
+      record.project_count,
+      record.session_total,
+      record.session_working,
+      record.session_ready,
+      record.session_waiting,
+      record.session_compacting,
+      record.session_idle,
+      record.session_with_attached,
+      record.session_thinking,
+      record.activation_has_trace,
+      record.activation_trace_digest,
+      record.source_ip,
+      record.user_agent,
+      record.raw_json,
+    )
+    .run();
+
+  return jsonResponse(200, { ok: true, feedback_id: record.feedback_id });
+}
+
+/**
+ * @param {Request} request
+ * @param {Env} env
+ */
+async function handleTelemetry(request, env) {
+  const parsed = await readJson(request);
+  if (!parsed.ok) {
+    return jsonResponse(400, { ok: false, error: "invalid_json" });
+  }
+
+  const event = normalizeTelemetryEvent(parsed.body, request);
+  const result = await env.DB.prepare(
+    `INSERT INTO telemetry_events (
+      event_type,
+      message,
+      occurred_at,
+      feedback_id,
+      payload_json,
+      raw_json,
+      source_ip,
+      user_agent
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+  )
+    .bind(
+      event.event_type,
+      event.message,
+      event.occurred_at,
+      event.feedback_id,
+      event.payload_json,
+      event.raw_json,
+      event.source_ip,
+      event.user_agent,
+    )
+    .run();
+
+  return jsonResponse(200, {
+    ok: true,
+    event_id: result.meta?.last_row_id ?? null,
+  });
+}
+
+export default {
+  /**
+   * @param {Request} request
+   * @param {Env} env
+   */
+  async fetch(request, env) {
+    if (request.method === "OPTIONS") {
+      return new Response(null, { status: 204, headers: withCors() });
+    }
+
+    const url = new URL(request.url);
+
+    if (url.pathname === "/health") {
+      return jsonResponse(200, {
+        ok: true,
+        service: "capacitor-ingest-worker",
+        timestamp: new Date().toISOString(),
+      });
+    }
+
+    if (!url.pathname.startsWith("/v1/")) {
+      return jsonResponse(404, { ok: false, error: "not_found" });
+    }
+
+    if (request.method !== "POST") {
+      return jsonResponse(405, { ok: false, error: "method_not_allowed" });
+    }
+
+    if (!isAuthorized(request.headers, env.INGEST_KEY)) {
+      return jsonResponse(401, { ok: false, error: "unauthorized" });
+    }
+
+    if (url.pathname === "/v1/feedback") {
+      return handleFeedback(request, env);
+    }
+
+    if (url.pathname === "/v1/telemetry") {
+      return handleTelemetry(request, env);
+    }
+
+    return jsonResponse(404, { ok: false, error: "not_found" });
+  },
+};
+
+/**
+ * @typedef {object} Env
+ * @property {D1Database} DB
+ * @property {string} INGEST_KEY
+ */

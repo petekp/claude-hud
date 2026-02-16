@@ -45,6 +45,141 @@ struct QuickFeedbackPreferences: Equatable {
     }
 }
 
+enum QuickFeedbackCategory: String, Codable, CaseIterable {
+    case bug
+    case ux
+    case feature
+    case question
+    case other
+
+    var title: String {
+        switch self {
+        case .bug:
+            "Bug report"
+        case .ux:
+            "UX friction"
+        case .feature:
+            "Feature request"
+        case .question:
+            "Question"
+        case .other:
+            "Other"
+        }
+    }
+}
+
+enum QuickFeedbackImpact: String, Codable, CaseIterable {
+    case blocking
+    case high
+    case medium
+    case low
+
+    var title: String {
+        switch self {
+        case .blocking:
+            "Blocking"
+        case .high:
+            "High"
+        case .medium:
+            "Medium"
+        case .low:
+            "Low"
+        }
+    }
+}
+
+enum QuickFeedbackReproducibility: String, Codable, CaseIterable {
+    case always
+    case often
+    case sometimes
+    case once
+    case unsure
+    case notApplicable = "not_applicable"
+
+    var title: String {
+        switch self {
+        case .always:
+            "Always"
+        case .often:
+            "Often"
+        case .sometimes:
+            "Sometimes"
+        case .once:
+            "Once"
+        case .unsure:
+            "Unsure"
+        case .notApplicable:
+            "Not applicable"
+        }
+    }
+}
+
+struct QuickFeedbackDraft: Equatable {
+    var category: QuickFeedbackCategory
+    var impact: QuickFeedbackImpact
+    var reproducibility: QuickFeedbackReproducibility
+    var summary: String
+    var details: String
+    var expectedBehavior: String
+    var stepsToReproduce: String
+
+    static let defaults = QuickFeedbackDraft(
+        category: .other,
+        impact: .medium,
+        reproducibility: .notApplicable,
+        summary: "",
+        details: "",
+        expectedBehavior: "",
+        stepsToReproduce: "",
+    )
+
+    static func legacy(message: String) -> QuickFeedbackDraft {
+        QuickFeedbackDraft(
+            category: .other,
+            impact: .medium,
+            reproducibility: .notApplicable,
+            summary: message,
+            details: "",
+            expectedBehavior: "",
+            stepsToReproduce: "",
+        )
+    }
+
+    var canSubmit: Bool {
+        true
+    }
+
+    var completionCount: Int {
+        let normalized = normalized()
+        var count = 0
+        if !normalized.summary.isEmpty { count += 1 }
+        if !normalized.details.isEmpty { count += 1 }
+        if !normalized.expectedBehavior.isEmpty { count += 1 }
+        if !normalized.stepsToReproduce.isEmpty { count += 1 }
+        return count
+    }
+
+    var hasAnyContent: Bool {
+        completionCount > 0
+    }
+
+    var summaryLength: Int {
+        normalized().summary.count
+    }
+
+    func normalized() -> QuickFeedbackDraft {
+        QuickFeedbackDraft(
+            category: category,
+            impact: impact,
+            reproducibility: reproducibility,
+            summary: summary.trimmingCharacters(in: .whitespacesAndNewlines),
+            details: details.trimmingCharacters(in: .whitespacesAndNewlines),
+            expectedBehavior: expectedBehavior.trimmingCharacters(in: .whitespacesAndNewlines),
+            stepsToReproduce: stepsToReproduce.trimmingCharacters(in: .whitespacesAndNewlines),
+        )
+    }
+}
+
 struct QuickFeedbackContext: Equatable {
     let appVersion: String
     let buildNumber: String
@@ -113,13 +248,37 @@ struct QuickFeedbackPayload: Codable, Equatable {
         let traceDigest: String?
     }
 
+    struct FormSnapshot: Codable, Equatable {
+        let category: String
+        let impact: String
+        let reproducibility: String
+        let summary: String
+        let details: String?
+        let expectedBehavior: String?
+        let stepsToReproduce: String?
+    }
+
+    let feedbackID: String
     let feedback: String
+    let form: FormSnapshot
     let submittedAt: String
     let app: AppSnapshot
     let privacy: PrivacySnapshot
     let daemon: DaemonSnapshot?
     let projectContext: ProjectContext
     let activationSignal: ActivationSignal
+
+    enum CodingKeys: String, CodingKey {
+        case feedbackID = "feedback_id"
+        case feedback
+        case form
+        case submittedAt
+        case app
+        case privacy
+        case daemon
+        case projectContext
+        case activationSignal
+    }
 }
 
 enum QuickFeedbackPayloadBuilder {
@@ -134,11 +293,13 @@ enum QuickFeedbackPayloadBuilder {
     }()
 
     static func build(
-        message: String,
+        feedbackID: String,
+        draft: QuickFeedbackDraft,
         context: QuickFeedbackContext,
         preferences: QuickFeedbackPreferences,
         now: Date = Date(),
     ) -> QuickFeedbackPayload {
+        let normalizedDraft = draft.normalized()
         let sortedStates = context.sessionStates.sorted { $0.key < $1.key }
 
         var working = 0
@@ -195,7 +356,17 @@ enum QuickFeedbackPayloadBuilder {
         let trace = context.activationTrace?.trimmingCharacters(in: .whitespacesAndNewlines)
 
         return QuickFeedbackPayload(
-            feedback: message,
+            feedbackID: feedbackID,
+            feedback: normalizedDraft.summary,
+            form: QuickFeedbackPayload.FormSnapshot(
+                category: normalizedDraft.category.rawValue,
+                impact: normalizedDraft.impact.rawValue,
+                reproducibility: normalizedDraft.reproducibility.rawValue,
+                summary: normalizedDraft.summary,
+                details: optionalValue(normalizedDraft.details),
+                expectedBehavior: optionalValue(normalizedDraft.expectedBehavior),
+                stepsToReproduce: optionalValue(normalizedDraft.stepsToReproduce),
+            ),
             submittedAt: timestampFormatter.string(from: now),
             app: QuickFeedbackPayload.AppSnapshot(
                 version: context.appVersion,
@@ -258,9 +429,14 @@ enum QuickFeedbackPayloadBuilder {
         let digest = SHA256.hash(data: Data(text.utf8))
         return digest.map { String(format: "%02x", $0) }.joined()
     }
+
+    private static func optionalValue(_ text: String) -> String? {
+        text.isEmpty ? nil : text
+    }
 }
 
 struct QuickFeedbackSubmissionOutcome: Equatable {
+    let feedbackID: String
     let issueURL: URL
     let issueOpened: Bool
     let endpointAttempted: Bool
@@ -277,6 +453,7 @@ struct QuickFeedbackSubmitter {
     private let sendRequest: RequestSender
     private let now: () -> Date
     private let repository: String
+    private let feedbackIDProvider: () -> String
 
     init(
         environment: [String: String] = ProcessInfo.processInfo.environment,
@@ -284,22 +461,27 @@ struct QuickFeedbackSubmitter {
         sendRequest: @escaping RequestSender,
         now: @escaping () -> Date = Date.init,
         repository: String = QuickFeedbackIssueComposer.defaultRepository,
+        feedbackIDProvider: @escaping () -> String = QuickFeedbackID.generate,
     ) {
         self.environment = environment
         self.openURL = openURL
         self.sendRequest = sendRequest
         self.now = now
         self.repository = repository
+        self.feedbackIDProvider = feedbackIDProvider
     }
 
     func submit(
-        message: String,
+        draft: QuickFeedbackDraft,
         context: QuickFeedbackContext,
         preferences: QuickFeedbackPreferences,
+        openGitHubIssue: Bool = true,
     ) async -> QuickFeedbackSubmissionOutcome {
-        let trimmed = message.trimmingCharacters(in: .whitespacesAndNewlines)
+        let normalizedDraft = draft.normalized()
+        let feedbackID = feedbackIDProvider()
         let payload = QuickFeedbackPayloadBuilder.build(
-            message: trimmed,
+            feedbackID: feedbackID,
+            draft: normalizedDraft,
             context: context,
             preferences: preferences,
             now: now(),
@@ -323,14 +505,29 @@ struct QuickFeedbackSubmitter {
         }
 
         let issueURL = QuickFeedbackIssueComposer.issueURL(payload: payload, repository: repository)
-        let issueOpened = openURL(issueURL)
+        let issueOpened = openGitHubIssue ? openURL(issueURL) : false
 
         return QuickFeedbackSubmissionOutcome(
+            feedbackID: feedbackID,
             issueURL: issueURL,
             issueOpened: issueOpened,
             endpointAttempted: endpointAttempted,
             endpointSucceeded: endpointSucceeded,
             endpointError: endpointError,
+        )
+    }
+
+    func submit(
+        message: String,
+        context: QuickFeedbackContext,
+        preferences: QuickFeedbackPreferences,
+        openGitHubIssue: Bool = true,
+    ) async -> QuickFeedbackSubmissionOutcome {
+        await submit(
+            draft: QuickFeedbackDraft.legacy(message: message),
+            context: context,
+            preferences: preferences,
+            openGitHubIssue: openGitHubIssue,
         )
     }
 
@@ -351,6 +548,11 @@ struct QuickFeedbackSubmitter {
         request.httpMethod = "POST"
         request.httpBody = data
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        if let ingestKey = environment["CAPACITOR_INGEST_KEY"]?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !ingestKey.isEmpty
+        {
+            request.setValue("Bearer \(ingestKey)", forHTTPHeaderField: "Authorization")
+        }
         return request
     }
 }
@@ -365,7 +567,7 @@ enum QuickFeedbackIssueComposer {
         components.host = "github.com"
         components.path = "/\(repositoryPath)/issues/new"
         components.queryItems = [
-            URLQueryItem(name: "title", value: issueTitle(for: payload.feedback)),
+            URLQueryItem(name: "title", value: issueTitle(for: payload)),
             URLQueryItem(name: "labels", value: "alpha-feedback"),
             URLQueryItem(name: "body", value: issueBody(for: payload)),
         ]
@@ -375,25 +577,57 @@ enum QuickFeedbackIssueComposer {
             ?? URL(fileURLWithPath: "/")
     }
 
-    private static func issueTitle(for feedback: String) -> String {
-        let trimmed = feedback.trimmingCharacters(in: .whitespacesAndNewlines)
+    private static func issueTitle(for payload: QuickFeedbackPayload) -> String {
+        let trimmed = payload.form.summary.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {
-            return "Alpha feedback"
+            return "Alpha feedback [\(payload.feedbackID)]"
         }
         let snippet = String(trimmed.prefix(70))
-        return "Alpha feedback: \(snippet)"
+        return "Alpha feedback [\(payload.feedbackID)]: \(snippet)"
     }
 
     private static func issueBody(for payload: QuickFeedbackPayload) -> String {
         var sections: [String] = [
-            "## Feedback",
-            payload.feedback,
+            "<!-- capacitor_feedback_id: \(payload.feedbackID) -->",
             "",
+            "## Report",
+            "- Feedback ID: \(payload.feedbackID)",
+            "",
+            "## Summary",
+            payload.form.summary,
+            "",
+        ]
+
+        if let details = payload.form.details {
+            sections.append(contentsOf: [
+                "## What happened",
+                details,
+                "",
+            ])
+        }
+
+        if let expected = payload.form.expectedBehavior {
+            sections.append(contentsOf: [
+                "## Expected behavior",
+                expected,
+                "",
+            ])
+        }
+
+        if let steps = payload.form.stepsToReproduce {
+            sections.append(contentsOf: [
+                "## Steps to reproduce",
+                steps,
+                "",
+            ])
+        }
+
+        sections.append(contentsOf: [
             "## Privacy",
             "- Include technical telemetry: \(payload.privacy.includeTelemetry ? "yes" : "no")",
             "- Include project paths: \(payload.privacy.includeProjectPaths ? "yes" : "no")",
             "",
-        ]
+        ])
 
         if payload.privacy.includeTelemetry {
             sections.append(contentsOf: [
@@ -427,5 +661,11 @@ enum QuickFeedbackIssueComposer {
             return defaultRepository
         }
         return "\(parts[0])/\(parts[1])"
+    }
+}
+
+enum QuickFeedbackID {
+    static func generate() -> String {
+        "fb-\(UUID().uuidString.lowercased())"
     }
 }

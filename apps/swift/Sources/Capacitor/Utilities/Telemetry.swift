@@ -1,29 +1,42 @@
 import Foundation
 import os.log
 
-/// Lightweight telemetry emitter for the local transparent UI hub.
+/// Lightweight telemetry emitter for local debug or remote ingest endpoints.
 enum Telemetry {
     private static let logger = Logger(subsystem: "com.capacitor.app", category: "Telemetry")
     private static let formatter = ISO8601DateFormatter()
+    private struct Config {
+        let endpoint: URL?
+        let redactPaths: Bool
+        let ingestKey: String?
+    }
 
-    private static let endpoint: URL? = {
+    private static let config: Config = {
         let env = ProcessInfo.processInfo.environment
         if env["CAPACITOR_TELEMETRY_DISABLED"] == "1" {
-            return nil
+            return Config(endpoint: nil, redactPaths: false, ingestKey: nil)
         }
-        let raw = env["CAPACITOR_TELEMETRY_URL"] ?? "http://localhost:9133/telemetry"
-        return URL(string: raw)
+        let rawURL = env["CAPACITOR_TELEMETRY_URL"] ?? "http://localhost:9133/telemetry"
+        let endpoint = URL(string: rawURL)
+        let ingestKey = env["CAPACITOR_INGEST_KEY"]?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let normalizedIngestKey = ingestKey?.isEmpty == true ? nil : ingestKey
+        let redactPaths = endpoint.map { TelemetryRedaction.shouldRedactPaths(environment: env, endpoint: $0) } ?? false
+        return Config(endpoint: endpoint, redactPaths: redactPaths, ingestKey: normalizedIngestKey)
     }()
 
     static func emit(_ type: String, _ message: String, payload: [String: Any] = [:]) {
-        guard let url = endpoint else { return }
+        guard let url = config.endpoint else { return }
+        let sanitizedMessage = config.redactPaths ? TelemetryRedaction.redactMessage(message) : message
+        let sanitizedPayload = config.redactPaths ? TelemetryRedaction.redactPayload(payload) : payload
+
         var body: [String: Any] = [
             "type": type,
-            "message": message,
+            "message": sanitizedMessage,
             "timestamp": formatter.string(from: Date()),
         ]
-        if !payload.isEmpty {
-            body["payload"] = payload
+        if !sanitizedPayload.isEmpty {
+            body["payload"] = sanitizedPayload
         }
         guard JSONSerialization.isValidJSONObject(body),
               let data = try? JSONSerialization.data(withJSONObject: body, options: [])
@@ -35,6 +48,9 @@ enum Telemetry {
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        if let ingestKey = config.ingestKey {
+            request.setValue("Bearer \(ingestKey)", forHTTPHeaderField: "Authorization")
+        }
         request.httpBody = data
 
         URLSession.shared.dataTask(with: request) { _, _, _ in }.resume()

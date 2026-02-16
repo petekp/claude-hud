@@ -470,15 +470,12 @@ class AppState {
     // MARK: - Quick Feedback
 
     func submitQuickFeedback(
-        _ message: String,
+        _ draft: QuickFeedbackDraft,
         preferences overridePreferences: QuickFeedbackPreferences? = nil,
+        formSessionID: String? = nil,
+        openGitHubIssue: Bool = true,
     ) {
-        let trimmed = message.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else {
-            toast = .error("Add feedback before submitting")
-            return
-        }
-
+        let normalizedDraft = draft.normalized()
         let preferences = overridePreferences ?? QuickFeedbackPreferences.load()
         let context = quickFeedbackContext()
         let submitter = QuickFeedbackSubmitter(
@@ -497,38 +494,78 @@ class AppState {
 
         _Concurrency.Task { [weak self] in
             let outcome = await submitter.submit(
-                message: trimmed,
+                draft: normalizedDraft,
                 context: context,
                 preferences: preferences,
+                openGitHubIssue: openGitHubIssue,
             )
 
             await MainActor.run {
                 guard let self else { return }
 
-                if outcome.issueOpened {
-                    if outcome.endpointAttempted, outcome.endpointSucceeded {
-                        self.toast = ToastMessage("Opened GitHub feedback draft and sent telemetry")
-                    } else if outcome.endpointAttempted {
-                        self.toast = ToastMessage("Opened GitHub feedback draft (endpoint send failed)")
+                if openGitHubIssue {
+                    if outcome.issueOpened {
+                        if outcome.endpointAttempted, outcome.endpointSucceeded {
+                            self.toast = ToastMessage("Opened GitHub issue and sent telemetry")
+                        } else if outcome.endpointAttempted {
+                            self.toast = ToastMessage("Opened GitHub issue (endpoint send failed)")
+                        } else {
+                            self.toast = ToastMessage("Opened GitHub issue")
+                        }
                     } else {
-                        self.toast = ToastMessage("Opened GitHub feedback draft")
+                        self.toast = .error("Couldn’t open GitHub issue")
                     }
                 } else {
-                    self.toast = .error("Couldn’t open GitHub feedback draft")
+                    if outcome.endpointAttempted, outcome.endpointSucceeded {
+                        self.toast = ToastMessage("Shared feedback")
+                    } else if outcome.endpointAttempted {
+                        self.toast = .error("Couldn’t share feedback")
+                    } else {
+                        self.toast = .error("Couldn’t share feedback (no endpoint configured)")
+                    }
                 }
 
                 Telemetry.emit("quick_feedback_submitted", "Quick feedback submitted", payload: [
+                    "feedback_id": outcome.feedbackID,
+                    "issue_requested": openGitHubIssue,
                     "issue_opened": outcome.issueOpened,
                     "endpoint_attempted": outcome.endpointAttempted,
                     "endpoint_succeeded": outcome.endpointSucceeded,
+                    "category": normalizedDraft.category.rawValue,
+                    "impact": normalizedDraft.impact.rawValue,
+                    "reproducibility": normalizedDraft.reproducibility.rawValue,
+                    "completion_count": normalizedDraft.completionCount,
                     "telemetry_enabled": preferences.includeTelemetry,
                     "project_paths_enabled": preferences.includeProjectPaths,
                     "session_count": context.sessionStates.count,
                     "project_count": context.projectCount,
                     "active_source": context.activeSource,
                 ])
+
+                QuickFeedbackFunnel.emitSubmitResult(
+                    sessionID: formSessionID,
+                    feedbackID: outcome.feedbackID,
+                    draft: normalizedDraft,
+                    preferences: preferences,
+                    issueRequested: openGitHubIssue,
+                    issueOpened: outcome.issueOpened,
+                    endpointAttempted: outcome.endpointAttempted,
+                    endpointSucceeded: outcome.endpointSucceeded,
+                )
             }
         }
+    }
+
+    func submitQuickFeedback(
+        _ message: String,
+        preferences overridePreferences: QuickFeedbackPreferences? = nil,
+    ) {
+        submitQuickFeedback(
+            QuickFeedbackDraft.legacy(message: message),
+            preferences: overridePreferences,
+            formSessionID: nil,
+            openGitHubIssue: true,
+        )
     }
 
     private func refreshAERoutingRuntimeFlags(with health: DaemonHealth?) {

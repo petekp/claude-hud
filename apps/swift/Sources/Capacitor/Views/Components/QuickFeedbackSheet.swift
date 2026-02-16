@@ -1,74 +1,153 @@
+import AppKit
 import SwiftUI
 
 struct QuickFeedbackSheet: View {
     @Environment(\.dismiss) private var dismiss
-    @AppStorage(QuickFeedbackPreferenceKeys.includeTelemetry) private var includeTelemetry = true
-    @AppStorage(QuickFeedbackPreferenceKeys.includeProjectPaths) private var includeProjectPaths = false
-    @State private var message = ""
+    @State private var draft = QuickFeedbackDraft.defaults
+    @State private var formSessionID = QuickFeedbackFunnel.makeSessionID()
+    @State private var openGitHubIssue = false
+    @State private var hasSubmitted = false
+    @State private var completedFields: Set<String> = []
+    @State private var didEmitOpened = false
 
-    let onSubmit: (String, QuickFeedbackPreferences) -> Void
+    let onSubmit: (QuickFeedbackDraft, QuickFeedbackPreferences, String, Bool) -> Void
 
     private var canSubmit: Bool {
-        !message.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        draft.canSubmit
+    }
+
+    private var preferences: QuickFeedbackPreferences {
+        QuickFeedbackPreferences.load()
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Quick Feedback")
-                .font(.system(size: 16, weight: .semibold))
+        VStack(alignment: .leading, spacing: 14) {
+            Text("Feedback")
+                .font(.system(size: 17, weight: .semibold))
 
-            Text("Share what happened. We’ll open a GitHub issue draft with optional telemetry context.")
-                .font(.system(size: 12))
-                .foregroundStyle(.secondary)
-
-            TextEditor(text: $message)
-                .font(.system(size: 13))
-                .frame(minHeight: 140)
-                .padding(8)
-                .background(
-                    RoundedRectangle(cornerRadius: 8, style: .continuous)
-                        .fill(Color.white.opacity(0.04)),
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: 8, style: .continuous)
-                        .strokeBorder(Color.white.opacity(0.12), lineWidth: 0.5),
-                )
-
-            VStack(alignment: .leading, spacing: 8) {
-                Toggle("Include anonymized telemetry", isOn: $includeTelemetry)
-                    .font(.system(size: 12))
-                Toggle("Include project paths for debugging", isOn: $includeProjectPaths)
-                    .font(.system(size: 12))
-                    .disabled(!includeTelemetry)
+            VStack(alignment: .leading, spacing: 6) {
+                StockFeedbackTextArea(text: $draft.summary)
+                    .frame(height: 80)
             }
-            .toggleStyle(.checkbox)
-            .foregroundStyle(.secondary)
+
+            Toggle("Open a GitHub issue (optional)", isOn: $openGitHubIssue)
+                .font(.system(size: 12))
+                .toggleStyle(.checkbox)
+                .foregroundStyle(.secondary)
 
             HStack {
                 Spacer()
                 Button("Cancel") {
                     dismiss()
                 }
-                Button("Submit") {
+                .buttonStyle(.bordered)
+
+                Button(openGitHubIssue ? "Open GitHub Issue" : "Share feedback") {
+                    var normalizedDraft = draft.normalized()
+                    normalizedDraft.details = ""
+                    normalizedDraft.expectedBehavior = ""
+                    normalizedDraft.stepsToReproduce = ""
+                    hasSubmitted = true
+                    QuickFeedbackFunnel.emitSubmitAttempt(
+                        sessionID: formSessionID,
+                        draft: normalizedDraft,
+                        preferences: preferences,
+                    )
                     onSubmit(
-                        message,
-                        QuickFeedbackPreferences(
-                            includeTelemetry: includeTelemetry,
-                            includeProjectPaths: includeTelemetry && includeProjectPaths,
-                        ),
+                        normalizedDraft,
+                        preferences,
+                        formSessionID,
+                        openGitHubIssue,
                     )
                     dismiss()
                 }
+                .buttonStyle(.borderedProminent)
                 .keyboardShortcut(.defaultAction)
                 .disabled(!canSubmit)
             }
         }
-        .onChange(of: includeTelemetry) { _, enabled in
-            if !enabled {
-                includeProjectPaths = false
-            }
+        .onChange(of: draft.summary) { _, newValue in
+            emitFieldCompletedIfNeeded(field: "feedback", textValue: newValue)
+        }
+        .onAppear {
+            guard !didEmitOpened else { return }
+            didEmitOpened = true
+            QuickFeedbackFunnel.emitOpened(sessionID: formSessionID, preferences: preferences)
+        }
+        .onDisappear {
+            guard !hasSubmitted, draft.hasAnyContent else { return }
+            QuickFeedbackFunnel.emitAbandoned(
+                sessionID: formSessionID,
+                draft: draft.normalized(),
+                preferences: preferences,
+                completionCount: max(completedFields.count, draft.completionCount),
+            )
         }
         .padding(16)
-        .frame(width: 460)
+        .frame(width: 392)
+    }
+
+    private func emitFieldCompletedIfNeeded(field: String, textValue: String? = nil) {
+        if let textValue,
+           textValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        {
+            return
+        }
+
+        guard !completedFields.contains(field) else { return }
+        completedFields.insert(field)
+        QuickFeedbackFunnel.emitFieldCompleted(
+            sessionID: formSessionID,
+            field: field,
+            draft: draft.normalized(),
+            preferences: preferences,
+            completionCount: max(completedFields.count, draft.completionCount),
+        )
+    }
+}
+
+private struct StockFeedbackTextArea: NSViewRepresentable {
+    @Binding var text: String
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(text: $text)
+    }
+
+    func makeNSView(context: Context) -> NSScrollView {
+        let scrollView = NSTextView.scrollableTextView()
+        scrollView.hasVerticalScroller = true
+        scrollView.hasHorizontalScroller = false
+        scrollView.drawsBackground = true
+        scrollView.borderType = .bezelBorder
+
+        guard let textView = scrollView.documentView as? NSTextView else {
+            return scrollView
+        }
+
+        textView.delegate = context.coordinator
+        textView.font = NSFont.systemFont(ofSize: 13)
+        textView.textContainerInset = NSSize(width: 6, height: 8)
+        textView.string = text
+        return scrollView
+    }
+
+    func updateNSView(_ scrollView: NSScrollView, context _: Context) {
+        guard let textView = scrollView.documentView as? NSTextView else { return }
+        if textView.string != text {
+            textView.string = text
+        }
+    }
+
+    final class Coordinator: NSObject, NSTextViewDelegate {
+        @Binding var text: String
+
+        init(text: Binding<String>) {
+            _text = text
+        }
+
+        func textDidChange(_ notification: Notification) {
+            guard let textView = notification.object as? NSTextView else { return }
+            text = textView.string
+        }
     }
 }

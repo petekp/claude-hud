@@ -46,8 +46,13 @@ struct HeaderView: View {
             }
         }
         .sheet(isPresented: $isQuickFeedbackPresented) {
-            QuickFeedbackSheet { message, preferences in
-                appState.submitQuickFeedback(message, preferences: preferences)
+            QuickFeedbackSheet { draft, preferences, formSessionID, openGitHubIssue in
+                appState.submitQuickFeedback(
+                    draft,
+                    preferences: preferences,
+                    formSessionID: formSessionID,
+                    openGitHubIssue: openGitHubIssue,
+                )
             }
         }
     }
