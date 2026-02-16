@@ -57,6 +57,8 @@ struct CapacitorApp: App {
                         }
                     }
                     .clipShape(RoundedRectangle(cornerRadius: WindowCornerRadius.value(floatingMode: floatingMode)))
+                    .overlay { EmptyStateBorderGlow() }
+                    .environment(\.floatingMode, floatingMode)
                     .background(FloatingWindowConfigurator(enabled: floatingMode, alwaysOnTop: alwaysOnTop))
                     .transition(.asymmetric(
                         insertion: .identity,
@@ -421,25 +423,58 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         return "0.2.0-alpha.1"
     }
 
+    /// Attempt silent auto-setup on every launch.
+    /// Only shows WelcomeView if something genuinely needs user attention
+    /// (e.g. Claude CLI not installed, hook install failed, policy blocked).
     private func validateHookSetup() {
         guard let engine = try? HudEngine() else { return }
 
+        // 1. Check if Claude CLI is available — this is the one thing we can't auto-fix
+        let claudeDep = engine.checkDependency(name: "claude")
+        if claudeDep.required, !claudeDep.found {
+            DebugLog.write("[Startup] Claude CLI not found, showing WelcomeView")
+            UserDefaults.standard.set(false, forKey: "setupComplete")
+            return
+        }
+
+        // 2. Ensure hooks are installed (auto-repair if needed)
         let hookStatus = engine.getHookStatus()
 
         switch hookStatus {
         case .installed:
+            break
+
+        case .policyBlocked:
+            DebugLog.write("[Startup] Hooks blocked by policy, showing WelcomeView")
+            UserDefaults.standard.set(false, forKey: "setupComplete")
             return
 
         case .symlinkBroken, .binaryBroken, .notInstalled:
             if attemptAutoRepair(engine: engine) {
                 DebugLog.write("[Startup] Hook auto-repair succeeded")
+            } else {
+                DebugLog.write("[Startup] Hook auto-repair failed, showing WelcomeView")
+                UserDefaults.standard.set(false, forKey: "setupComplete")
                 return
             }
-            DebugLog.write("[Startup] Hook auto-repair failed, showing WelcomeView")
-            UserDefaults.standard.set(false, forKey: "setupComplete")
+        }
 
-        case .policyBlocked:
-            UserDefaults.standard.set(false, forKey: "setupComplete")
+        // 3. Auto-install shell integration if not already configured
+        let shellType = ShellType.current
+        if shellType != .unsupported, !shellType.isSnippetInstalled {
+            switch shellType.installSnippet() {
+            case .success:
+                DebugLog.write("[Startup] Shell integration installed in \(shellType.configFile)")
+            case let .failure(error):
+                // Non-blocking — shell integration is optional
+                DebugLog.write("[Startup] Shell integration skipped: \(error.localizedDescription)")
+            }
+        }
+
+        // 4. Everything is ready — skip the setup screen
+        if !UserDefaults.standard.bool(forKey: "setupComplete") {
+            DebugLog.write("[Startup] Auto-setup complete, skipping WelcomeView")
+            UserDefaults.standard.set(true, forKey: "setupComplete")
         }
     }
 

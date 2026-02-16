@@ -9,34 +9,38 @@ struct SetupStepRow: View {
     var onAction: (() -> Void)?
     var onRetry: (() -> Void)?
 
+    private var hasActions: Bool {
+        switch step.status {
+        case .actionNeeded: onAction != nil
+        case .error: linkURL != nil || onRetry != nil || onAction != nil
+        default: false
+        }
+    }
+
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
             statusIcon
                 .frame(width: 24, height: 24)
 
-            VStack(alignment: .leading, spacing: 2) {
-                Text(step.title)
-                    .font(.headline)
-                    .foregroundStyle(titleColor)
-                    .lineLimit(2)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .layoutPriority(1)
+            VStack(alignment: .leading, spacing: hasActions ? 10 : 2) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(step.title)
+                        .font(.headline)
+                        .foregroundStyle(titleColor)
 
-                Text(step.statusDetail)
-                    .font(.subheadline)
-                    .foregroundStyle(detailColor)
-                    .lineLimit(nil)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .layoutPriority(1)
+                    Text(step.statusDetail)
+                        .font(.subheadline)
+                        .foregroundStyle(detailColor)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                actionButton
             }
-
-            Spacer()
-
-            actionButton
-                .fixedSize(horizontal: true, vertical: false)
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .background(rowBackground, in: RoundedRectangle(cornerRadius: 10))
         .animation(.easeInOut(duration: 0.2), value: step.status)
     }
@@ -85,38 +89,28 @@ struct SetupStepRow: View {
             }
 
         case .error:
-            ViewThatFits {
-                HStack(spacing: 6) {
-                    errorActions
+            HStack(spacing: 6) {
+                if let linkURL {
+                    Link(linkLabel, destination: linkURL)
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
                 }
 
-                VStack(alignment: .leading, spacing: 6) {
-                    errorActions
+                if let onAction, linkURL == nil {
+                    Button(actionLabel, action: onAction)
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                }
+
+                if let onRetry {
+                    Button("Retry", action: onRetry)
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
                 }
             }
-            .fixedSize(horizontal: true, vertical: false)
 
         default:
             EmptyView()
-        }
-    }
-
-    @ViewBuilder
-    private var errorActions: some View {
-        if let linkURL {
-            Link(linkLabel, destination: linkURL)
-                .buttonStyle(.bordered)
-                .controlSize(.small)
-        }
-
-        if let onRetry {
-            Button("Retry", action: onRetry)
-                .buttonStyle(.bordered)
-                .controlSize(.small)
-        } else if let onAction, linkURL == nil {
-            Button(actionLabel, action: onAction)
-                .buttonStyle(.bordered)
-                .controlSize(.small)
         }
     }
 
@@ -160,8 +154,8 @@ struct SetupStepRow: View {
             step: SetupStep(
                 id: "claude",
                 title: "Claude Code",
-                description: "Capacitor needs Claude Code to work",
-                status: .completed(detail: "/usr/local/bin/claude"),
+                description: "Capacitor reads your Claude sessions to show live project status",
+                status: .completed(detail: "Installed"),
             ),
             isCurrentStep: false,
         )
@@ -169,8 +163,8 @@ struct SetupStepRow: View {
         SetupStepRow(
             step: SetupStep(
                 id: "hooks",
-                title: "Session hooks",
-                description: "Connect Capacitor to your Claude sessions",
+                title: "Session tracking",
+                description: "See which projects are active and what Claude is working on",
                 status: .checking,
             ),
             isCurrentStep: true,
@@ -179,9 +173,9 @@ struct SetupStepRow: View {
         SetupStepRow(
             step: SetupStep(
                 id: "hooks",
-                title: "Session hooks",
-                description: "Connect Capacitor to your Claude sessions",
-                status: .actionNeeded(message: "Install hooks to enable session tracking"),
+                title: "Session tracking",
+                description: "See which projects are active and what Claude is working on",
+                status: .actionNeeded(message: "Tap Install to connect"),
             ),
             isCurrentStep: true,
             onAction: { print("Install tapped") },
@@ -191,7 +185,7 @@ struct SetupStepRow: View {
             step: SetupStep(
                 id: "claude",
                 title: "Claude Code",
-                description: "Capacitor needs Claude Code to work",
+                description: "Capacitor reads your Claude sessions to show live project status",
                 status: .error(message: "Not found — download from claude.ai/download"),
             ),
             isCurrentStep: true,
@@ -202,8 +196,8 @@ struct SetupStepRow: View {
         SetupStepRow(
             step: SetupStep(
                 id: "shell",
-                title: "Shell integration",
-                description: "Track which project you're working in",
+                title: "Terminal tracking",
+                description: "Add hook to ~/.zshrc to auto-detect which project each terminal is in",
                 status: .pending,
                 isOptional: true,
             ),

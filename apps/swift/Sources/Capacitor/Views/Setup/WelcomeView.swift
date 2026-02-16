@@ -27,27 +27,77 @@ struct WelcomeView: View {
     }
 
     var body: some View {
-        ScrollView {
-            VStack(spacing: 0) {
-                #if DEBUG
-                    debugScenarioPicker
-                #endif
+        PageScaffold {
+            // MARK: - Fixed header (debug picker only)
 
-                Spacer()
-                    .frame(height: 40)
+            #if DEBUG
+                debugScenarioPicker
+            #else
+                EmptyView()
+            #endif
+        } content: {
+            // MARK: - Scrollable content: logo, greeting, then steps
 
-                headerSection
-                    .padding(.bottom, 32)
+            VStack(spacing: 32) {
+                VStack(spacing: 16) {
+                    Group {
+                        if let nsImage = logomarkImage {
+                            Image(nsImage: nsImage)
+                                .resizable()
+                                .frame(width: 40, height: 40)
+                                .foregroundStyle(Color.accentColor)
+                        } else {
+                            Image(systemName: "sparkles")
+                                .font(.system(size: 40))
+                                .foregroundStyle(Color.accentColor)
+                        }
+                    }
 
-                stepsSection
+                    Text("Hi \(userFirstName)! Let's get you all set up.")
+                        .font(.title3.weight(.medium))
+                        .foregroundStyle(.primary)
+                }
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: .infinity)
 
-                Spacer()
-                    .frame(minHeight: 40)
-
-                footerSection
-                    .padding(.bottom, 24)
+                VStack(spacing: 10) {
+                    ForEach(Array(manager.steps.enumerated()), id: \.element.id) { index, step in
+                        SetupStepRow(
+                            step: step,
+                            isCurrentStep: manager.currentStepIndex == index,
+                            linkURL: step.id == "claude" ? URL(string: "https://claude.ai/download") : nil,
+                            onAction: {
+                                _Concurrency.Task {
+                                    await manager.executeStep(step.id)
+                                }
+                            },
+                            onRetry: {
+                                _Concurrency.Task {
+                                    await manager.retryStep(step.id)
+                                }
+                            },
+                        )
+                    }
+                }
             }
-            .padding(.horizontal, 32)
+        } footer: {
+            // MARK: - Fixed footer
+
+            VStack(spacing: 16) {
+                if manager.hasBlockingError {
+                    Text("Please resolve the issues above to continue")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
+                Button(action: completeSetup) {
+                    Text("Get Started")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.large)
+                .disabled(!manager.allComplete)
+            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .task(id: checkID) {
@@ -66,75 +116,6 @@ struct WelcomeView: View {
                 onDismiss: { manager.dismissShellInstructions() },
             )
         }
-    }
-
-    // MARK: - Header
-
-    private var headerSection: some View {
-        VStack(spacing: 16) {
-            Group {
-                if let nsImage = logomarkImage {
-                    Image(nsImage: nsImage)
-                        .resizable()
-                        .frame(width: 40, height: 40)
-                        .foregroundStyle(Color.accentColor)
-                } else {
-                    Image(systemName: "sparkles")
-                        .font(.system(size: 40))
-                        .foregroundStyle(Color.accentColor)
-                }
-            }
-
-            Text("Hi \(userFirstName)! Let's get you all set up.")
-                .font(.title3.weight(.medium))
-                .foregroundStyle(.primary)
-        }
-        .multilineTextAlignment(.center)
-    }
-
-    // MARK: - Steps
-
-    private var stepsSection: some View {
-        VStack(spacing: 10) {
-            ForEach(Array(manager.steps.enumerated()), id: \.element.id) { index, step in
-                SetupStepRow(
-                    step: step,
-                    isCurrentStep: manager.currentStepIndex == index,
-                    linkURL: step.id == "claude" ? URL(string: "https://claude.ai/download") : nil,
-                    onAction: {
-                        _Concurrency.Task {
-                            await manager.executeStep(step.id)
-                        }
-                    },
-                    onRetry: {
-                        _Concurrency.Task {
-                            await manager.retryStep(step.id)
-                        }
-                    },
-                )
-            }
-        }
-    }
-
-    // MARK: - Footer
-
-    private var footerSection: some View {
-        VStack(spacing: 16) {
-            if manager.hasBlockingError {
-                Text("Please resolve the issues above to continue")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-
-            Button(action: completeSetup) {
-                Text("Get Started")
-                    .frame(maxWidth: .infinity)
-            }
-            .buttonStyle(.borderedProminent)
-            .controlSize(.large)
-            .disabled(!manager.allComplete)
-        }
-        .padding(.top, 24)
     }
 
     // MARK: - Actions

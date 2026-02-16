@@ -85,39 +85,69 @@ struct ProjectsView: View {
         )
         let scrollbarInset = floatingMode ? WindowCornerRadius.value(floatingMode: floatingMode) : 0
 
-        // Empty state: render outside ScrollView to avoid LazyVStack layout
-        // oscillation when EmptyProjectsView's .frame(maxHeight: .infinity)
-        // interacts with the scroll container's content size calculation.
+        // Empty state: uses ScrollView with gradient mask for visual
+        // consistency with the project list. Content flows naturally
+        // (no .frame(maxHeight: .infinity) to avoid layout oscillation).
         if !appState.isLoading, appState.projects.isEmpty {
-            VStack(spacing: 0) {
-                #if DEBUG
-                    if debugShowProjectListDiagnostics {
-                        DebugActiveStateCard()
-                            .padding(.horizontal, listHorizontalPadding)
-                            .padding(.bottom, 6)
-                        DebugActivationTraceCard()
-                            .padding(.horizontal, listHorizontalPadding)
-                            .padding(.bottom, 6)
+            ScrollView {
+                VStack(spacing: 0) {
+                    #if DEBUG
+                        if debugShowProjectListDiagnostics {
+                            DebugActiveStateCard()
+                                .padding(.horizontal, listHorizontalPadding)
+                                .padding(.bottom, 6)
+                            DebugActivationTraceCard()
+                                .padding(.horizontal, listHorizontalPadding)
+                                .padding(.bottom, 6)
+                        }
+                    #endif
+                    if let diagnostic = appState.hookDiagnostic, diagnostic.shouldShowSetupCard {
+                        SetupStatusCard(
+                            diagnostic: diagnostic,
+                            onFix: { appState.fixHooks() },
+                            onRefresh: {
+                                appState.checkHookDiagnostic()
+                                appState.refreshSessionStates()
+                            },
+                            onTest: { appState.testHooks() },
+                        )
+                        .padding(.horizontal, listHorizontalPadding)
+                        .padding(.bottom, 4)
                     }
-                #endif
-                if let diagnostic = appState.hookDiagnostic, diagnostic.shouldShowSetupCard {
-                    SetupStatusCard(
-                        diagnostic: diagnostic,
-                        onFix: { appState.fixHooks() },
-                        onRefresh: {
-                            appState.checkHookDiagnostic()
-                            appState.refreshSessionStates()
-                        },
-                        onTest: { appState.testHooks() },
-                    )
-                    .padding(.horizontal, listHorizontalPadding)
-                    .padding(.bottom, 4)
+                    EmptyProjectsView()
+                        .frame(maxWidth: .infinity)
                 }
-                EmptyProjectsView()
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .padding(.top, contentTopPadding)
+                .padding(.bottom, contentBottomPadding)
             }
-            .padding(.top, contentTopPadding)
-            .padding(.bottom, contentBottomPadding)
+            .mask {
+                GeometryReader { proxy in
+                    let sizes = ScrollMaskLayout.sizes(
+                        totalWidth: proxy.size.width,
+                        scrollbarWidth: maskScrollbarWidth,
+                    )
+
+                    HStack(spacing: 0) {
+                        ScrollEdgeFadeMask(
+                            topInset: 0,
+                            bottomInset: 0,
+                            topFade: topFade,
+                            bottomFade: bottomFade,
+                        )
+                        .frame(width: sizes.content, height: proxy.size.height)
+
+                        Color.white
+                            .frame(width: sizes.scrollbar, height: proxy.size.height)
+                    }
+                }
+            }
+            .background(
+                ScrollViewScrollerInsetsConfigurator(
+                    topInset: scrollbarInset,
+                    bottomInset: scrollbarInset,
+                    hideTrack: true,
+                ),
+            )
             .background(floatingMode ? Color.clear : Color.hudBackground)
         } else {
             ScrollView {
@@ -806,7 +836,7 @@ struct EmptyProjectsView: View {
             }
         }
         .padding(.top, 16)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .frame(maxWidth: .infinity)
         .background {
             if floatingMode {
                 Color.clear

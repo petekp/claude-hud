@@ -88,19 +88,19 @@ final class SetupRequirementsManager {
             SetupStep(
                 id: "claude",
                 title: "Claude Code",
-                description: "Capacitor needs Claude Code to work",
+                description: "Capacitor reads your Claude sessions to show live project status",
                 status: .pending,
             ),
             SetupStep(
                 id: "hooks",
-                title: "Session hooks",
-                description: "Connect Capacitor to your Claude sessions",
+                title: "Session tracking",
+                description: "See which projects are active and what Claude is working on",
                 status: .pending,
             ),
             SetupStep(
                 id: "shell",
-                title: "Shell integration",
-                description: "Track which project you're working in",
+                title: "Terminal tracking",
+                description: "Add hook to ~/.zshrc to auto-detect which project each terminal is in",
                 status: .pending,
                 isOptional: true,
             ),
@@ -128,13 +128,13 @@ final class SetupRequirementsManager {
         let shellType = ShellType.current
 
         if let store = shellStateStore, ShellIntegrationChecker.isConfigured(shellStateStore: store) {
-            updateStep("shell", status: .completed(detail: "Receiving shell events"))
+            updateStep("shell", status: .completed(detail: "Active"))
         } else if shellType.isSnippetInstalled {
-            updateStep("shell", status: .completed(detail: "\(shellType.configFile) configured"))
+            updateStep("shell", status: .completed(detail: "Installed"))
         } else if shellType == .unsupported {
-            updateStep("shell", status: .completed(detail: "Skipped: unsupported shell"))
+            updateStep("shell", status: .completed(detail: "Skipped — unsupported shell"))
         } else {
-            updateStep("shell", status: .actionNeeded(message: "Optional: add to \(shellType.configFile)"))
+            updateStep("shell", status: .actionNeeded(message: "Add hook to \(shellType.configFile)"))
         }
     }
 
@@ -146,8 +146,7 @@ final class SetupRequirementsManager {
         updateStep(stepId, status: .checking)
 
         if dep.found {
-            let path = dep.path ?? "Found"
-            updateStep(stepId, status: .completed(detail: path))
+            updateStep(stepId, status: .completed(detail: "Installed"))
 
             if dep.name == "claude" {
                 claudePath = dep.path
@@ -172,20 +171,20 @@ final class SetupRequirementsManager {
         updateStep("hooks", status: .checking)
 
         switch hookStatus {
-        case let .installed(version):
-            updateStep("hooks", status: .completed(detail: "v\(version) installed"))
+        case .installed:
+            updateStep("hooks", status: .completed(detail: "Connected"))
 
         case .notInstalled:
-            updateStep("hooks", status: .actionNeeded(message: "Install hooks to enable session tracking"))
+            updateStep("hooks", status: .actionNeeded(message: "Tap Install to connect"))
 
-        case let .policyBlocked(reason):
-            updateStep("hooks", status: .error(message: reason))
+        case .policyBlocked:
+            updateStep("hooks", status: .error(message: "Your Claude settings prevent hook installation"))
 
-        case let .binaryBroken(reason):
-            updateStep("hooks", status: .error(message: "Binary broken: \(reason)"))
+        case .binaryBroken:
+            updateStep("hooks", status: .error(message: "Session tracking needs repair"))
 
-        case let .symlinkBroken(target, reason):
-            updateStep("hooks", status: .error(message: "Symlink broken: \(reason) (target: \(target))"))
+        case .symlinkBroken:
+            updateStep("hooks", status: .error(message: "Session tracking needs repair"))
         }
     }
 
@@ -277,63 +276,45 @@ final class SetupRequirementsManager {
     }
 
     extension SetupPreviewScenario {
+        /// Shared step builder to keep preview copy in sync with production copy
+        private static func step(_ id: String, status: SetupStepStatus) -> SetupStep {
+            switch id {
+            case "claude":
+                SetupStep(id: "claude", title: "Claude Code", description: "Capacitor reads your Claude sessions to show live project status", status: status)
+            case "hooks":
+                SetupStep(id: "hooks", title: "Session tracking", description: "See which projects are active and what Claude is working on", status: status)
+            case "shell":
+                SetupStep(id: "shell", title: "Terminal tracking", description: "Add hook to ~/.zshrc to auto-detect which project each terminal is in", status: status, isOptional: true)
+            default:
+                fatalError("Unknown step id: \(id)")
+            }
+        }
+
         var steps: [SetupStep] {
             switch self {
             case .allPending:
-                [
-                    SetupStep(id: "claude", title: "Claude Code", description: "Capacitor needs Claude Code to work", status: .pending),
-                    SetupStep(id: "hooks", title: "Session hooks", description: "Connect Capacitor to your Claude sessions", status: .pending),
-                    SetupStep(id: "shell", title: "Shell integration", description: "Track which project you're working in", status: .pending, isOptional: true),
-                ]
+                [Self.step("claude", status: .pending), Self.step("hooks", status: .pending), Self.step("shell", status: .pending)]
 
             case .checking:
-                [
-                    SetupStep(id: "claude", title: "Claude Code", description: "Capacitor needs Claude Code to work", status: .checking),
-                    SetupStep(id: "hooks", title: "Session hooks", description: "Connect Capacitor to your Claude sessions", status: .pending),
-                    SetupStep(id: "shell", title: "Shell integration", description: "Track which project you're working in", status: .pending, isOptional: true),
-                ]
+                [Self.step("claude", status: .checking), Self.step("hooks", status: .pending), Self.step("shell", status: .pending)]
 
             case .cliMissing:
-                [
-                    SetupStep(id: "claude", title: "Claude Code", description: "Capacitor needs Claude Code to work", status: .error(message: "Claude Code not found. Install it from claude.ai/download")),
-                    SetupStep(id: "hooks", title: "Session hooks", description: "Connect Capacitor to your Claude sessions", status: .pending),
-                    SetupStep(id: "shell", title: "Shell integration", description: "Track which project you're working in", status: .pending, isOptional: true),
-                ]
+                [Self.step("claude", status: .error(message: "Not found — download from claude.ai/download")), Self.step("hooks", status: .pending), Self.step("shell", status: .pending)]
 
             case .hooksNeeded:
-                [
-                    SetupStep(id: "claude", title: "Claude Code", description: "Capacitor needs Claude Code to work", status: .completed(detail: "/usr/local/bin/claude")),
-                    SetupStep(id: "hooks", title: "Session hooks", description: "Connect Capacitor to your Claude sessions", status: .actionNeeded(message: "Install hooks to enable session tracking")),
-                    SetupStep(id: "shell", title: "Shell integration", description: "Track which project you're working in", status: .pending, isOptional: true),
-                ]
+                [Self.step("claude", status: .completed(detail: "Installed")), Self.step("hooks", status: .actionNeeded(message: "Tap Install to connect")), Self.step("shell", status: .pending)]
 
             case .hooksError:
-                [
-                    SetupStep(id: "claude", title: "Claude Code", description: "Capacitor needs Claude Code to work", status: .completed(detail: "/usr/local/bin/claude")),
-                    SetupStep(id: "hooks", title: "Session hooks", description: "Connect Capacitor to your Claude sessions", status: .error(message: "Binary broken: code signature invalid (SIGKILL)")),
-                    SetupStep(id: "shell", title: "Shell integration", description: "Track which project you're working in", status: .pending, isOptional: true),
-                ]
+                [Self.step("claude", status: .completed(detail: "Installed")), Self.step("hooks", status: .error(message: "Session tracking needs repair")), Self.step("shell", status: .pending)]
 
             case .hooksPolicyBlocked:
-                [
-                    SetupStep(id: "claude", title: "Claude Code", description: "Capacitor needs Claude Code to work", status: .completed(detail: "/usr/local/bin/claude")),
-                    SetupStep(id: "hooks", title: "Session hooks", description: "Connect Capacitor to your Claude sessions", status: .error(message: "Hooks disabled by policy: disableAllHooks is set")),
-                    SetupStep(id: "shell", title: "Shell integration", description: "Track which project you're working in", status: .pending, isOptional: true),
-                ]
+                [Self.step("claude", status: .completed(detail: "Installed")), Self.step("hooks", status: .error(message: "Your Claude settings prevent hook installation")), Self.step("shell", status: .pending)]
 
             case .shellOptional:
-                [
-                    SetupStep(id: "claude", title: "Claude Code", description: "Capacitor needs Claude Code to work", status: .completed(detail: "/usr/local/bin/claude")),
-                    SetupStep(id: "hooks", title: "Session hooks", description: "Connect Capacitor to your Claude sessions", status: .completed(detail: "v1.0.0 installed")),
-                    SetupStep(id: "shell", title: "Shell integration", description: "Track which project you're working in", status: .actionNeeded(message: "Optional: add to ~/.zshrc"), isOptional: true),
-                ]
+                [Self.step("claude", status: .completed(detail: "Installed")), Self.step("hooks", status: .completed(detail: "Connected")), Self.step("shell", status: .actionNeeded(message: "Add to ~/.zshrc"))]
 
             case .allComplete:
-                [
-                    SetupStep(id: "claude", title: "Claude Code", description: "Capacitor needs Claude Code to work", status: .completed(detail: "/usr/local/bin/claude")),
-                    SetupStep(id: "hooks", title: "Session hooks", description: "Connect Capacitor to your Claude sessions", status: .completed(detail: "v1.0.0 installed")),
-                    SetupStep(id: "shell", title: "Shell integration", description: "Track which project you're working in", status: .completed(detail: "~/.zshrc configured"), isOptional: true),
-                ]
+                [Self.step("claude", status: .completed(detail: "Installed")), Self.step("hooks", status: .completed(detail: "Connected")), Self.step("shell", status: .completed(detail: "Active"))]
             }
         }
     }

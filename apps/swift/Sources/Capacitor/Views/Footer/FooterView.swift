@@ -45,26 +45,43 @@ struct FooterView: View {
     @Environment(\.prefersReducedMotion) private var reduceMotion
     @Binding var isPinned: Bool
 
-    private var showCTA: Bool {
-        !appState.selectedSuggestedPaths.isEmpty
+    private enum FooterMode: Equatable {
+        case normal
+        case browse
+        case connectCTA
+    }
+
+    private var mode: FooterMode {
+        if !appState.selectedSuggestedPaths.isEmpty {
+            return .connectCTA
+        }
+        if !appState.isLoading, appState.projects.isEmpty {
+            return .browse
+        }
+        return .normal
     }
 
     var body: some View {
         VStack(spacing: 0) {
             ZStack {
-                // Default footer content — slides down when CTA appears
+                // Default footer content — pin, logo, add button
                 defaultContent
-                    .opacity(showCTA ? 0 : 1)
-                    .offset(y: showCTA ? 8 : 0)
+                    .opacity(mode == .normal ? 1 : 0)
+                    .offset(y: mode == .normal ? 0 : 8)
 
-                // Contextual CTA — slides up when suggestions selected
+                // Browse CTA — shown in empty state before any suggestions are selected
+                browseContent
+                    .opacity(mode == .browse ? 1 : 0)
+                    .offset(y: mode == .browse ? 0 : 8)
+
+                // Connect CTA — shown when suggestions are selected
                 ctaContent
-                    .opacity(showCTA ? 1 : 0)
-                    .offset(y: showCTA ? 0 : 8)
+                    .opacity(mode == .connectCTA ? 1 : 0)
+                    .offset(y: mode == .connectCTA ? 0 : 8)
             }
             .animation(
                 reduceMotion ? AppMotion.reducedMotionFallback : .spring(response: 0.35, dampingFraction: 0.8),
-                value: showCTA,
+                value: mode,
             )
             .padding(.horizontal, 16)
             .padding(.vertical, 6)
@@ -89,6 +106,18 @@ struct FooterView: View {
         }
     }
 
+    private var browseContent: some View {
+        HStack {
+            PinButton(isPinned: $isPinned)
+            Spacer()
+            BrowseProjectsButton {
+                appState.connectProjectViaFileBrowser()
+            }
+            Spacer()
+            AddProjectPillButton()
+        }
+    }
+
     private var ctaContent: some View {
         HStack {
             Spacer()
@@ -99,6 +128,37 @@ struct FooterView: View {
             }
             Spacer()
         }
+    }
+}
+
+private struct BrowseProjectsButton: View {
+    let action: () -> Void
+    @State private var isHovered = false
+    @Environment(\.prefersReducedMotion) private var reduceMotion
+
+    var body: some View {
+        Button(action: action) {
+            Text("Browse")
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundColor(.white.opacity(isHovered ? 0.9 : 0.55))
+                .padding(.horizontal, 16)
+                .padding(.vertical, 7)
+                .background(
+                    Capsule()
+                        .fill(Color.white.opacity(isHovered ? 0.1 : 0.05)),
+                )
+                .overlay(
+                    Capsule()
+                        .strokeBorder(Color.white.opacity(isHovered ? 0.2 : 0.1), lineWidth: 0.5),
+                )
+        }
+        .buttonStyle(.plain)
+        .scaleEffect(isHovered && !reduceMotion ? 1.02 : 1.0)
+        .animation(reduceMotion ? AppMotion.reducedMotionFallback : .easeOut(duration: 0.15), value: isHovered)
+        .onHover { hovering in
+            isHovered = hovering
+        }
+        .accessibilityLabel("Browse folders to connect a project")
     }
 }
 
