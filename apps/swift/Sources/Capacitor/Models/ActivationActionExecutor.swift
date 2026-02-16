@@ -126,7 +126,13 @@ final class ActivationActionExecutor {
         let freshTty = await tmuxClient.getCurrentClientTty() ?? hostTty
         let ttyActivated = await terminalDiscovery.activateTerminalByTTY(tty: freshTty)
         if ttyActivated {
-            return await tmuxClient.switchClient(to: sessionName, clientTty: freshTty)
+            if await tmuxClient.switchClient(to: sessionName, clientTty: freshTty) {
+                return true
+            }
+
+            // If switch-client fails due to a missing session, recover by
+            // ensuring the session exists instead of failing activation.
+            return await deps.ensureTmuxSession(sessionName: sessionName, projectPath: projectPath)
         }
 
         if terminalDiscovery.isGhosttyRunning() {
@@ -139,13 +145,16 @@ final class ActivationActionExecutor {
             switch decision {
             case .activateAndSwitch:
                 _ = terminalDiscovery.activateAppByName("Ghostty")
-                return await tmuxClient.switchClient(to: sessionName, clientTty: freshTty)
+                if await tmuxClient.switchClient(to: sessionName, clientTty: freshTty) {
+                    return true
+                }
+                return await deps.ensureTmuxSession(sessionName: sessionName, projectPath: projectPath)
             case .launchNew:
                 terminalLauncher.launchTerminalWithTmux(sessionName: sessionName)
                 return true
             }
         }
 
-        return false
+        return await deps.ensureTmuxSession(sessionName: sessionName, projectPath: projectPath)
     }
 }
