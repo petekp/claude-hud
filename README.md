@@ -3,24 +3,20 @@
 # Capacitor
 
 Capacitor is a native macOS sidecar for [Claude Code](https://claude.ai/claude-code).
-It shows live session state across your projects and gets you back to the right terminal context with one click.
+It shows live session state across your projects and lets you jump back to the right terminal with one click.
 
 ## Status
 
-Capacitor is in a small public alpha focused on terminal activation reliability.
+Early public alpha (`0.2.0-alpha.1`). The focus right now is getting terminal activation solid: finding the right window, the right tmux session, every time.
 
-- Current workspace version: `0.2.0-alpha.1`
-- Audience: individual power users and small teams already running Claude Code locally
-- Release focus: predictable project-card activation, not broad feature surface
+## What's working
 
-## What You Get In Alpha
-
-- Live session state tracking in a native macOS UI
+- Live session state in a native macOS UI
 - Project list with pinning/reordering and active-vs-idle grouping
-- One-click activation with deterministic latest-click-wins behavior
-- Reuse-first routing to existing terminal/tmux context, with controlled fallback when needed
+- One-click activation. Click a project, land in its terminal.
+- Finds your existing terminal or tmux session first, opens a new one if it can't
 
-Feature flags defaulted off in alpha channel:
+Behind feature flags (off by default):
 
 - idea capture
 - project details
@@ -28,7 +24,7 @@ Feature flags defaulted off in alpha channel:
 - project creation
 - llm features
 
-## Supported Terminals (Alpha Release Gate)
+## Supported terminals
 
 | Terminal | Session Tracking | One-Click Activation | Notes |
 | --- | --- | --- | --- |
@@ -36,22 +32,22 @@ Feature flags defaulted off in alpha channel:
 | iTerm2 | ✅ | ✅ | AppleScript window/tab activation |
 | Terminal.app | ✅ | ✅ | AppleScript window/tab activation |
 
-Other terminals and IDE-integrated terminals may partially work but are not release-gated for alpha.
+Other terminals might work but haven't been tested yet.
 
 ## Requirements
 
 - Apple Silicon Mac (`arm64`)
 - macOS 14+
 - Claude Code installed
-- `tmux` installed for tmux-session reuse workflows
+- `tmux` if you want session reuse
 
 ## Install
 
-### Release Build
+### Release build
 
 Download the latest DMG from [Releases](https://github.com/petekp/capacitor/releases), then drag `Capacitor.app` to `/Applications`.
 
-### Build From Source
+### Build from source
 
 ```bash
 git clone https://github.com/petekp/capacitor.git
@@ -60,28 +56,23 @@ cd capacitor
 ./scripts/dev/restart-app.sh --channel alpha
 ```
 
-## First Run Setup
+## First run setup
 
-On first launch, Capacitor shows setup guidance to install/verify required hooks and shell integration.
-You can complete setup from the app; manual editing of `~/.claude/settings.json` is optional.
+First launch walks you through hooks and shell integration. You can do it all from the app. No need to hand-edit `~/.claude/settings.json`.
 
-## Daily Usage
+## Daily usage
 
 1. Connect a project from the UI (or drag a folder in).
 2. Keep Claude Code running in your terminals as usual.
 3. Click any project card to focus/switch to its terminal context.
 
-## Manual QA And Evidence
+## Activation reliability
 
-Terminal activation behavior is governed by a strict UX contract and manual test matrix:
-
-- Contract: `docs/TERMINAL_ACTIVATION_UX_SPEC.md`
-- Manual matrix: `docs/TERMINAL_ACTIVATION_MANUAL_TESTING.md`
-- Latest full human rerun evidence: `docs/manual-qa/2026-02-15-terminal-activation-manual-qa.md`
+Terminal activation is manually tested across all supported terminals before each release. Still some kinks to iron out, but the core path is solid.
 
 ## Development
 
-### Useful Commands
+### Useful commands
 
 ```bash
 # One-time bootstrap
@@ -100,7 +91,7 @@ cd apps/swift && swift test
 cargo test -p capacitor-daemon resolver_ -- --nocapture
 ```
 
-### Project Structure
+### Project structure
 
 ```text
 apps/swift/            SwiftUI macOS app
@@ -112,12 +103,10 @@ docs/                  Specs, ADRs, runbooks, and QA evidence
 scripts/               Bootstrap, run, release, and maintenance scripts
 ```
 
-## Known Alpha Limits
+## Issues
 
-- Scope is intentionally narrow and reliability-first.
-- Remote/SSH contexts are not the primary validated path.
-- Multi-terminal edge cases outside the supported matrix may degrade to fallback launch behavior.
+Bug reports and feature requests: [GitHub Issues](https://github.com/petekp/capacitor/issues)
 
-## Issue Reporting
+## License
 
-- Bug reports: [GitHub Issues](https://github.com/petekp/capacitor/issues)
+MIT. See [LICENSE](LICENSE) for details.
