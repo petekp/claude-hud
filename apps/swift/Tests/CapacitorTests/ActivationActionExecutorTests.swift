@@ -12,6 +12,7 @@ final class ActivationActionExecutorTests: XCTestCase {
         var lastProjectPath: String?
         var lastProjectName: String?
         var lastIdeType: IdeType?
+        var lastPreferredClientTty: String?
 
         var activateByTtyResult = true
         var activateAppResult = true
@@ -60,6 +61,19 @@ final class ActivationActionExecutorTests: XCTestCase {
             lastAction = "ensureTmuxSession"
             lastSessionName = sessionName
             lastProjectPath = projectPath
+            lastPreferredClientTty = nil
+            return ensureTmuxResult
+        }
+
+        func ensureTmuxSession(
+            sessionName: String,
+            projectPath: String,
+            preferredClientTty: String?,
+        ) async -> Bool {
+            lastAction = "ensureTmuxSession"
+            lastSessionName = sessionName
+            lastProjectPath = projectPath
+            lastPreferredClientTty = preferredClientTty
             return ensureTmuxResult
         }
 
@@ -340,8 +354,9 @@ final class ActivationActionExecutorTests: XCTestCase {
         XCTAssertNil(launcher.launchedSession)
     }
 
-    func testActivateHostThenSwitchTmuxReturnsFalseWhenNoTtyAndNoGhostty() async {
+    func testActivateHostThenSwitchTmuxNoTtyAndNoGhosttyFallsBackToEnsureSession() async {
         let deps = StubDependencies()
+        deps.ensureTmuxResult = true
         let tmux = StubTmuxClient()
         tmux.switchResult = true
         let terminalDiscovery = StubTerminalDiscovery()
@@ -362,12 +377,16 @@ final class ActivationActionExecutorTests: XCTestCase {
             projectPath: "/Users/pete/Code/cap",
         )
 
-        XCTAssertFalse(result)
+        XCTAssertTrue(result)
+        XCTAssertEqual(deps.lastAction, "ensureTmuxSession")
+        XCTAssertEqual(deps.lastSessionName, "cap")
+        XCTAssertEqual(deps.lastProjectPath, "/Users/pete/Code/cap")
         XCTAssertNil(launcher.launchedSession)
     }
 
     func testActivateHostThenSwitchTmuxReturnsFalseWhenSwitchFails() async {
         let deps = StubDependencies()
+        deps.ensureTmuxResult = false
         let tmux = StubTmuxClient()
         tmux.switchResult = false
         let terminalDiscovery = StubTerminalDiscovery()
@@ -387,8 +406,128 @@ final class ActivationActionExecutorTests: XCTestCase {
             projectPath: "/Users/pete/Code/cap",
         )
 
-        XCTAssertFalse(result)
+        XCTAssertFalse(result, "Should fail only if both switch-client and ensureTmuxSession recovery fail.")
+        XCTAssertEqual(deps.lastAction, "ensureTmuxSession")
+        XCTAssertEqual(deps.lastSessionName, "cap")
+        XCTAssertEqual(deps.lastProjectPath, "/Users/pete/Code/cap")
         XCTAssertNil(launcher.launchedSession)
+    }
+
+    func testActivateHostThenSwitchTmuxAttachedClientSwitchFailureFallsBackToEnsureSession() async {
+        let deps = StubDependencies()
+        deps.ensureTmuxResult = true
+
+        let tmux = StubTmuxClient()
+        tmux.hasClientAttached = true
+        tmux.currentClientTty = "/dev/ttys042"
+        tmux.switchResult = false
+
+        let terminalDiscovery = StubTerminalDiscovery()
+        terminalDiscovery.activateByTtyResult = true
+        terminalDiscovery.ghosttyRunning = true
+        terminalDiscovery.ghosttyWindows = 1
+
+        let launcher = StubTerminalLauncherClient()
+        let executor = ActivationActionExecutor(
+            dependencies: deps,
+            tmuxClient: tmux,
+            terminalDiscovery: terminalDiscovery,
+            terminalLauncher: launcher,
+        )
+
+        let result = await executor.activateHostThenSwitchTmux(
+            hostTty: "/dev/ttys042",
+            sessionName: "openclaw",
+            projectPath: "/Users/pete/Code/openclaw",
+        )
+
+        XCTAssertTrue(
+            result,
+            "Attached-client switch failures should recover by ensuring/creating the tmux session.",
+        )
+        XCTAssertEqual(deps.lastAction, "ensureTmuxSession")
+        XCTAssertEqual(deps.lastSessionName, "openclaw")
+        XCTAssertEqual(deps.lastProjectPath, "/Users/pete/Code/openclaw")
+        XCTAssertEqual(deps.lastPreferredClientTty, "/dev/ttys042")
+        XCTAssertEqual(launcher.launchCount, 0, "Should not spawn a new terminal window on recoverable switch failure.")
+    }
+
+    func testActivateHostThenSwitchTmuxAttachedClientSwitchFailureFallsBackToEnsureSessionWhenNotGhostty() async {
+        let deps = StubDependencies()
+        deps.ensureTmuxResult = true
+
+        let tmux = StubTmuxClient()
+        tmux.hasClientAttached = true
+        tmux.currentClientTty = "/dev/ttys042"
+        tmux.switchResult = false
+
+        let terminalDiscovery = StubTerminalDiscovery()
+        terminalDiscovery.activateByTtyResult = true
+        terminalDiscovery.ghosttyRunning = false
+
+        let launcher = StubTerminalLauncherClient()
+        let executor = ActivationActionExecutor(
+            dependencies: deps,
+            tmuxClient: tmux,
+            terminalDiscovery: terminalDiscovery,
+            terminalLauncher: launcher,
+        )
+
+        let result = await executor.activateHostThenSwitchTmux(
+            hostTty: "/dev/ttys042",
+            sessionName: "openclaw",
+            projectPath: "/Users/pete/Code/openclaw",
+        )
+
+        XCTAssertTrue(
+            result,
+            "Attached-client switch failures should recover by ensuring/creating the tmux session for all terminals, not just Ghostty.",
+        )
+        XCTAssertEqual(deps.lastAction, "ensureTmuxSession")
+        XCTAssertEqual(deps.lastSessionName, "openclaw")
+        XCTAssertEqual(deps.lastProjectPath, "/Users/pete/Code/openclaw")
+        XCTAssertEqual(deps.lastPreferredClientTty, "/dev/ttys042")
+        XCTAssertEqual(launcher.launchCount, 0, "Should not spawn a new terminal window on recoverable switch failure.")
+    }
+
+    func testActivateHostThenSwitchTmuxAttachedClientGhosttyFallbackSwitchFailureFallsBackToEnsureSession() async {
+        let deps = StubDependencies()
+        deps.ensureTmuxResult = true
+
+        let tmux = StubTmuxClient()
+        tmux.hasClientAttached = true
+        tmux.currentClientTty = "/dev/ttys042"
+        tmux.switchResult = false
+
+        let terminalDiscovery = StubTerminalDiscovery()
+        terminalDiscovery.activateByTtyResult = false
+        terminalDiscovery.ghosttyRunning = true
+        terminalDiscovery.ghosttyWindows = 2
+
+        let launcher = StubTerminalLauncherClient()
+        let executor = ActivationActionExecutor(
+            dependencies: deps,
+            tmuxClient: tmux,
+            terminalDiscovery: terminalDiscovery,
+            terminalLauncher: launcher,
+        )
+
+        let result = await executor.activateHostThenSwitchTmux(
+            hostTty: "/dev/ttys042",
+            sessionName: "openclaw",
+            projectPath: "/Users/pete/Code/openclaw",
+        )
+
+        XCTAssertTrue(
+            result,
+            "Ghostty fallback switch failures with attached clients should recover by ensuring/creating the tmux session.",
+        )
+        XCTAssertEqual(terminalDiscovery.lastActivatedApp, "Ghostty")
+        XCTAssertEqual(deps.lastAction, "ensureTmuxSession")
+        XCTAssertEqual(deps.lastSessionName, "openclaw")
+        XCTAssertEqual(deps.lastProjectPath, "/Users/pete/Code/openclaw")
+        XCTAssertEqual(deps.lastPreferredClientTty, "/dev/ttys042")
+        XCTAssertEqual(launcher.launchCount, 0, "Should not spawn a new terminal window on recoverable switch failure.")
     }
 
     func testActivateHostThenSwitchTmuxNoClientAttachedButGhosttyRunningDoesNotSpawnNewWindow() async {

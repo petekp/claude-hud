@@ -8,10 +8,17 @@ protocol ActivationActionDependencies: AnyObject {
     func activateIdeWindow(ideType: IdeType, projectPath: String) async -> Bool
     func switchTmuxSession(sessionName: String, projectPath: String) async -> Bool
     func ensureTmuxSession(sessionName: String, projectPath: String) async -> Bool
+    func ensureTmuxSession(sessionName: String, projectPath: String, preferredClientTty: String?) async -> Bool
     func activateHostThenSwitchTmux(hostTty: String, sessionName: String, projectPath: String) async -> Bool
     func launchTerminalWithTmux(sessionName: String, projectPath: String) -> Bool
     func launchNewTerminal(projectPath: String, projectName: String) -> Bool
     func activatePriorityFallback() -> Bool
+}
+
+extension ActivationActionDependencies {
+    func ensureTmuxSession(sessionName: String, projectPath: String, preferredClientTty _: String?) async -> Bool {
+        await ensureTmuxSession(sessionName: sessionName, projectPath: projectPath)
+    }
 }
 
 protocol TmuxClient {
@@ -126,7 +133,17 @@ final class ActivationActionExecutor {
         let freshTty = await tmuxClient.getCurrentClientTty() ?? hostTty
         let ttyActivated = await terminalDiscovery.activateTerminalByTTY(tty: freshTty)
         if ttyActivated {
-            return await tmuxClient.switchClient(to: sessionName, clientTty: freshTty)
+            if await tmuxClient.switchClient(to: sessionName, clientTty: freshTty) {
+                return true
+            }
+
+            // If switch-client fails due to a missing session, recover by
+            // ensuring the session exists instead of failing activation.
+            return await deps.ensureTmuxSession(
+                sessionName: sessionName,
+                projectPath: projectPath,
+                preferredClientTty: freshTty,
+            )
         }
 
         if terminalDiscovery.isGhosttyRunning() {
@@ -139,13 +156,20 @@ final class ActivationActionExecutor {
             switch decision {
             case .activateAndSwitch:
                 _ = terminalDiscovery.activateAppByName("Ghostty")
-                return await tmuxClient.switchClient(to: sessionName, clientTty: freshTty)
+                if await tmuxClient.switchClient(to: sessionName, clientTty: freshTty) {
+                    return true
+                }
+                return await deps.ensureTmuxSession(
+                    sessionName: sessionName,
+                    projectPath: projectPath,
+                    preferredClientTty: freshTty,
+                )
             case .launchNew:
                 terminalLauncher.launchTerminalWithTmux(sessionName: sessionName)
                 return true
             }
         }
 
-        return false
+        return await deps.ensureTmuxSession(sessionName: sessionName, projectPath: projectPath)
     }
 }

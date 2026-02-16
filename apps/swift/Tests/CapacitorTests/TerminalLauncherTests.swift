@@ -142,6 +142,47 @@ final class TerminalLauncherTests: XCTestCase {
         )
     }
 
+    func testEnsureTmuxSessionUsesPreferredClientTTYWithoutAutoResolvingAnotherClient() async {
+        var activateCalls = 0
+        var scripts: [String] = []
+
+        let result = await TerminalLauncher.performEnsureTmuxSession(
+            sessionName: "openclaw",
+            projectPath: "/Users/pete/Code/openclaw",
+            runScript: { script in
+                scripts.append(script)
+                if script.contains("display-message -p '#{client_tty}'") {
+                    XCTFail("Should not resolve client tty when preferred client tty is provided.")
+                    return (1, nil)
+                }
+                if script.contains("list-clients -F '#{client_tty}'") {
+                    XCTFail("Should not list tmux clients when preferred client tty is provided.")
+                    return (1, nil)
+                }
+                if script.contains("tmux switch-client -c '/dev/ttys042' -t 'openclaw'") {
+                    return (0, nil)
+                }
+                return (1, nil)
+            },
+            activateTerminal: { tty in
+                activateCalls += 1
+                return tty == "/dev/ttys042"
+            },
+            preferredClientTty: "/dev/ttys042",
+        )
+
+        XCTAssertTrue(result)
+        XCTAssertEqual(activateCalls, 1)
+        XCTAssertTrue(
+            scripts.contains { $0.contains("tmux switch-client -c '/dev/ttys042' -t 'openclaw'") },
+            "Expected ensure path to target the preferred tmux client tty.",
+        )
+        XCTAssertFalse(
+            scripts.contains { $0.contains("display-message -p '#{client_tty}'") || $0.contains("list-clients -F '#{client_tty}'") },
+            "Preferred tty path should not auto-resolve a different tmux client.",
+        )
+    }
+
     func testEnsureTmuxSessionLaunchesWhenNoClientAttachedAfterEnsuringSession() async {
         var activateCalls = 0
         var launched = 0

@@ -480,9 +480,16 @@ final class TerminalLauncher: ActivationActionDependencies {
         projectPath: String,
         runScript: (String) async -> (exitCode: Int32, output: String?),
         activateTerminal: (String?) async -> Bool,
+        preferredClientTty: String? = nil,
         launchWhenNoClient: (() -> Bool)? = nil,
     ) async -> Bool {
-        let clientTty = await resolveAttachedTmuxClientTty(runScript: runScript)
+        let normalizedPreferredClientTty = preferredClientTty?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let clientTty: String? = if let normalizedPreferredClientTty, !normalizedPreferredClientTty.isEmpty {
+            normalizedPreferredClientTty
+        } else {
+            await resolveAttachedTmuxClientTty(runScript: runScript)
+        }
         let escapedSession = shellEscape(sessionName)
         let switchCommand: String
         if let clientTty, !clientTty.isEmpty {
@@ -817,7 +824,11 @@ final class TerminalLauncher: ActivationActionDependencies {
         return true
     }
 
-    private func ensureTmuxSessionAction(sessionName: String, projectPath: String) async -> Bool {
+    private func ensureTmuxSessionAction(
+        sessionName: String,
+        projectPath: String,
+        preferredClientTty: String? = nil,
+    ) async -> Bool {
         logger.info("  ▸ ensureTmuxSession: \(sessionName)")
         debugLog("ensureTmuxSession session=\(sessionName)")
         let succeeded = await Self.performEnsureTmuxSession(
@@ -825,6 +836,7 @@ final class TerminalLauncher: ActivationActionDependencies {
             projectPath: projectPath,
             runScript: { await runBashScriptWithResultAsync($0) },
             activateTerminal: { tty in await self.activateTerminalAfterTmuxSwitch(clientTty: tty) },
+            preferredClientTty: preferredClientTty,
             launchWhenNoClient: { [weak self] in
                 guard let self else { return false }
                 debugLog("ensureTmuxSession no attached client; launching terminal with tmux session=\(sessionName)")
@@ -1006,6 +1018,18 @@ final class TerminalLauncher: ActivationActionDependencies {
 
     func ensureTmuxSession(sessionName: String, projectPath: String) async -> Bool {
         await ensureTmuxSessionAction(sessionName: sessionName, projectPath: projectPath)
+    }
+
+    func ensureTmuxSession(
+        sessionName: String,
+        projectPath: String,
+        preferredClientTty: String?,
+    ) async -> Bool {
+        await ensureTmuxSessionAction(
+            sessionName: sessionName,
+            projectPath: projectPath,
+            preferredClientTty: preferredClientTty,
+        )
     }
 
     func activateHostThenSwitchTmux(hostTty: String, sessionName: String, projectPath: String) async -> Bool {
