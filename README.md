@@ -52,25 +52,25 @@ Only Ghostty, iTerm2, and Terminal.app are supported right now. More on the way 
 
 ## How it works
 
-Capacitor is a sidecar — it watches Claude Code without replacing anything.
+Capacitor is a sidecar — it watches what Claude Code is doing without getting in the way.
 
-On first launch, it installs a small hook binary (`~/.local/bin/hud-hook`) and adds entries to Claude Code's `~/.claude/settings.json`. A background daemon starts at login (`com.capacitor.daemon` LaunchAgent) and listens for Claude Code events over a Unix socket. When you start a session, the hook fires and tells the daemon what's happening. Capacitor reads the daemon's state and shows it to you.
+On first launch, it installs a small hook binary (`~/.local/bin/hud-hook`) and adds entries to Claude Code's `~/.claude/settings.json`. A background daemon starts at login (`com.capacitor.daemon` LaunchAgent) and listens for Claude Code events. When you start a session, the hook fires and tells the daemon what's happening. Capacitor reads the daemon's state and shows it to you.
 
-It never calls the Anthropic API. It just observes.
+It doesn't call the Anthropic API — it's read-only.
 
 ## Data & privacy
 
-Capacitor reads from `~/.claude/` (transcripts, settings — Claude Code's namespace) and writes to `~/.capacitor/` (session state, daemon logs — ours). It also adds hook entries to `~/.claude/settings.json`, but never touches your other settings. Writes are atomic (temp file + rename).
+Capacitor reads from `~/.claude/` (Claude Code's stuff — transcripts, settings) and writes its own state to `~/.capacitor/`. It also adds hook entries to `~/.claude/settings.json` but doesn't touch your other settings.
 
-No data is sent to Anthropic or any remote server. The app has a local telemetry emitter that posts to `localhost:9133` for the optional dev debugging UI — it doesn't go anywhere unless you explicitly run that server. The "Include anonymized telemetry" toggle in Settings controls whether app metadata gets attached to GitHub issue drafts when you submit feedback. Project paths are redacted in feedback by default — you can opt in if it helps with debugging.
+No data leaves your machine. There's a local debug endpoint (`localhost:9133`) that only does anything if you run the dev UI yourself — otherwise it's inert. The "Include anonymized telemetry" toggle in Settings controls whether app metadata gets attached to GitHub issue drafts when you submit feedback. Project paths are redacted by default.
 
 ## Permissions
 
-Capacitor uses AppleScript to switch terminal windows, so macOS will ask for Automation access the first time. If you dismiss the prompt, terminal switching won't work. You can re-grant it later in System Settings > Privacy & Security > Automation.
+Terminal switching uses AppleScript, so macOS will ask for Automation access the first time you click a project card. If you dismiss the prompt, terminal switching won't work. You can re-grant it later in System Settings > Privacy & Security > Automation.
 
 ## Settings
 
-`⌘,` opens Settings. You can toggle:
+`⌘,` opens Settings. Current toggles:
 
 - Floating mode (borderless, position anywhere)
 - Always on top
@@ -87,7 +87,6 @@ Capacitor uses AppleScript to switch terminal windows, so macOS will ask for Aut
 | `⌘2` | Dock layout |
 | `⌘⇧T` | Toggle floating mode |
 | `⌘⇧P` | Toggle always on top |
-| `⌘[` | Navigate back |
 | `⌘,` | Settings |
 
 ## Requirements
@@ -109,7 +108,7 @@ More help: [open a GitHub issue](https://github.com/petekp/capacitor/issues).
 
 ## Uninstall
 
-To fully remove Capacitor and everything it installed:
+To remove everything:
 
 1. Quit the app
 2. `rm -rf /Applications/Capacitor.app`

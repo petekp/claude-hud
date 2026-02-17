@@ -15,7 +15,7 @@ cd capacitor
 ./scripts/dev/setup.sh
 ```
 
-Setup validates your environment, installs what's missing, builds everything, and sets up pre-commit hooks.
+This handles the full setup — environment checks, dependencies, building, hooks.
 
 Once that's done:
 
@@ -23,7 +23,7 @@ Once that's done:
 ./scripts/dev/restart-app.sh
 ```
 
-This rebuilds Rust + Swift, regenerates UniFFI bindings, assembles a debug bundle, and launches the app. It's the command you'll run most.
+This rebuilds everything and launches a debug build. You'll run it a lot.
 
 ## Development workflow
 
@@ -69,7 +69,7 @@ capacitor/
 └── scripts/              # Dev, CI, and release scripts
 ```
 
-[CLAUDE.md](CLAUDE.md) has the full architecture reference, key files, and gotchas.
+[CLAUDE.md](CLAUDE.md) covers architecture and common gotchas.
 
 ## Submitting changes
 
@@ -78,6 +78,6 @@ capacitor/
 3. Make sure `cargo fmt`, `cargo clippy -- -D warnings`, and `cargo test` all pass
 4. Open a PR against `main`
 
-`cargo fmt` is enforced by pre-commit hooks. Rust core builds in release mode and Swift links against the release dylib. After Rust API changes, bindings get regenerated automatically by `restart-app.sh`.
+`cargo fmt` is enforced by pre-commit hooks. Rust builds in release mode; Swift links against the release dylib. `restart-app.sh` regenerates bindings automatically after Rust API changes.
 
 See `.claude/docs/gotchas.md` for things that might trip you up.
