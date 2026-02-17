@@ -7,7 +7,7 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
-  BENCH_REPORT_PATH: artifacts/hem-shadow-bench-report.json
+  BENCH_REPORT_PATH: ${{ github.workspace }}/artifacts/hem-shadow-bench-report.json
 
 jobs:
   hem-shadow-bench:

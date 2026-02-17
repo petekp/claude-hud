@@ -140,6 +140,8 @@ struct BenchReport {
 }
 
 const BENCH_REPORT_PATH_ENV: &str = "CAPACITOR_BENCH_REPORT_PATH";
+const REPLAY_STARTUP_SAMPLE_COUNT_ENV: &str = "CAPACITOR_BENCH_REPLAY_STARTUP_SAMPLES";
+const DEFAULT_REPLAY_STARTUP_SAMPLE_COUNT: usize = 1;
 
 fn socket_path(home: &Path) -> PathBuf {
     home.join(".capacitor").join("daemon.sock")
@@ -426,6 +428,7 @@ fn run_scenario(
     burst_events: usize,
     burst_sessions: usize,
     replay_sessions: usize,
+    replay_startup_samples: usize,
 ) -> ScenarioMetrics {
     let home = tempfile::Builder::new()
         .prefix(if shadow_enabled {
@@ -451,21 +454,8 @@ fn run_scenario(
     let (peak_rss_kb, peak_cpu_pct) = *sampler_peaks.lock().expect("resource peaks");
     drop(daemon);
 
-    let _daemon_restarted = DaemonGuard::spawn(home.path());
-    let replay_startup = wait_for_daemon_ready(&socket, Duration::from_secs(10));
-    let request = Request {
-        protocol_version: PROTOCOL_VERSION,
-        method: Method::GetProjectStates,
-        id: Some("replay-project-states".to_string()),
-        params: None,
-    };
-    let (response, replay_get_project_states) =
-        try_send_request(&socket, &request).expect("replay project states");
-    assert!(
-        response.ok,
-        "replay project states failed: {:?}",
-        response.error
-    );
+    let (replay_startup_ms, replay_get_project_states_ms) =
+        sample_replay_startup_metrics(home.path(), replay_startup_samples);
     let daemon_db_bytes = daemon_db_total_bytes(home.path());
 
     ScenarioMetrics {
@@ -474,8 +464,8 @@ fn run_scenario(
         burst_sessions,
         replay_sessions,
         burst_latency,
-        replay_startup_ms: duration_ms(replay_startup),
-        replay_get_project_states_ms: duration_ms(replay_get_project_states),
+        replay_startup_ms,
+        replay_get_project_states_ms,
         peak_rss_kb,
         peak_cpu_pct,
         daemon_db_bytes,
@@ -485,6 +475,59 @@ fn run_scenario(
 
 fn duration_ms(duration: Duration) -> f64 {
     duration.as_secs_f64() * 1000.0
+}
+
+fn median_duration_ms(samples: &[Duration]) -> f64 {
+    if samples.is_empty() {
+        return 0.0;
+    }
+
+    let mut values = samples
+        .iter()
+        .map(|sample| duration_ms(*sample))
+        .collect::<Vec<_>>();
+    values.sort_by(|left, right| left.partial_cmp(right).unwrap_or(std::cmp::Ordering::Equal));
+    let mid = values.len() / 2;
+    if values.len() % 2 == 0 {
+        (values[mid - 1] + values[mid]) / 2.0
+    } else {
+        values[mid]
+    }
+}
+
+fn sample_replay_startup_metrics(home: &Path, sample_count: usize) -> (f64, f64) {
+    let socket = socket_path(home);
+    let samples = sample_count.max(1);
+    let mut replay_startup_samples = Vec::with_capacity(samples);
+    let mut replay_get_project_states_samples = Vec::with_capacity(samples);
+
+    for sample_idx in 0..samples {
+        let _ = fs::remove_file(&socket);
+        let daemon = DaemonGuard::spawn(home);
+        let replay_startup = wait_for_daemon_ready(&socket, Duration::from_secs(10));
+        let request = Request {
+            protocol_version: PROTOCOL_VERSION,
+            method: Method::GetProjectStates,
+            id: Some(format!("replay-project-states-{}", sample_idx)),
+            params: None,
+        };
+        let (response, replay_get_project_states) =
+            try_send_request(&socket, &request).expect("replay project states");
+        assert!(
+            response.ok,
+            "replay project states failed: {:?}",
+            response.error
+        );
+        replay_startup_samples.push(replay_startup);
+        replay_get_project_states_samples.push(replay_get_project_states);
+        drop(daemon);
+    }
+    let _ = fs::remove_file(&socket);
+
+    (
+        median_duration_ms(&replay_startup_samples),
+        median_duration_ms(&replay_get_project_states_samples),
+    )
 }
 
 fn percentile_nearest_rank(sorted_ms: &[f64], percentile: f64) -> f64 {
@@ -801,6 +844,16 @@ fn parse_env_usize(key: &str, default: usize) -> usize {
         .unwrap_or(default)
 }
 
+fn parse_replay_startup_sample_count(raw: Option<&str>) -> usize {
+    raw.and_then(|value| value.parse::<usize>().ok())
+        .filter(|value| *value > 0)
+        .unwrap_or(DEFAULT_REPLAY_STARTUP_SAMPLE_COUNT)
+}
+
+fn replay_startup_sample_count_from_env() -> usize {
+    parse_replay_startup_sample_count(env::var(REPLAY_STARTUP_SAMPLE_COUNT_ENV).ok().as_deref())
+}
+
 fn write_bench_report_to_path(report: &BenchReport, report_path: &Path) -> Result<(), String> {
     if let Some(parent) = report_path.parent() {
         fs::create_dir_all(parent)
@@ -989,6 +1042,46 @@ fn latency_stats_uses_nearest_rank_percentiles() {
 }
 
 #[test]
+fn median_duration_ms_is_robust_to_single_outlier() {
+    let samples = vec![
+        Duration::from_millis(20),
+        Duration::from_millis(21),
+        Duration::from_millis(900),
+    ];
+    let median = median_duration_ms(&samples);
+    assert!((median - 21.0).abs() < f64::EPSILON);
+}
+
+#[test]
+fn median_duration_ms_averages_middle_pair_for_even_sample_count() {
+    let samples = vec![
+        Duration::from_millis(10),
+        Duration::from_millis(20),
+        Duration::from_millis(30),
+        Duration::from_millis(1000),
+    ];
+    let median = median_duration_ms(&samples);
+    assert!((median - 25.0).abs() < f64::EPSILON);
+}
+
+#[test]
+fn parse_replay_startup_sample_count_defaults_and_parses_valid_values() {
+    assert_eq!(
+        parse_replay_startup_sample_count(None),
+        DEFAULT_REPLAY_STARTUP_SAMPLE_COUNT
+    );
+    assert_eq!(
+        parse_replay_startup_sample_count(Some("0")),
+        DEFAULT_REPLAY_STARTUP_SAMPLE_COUNT
+    );
+    assert_eq!(
+        parse_replay_startup_sample_count(Some("not-a-number")),
+        DEFAULT_REPLAY_STARTUP_SAMPLE_COUNT
+    );
+    assert_eq!(parse_replay_startup_sample_count(Some("7")), 7);
+}
+
+#[test]
 fn evaluate_acceptance_fails_when_p95_threshold_exceeded() {
     let thresholds = AcceptanceThresholds {
         max_shadow_burst_p95_ms: 40.0,
@@ -1173,9 +1266,22 @@ fn hem_shadow_burst_and_replay_benchmark_harness() {
     let burst_events = parse_env_usize("CAPACITOR_BENCH_BURST_EVENTS", 1500);
     let burst_sessions = parse_env_usize("CAPACITOR_BENCH_BURST_SESSIONS", 32);
     let replay_sessions = parse_env_usize("CAPACITOR_BENCH_REPLAY_SESSIONS", 300);
+    let replay_startup_samples = replay_startup_sample_count_from_env();
 
-    let baseline = run_scenario(false, burst_events, burst_sessions, replay_sessions);
-    let shadow = run_scenario(true, burst_events, burst_sessions, replay_sessions);
+    let baseline = run_scenario(
+        false,
+        burst_events,
+        burst_sessions,
+        replay_sessions,
+        replay_startup_samples,
+    );
+    let shadow = run_scenario(
+        true,
+        burst_events,
+        burst_sessions,
+        replay_sessions,
+        replay_startup_samples,
+    );
     assert_eq!(baseline.burst_latency.count, burst_events);
     assert_eq!(shadow.burst_latency.count, burst_events);
 
