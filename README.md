@@ -50,12 +50,78 @@ Only Ghostty, iTerm2, and Terminal.app are supported right now. More on the way 
 3. Run Claude Code in your terminal(s) as normal.
 4. Click project cards in Capacitor to jump to the right session.
 
+## How it works
+
+Capacitor is a sidecar — it watches what Claude Code is doing without getting in the way.
+
+On first launch, it installs a small hook binary (`~/.local/bin/hud-hook`) and adds entries to Claude Code's `~/.claude/settings.json`. A background daemon starts at login (`com.capacitor.daemon` LaunchAgent) and listens for Claude Code events. When you start a session, the hook fires and tells the daemon what's happening. Capacitor reads the daemon's state and shows it to you.
+
+It doesn't call the Anthropic API — it's read-only.
+
+## Data & privacy
+
+Capacitor reads from `~/.claude/` (Claude Code's stuff — transcripts, settings) and writes its own state to `~/.capacitor/`. It also adds hook entries to `~/.claude/settings.json` but doesn't touch your other settings.
+
+No data leaves your machine. There's a local debug endpoint (`localhost:9133`) that only does anything if you run the dev UI yourself — otherwise it's inert. The "Include anonymized telemetry" toggle in Settings controls whether app metadata gets attached to GitHub issue drafts when you submit feedback. Project paths are redacted by default.
+
+## Permissions
+
+Terminal switching uses AppleScript, so macOS will ask for Automation access the first time you click a project card. If you dismiss the prompt, terminal switching won't work. You can re-grant it later in System Settings > Privacy & Security > Automation.
+
+## Settings
+
+`⌘,` opens Settings. Current toggles:
+
+- Floating mode (borderless, position anywhere)
+- Always on top
+- Ready chime (plays a sound when Claude finishes)
+- Automatic update checks
+- Feedback privacy (anonymized telemetry for issue drafts, project path inclusion)
+
+## Keyboard shortcuts
+
+| Shortcut | Action |
+| --- | --- |
+| `⌘O` | Connect project |
+| `⌘1` | Vertical layout |
+| `⌘2` | Dock layout |
+| `⌘⇧T` | Toggle floating mode |
+| `⌘⇧P` | Toggle always on top |
+| `⌘,` | Settings |
+
 ## Requirements
 
 - Apple Silicon Mac (`arm64`)
 - macOS 14+
 - Claude Code installed
 - `tmux` recommended (Capacitor can restore exact pane context)
+
+## Troubleshooting
+
+**Projects not showing up?** Check the hooks status indicator in the app. If it says something's wrong, click "Fix All."
+
+**Terminal switching broken?** You probably dismissed the Automation permission prompt. Go to System Settings > Privacy & Security > Automation and grant it.
+
+**Daemon issues?** The app starts the daemon automatically. If something seems off, check `~/.capacitor/daemon/` for logs: `tail -f ~/.capacitor/daemon/daemon.stderr.log`
+
+More help: [open a GitHub issue](https://github.com/petekp/capacitor/issues).
+
+## Uninstall
+
+To remove everything:
+
+1. Quit the app
+2. `rm -rf /Applications/Capacitor.app`
+3. `rm -rf ~/.capacitor`
+4. `rm ~/.local/bin/hud-hook`
+5. `rm ~/.local/bin/capacitor-daemon`
+6. `launchctl bootout gui/$(id -u) ~/Library/LaunchAgents/com.capacitor.daemon.plist 2>/dev/null; rm -f ~/Library/LaunchAgents/com.capacitor.daemon.plist`
+7. Remove `hud-hook` entries from `~/.claude/settings.json`
+8. Optionally: `defaults delete com.capacitor.app`
+
+## License
+
+MIT — see [LICENSE](LICENSE).
 
 ## Feedback
 
