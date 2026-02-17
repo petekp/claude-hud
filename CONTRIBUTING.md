@@ -1,15 +1,13 @@
-# Contributing to Capacitor
-
-Thanks for your interest in contributing! This guide covers everything you need to get a development environment running.
+# Contributing
 
 ## Prerequisites
 
-- **Apple Silicon Mac** (arm64) — Intel and Rosetta are not supported
-- **macOS 14+** (Sonoma or later)
-- **Xcode Command Line Tools** — `xcode-select --install`
-- **Rust toolchain** — installed automatically by setup if missing
+- Apple Silicon Mac (Intel/Rosetta won't work)
+- macOS 14+
+- Xcode Command Line Tools (`xcode-select --install`)
+- Rust toolchain (setup will install it if you don't have it)
 
-## Getting Started
+## Getting started
 
 ```bash
 git clone https://github.com/petekp/capacitor.git
@@ -17,57 +15,49 @@ cd capacitor
 ./scripts/dev/setup.sh
 ```
 
-This runs the full bootstrap: validates your environment, installs missing toolchains, builds the Rust core, generates UniFFI bindings, builds the Swift app, and installs pre-commit hooks.
+Setup validates your environment, installs what's missing, builds everything, and sets up pre-commit hooks.
 
-When setup completes, launch the app:
-
-```bash
-./scripts/dev/restart-app.sh
-```
-
-## Development Workflow
-
-The main iteration loop is:
+Once that's done:
 
 ```bash
 ./scripts/dev/restart-app.sh
 ```
 
-This rebuilds Rust and Swift, regenerates bindings, assembles a debug app bundle, and launches it. It's the most common command you'll run.
+This rebuilds Rust + Swift, regenerates UniFFI bindings, assembles a debug bundle, and launches the app. It's the command you'll run most.
 
-Useful flags:
+## Development workflow
 
-- `--swift-only` / `-s` — skip the Rust build (faster when only changing Swift)
-- `--force` / `-f` — force full rebuild (invalidates Swift incremental cache)
+`restart-app.sh` is the main loop. Some useful flags:
+
+- `--swift-only` / `-s` — skip the Rust build when you're only changing Swift
+- `--force` / `-f` — force a full rebuild
 - `--channel <name>` — set runtime channel (`dev`, `alpha`, `beta`, `prod`)
 
-For Rust-only changes, you can also use cargo directly:
+For Rust-only work, cargo works fine:
 
 ```bash
 cargo build -p hud-core --release
 cargo build -p hud-hook --release
 ```
 
-## Testing & Linting
-
-Run the full test suite:
+## Testing
 
 ```bash
-./scripts/dev/run-tests.sh          # all checks (Rust + Swift)
+./scripts/dev/run-tests.sh          # everything
 ./scripts/dev/run-tests.sh --quick  # skip Swift tests
 ```
 
-Or run individual checks:
+Or individually:
 
 ```bash
-cargo fmt             # format Rust code (required before commits)
-cargo clippy -- -D warnings  # Rust linting
-cargo test            # Rust tests
+cargo fmt                         # format (required before commits)
+cargo clippy -- -D warnings       # lint
+cargo test                        # test
 ```
 
-Pre-commit hooks run `cargo fmt --check` and `cargo test` automatically.
+Pre-commit hooks run `cargo fmt --check` and `cargo test` automatically, so you'll catch issues before pushing.
 
-## Project Structure
+## Project structure
 
 ```
 capacitor/
@@ -79,19 +69,15 @@ capacitor/
 └── scripts/              # Dev, CI, and release scripts
 ```
 
-See [CLAUDE.md](CLAUDE.md) for the full architecture reference, key files, and detailed conventions.
+[CLAUDE.md](CLAUDE.md) has the full architecture reference, key files, and gotchas.
 
-## Submitting Changes
+## Submitting changes
 
-1. Open an issue first for non-trivial changes
-2. Fork the repo and create a feature branch
-3. Make your changes
-4. Ensure all checks pass: `cargo fmt`, `cargo clippy -- -D warnings`, `cargo test`
-5. Open a pull request against `main`
+1. Open an issue first for anything non-trivial
+2. Fork and branch
+3. Make sure `cargo fmt`, `cargo clippy -- -D warnings`, and `cargo test` all pass
+4. Open a PR against `main`
 
-### Key conventions
+`cargo fmt` is enforced by pre-commit hooks. Rust core builds in release mode and Swift links against the release dylib. After Rust API changes, bindings get regenerated automatically by `restart-app.sh`.
 
-- `cargo fmt` is enforced by pre-commit hooks — run it before committing
-- Rust core builds in release mode; Swift links against the release dylib
-- After Rust API changes, bindings are regenerated automatically by `restart-app.sh`
-- See [CLAUDE.md](CLAUDE.md) and `.claude/docs/gotchas.md` for additional gotchas
+See `.claude/docs/gotchas.md` for things that might trip you up.

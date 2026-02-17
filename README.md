@@ -52,44 +52,41 @@ Only Ghostty, iTerm2, and Terminal.app are supported right now. More on the way 
 
 ## How it works
 
-Capacitor is a sidecar — it observes Claude Code without replacing any part of it.
+Capacitor is a sidecar — it watches Claude Code without replacing anything.
 
-- On first launch, it symlinks a hook binary to `~/.local/bin/hud-hook` and registers it in Claude Code's `~/.claude/settings.json`
-- A background daemon (`com.capacitor.daemon`) is installed as a macOS LaunchAgent and starts at login to track session state
-- The hook fires on Claude Code events (session start/end, tool use, etc.) and forwards them to the daemon over a Unix socket (`~/.capacitor/daemon.sock`)
-- Capacitor reads the daemon's state to show you what's happening — it never calls the Anthropic API directly
+On first launch, it installs a small hook binary (`~/.local/bin/hud-hook`) and adds entries to Claude Code's `~/.claude/settings.json`. A background daemon starts at login (`com.capacitor.daemon` LaunchAgent) and listens for Claude Code events over a Unix socket. When you start a session, the hook fires and tells the daemon what's happening. Capacitor reads the daemon's state and shows it to you.
+
+It never calls the Anthropic API. It just observes.
 
 ## Data & privacy
 
-- **Reads:** `~/.claude/` (transcripts, settings) — Claude Code's namespace
-- **Writes:** `~/.capacitor/` (session state, daemon logs) — Capacitor's namespace
-- **Modifies:** `~/.claude/settings.json` to add hook entries (never removes or changes other settings; writes are atomic via temp file + rename)
-- **No analytics or telemetry are sent anywhere.** The "Include anonymized telemetry" toggle in Settings only controls whether app/daemon metadata is attached to GitHub issue drafts when you submit feedback — nothing is sent in the background
-- Project paths are redacted by default in feedback; you can opt in to include them for debugging
+Capacitor reads from `~/.claude/` (transcripts, settings — Claude Code's namespace) and writes to `~/.capacitor/` (session state, daemon logs — ours). It also adds hook entries to `~/.claude/settings.json`, but never touches your other settings. Writes are atomic (temp file + rename).
+
+No data is sent to Anthropic or any remote server. The app has a local telemetry emitter that posts to `localhost:9133` for the optional dev debugging UI — it doesn't go anywhere unless you explicitly run that server. The "Include anonymized telemetry" toggle in Settings controls whether app metadata gets attached to GitHub issue drafts when you submit feedback. Project paths are redacted in feedback by default — you can opt in if it helps with debugging.
 
 ## Permissions
 
-Capacitor uses AppleScript to switch between terminal windows. On first use, macOS will prompt you to grant **Automation** access. If you dismiss the prompt, terminal switching won't work — you can re-grant it in **System Settings > Privacy & Security > Automation**.
+Capacitor uses AppleScript to switch terminal windows, so macOS will ask for Automation access the first time. If you dismiss the prompt, terminal switching won't work. You can re-grant it later in System Settings > Privacy & Security > Automation.
 
 ## Settings
 
-Open Settings with `⌘,`. Available preferences:
+`⌘,` opens Settings. You can toggle:
 
-- **Floating Mode** — borderless window that can be positioned anywhere
-- **Always on Top** — window stays above other windows
-- **Play Ready Chime** — audio notification when Claude finishes a task
-- **Check for updates automatically** — periodic update checks (Sparkle-based)
-- **Feedback privacy** — opt into anonymized telemetry; project paths stay redacted unless you explicitly enable them
+- Floating mode (borderless, position anywhere)
+- Always on top
+- Ready chime (plays a sound when Claude finishes)
+- Automatic update checks
+- Feedback privacy (anonymized telemetry for issue drafts, project path inclusion)
 
-## Keyboard Shortcuts
+## Keyboard shortcuts
 
 | Shortcut | Action |
 | --- | --- |
 | `⌘O` | Connect project |
 | `⌘1` | Vertical layout |
 | `⌘2` | Dock layout |
-| `⌘⇧T` | Toggle Floating Mode |
-| `⌘⇧P` | Toggle Always on Top |
+| `⌘⇧T` | Toggle floating mode |
+| `⌘⇧P` | Toggle always on top |
 | `⌘[` | Navigate back |
 | `⌘,` | Settings |
 
@@ -102,30 +99,30 @@ Open Settings with `⌘,`. Available preferences:
 
 ## Troubleshooting
 
-**Projects aren't appearing** — Make sure hooks are installed. Look for the status indicator in the app and click "Fix All" if prompted.
+**Projects not showing up?** Check the hooks status indicator in the app. If it says something's wrong, click "Fix All."
 
-**Terminal switching doesn't work** — Grant Automation permission in System Settings > Privacy & Security > Automation.
+**Terminal switching broken?** You probably dismissed the Automation permission prompt. Go to System Settings > Privacy & Security > Automation and grant it.
 
-**Daemon not running** — The app auto-starts the daemon. If issues persist, check `~/.capacitor/daemon/` for logs.
+**Daemon issues?** The app starts the daemon automatically. If something seems off, check `~/.capacitor/daemon/` for logs: `tail -f ~/.capacitor/daemon/daemon.stderr.log`
 
-**State seems stuck** — Restart the app. If it persists, check daemon health: `tail -f ~/.capacitor/daemon/daemon.stderr.log`
-
-For more help, open a [GitHub issue](https://github.com/petekp/capacitor/issues).
+More help: [open a GitHub issue](https://github.com/petekp/capacitor/issues).
 
 ## Uninstall
 
-1. Quit Capacitor
-2. Remove the app: `rm -rf /Applications/Capacitor.app`
-3. Remove data: `rm -rf ~/.capacitor`
-4. Remove hook binary: `rm ~/.local/bin/hud-hook`
-5. Remove daemon binary: `rm ~/.local/bin/capacitor-daemon`
-6. Remove LaunchAgent: `launchctl bootout gui/$(id -u) ~/Library/LaunchAgents/com.capacitor.daemon.plist && rm ~/Library/LaunchAgents/com.capacitor.daemon.plist`
-7. Remove hook entries from `~/.claude/settings.json` (search for `hud-hook` and remove those entries)
-8. Optionally clear preferences: `defaults delete com.capacitor.app`
+To fully remove Capacitor and everything it installed:
+
+1. Quit the app
+2. `rm -rf /Applications/Capacitor.app`
+3. `rm -rf ~/.capacitor`
+4. `rm ~/.local/bin/hud-hook`
+5. `rm ~/.local/bin/capacitor-daemon`
+6. `launchctl bootout gui/$(id -u) ~/Library/LaunchAgents/com.capacitor.daemon.plist 2>/dev/null; rm -f ~/Library/LaunchAgents/com.capacitor.daemon.plist`
+7. Remove `hud-hook` entries from `~/.claude/settings.json`
+8. Optionally: `defaults delete com.capacitor.app`
 
 ## License
 
-MIT — see [LICENSE](LICENSE) for details.
+MIT — see [LICENSE](LICENSE).
 
 ## Feedback
 
