@@ -15,7 +15,7 @@ cd capacitor
 ./scripts/dev/setup.sh
 ```
 
-This handles the full setup — environment checks, dependencies, building, hooks.
+This handles the full setup: environment checks, dependencies, building, hooks.
 
 Once that's done:
 
@@ -29,9 +29,9 @@ This rebuilds everything and launches a debug build. You'll run it a lot.
 
 `restart-app.sh` is the main loop. Some useful flags:
 
-- `--swift-only` / `-s` — skip the Rust build when you're only changing Swift
-- `--force` / `-f` — force a full rebuild
-- `--channel <name>` — set runtime channel (`dev`, `alpha`, `beta`, `prod`)
+- `--swift-only` / `-s`: skip the Rust build when you're only changing Swift
+- `--force` / `-f`: force a full rebuild
+- `--channel <name>`: set runtime channel (`dev`, `alpha`, `beta`, `prod`)
 
 For Rust-only work, cargo works fine:
 

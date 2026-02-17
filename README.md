@@ -52,17 +52,17 @@ Only Ghostty, iTerm2, and Terminal.app are supported right now. More on the way 
 
 ## How it works
 
-Capacitor is a sidecar — it watches what Claude Code is doing without getting in the way.
+Capacitor is a sidecar. It watches what Claude Code is doing without getting in the way.
 
 On first launch, it installs a small hook binary (`~/.local/bin/hud-hook`) and adds entries to Claude Code's `~/.claude/settings.json`. A background daemon starts at login (`com.capacitor.daemon` LaunchAgent) and listens for Claude Code events. When you start a session, the hook fires and tells the daemon what's happening. Capacitor reads the daemon's state and shows it to you.
 
-It doesn't call the Anthropic API — it's read-only.
+It doesn't call the Anthropic API. It's read-only.
 
 ## Data & privacy
 
-Capacitor reads from `~/.claude/` (Claude Code's stuff — transcripts, settings) and writes its own state to `~/.capacitor/`. It also adds hook entries to `~/.claude/settings.json` but doesn't touch your other settings.
+Capacitor reads from `~/.claude/` (transcripts, settings) and writes its own state to `~/.capacitor/`. It also adds hook entries to `~/.claude/settings.json` but doesn't touch your other settings.
 
-No data leaves your machine. There's a local debug endpoint (`localhost:9133`) that only does anything if you run the dev UI yourself — otherwise it's inert. The "Include anonymized telemetry" toggle in Settings controls whether app metadata gets attached to GitHub issue drafts when you submit feedback. Project paths are redacted by default.
+No data leaves your machine. There's a local debug endpoint (`localhost:9133`) that only does anything if you run the dev UI yourself. The "Include anonymized telemetry" toggle in Settings controls whether app metadata gets attached to GitHub issue drafts when you submit feedback. Project paths are redacted by default.
 
 ## Permissions
 
@@ -121,7 +121,7 @@ To remove everything:
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+MIT. See [LICENSE](LICENSE).
 
 ## Feedback
 
