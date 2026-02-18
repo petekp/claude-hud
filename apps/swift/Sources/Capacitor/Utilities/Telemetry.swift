@@ -27,6 +27,10 @@ enum Telemetry {
 
     static func emit(_ type: String, _ message: String, payload: [String: Any] = [:]) {
         guard let url = config.endpoint else { return }
+        guard TelemetryRoutingPolicy.shouldSendEvent(type: type, endpoint: url) else {
+            logger.debug("Telemetry event dropped by routing policy for type=\(type, privacy: .public)")
+            return
+        }
         let sanitizedMessage = config.redactPaths ? TelemetryRedaction.redactMessage(message) : message
         let sanitizedPayload = config.redactPaths ? TelemetryRedaction.redactPayload(payload) : payload
 

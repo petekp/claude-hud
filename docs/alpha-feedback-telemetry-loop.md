@@ -59,6 +59,12 @@ It exposes:
 - `POST /v1/feedback`
 - `POST /v1/telemetry`
 
+Remote ingest hardening:
+
+- Worker-side `/v1/telemetry` persists only quick-feedback event types.
+- App-side telemetry routing policy only sends quick-feedback events when the endpoint path is `/v1/telemetry`.
+- Non-allowlisted events are dropped with HTTP `202` and not stored.
+
 D1 schema is in:
 
 - `/Users/petepetrash/Code/capacitor/services/ingest-worker/migrations/0001_initial.sql`
