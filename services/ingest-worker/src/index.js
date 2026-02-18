@@ -5,6 +5,16 @@ import {
   normalizeTelemetryEvent,
 } from "./lib.js";
 
+const ALLOWED_TELEMETRY_EVENT_TYPES = new Set([
+  "quick_feedback_opened",
+  "quick_feedback_field_completed",
+  "quick_feedback_submit_attempt",
+  "quick_feedback_submit_success",
+  "quick_feedback_submit_failure",
+  "quick_feedback_abandoned",
+  "quick_feedback_submitted",
+]);
+
 function withCors(headers = {}) {
   return {
     "access-control-allow-origin": "*",
@@ -150,6 +160,14 @@ async function handleTelemetry(request, env) {
   }
 
   const event = normalizeTelemetryEvent(parsed.body, request);
+  if (!ALLOWED_TELEMETRY_EVENT_TYPES.has(event.event_type)) {
+    return jsonResponse(202, {
+      ok: true,
+      dropped: true,
+      reason: "event_type_not_allowed",
+    });
+  }
+
   const result = await env.DB.prepare(
     `INSERT INTO telemetry_events (
       event_type,

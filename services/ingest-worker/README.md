@@ -8,6 +8,18 @@ Cloudflare Worker + D1 ingestion backend for Capacitor alpha feedback + telemetr
 - `POST /v1/telemetry`
 - `GET /health`
 
+`/v1/telemetry` only persists a strict quick-feedback allowlist:
+
+- `quick_feedback_opened`
+- `quick_feedback_field_completed`
+- `quick_feedback_submit_attempt`
+- `quick_feedback_submit_success`
+- `quick_feedback_submit_failure`
+- `quick_feedback_abandoned`
+- `quick_feedback_submitted`
+
+Other telemetry event types return `202` with a dropped response and are not written to D1.
+
 `/v1/*` endpoints require bearer auth:
 
 - `Authorization: Bearer <INGEST_KEY>`
