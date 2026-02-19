@@ -552,6 +552,37 @@ final class DaemonServiceTests: XCTestCase {
         XCTAssertFalse(revision.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
     }
 
+    func testTrimDaemonLogsCompactsOversizedStdoutAndStderrLogs() throws {
+        let homeDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let logsDir = homeDir.appendingPathComponent(".capacitor/daemon")
+        try FileManager.default.createDirectory(at: logsDir, withIntermediateDirectories: true)
+
+        let stdout = logsDir.appendingPathComponent("daemon.stdout.log")
+        let stderr = logsDir.appendingPathComponent("daemon.stderr.log")
+        let oversizeData = Data(repeating: UInt8(ascii: "x"), count: 4096)
+        try oversizeData.write(to: stdout, options: .atomic)
+        try oversizeData.write(to: stderr, options: .atomic)
+
+        DaemonService
+            .LaunchAgentManager
+            .trimDaemonLogs(
+                homeDir: homeDir,
+                maxBytes: 1024,
+                retainBytes: 256,
+            )
+
+        let stdoutData = try Data(contentsOf: stdout)
+        let stderrData = try Data(contentsOf: stderr)
+
+        XCTAssertLessThanOrEqual(stdoutData.count, 512)
+        XCTAssertLessThanOrEqual(stderrData.count, 512)
+
+        let stdoutText = String(decoding: stdoutData, as: UTF8.self)
+        let stderrText = String(decoding: stderrData, as: UTF8.self)
+        XCTAssertTrue(stdoutText.contains("trimmed oversized daemon log"))
+        XCTAssertTrue(stderrText.contains("trimmed oversized daemon log"))
+    }
+
     func testLaunchAgentUnregisterBootsOutAndDeletesLegacyPlist() throws {
         let homeDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         let launchAgentsDir = homeDir.appendingPathComponent("Library/LaunchAgents")

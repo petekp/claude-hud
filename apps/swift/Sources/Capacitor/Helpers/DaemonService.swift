@@ -13,6 +13,11 @@ enum DaemonService {
         static let socketEnv = "CAPACITOR_DAEMON_SOCKET"
         static let socketName = "daemon.sock"
         static let throttleInterval: Int = 10
+        static let daemonLogsRelativeDir = ".capacitor/daemon"
+        static let daemonStdoutLogName = "daemon.stdout.log"
+        static let daemonStderrLogName = "daemon.stderr.log"
+        static let daemonLogMaxBytes = 10 * 1024 * 1024
+        static let daemonLogRetainBytes = 2 * 1024 * 1024
     }
 
     static func enableForCurrentProcess() {
@@ -87,6 +92,8 @@ enum DaemonService {
             healthCheckRetryDelay: TimeInterval = 0.2,
             emitTelemetry: TelemetryEmitter = defaultTelemetryEmitter,
         ) -> String? {
+            trimDaemonLogs(homeDir: homeDir)
+
             switch smAppServiceRegistration() {
             case .success:
                 DebugLog.write("DaemonService.installAndKickstart smAppService=success")
@@ -372,7 +379,7 @@ enum DaemonService {
 
         static func writeLaunchAgentPlist(binaryPath: String, homeDir: URL) throws -> (URL, Bool) {
             let launchAgentsDir = homeDir.appendingPathComponent("Library/LaunchAgents")
-            let logsDir = homeDir.appendingPathComponent(".capacitor/daemon")
+            let logsDir = homeDir.appendingPathComponent(Constants.daemonLogsRelativeDir)
 
             try FileManager.default.createDirectory(at: launchAgentsDir, withIntermediateDirectories: true, attributes: nil)
             try FileManager.default.createDirectory(at: logsDir, withIntermediateDirectories: true, attributes: nil)
@@ -393,8 +400,8 @@ enum DaemonService {
                 "ThrottleInterval": Constants.throttleInterval,
                 "ProcessType": "Background",
                 "WorkingDirectory": homeDir.appendingPathComponent(".capacitor").path,
-                "StandardOutPath": logsDir.appendingPathComponent("daemon.stdout.log").path,
-                "StandardErrorPath": logsDir.appendingPathComponent("daemon.stderr.log").path,
+                "StandardOutPath": logsDir.appendingPathComponent(Constants.daemonStdoutLogName).path,
+                "StandardErrorPath": logsDir.appendingPathComponent(Constants.daemonStderrLogName).path,
             ]
 
             let associatedBundleIdentifiers = preferredAssociatedBundleIdentifiers()
@@ -412,6 +419,59 @@ enum DaemonService {
                 try data.write(to: plistURL, options: .atomic)
             }
             return (plistURL, didChange)
+        }
+
+        static func trimDaemonLogs(
+            homeDir: URL = FileManager.default.homeDirectoryForCurrentUser,
+            maxBytes: Int = Constants.daemonLogMaxBytes,
+            retainBytes: Int = Constants.daemonLogRetainBytes,
+        ) {
+            let logsDir = homeDir.appendingPathComponent(Constants.daemonLogsRelativeDir)
+            let targets = [
+                logsDir.appendingPathComponent(Constants.daemonStdoutLogName),
+                logsDir.appendingPathComponent(Constants.daemonStderrLogName),
+            ]
+
+            for logURL in targets {
+                do {
+                    try trimDaemonLogIfNeeded(url: logURL, maxBytes: maxBytes, retainBytes: retainBytes)
+                } catch {
+                    DebugLog.write(
+                        "DaemonService.trimDaemonLogs failed path=\(logURL.path) error=\(error.localizedDescription)",
+                    )
+                }
+            }
+        }
+
+        private static func trimDaemonLogIfNeeded(url: URL, maxBytes: Int, retainBytes: Int) throws {
+            guard FileManager.default.fileExists(atPath: url.path) else { return }
+
+            let attrs = try FileManager.default.attributesOfItem(atPath: url.path)
+            let size = (attrs[.size] as? NSNumber)?.int64Value ?? 0
+            guard size > Int64(maxBytes) else { return }
+
+            let retained = max(0, min(retainBytes, maxBytes))
+            guard retained > 0 else {
+                try Data().write(to: url, options: .atomic)
+                return
+            }
+
+            let reader = try FileHandle(forReadingFrom: url)
+            defer { try? reader.close() }
+
+            let start = max(Int64(0), size - Int64(retained))
+            try reader.seek(toOffset: UInt64(start))
+            let tail = try reader.readToEnd() ?? Data()
+
+            let timestamp = ISO8601DateFormatter().string(from: Date())
+            let header = Data(
+                "[\(timestamp)] [DaemonService] trimmed oversized daemon log (size=\(size), retained=\(retained))\n"
+                    .utf8,
+            )
+            var compacted = Data()
+            compacted.append(header)
+            compacted.append(tail)
+            try compacted.write(to: url, options: .atomic)
         }
 
         private static func preferredAssociatedBundleIdentifiers() -> [String] {
