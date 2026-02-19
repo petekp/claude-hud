@@ -12,6 +12,22 @@ import SwiftUI
 @Observable
 @MainActor
 final class SessionStateManager {
+    struct SessionAttribution: Equatable {
+        enum Scope: Equatable {
+            case direct
+            case repoFallback
+        }
+
+        let scope: Scope
+        let sourceProjectPath: String
+        let sourceSessionId: String?
+    }
+
+    private struct MergeResult {
+        let states: [String: ProjectSessionState]
+        let attributions: [String: SessionAttribution]
+    }
+
     private struct ProjectMatchInfo {
         let project: Project
         let normalizedPath: String
@@ -58,6 +74,8 @@ final class SessionStateManager {
         }
     }
 
+    private(set) var sessionAttributions: [String: SessionAttribution] = [:]
+
     private var previousSessionStates: [String: SessionState] = [:]
     private var consecutiveEmptySnapshotCount = 0
 
@@ -102,7 +120,8 @@ final class SessionStateManager {
                     }
                     return
                 }
-                let merged = mergeDaemonProjectStates(daemonProjects, projects: projects)
+                let mergeResult = mergeDaemonProjectStates(daemonProjects, projects: projects)
+                let merged = mergeResult.states
                 await MainActor.run {
                     guard !_Concurrency.Task.isCancelled else {
                         DebugLog.write("SessionStateManager.refresh drop canceled-before-apply generation=\(requestGeneration)")
@@ -115,6 +134,12 @@ final class SessionStateManager {
                         return
                     }
                     let stabilized = self.stabilizeEmptyDaemonSnapshotIfNeeded(merged)
+                    let nextAttributions: [String: SessionAttribution] = {
+                        if stabilized == merged {
+                            return mergeResult.attributions
+                        }
+                        return self.sessionAttributions
+                    }()
                     DebugLog.write("SessionStateManager.fetchProjectStates success count=\(daemonProjects.count)")
                     if !merged.isEmpty {
                         let summary = merged
@@ -131,6 +156,7 @@ final class SessionStateManager {
                             self.sessionStates = stabilized
                         }
                     }
+                    self.sessionAttributions = nextAttributions.filter { stabilized[$0.key] != nil }
                     self.pruneCachedStates()
                     #if DEBUG
                         DiagnosticsSnapshotLogger.maybeCaptureStuckSessions(sessionStates: stabilized)
@@ -241,6 +267,7 @@ final class SessionStateManager {
         let active = Set(sessionStates.keys)
         previousSessionStates = previousSessionStates.filter { active.contains($0.key) }
         flashingProjects = flashingProjects.filter { active.contains($0.key) }
+        sessionAttributions = sessionAttributions.filter { active.contains($0.key) }
     }
 
     private func triggerFlashIfNeeded(for path: String, state: SessionState) {
@@ -270,10 +297,19 @@ final class SessionStateManager {
         return sessionStates.first(where: { PathNormalizer.normalize($0.key) == normalizedPath })?.value
     }
 
+    func getSessionAttribution(for project: Project) -> SessionAttribution? {
+        if let direct = sessionAttributions[project.path] {
+            return direct
+        }
+
+        let normalizedPath = PathNormalizer.normalize(project.path)
+        return sessionAttributions.first(where: { PathNormalizer.normalize($0.key) == normalizedPath })?.value
+    }
+
     private nonisolated func mergeDaemonProjectStates(
         _ states: [DaemonProjectState],
         projects: [Project],
-    ) -> [String: ProjectSessionState] {
+    ) -> MergeResult {
         let homeNormalized = PathNormalizer.normalize(NSHomeDirectory())
         var projectInfos: [ProjectMatchInfo] = []
         var seen: Set<String> = []
@@ -379,6 +415,7 @@ final class SessionStateManager {
         }
 
         var merged: [String: ProjectSessionState] = [:]
+        var attributions: [String: SessionAttribution] = [:]
         for (projectPath, best) in bestStates {
             let state = best.state
             let mappedState = mapDaemonState(state.state)
@@ -393,9 +430,14 @@ final class SessionStateManager {
                 hasSession: state.hasSession,
             )
             merged[projectPath] = sessionState
+            attributions[projectPath] = SessionAttribution(
+                scope: best.priority == .direct ? .direct : .repoFallback,
+                sourceProjectPath: state.projectPath,
+                sourceSessionId: state.sessionId,
+            )
         }
 
-        return merged
+        return MergeResult(states: merged, attributions: attributions)
     }
 
     private nonisolated func matchesProject(
@@ -507,6 +549,7 @@ final class SessionStateManager {
         refreshGeneration &+= 1
         consecutiveEmptySnapshotCount = 0
         sessionStates = states
+        sessionAttributions = [:]
         pruneCachedStates()
         checkForStateChanges()
     }
@@ -515,6 +558,7 @@ final class SessionStateManager {
         /// Test-only helper for deterministic session resolution.
         func setSessionStatesForTesting(_ states: [String: ProjectSessionState]) {
             sessionStates = states
+            sessionAttributions = [:]
             pruneCachedStates()
             checkForStateChanges()
         }

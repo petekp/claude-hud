@@ -36,7 +36,6 @@ const SESSION_TTL_IDLE_SECS: i64 = 10 * 60; // Idle
                                             // Ready does not auto-idle; it remains until TTL or session end.
 const SESSION_AUTO_READY_SECS: i64 = 60; // Auto-ready eligible states -> Ready when inactive and no tools are in flight.
 const STOP_GATE_WORKING_GRACE_SECS: i64 = 20; // Short-lived guard for false Stop->Ready while session is still actively finishing.
-const SESSION_CATCH_UP_MAX_AGE_SECS: i64 = SESSION_TTL_READY_SECS + (5 * 60); // Ready TTL plus margin.
 const HEM_SHADOW_MISMATCH_RETENTION_DAYS: i64 = 14;
 const HEM_SHADOW_MISMATCH_PERSIST_LIMIT_PER_EVENT: usize = 4;
 const HEM_STABLE_STATE_TRANSITION_EXCLUSION_SECS: i64 = 20;
@@ -65,51 +64,75 @@ impl SharedState {
     }
 
     pub fn new_with_hem_config(db: Db, hem_config: HemRuntimeConfig) -> Self {
-        let mut catch_up_since: Option<DateTime<Utc>> = None;
         let mut needs_catch_up = false;
-        match db.has_sessions() {
-            Ok(false) => match db.has_events() {
-                Ok(true) => {
+        match db.last_applied_event_rowid() {
+            Ok(Some(_)) => {
+                needs_catch_up = true;
+            }
+            Ok(None) => {
+                let has_sessions = match db.has_sessions() {
+                    Ok(value) => value,
+                    Err(err) => {
+                        tracing::warn!(error = %err, "Failed to check session table");
+                        false
+                    }
+                };
+
+                if has_sessions {
+                    let bootstrap_cursor = match db.latest_session_time() {
+                        Ok(Some(latest_session_time)) => {
+                            match db.session_affecting_rowid_at_or_before(latest_session_time) {
+                                Ok(Some(rowid)) => Some(rowid),
+                                Ok(None) => Some(0),
+                                Err(err) => {
+                                    tracing::warn!(
+                                        error = %err,
+                                        "Failed to derive bootstrap replay cursor from session timestamp"
+                                    );
+                                    Some(0)
+                                }
+                            }
+                        }
+                        Ok(None) => Some(0),
+                        Err(err) => {
+                            tracing::warn!(
+                                error = %err,
+                                "Failed to query latest session timestamp for bootstrap cursor"
+                            );
+                            Some(0)
+                        }
+                    };
+
+                    if let Some(cursor) = bootstrap_cursor {
+                        if let Err(err) = db.set_last_applied_event_rowid(cursor) {
+                            tracing::warn!(
+                                error = %err,
+                                cursor,
+                                "Failed to persist bootstrap replay cursor"
+                            );
+                        }
+                    }
                     needs_catch_up = true;
-                    catch_up_since = None;
-                }
-                Ok(false) => {}
-                Err(err) => {
-                    tracing::warn!(error = %err, "Failed to check event log for replay");
-                }
-            },
-            Ok(true) => match (
-                db.latest_session_affecting_event_time(),
-                db.latest_session_time(),
-            ) {
-                (Ok(Some(latest_event)), Ok(latest_session)) => {
-                    if latest_session.map(|ts| latest_event > ts).unwrap_or(true) {
-                        needs_catch_up = true;
-                        catch_up_since = latest_session;
+                } else if let Ok(Some(max_rowid)) = db.max_event_rowid() {
+                    if let Err(err) = db.set_last_applied_event_rowid(max_rowid) {
+                        tracing::warn!(
+                            error = %err,
+                            max_rowid,
+                            "Failed to persist replay cursor for empty session bootstrap"
+                        );
                     }
                 }
-                (Err(err), _) => {
-                    tracing::warn!(
-                        error = %err,
-                        "Failed to read latest session-affecting event timestamp"
-                    );
-                }
-                (_, Err(err)) => {
-                    tracing::warn!(error = %err, "Failed to read latest session timestamp");
-                }
-                _ => {}
-            },
+            }
             Err(err) => {
-                tracing::warn!(error = %err, "Failed to check session table");
+                tracing::warn!(error = %err, "Failed to query replay cursor");
             }
         }
 
         if needs_catch_up {
-            let catch_up_start = clamp_catch_up_since(catch_up_since, Utc::now());
-            if let Err(err) = catch_up_sessions_from_events(&db, Some(catch_up_start)) {
+            if let Err(err) = catch_up_sessions_from_events(&db) {
                 tracing::warn!(
                     error = %err,
-                    "Failed to catch up session state from recent events"
+                    "Failed to catch up session state from event cursor"
                 );
             }
         }
@@ -214,9 +237,9 @@ impl SharedState {
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
 
-        match self.db.insert_event(event) {
-            Ok(true) => {}
-            Ok(false) => {
+        let inserted_rowid = match self.db.insert_event_with_rowid(event) {
+            Ok(Some(rowid)) => rowid,
+            Ok(None) => {
                 tracing::debug!(event_id = %event.event_id, "Skipping duplicate daemon event");
                 return;
             }
@@ -224,10 +247,13 @@ impl SharedState {
                 tracing::warn!(error = %err, "Failed to persist daemon event");
                 return;
             }
-        }
+        };
+
+        let mut had_error = false;
 
         if let Err(err) = self.db.upsert_process_liveness(event) {
             tracing::warn!(error = %err, "Failed to update process liveness");
+            had_error = true;
         }
         self.update_routing_process_registry(event);
 
@@ -248,10 +274,12 @@ impl SharedState {
                     );
                     if let Err(err) = self.db.upsert_session(&record) {
                         tracing::warn!(error = %err, "Failed to upsert session");
+                        had_error = true;
                     }
                     if let Some(entry) = reduce_activity(event) {
                         if let Err(err) = self.db.insert_activity(&entry) {
                             tracing::warn!(error = %err, "Failed to insert activity");
+                            had_error = true;
                         }
                     }
                 }
@@ -259,32 +287,58 @@ impl SharedState {
                     tracing::info!(session_id = %session_id, "Session delete");
                     if let Err(err) = self.db.delete_session(&session_id) {
                         tracing::warn!(error = %err, "Failed to delete session");
+                        had_error = true;
                     }
                     if let Err(err) = self.db.delete_activity_for_session(&session_id) {
                         tracing::warn!(error = %err, "Failed to delete activity");
+                        had_error = true;
                     }
                 }
                 SessionUpdate::Skip => {}
             },
             Err(err) => {
                 tracing::warn!(error = %err, "Failed to apply session event");
+                had_error = true;
             }
         }
 
         if event.event_type == EventType::ShellCwd {
             if let Err(err) = self.db.upsert_shell_state(event) {
                 tracing::warn!(error = %err, "Failed to update shell_state table");
-                return;
+                had_error = true;
+            } else {
+                self.update_shell_state_cache(event);
+                self.update_routing_shell_registry(event);
             }
-
-            self.update_shell_state_cache(event);
-            self.update_routing_shell_registry(event);
         }
 
         self.evaluate_hem_shadow(event);
+
+        if had_error {
+            tracing::warn!(
+                event_id = %event.event_id,
+                rowid = inserted_rowid,
+                "Event applied with derived-state errors; cursor not advanced to force replay reconciliation"
+            );
+            return;
+        }
+
+        if let Err(err) = self.db.set_last_applied_event_rowid(inserted_rowid) {
+            tracing::warn!(
+                error = %err,
+                event_id = %event.event_id,
+                rowid = inserted_rowid,
+                "Failed to advance replay cursor after event apply"
+            );
+        }
     }
 
     pub fn shell_state_snapshot(&self) -> ShellState {
+        let _mutation_guard = self
+            .mutation_lock
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+
         let now = Utc::now();
         let threshold = now - Duration::seconds(SHELL_RECENT_THRESHOLD_SECS);
 
@@ -548,14 +602,46 @@ impl SharedState {
     ) -> Result<RoutingDiagnostics, String> {
         let normalized_project_path = project_path.trim();
         if normalized_project_path.is_empty() {
-            return Err("project_path is required".to_string());
+            return Err("invalid_project_path: project_path is required".to_string());
         }
+
+        let path_exists = std::path::Path::new(normalized_project_path).exists();
+        let canonical_project_path = if path_exists {
+            std::fs::canonicalize(normalized_project_path).map_err(|err| {
+                format!(
+                    "invalid_project_path: project_path must exist and be accessible: {}",
+                    err
+                )
+            })?
+        } else {
+            std::path::PathBuf::from(normalized_project_path)
+        };
+
+        if let Some(reason) =
+            crate::boundaries::is_dangerous_path(canonical_project_path.to_string_lossy().as_ref())
+        {
+            return Err(format!("invalid_project_path: {}", reason));
+        }
+
+        if path_exists {
+            if let Some(home) = dirs::home_dir() {
+                let canonical_home = std::fs::canonicalize(&home).unwrap_or(home);
+                if !canonical_project_path.starts_with(&canonical_home) {
+                    return Err(format!(
+                        "invalid_project_path: project_path '{}' is outside the current user's home directory",
+                        canonical_project_path.display()
+                    ));
+                }
+            }
+        }
+
+        let canonical_project_path = canonical_project_path.to_string_lossy().to_string();
         let resolved_workspace_id =
             normalize_workspace_id(workspace_id_param).unwrap_or_else(|| {
-                crate::project_identity::resolve_project_identity(normalized_project_path)
+                crate::project_identity::resolve_project_identity(&canonical_project_path)
                     .map(|identity| workspace_id(&identity.project_id, &identity.project_path))
                     .unwrap_or_else(|| {
-                        workspace_id(normalized_project_path, normalized_project_path)
+                        workspace_id(&canonical_project_path, &canonical_project_path)
                     })
             });
         let shell_registry = self
@@ -570,7 +656,7 @@ impl SharedState {
             .unwrap_or_default();
         Ok(crate::are::resolver::resolve(
             crate::are::resolver::ResolveInput {
-                project_path: normalized_project_path,
+                project_path: &canonical_project_path,
                 workspace_id: &resolved_workspace_id,
                 now: Utc::now(),
                 config: &self.routing_config,
@@ -909,11 +995,12 @@ impl SharedState {
             (Some(pid), Some(cwd), Some(tty)) => (pid, cwd, tty),
             _ => return,
         };
+        let normalized_cwd = canonicalize_runtime_path(cwd);
         let recorded_at = parse_rfc3339(&event.recorded_at).unwrap_or_else(Utc::now);
         let signal = crate::are::registry::ShellSignal {
             pid,
             proc_start: metadata_proc_start(event.metadata.as_ref()),
-            cwd: cwd.clone(),
+            cwd: normalized_cwd.clone(),
             tty: tty.clone(),
             parent_app: event.parent_app.clone(),
             tmux_session: event.tmux_session.clone(),
@@ -933,12 +1020,12 @@ impl SharedState {
                 tmux_registry.upsert_client(crate::are::registry::TmuxClientSignal {
                     client_tty: client_tty.clone(),
                     session_name: session_name.clone(),
-                    pane_current_path: Some(signal.cwd.clone()),
+                    pane_current_path: Some(normalized_cwd.clone()),
                     captured_at: signal.recorded_at,
                 });
                 tmux_registry.upsert_session(crate::are::registry::TmuxSessionSignal {
                     session_name: session_name.clone(),
-                    pane_paths: vec![signal.cwd.clone()],
+                    pane_paths: vec![normalized_cwd.clone()],
                     captured_at: signal.recorded_at,
                 });
             }
@@ -1728,7 +1815,7 @@ fn build_routing_shell_registry(shell_state: &ShellState) -> crate::are::registr
         registry.upsert(crate::are::registry::ShellSignal {
             pid,
             proc_start: None,
-            cwd: shell.cwd.clone(),
+            cwd: canonicalize_runtime_path(&shell.cwd),
             tty: shell.tty.clone(),
             parent_app: shell.parent_app.clone(),
             tmux_session: shell.tmux_session.clone(),
@@ -1774,6 +1861,13 @@ fn normalize_routing_path(value: &str) -> String {
     }
 }
 
+fn canonicalize_runtime_path(value: &str) -> String {
+    std::fs::canonicalize(value)
+        .unwrap_or_else(|_| std::path::PathBuf::from(value))
+        .to_string_lossy()
+        .to_string()
+}
+
 fn path_match_quality(project_path: &str, shell_path: &str) -> u8 {
     if project_path == shell_path {
         return 3;
@@ -1801,14 +1895,6 @@ fn routing_age_ms(now: DateTime<Utc>, observed_at: DateTime<Utc>) -> u64 {
     now.signed_duration_since(observed_at)
         .num_milliseconds()
         .max(0) as u64
-}
-
-fn clamp_catch_up_since(since: Option<DateTime<Utc>>, now: DateTime<Utc>) -> DateTime<Utc> {
-    let cutoff = now - Duration::seconds(SESSION_CATCH_UP_MAX_AGE_SECS);
-    match since {
-        Some(value) if value > cutoff => value,
-        _ => cutoff,
-    }
 }
 
 #[cfg(test)]
@@ -2544,25 +2630,6 @@ mod tests {
         let state = SharedState::new(db);
         let sessions = state.db.list_sessions().expect("list sessions");
         assert!(sessions.is_empty());
-    }
-
-    #[test]
-    fn catch_up_since_clamps_old_timestamp_to_recent_window() {
-        let now = parse_rfc3339("2026-02-11T22:00:00Z").expect("parse now");
-        let old = parse_rfc3339("2026-02-02T19:11:20.686907+00:00").expect("parse old");
-
-        let clamped = clamp_catch_up_since(Some(old), now);
-        let expected = now - Duration::seconds(SESSION_CATCH_UP_MAX_AGE_SECS);
-        assert_eq!(clamped, expected);
-    }
-
-    #[test]
-    fn catch_up_since_keeps_recent_timestamp() {
-        let now = parse_rfc3339("2026-02-11T22:00:00Z").expect("parse now");
-        let recent = parse_rfc3339("2026-02-11T21:30:00Z").expect("parse recent");
-
-        let clamped = clamp_catch_up_since(Some(recent), now);
-        assert_eq!(clamped, recent);
     }
 
     #[test]

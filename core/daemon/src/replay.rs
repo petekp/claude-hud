@@ -2,7 +2,6 @@ use crate::activity::reduce_activity;
 use crate::db::Db;
 use crate::reducer::SessionUpdate;
 use crate::session_store::handle_session_event;
-use chrono::{DateTime, Utc};
 
 #[cfg(test)]
 pub fn rebuild_from_events(db: &Db) -> Result<(), String> {
@@ -10,20 +9,27 @@ pub fn rebuild_from_events(db: &Db) -> Result<(), String> {
     db.clear_activity()?;
     db.clear_tombstones()?;
 
-    let events = db.list_events()?;
-    apply_events(db, events)
+    let events = db
+        .list_events()?
+        .into_iter()
+        .enumerate()
+        .map(|(index, event)| ((index + 1) as i64, event))
+        .collect();
+    apply_events(db, events, false)
 }
 
-pub fn catch_up_sessions_from_events(db: &Db, since: Option<DateTime<Utc>>) -> Result<(), String> {
-    let events = db.list_session_affecting_events_since(since)?;
-    apply_events(db, events)
+pub fn catch_up_sessions_from_events(db: &Db) -> Result<(), String> {
+    let after_rowid = db.last_applied_event_rowid()?;
+    let events = db.list_session_affecting_events_after_rowid(after_rowid)?;
+    apply_events(db, events, true)
 }
 
 fn apply_events(
     db: &Db,
-    events: Vec<capacitor_daemon_protocol::EventEnvelope>,
+    events: Vec<(i64, capacitor_daemon_protocol::EventEnvelope)>,
+    persist_cursor: bool,
 ) -> Result<(), String> {
-    for event in events {
+    for (rowid, event) in events {
         let current = match event.session_id.as_ref() {
             Some(session_id) => db.get_session(session_id)?,
             None => None,
@@ -43,6 +49,10 @@ fn apply_events(
                 db.delete_activity_for_session(&session_id)?;
             }
             SessionUpdate::Skip => {}
+        }
+
+        if persist_cursor {
+            db.set_last_applied_event_rowid(rowid)?;
         }
     }
 
@@ -145,12 +155,72 @@ mod tests {
         db.insert_event(&older_start).expect("insert start");
         db.insert_event(&newer_end).expect("insert end");
 
-        catch_up_sessions_from_events(&db, None).expect("catch up");
+        catch_up_sessions_from_events(&db).expect("catch up");
 
         let session = db.get_session("session-1").expect("get session");
         assert!(
             session.is_none(),
             "session should remain deleted after catch-up"
         );
+    }
+
+    #[test]
+    fn catch_up_persists_rowid_cursor_and_skips_previously_applied_events() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let db_path = temp_dir.path().join("state.db");
+        let db = Db::new(db_path).expect("db init");
+
+        let start = make_event("evt-1", EventType::SessionStart, "2026-02-01T00:00:00Z");
+        let pre_tool = make_event("evt-2", EventType::PreToolUse, "2026-02-01T00:00:10Z");
+        db.insert_event(&start).expect("insert start");
+        db.insert_event(&pre_tool).expect("insert pre_tool");
+
+        catch_up_sessions_from_events(&db).expect("first catch-up");
+        let first_cursor = db
+            .last_applied_event_rowid()
+            .expect("read first cursor")
+            .expect("cursor exists after first catch-up");
+        assert!(first_cursor > 0);
+
+        catch_up_sessions_from_events(&db).expect("second catch-up");
+        let second_cursor = db
+            .last_applied_event_rowid()
+            .expect("read second cursor")
+            .expect("cursor exists after second catch-up");
+        assert_eq!(
+            first_cursor, second_cursor,
+            "second catch-up should not advance cursor with no new events"
+        );
+
+        let session = db
+            .get_session("session-1")
+            .expect("query session")
+            .expect("session exists");
+        assert_eq!(
+            session.tools_in_flight, 1,
+            "replaying already-applied events should not increment tools in flight"
+        );
+    }
+
+    #[test]
+    fn catch_up_processes_new_rowid_even_with_older_timestamp() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let db_path = temp_dir.path().join("state.db");
+        let db = Db::new(db_path).expect("db init");
+
+        let start = make_event("evt-1", EventType::SessionStart, "2026-02-01T00:00:00Z");
+        db.insert_event(&start).expect("insert start");
+        catch_up_sessions_from_events(&db).expect("initial catch-up");
+
+        let out_of_order = make_event("evt-2", EventType::PreToolUse, "2026-01-31T23:59:59Z");
+        db.insert_event(&out_of_order)
+            .expect("insert out-of-order timestamp event");
+        catch_up_sessions_from_events(&db).expect("catch-up with older timestamp");
+
+        let session = db
+            .get_session("session-1")
+            .expect("query session")
+            .expect("session exists");
+        assert_eq!(session.tools_in_flight, 1);
     }
 }

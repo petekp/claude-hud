@@ -485,12 +485,22 @@ final class SessionStateManagerTests: XCTestCase {
         manager.refreshSessionStates(for: [project])
         let initial = await waitForSessionState(manager, project: project)
         XCTAssertEqual(initial?.state, .working)
+        XCTAssertEqual(
+            manager.getSessionAttribution(for: project)?.scope,
+            .direct,
+            "Initial state should include direct attribution.",
+        )
 
         manager.refreshSessionStates(for: [project])
         try? await _Concurrency.Task.sleep(nanoseconds: 120_000_000)
         let held = manager.getSessionState(for: project)
 
         XCTAssertEqual(held?.state, .working, "First empty snapshot should be treated as transient and held.")
+        XCTAssertEqual(
+            manager.getSessionAttribution(for: project)?.scope,
+            .direct,
+            "Held snapshot should preserve the prior attribution.",
+        )
     }
 
     func testConsecutiveEmptySnapshotsEventuallyClearHeldSessionStates() async throws {
@@ -527,14 +537,24 @@ final class SessionStateManagerTests: XCTestCase {
 
         manager.refreshSessionStates(for: [project])
         _ = await waitForSessionState(manager, project: project)
+        XCTAssertEqual(manager.getSessionAttribution(for: project)?.scope, .direct)
 
         manager.refreshSessionStates(for: [project])
         try? await _Concurrency.Task.sleep(nanoseconds: 120_000_000)
         XCTAssertNotNil(manager.getSessionState(for: project))
+        XCTAssertEqual(
+            manager.getSessionAttribution(for: project)?.scope,
+            .direct,
+            "Transient hold should preserve attribution metadata.",
+        )
 
         manager.refreshSessionStates(for: [project])
         try? await _Concurrency.Task.sleep(nanoseconds: 120_000_000)
         XCTAssertNil(manager.getSessionState(for: project))
+        XCTAssertNil(
+            manager.getSessionAttribution(for: project),
+            "Attribution should clear when session state is fully cleared.",
+        )
     }
 
     func testRepoFallbackDoesNotOverrideDirectWorkspaceMatch() async throws {
@@ -591,6 +611,16 @@ final class SessionStateManagerTests: XCTestCase {
         XCTAssertEqual(stateA?.state, .working, "Fallback activity should still light up pinned workspaces without direct states.")
         XCTAssertEqual(stateB?.state, .ready, "Direct workspace state must not be overwritten by fallback state from another path in the same repo.")
         XCTAssertEqual(stateB?.sessionId, "session-direct")
+
+        let attributionA = manager.getSessionAttribution(for: projectA)
+        XCTAssertEqual(attributionA?.scope, .repoFallback)
+        XCTAssertEqual(attributionA?.sourceProjectPath, unmatchedSameRepo.path)
+        XCTAssertEqual(attributionA?.sourceSessionId, "session-fallback")
+
+        let attributionB = manager.getSessionAttribution(for: projectB)
+        XCTAssertEqual(attributionB?.scope, .direct)
+        XCTAssertEqual(attributionB?.sourceProjectPath, pinnedB.path)
+        XCTAssertEqual(attributionB?.sourceSessionId, "session-direct")
     }
 
     func testActiveChildStateBeatsReadyRootStateForPinnedRepoRoot() async throws {

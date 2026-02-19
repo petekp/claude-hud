@@ -5,6 +5,9 @@ This document defines the local IPC contract for `capacitor-daemon`.
 ## Transport
 
 - Socket path: `~/.capacitor/daemon.sock`
+- Socket directory permissions: `~/.capacitor` is enforced to `0700`
+- Socket file permissions: `~/.capacitor/daemon.sock` is enforced to `0600`
+- Peer auth policy: same local user only (`peer_uid == daemon_euid`)
 - Encoding: one JSON request per connection, optional trailing newline
 - Response: one JSON object, newline-terminated
 - Protocol version: `1`
@@ -65,7 +68,16 @@ Response shape:
   "pid": 12345,
   "version": "0.1.27",
   "protocol_version": 1,
-  "dead_session_reconcile_interval_secs": 60,
+  "dead_session_reconcile_interval_secs": 15,
+  "security": {
+    "peer_auth_mode": "same_user",
+    "rejected_connections": 4
+  },
+  "runtime": {
+    "active_connections": 2,
+    "max_active_connections": 64,
+    "build_hash": "abc123def456"
+  },
   "dead_session_reconcile": {
     "startup": {
       "runs": 1,
@@ -109,6 +121,11 @@ Response shape:
 ```
 
 Notes:
+- `security.peer_auth_mode`: currently `"same_user"` and enforced on every socket connection.
+- `security.rejected_connections`: count of rejected peer-auth + overload connection attempts since daemon start.
+- `runtime.active_connections`: currently active in-flight socket request handlers.
+- `runtime.max_active_connections`: hard connection ceiling; requests above this return `too_many_connections`.
+- `runtime.build_hash`: daemon build identity (`CAPACITOR_DAEMON_BUILD_HASH`, fallback to package version).
 - `routing.rollout.status_row_default_ready`: daemon-computed readiness signal for status-row cutover health.
 - `routing.rollout.launcher_default_ready`: daemon-computed readiness signal for launcher cutover health.
 - Both gates require:
@@ -194,6 +211,12 @@ Request:
 
 `workspace_id` is optional. If omitted, daemon resolves workspace from `project_path`.
 
+Validation:
+- `project_path` must be non-empty.
+- Dangerous root-like paths are rejected.
+- Existing paths are canonicalized and must remain within the current user's home directory.
+- Violations return `invalid_project_path`.
+
 Response:
 
 ```json
@@ -234,6 +257,8 @@ Request:
   }
 }
 ```
+
+Uses the same `project_path` validation and `invalid_project_path` error semantics as `get_routing_snapshot`.
 
 Response:
 
@@ -312,6 +337,23 @@ Validation rules:
 - `notification` requires `notification_type`
 - `stop` requires `stop_hook_active`
 
+## Operational Notes
+
+- Connection flood behavior:
+  - Hard in-flight cap is `64` handlers.
+  - Excess connections are rejected immediately with `too_many_connections`.
+  - Daemon remains responsive after overload once capacity is available.
+- Read timeout behavior:
+  - Requests must arrive promptly after connect.
+  - Idle clients receive `read_timeout`.
+- Replay behavior:
+  - Catch-up cursor is durable (`daemon_meta.last_applied_event_rowid`).
+  - Replay selection is rowid-ordered, not timestamp-window ordered.
+  - New rowids are processed exactly once after restart, including slight out-of-order timestamps.
+- Local daemon log policy:
+  - LaunchAgent stdout/stderr logs live under `~/.capacitor/daemon/`.
+  - App-side startup now trims oversized daemon stdout/stderr logs before registration/kickstart.
+
 ## Error Codes
 
 - `empty_request`
@@ -326,7 +368,13 @@ Validation rules:
 - `invalid_timestamp`
 - `invalid_pid`
 - `missing_field`
+- `unauthorized_peer`
+- `too_many_connections`
+- `invalid_project_path`
 - `routing_error`
 - `serialization_error`
 - `liveness_error`
 - `sessions_error`
+- `project_states_error`
+- `activity_error`
+- `tombstone_error`

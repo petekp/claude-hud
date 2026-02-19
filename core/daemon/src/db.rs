@@ -49,7 +49,13 @@ impl Db {
         Ok(db)
     }
 
+    #[cfg(test)]
     pub fn insert_event(&self, event: &EventEnvelope) -> Result<bool, String> {
+        self.insert_event_with_rowid(event)
+            .map(|rowid| rowid.is_some())
+    }
+
+    pub fn insert_event_with_rowid(&self, event: &EventEnvelope) -> Result<Option<i64>, String> {
         self.with_connection(|conn| {
             let payload = serde_json::to_string(event)
                 .map_err(|err| format!("Failed to serialize event payload: {}", err))?;
@@ -74,7 +80,11 @@ impl Db {
                 )
                 .map_err(|err| format!("Failed to insert event: {}", err))?;
 
-            Ok(rows_affected > 0)
+            if rows_affected > 0 {
+                Ok(Some(conn.last_insert_rowid()))
+            } else {
+                Ok(None)
+            }
         })
     }
 
@@ -104,6 +114,7 @@ impl Db {
         })
     }
 
+    #[cfg(test)]
     pub fn list_session_affecting_events_since(
         &self,
         since: Option<DateTime<Utc>>,
@@ -144,16 +155,116 @@ impl Db {
         })
     }
 
-    pub fn has_events(&self) -> Result<bool, String> {
-        let count = self.with_connection(|conn| {
-            conn.query_row("SELECT COUNT(*) FROM events", [], |row| {
-                row.get::<_, i64>(0)
-            })
-            .map_err(|err| format!("Failed to count events: {}", err))
-        })?;
-        Ok(count > 0)
+    pub fn list_session_affecting_events_after_rowid(
+        &self,
+        after_rowid: Option<i64>,
+    ) -> Result<Vec<(i64, EventEnvelope)>, String> {
+        self.with_connection(|conn| {
+            let mut stmt = conn
+                .prepare(
+                    "SELECT rowid, payload FROM events \
+                     WHERE session_id IS NOT NULL \
+                       AND event_type NOT IN ('shell_cwd', 'subagent_start', 'subagent_stop', 'teammate_idle') \
+                       AND (?1 IS NULL OR rowid > ?1) \
+                     ORDER BY rowid ASC",
+                )
+                .map_err(|err| {
+                    format!(
+                        "Failed to prepare session-affecting events by rowid query: {}",
+                        err
+                    )
+                })?;
+
+            let rows = stmt
+                .query_map(params![after_rowid], |row| {
+                    Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?))
+                })
+                .map_err(|err| {
+                    format!(
+                        "Failed to read session-affecting event rows by rowid: {}",
+                        err
+                    )
+                })?;
+
+            let mut events = Vec::new();
+            for row in rows {
+                let (rowid, payload) = row.map_err(|err| {
+                    format!("Failed to decode session event row by rowid: {}", err)
+                })?;
+                let event: EventEnvelope = serde_json::from_str(&payload)
+                    .map_err(|err| format!("Failed to parse session event payload: {}", err))?;
+                events.push((rowid, event));
+            }
+            Ok(events)
+        })
     }
 
+    pub fn max_event_rowid(&self) -> Result<Option<i64>, String> {
+        self.with_connection(|conn| {
+            conn.query_row("SELECT MAX(rowid) FROM events", [], |row| {
+                row.get::<_, Option<i64>>(0)
+            })
+            .map_err(|err| format!("Failed to read max event rowid: {}", err))
+        })
+    }
+
+    pub fn session_affecting_rowid_at_or_before(
+        &self,
+        timestamp: DateTime<Utc>,
+    ) -> Result<Option<i64>, String> {
+        self.with_connection(|conn| {
+            conn.query_row(
+                "SELECT rowid FROM events \
+                 WHERE session_id IS NOT NULL \
+                   AND event_type NOT IN ('shell_cwd', 'subagent_start', 'subagent_stop', 'teammate_idle') \
+                   AND julianday(recorded_at) <= julianday(?1) \
+                 ORDER BY rowid DESC LIMIT 1",
+                params![timestamp.to_rfc3339()],
+                |row| row.get::<_, i64>(0),
+            )
+            .optional()
+            .map_err(|err| {
+                format!(
+                    "Failed to query session-affecting rowid at-or-before timestamp: {}",
+                    err
+                )
+            })
+        })
+    }
+
+    pub fn last_applied_event_rowid(&self) -> Result<Option<i64>, String> {
+        self.with_connection(|conn| {
+            let raw: Option<String> = conn
+                .query_row(
+                    "SELECT value FROM daemon_meta WHERE key = 'last_applied_event_rowid'",
+                    [],
+                    |row| row.get(0),
+                )
+                .optional()
+                .map_err(|err| format!("Failed to query daemon cursor: {}", err))?;
+
+            match raw {
+                Some(value) => value.parse::<i64>().map(Some).map_err(|err| {
+                    format!("Failed to parse daemon cursor value '{}': {}", value, err)
+                }),
+                None => Ok(None),
+            }
+        })
+    }
+
+    pub fn set_last_applied_event_rowid(&self, rowid: i64) -> Result<(), String> {
+        self.with_connection(|conn| {
+            conn.execute(
+                "INSERT INTO daemon_meta (key, value) VALUES ('last_applied_event_rowid', ?1) \
+                 ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+                params![rowid.to_string()],
+            )
+            .map_err(|err| format!("Failed to persist daemon cursor: {}", err))?;
+            Ok(())
+        })
+    }
+
+    #[cfg(test)]
     pub fn latest_session_affecting_event_time(&self) -> Result<Option<DateTime<Utc>>, String> {
         self.with_connection(|conn| {
             let recorded_at: Option<String> = conn
@@ -1071,6 +1182,10 @@ impl Db {
                     first_comparison_at TEXT,
                     last_comparison_at TEXT,
                     last_snapshot_at TEXT
+                 );
+                 CREATE TABLE IF NOT EXISTS daemon_meta (
+                    key TEXT PRIMARY KEY,
+                    value TEXT NOT NULL
                  );
                  CREATE INDEX IF NOT EXISTS idx_hem_shadow_mismatches_observed_at
                     ON hem_shadow_mismatches(observed_at);

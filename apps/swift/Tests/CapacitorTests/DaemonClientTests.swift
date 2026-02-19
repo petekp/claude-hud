@@ -4,6 +4,14 @@ import Foundation
 import XCTest
 
 final class DaemonClientTests: XCTestCase {
+    func testIsEnabledDefaultsToTrueWhenEnvMissing() {
+        unsetenv("CAPACITOR_DAEMON_ENABLED")
+        defer { unsetenv("CAPACITOR_DAEMON_ENABLED") }
+
+        let client = DaemonClient(transport: { _ in Data() })
+        XCTAssertTrue(client.isEnabled)
+    }
+
     func testUsesPosixUnixSocketTransport() async throws {
         setenv("CAPACITOR_DAEMON_ENABLED", "1", 1)
         defer { unsetenv("CAPACITOR_DAEMON_ENABLED") }
@@ -132,6 +140,11 @@ final class DaemonClientTests: XCTestCase {
         XCTAssertEqual(health.routing?.rollout?.windowElapsedHours, 312)
         XCTAssertEqual(health.routing?.rollout?.statusRowDefaultReady, true)
         XCTAssertEqual(health.routing?.rollout?.launcherDefaultReady, false)
+        XCTAssertEqual(health.security?.peerAuthMode, "same_user")
+        XCTAssertEqual(health.security?.rejectedConnections, 4)
+        XCTAssertEqual(health.runtime?.activeConnections, 2)
+        XCTAssertEqual(health.runtime?.maxActiveConnections, 64)
+        XCTAssertEqual(health.runtime?.buildHash, "abc123def456")
     }
 
     private func makeProjectStatesResponse() -> Data {
@@ -172,7 +185,7 @@ final class DaemonClientTests: XCTestCase {
 
     private static func makeHealthResponseWithRoutingRollout() -> Data {
         let json = """
-        {"ok":true,"id":"test","data":{"status":"ok","pid":12345,"version":"0.1.0","protocol_version":1,"routing":{"enabled":true,"dual_run_enabled":true,"snapshots_emitted":1000,"legacy_vs_are_status_mismatch":1,"legacy_vs_are_target_mismatch":6,"confidence_high":900,"confidence_medium":80,"confidence_low":20,"rollout":{"agreement_gate_target":0.995,"min_comparisons_required":1000,"min_window_hours_required":168,"comparisons":1000,"volume_gate_met":true,"window_gate_met":true,"status_agreement_rate":0.999,"target_agreement_rate":0.994,"first_comparison_at":"2026-02-01T09:00:00Z","last_comparison_at":"2026-02-14T09:00:00Z","window_elapsed_hours":312,"status_gate_met":true,"target_gate_met":false,"status_row_default_ready":true,"launcher_default_ready":false}}}}
+        {"ok":true,"id":"test","data":{"status":"ok","pid":12345,"version":"0.1.0","protocol_version":1,"security":{"peer_auth_mode":"same_user","rejected_connections":4},"runtime":{"active_connections":2,"max_active_connections":64,"build_hash":"abc123def456"},"routing":{"enabled":true,"dual_run_enabled":true,"snapshots_emitted":1000,"legacy_vs_are_status_mismatch":1,"legacy_vs_are_target_mismatch":6,"confidence_high":900,"confidence_medium":80,"confidence_low":20,"rollout":{"agreement_gate_target":0.995,"min_comparisons_required":1000,"min_window_hours_required":168,"comparisons":1000,"volume_gate_met":true,"window_gate_met":true,"status_agreement_rate":0.999,"target_agreement_rate":0.994,"first_comparison_at":"2026-02-01T09:00:00Z","last_comparison_at":"2026-02-14T09:00:00Z","window_elapsed_hours":312,"status_gate_met":true,"target_gate_met":false,"status_row_default_ready":true,"launcher_default_ready":false}}}}
         """
         var data = Data(json.utf8)
         data.append(0x0A)

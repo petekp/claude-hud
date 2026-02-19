@@ -7,8 +7,11 @@
 use fs_err as fs;
 use std::env;
 use std::io::{Read, Write};
+use std::os::fd::AsRawFd;
+use std::os::unix::fs::PermissionsExt;
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
@@ -17,7 +20,8 @@ use tracing_subscriber::EnvFilter;
 
 use capacitor_daemon_protocol::{
     parse_event, parse_process_liveness, parse_routing_diagnostics, parse_routing_snapshot,
-    ErrorInfo, Method, Request, Response, MAX_REQUEST_BYTES, PROTOCOL_VERSION,
+    ErrorInfo, Method, Request, Response, ERROR_INVALID_PROJECT_PATH, ERROR_TOO_MANY_CONNECTIONS,
+    ERROR_UNAUTHORIZED_PEER, MAX_REQUEST_BYTES, PROTOCOL_VERSION,
 };
 use serde_json::Value;
 
@@ -41,6 +45,35 @@ const SOCKET_NAME: &str = "daemon.sock";
 const READ_TIMEOUT_SECS: u64 = 2;
 const READ_CHUNK_SIZE: usize = 4096;
 const DEAD_SESSION_RECONCILE_INTERVAL_SECS: u64 = 15;
+const MAX_ACTIVE_CONNECTIONS: usize = 64;
+
+#[derive(Default)]
+struct RuntimeStats {
+    active_connections: AtomicUsize,
+    rejected_connections: AtomicU64,
+}
+
+struct ConnectionGuard {
+    stats: Arc<RuntimeStats>,
+}
+
+impl ConnectionGuard {
+    fn try_acquire(stats: Arc<RuntimeStats>) -> Option<Self> {
+        let previous = stats.active_connections.fetch_add(1, Ordering::SeqCst);
+        if previous >= MAX_ACTIVE_CONNECTIONS {
+            stats.active_connections.fetch_sub(1, Ordering::SeqCst);
+            stats.rejected_connections.fetch_add(1, Ordering::SeqCst);
+            return None;
+        }
+        Some(Self { stats })
+    }
+}
+
+impl Drop for ConnectionGuard {
+    fn drop(&mut self) {
+        self.stats.active_connections.fetch_sub(1, Ordering::SeqCst);
+    }
+}
 
 fn main() {
     init_logging();
@@ -76,6 +109,10 @@ fn main() {
             std::process::exit(1);
         }
     };
+    if let Err(err) = set_socket_permissions(&socket_path) {
+        error!(error = %err, path = %socket_path.display(), "Failed to set daemon socket permissions");
+        std::process::exit(1);
+    }
 
     info!(path = %socket_path.display(), "Capacitor daemon started");
 
@@ -115,12 +152,30 @@ fn main() {
     );
     spawn_dead_session_reconciler(Arc::clone(&shared_state));
     spawn_routing_tmux_poller(Arc::clone(&shared_state));
+    let runtime = Arc::new(RuntimeStats::default());
+    let expected_uid = unsafe { libc::geteuid() as u32 };
 
     for stream in listener.incoming() {
         match stream {
-            Ok(stream) => {
+            Ok(mut stream) => {
+                let Some(connection_guard) = ConnectionGuard::try_acquire(Arc::clone(&runtime))
+                else {
+                    let _ = write_response(
+                        &mut stream,
+                        Response::error(
+                            None,
+                            ERROR_TOO_MANY_CONNECTIONS,
+                            "daemon connection limit reached",
+                        ),
+                    );
+                    continue;
+                };
                 let state = Arc::clone(&shared_state);
-                thread::spawn(|| handle_connection(stream, state));
+                let runtime_stats = Arc::clone(&runtime);
+                thread::spawn(move || {
+                    let _connection_guard = connection_guard;
+                    handle_connection(stream, state, runtime_stats, expected_uid)
+                });
             }
             Err(err) => {
                 warn!(error = %err, "Failed to accept daemon connection");
@@ -195,7 +250,10 @@ fn prepare_socket_dir(socket_path: &Path) -> Result<(), String> {
     let parent = socket_path
         .parent()
         .ok_or_else(|| "Socket path has no parent".to_string())?;
-    fs::create_dir_all(parent).map_err(|err| format!("Failed to create socket directory: {}", err))
+    fs::create_dir_all(parent)
+        .map_err(|err| format!("Failed to create socket directory: {}", err))?;
+    fs::set_permissions(parent, std::fs::Permissions::from_mode(0o700))
+        .map_err(|err| format!("Failed to set socket directory permissions: {}", err))
 }
 
 fn remove_existing_socket(socket_path: &Path) -> Result<(), String> {
@@ -206,7 +264,44 @@ fn remove_existing_socket(socket_path: &Path) -> Result<(), String> {
     Ok(())
 }
 
-fn handle_connection(mut stream: UnixStream, state: Arc<SharedState>) {
+fn set_socket_permissions(socket_path: &Path) -> Result<(), String> {
+    fs::set_permissions(socket_path, std::fs::Permissions::from_mode(0o600))
+        .map_err(|err| format!("Failed to set socket permissions: {}", err))
+}
+
+fn handle_connection(
+    mut stream: UnixStream,
+    state: Arc<SharedState>,
+    runtime: Arc<RuntimeStats>,
+    expected_uid: u32,
+) {
+    match peer_uid(&stream) {
+        Ok(peer_uid) if peer_uid == expected_uid => {}
+        Ok(peer_uid) => {
+            runtime.rejected_connections.fetch_add(1, Ordering::SeqCst);
+            let response = Response::error(
+                None,
+                ERROR_UNAUTHORIZED_PEER,
+                format!(
+                    "unauthorized peer uid {} (expected {})",
+                    peer_uid, expected_uid
+                ),
+            );
+            let _ = write_response(&mut stream, response);
+            return;
+        }
+        Err(err) => {
+            runtime.rejected_connections.fetch_add(1, Ordering::SeqCst);
+            let response = Response::error(
+                None,
+                ERROR_UNAUTHORIZED_PEER,
+                format!("failed to verify peer credentials: {}", err),
+            );
+            let _ = write_response(&mut stream, response);
+            return;
+        }
+    }
+
     let request = match read_request(&mut stream) {
         Ok(request) => request,
         Err(err) => {
@@ -218,8 +313,59 @@ fn handle_connection(mut stream: UnixStream, state: Arc<SharedState>) {
     };
 
     tracing::debug!(method = ?request.method, id = ?request.id, "Daemon request received");
-    let response = handle_request(request, state);
+    let response = handle_request(request, state, runtime);
     let _ = write_response(&mut stream, response);
+}
+
+#[cfg(any(
+    target_os = "macos",
+    target_os = "ios",
+    target_os = "freebsd",
+    target_os = "openbsd",
+    target_os = "netbsd",
+    target_os = "dragonfly"
+))]
+fn peer_uid(stream: &UnixStream) -> Result<u32, String> {
+    let mut uid: libc::uid_t = 0;
+    let mut gid: libc::gid_t = 0;
+    let rc = unsafe { libc::getpeereid(stream.as_raw_fd(), &mut uid, &mut gid) };
+    if rc != 0 {
+        return Err(std::io::Error::last_os_error().to_string());
+    }
+    Ok(uid as u32)
+}
+
+#[cfg(target_os = "linux")]
+fn peer_uid(stream: &UnixStream) -> Result<u32, String> {
+    let fd = stream.as_raw_fd();
+    let mut cred: libc::ucred = unsafe { std::mem::zeroed() };
+    let mut len = std::mem::size_of::<libc::ucred>() as libc::socklen_t;
+    let rc = unsafe {
+        libc::getsockopt(
+            fd,
+            libc::SOL_SOCKET,
+            libc::SO_PEERCRED,
+            &mut cred as *mut _ as *mut libc::c_void,
+            &mut len as *mut _,
+        )
+    };
+    if rc != 0 {
+        return Err(std::io::Error::last_os_error().to_string());
+    }
+    Ok(cred.uid)
+}
+
+#[cfg(not(any(
+    target_os = "macos",
+    target_os = "ios",
+    target_os = "freebsd",
+    target_os = "openbsd",
+    target_os = "netbsd",
+    target_os = "dragonfly",
+    target_os = "linux"
+)))]
+fn peer_uid(_stream: &UnixStream) -> Result<u32, String> {
+    Err("peer credential verification unsupported on this platform".to_string())
 }
 
 fn read_request(stream: &mut UnixStream) -> Result<Request, ErrorInfo> {
@@ -285,7 +431,17 @@ fn read_request(stream: &mut UnixStream) -> Result<Request, ErrorInfo> {
     })
 }
 
-fn handle_request(request: Request, state: Arc<SharedState>) -> Response {
+fn daemon_build_hash() -> String {
+    option_env!("CAPACITOR_DAEMON_BUILD_HASH")
+        .unwrap_or(env!("CARGO_PKG_VERSION"))
+        .to_string()
+}
+
+fn handle_request(
+    request: Request,
+    state: Arc<SharedState>,
+    runtime: Arc<RuntimeStats>,
+) -> Response {
     if request.protocol_version != PROTOCOL_VERSION {
         return Response::error(
             request.id,
@@ -302,6 +458,15 @@ fn handle_request(request: Request, state: Arc<SharedState>) -> Response {
                 "version": env!("CARGO_PKG_VERSION"),
                 "protocol_version": PROTOCOL_VERSION,
                 "dead_session_reconcile_interval_secs": DEAD_SESSION_RECONCILE_INTERVAL_SECS,
+                "security": {
+                    "peer_auth_mode": "same_user",
+                    "rejected_connections": runtime.rejected_connections.load(Ordering::SeqCst),
+                },
+                "runtime": {
+                    "active_connections": runtime.active_connections.load(Ordering::SeqCst),
+                    "max_active_connections": MAX_ACTIVE_CONNECTIONS,
+                    "build_hash": daemon_build_hash(),
+                },
             });
             if let Ok(value) = serde_json::to_value(state.dead_session_reconcile_snapshot()) {
                 data["dead_session_reconcile"] = value;
@@ -387,11 +552,17 @@ fn handle_request(request: Request, state: Arc<SharedState>) -> Response {
                         format!("Failed to serialize routing snapshot: {}", err),
                     ),
                 },
-                Err(err) => Response::error(
-                    request.id,
-                    "routing_error",
-                    format!("Failed to resolve routing snapshot: {}", err),
-                ),
+                Err(err) => {
+                    if let Some(message) = err.strip_prefix("invalid_project_path:") {
+                        Response::error(request.id, ERROR_INVALID_PROJECT_PATH, message.trim())
+                    } else {
+                        Response::error(
+                            request.id,
+                            "routing_error",
+                            format!("Failed to resolve routing snapshot: {}", err),
+                        )
+                    }
+                }
             }
         }
         Method::GetRoutingDiagnostics => {
@@ -418,11 +589,17 @@ fn handle_request(request: Request, state: Arc<SharedState>) -> Response {
                         format!("Failed to serialize routing diagnostics: {}", err),
                     ),
                 },
-                Err(err) => Response::error(
-                    request.id,
-                    "routing_error",
-                    format!("Failed to resolve routing diagnostics: {}", err),
-                ),
+                Err(err) => {
+                    if let Some(message) = err.strip_prefix("invalid_project_path:") {
+                        Response::error(request.id, ERROR_INVALID_PROJECT_PATH, message.trim())
+                    } else {
+                        Response::error(
+                            request.id,
+                            "routing_error",
+                            format!("Failed to resolve routing diagnostics: {}", err),
+                        )
+                    }
+                }
             }
         }
         Method::GetConfig => match serde_json::to_value(state.routing_config_view()) {

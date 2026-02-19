@@ -153,6 +153,7 @@ rm -rf "$APP_BUNDLE"
 mkdir -p "$APP_BUNDLE/Contents/MacOS"
 mkdir -p "$APP_BUNDLE/Contents/Frameworks"
 mkdir -p "$APP_BUNDLE/Contents/Resources"
+mkdir -p "$APP_BUNDLE/Contents/Library/LaunchAgents"
 
 # Copy executable
 cp "$SWIFT_BUILD_DIR/Capacitor" "$APP_BUNDLE/Contents/MacOS/Capacitor"
@@ -205,6 +206,16 @@ if [ -f "$DAEMON_BINARY" ]; then
     echo -e "${GREEN}✓ capacitor-daemon binary copied${NC}"
 else
     echo -e "${RED}ERROR: capacitor-daemon binary not found at $DAEMON_BINARY${NC}"
+    exit 1
+fi
+
+# Copy LaunchAgent plist (required by SMAppService.agent registration)
+DAEMON_PLIST="$PROJECT_ROOT/apps/swift/Resources/LaunchAgents/com.capacitor.daemon.plist"
+if [ -f "$DAEMON_PLIST" ]; then
+    cp "$DAEMON_PLIST" "$APP_BUNDLE/Contents/Library/LaunchAgents/com.capacitor.daemon.plist"
+    echo -e "${GREEN}✓ LaunchAgent plist copied${NC}"
+else
+    echo -e "${RED}ERROR: LaunchAgent plist not found at $DAEMON_PLIST${NC}"
     exit 1
 fi
 

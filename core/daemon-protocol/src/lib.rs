@@ -11,6 +11,9 @@ use std::collections::HashMap;
 
 pub const PROTOCOL_VERSION: u32 = 1;
 pub const MAX_REQUEST_BYTES: usize = 1024 * 1024; // 1MB
+pub const ERROR_UNAUTHORIZED_PEER: &str = "unauthorized_peer";
+pub const ERROR_TOO_MANY_CONNECTIONS: &str = "too_many_connections";
+pub const ERROR_INVALID_PROJECT_PATH: &str = "invalid_project_path";
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case", deny_unknown_fields)]

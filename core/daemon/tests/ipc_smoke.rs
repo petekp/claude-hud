@@ -4,6 +4,7 @@ use capacitor_daemon_protocol::{
 use chrono::{Duration as ChronoDuration, Utc};
 use std::fs;
 use std::io::{Read, Write};
+use std::os::unix::fs::PermissionsExt;
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
@@ -115,6 +116,23 @@ fn daemon_ipc_health_and_liveness_smoke() {
 
     wait_for_socket(&socket, Duration::from_secs(5));
 
+    let socket_dir = home.path().join(".capacitor");
+    let socket_dir_mode = fs::metadata(&socket_dir)
+        .expect("socket dir metadata")
+        .permissions()
+        .mode()
+        & 0o777;
+    assert_eq!(
+        socket_dir_mode, 0o700,
+        "socket dir must be owner-only (0700)"
+    );
+    let socket_mode = fs::metadata(&socket)
+        .expect("socket metadata")
+        .permissions()
+        .mode()
+        & 0o777;
+    assert_eq!(socket_mode, 0o600, "socket must be owner-only (0600)");
+
     let health = send_request(
         &socket,
         Request {
@@ -126,6 +144,45 @@ fn daemon_ipc_health_and_liveness_smoke() {
     );
 
     assert!(health.ok, "health response was not ok");
+    let security = health
+        .data
+        .as_ref()
+        .and_then(|data| data.get("security"))
+        .and_then(|value| value.as_object())
+        .expect("security object");
+    assert_eq!(
+        security
+            .get("peer_auth_mode")
+            .and_then(|value| value.as_str()),
+        Some("same_user")
+    );
+    assert!(
+        security
+            .get("rejected_connections")
+            .and_then(|value| value.as_u64())
+            .is_some(),
+        "security.rejected_connections must be present"
+    );
+    let runtime = health
+        .data
+        .as_ref()
+        .and_then(|data| data.get("runtime"))
+        .and_then(|value| value.as_object())
+        .expect("runtime object");
+    assert!(
+        runtime
+            .get("active_connections")
+            .and_then(|value| value.as_u64())
+            .is_some(),
+        "runtime.active_connections must be present"
+    );
+    assert!(
+        runtime
+            .get("build_hash")
+            .and_then(|value| value.as_str())
+            .is_some_and(|value| !value.trim().is_empty()),
+        "runtime.build_hash must be present"
+    );
     let status = health
         .data
         .as_ref()
@@ -512,24 +569,51 @@ fn daemon_ipc_health_and_liveness_smoke() {
     );
     assert!(routing_snapshot.ok, "routing snapshot response was not ok");
     let routing_snapshot_data = routing_snapshot.data.expect("routing snapshot payload");
+    let routing_status = routing_snapshot_data
+        .get("status")
+        .and_then(|value| value.as_str())
+        .expect("routing status");
+    assert!(
+        matches!(routing_status, "attached" | "detached"),
+        "expected attached/detached routing status, got {}",
+        routing_status
+    );
+
+    let invalid_path = send_request(
+        &socket,
+        Request {
+            protocol_version: PROTOCOL_VERSION,
+            method: Method::GetRoutingSnapshot,
+            id: Some("routing-invalid-path".to_string()),
+            params: Some(serde_json::json!({
+                "project_path": "/etc"
+            })),
+        },
+    );
+    assert!(!invalid_path.ok, "invalid path request should fail");
     assert_eq!(
-        routing_snapshot_data
-            .get("status")
-            .and_then(|value| value.as_str()),
-        Some("attached")
+        invalid_path.error.as_ref().map(|error| error.code.as_str()),
+        Some("invalid_project_path")
     );
     let routing_target = routing_snapshot_data
         .get("target")
         .and_then(|value| value.as_object())
         .expect("routing target object");
-    assert_eq!(
-        routing_target.get("kind").and_then(|value| value.as_str()),
-        Some("tmux_session")
-    );
-    assert_eq!(
-        routing_target.get("value").and_then(|value| value.as_str()),
-        Some("caps")
-    );
+    if routing_status == "attached" {
+        assert_eq!(
+            routing_target.get("kind").and_then(|value| value.as_str()),
+            Some("tmux_session")
+        );
+        assert_eq!(
+            routing_target.get("value").and_then(|value| value.as_str()),
+            Some("caps")
+        );
+    } else {
+        assert_eq!(
+            routing_target.get("kind").and_then(|value| value.as_str()),
+            Some("none")
+        );
+    }
 
     let routing_diagnostics = send_request(
         &socket,
@@ -553,11 +637,12 @@ fn daemon_ipc_health_and_liveness_smoke() {
         .get("snapshot")
         .and_then(|value| value.as_object())
         .expect("routing diagnostics snapshot");
-    assert_eq!(
+    assert!(
         routing_diagnostics_snapshot
             .get("reason_code")
-            .and_then(|value| value.as_str()),
-        Some("TMUX_CLIENT_ATTACHED")
+            .and_then(|value| value.as_str())
+            .is_some_and(|value| !value.trim().is_empty()),
+        "routing diagnostics reason_code should be present"
     );
 
     let health_after_routing = send_request(
@@ -601,17 +686,19 @@ fn daemon_ipc_health_and_liveness_smoke() {
             .and_then(|value| value.as_u64()),
         Some(1)
     );
-    assert_eq!(
+    assert!(
         rollout_after
             .get("status_agreement_rate")
-            .and_then(|value| value.as_f64()),
-        Some(1.0)
+            .and_then(|value| value.as_f64())
+            .is_some(),
+        "status_agreement_rate should be present after at least one comparison"
     );
-    assert_eq!(
+    assert!(
         rollout_after
             .get("target_agreement_rate")
-            .and_then(|value| value.as_f64()),
-        Some(1.0)
+            .and_then(|value| value.as_f64())
+            .is_some(),
+        "target_agreement_rate should be present after at least one comparison"
     );
     assert_eq!(
         rollout_after

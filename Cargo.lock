@@ -188,6 +188,7 @@ dependencies = [
  "chrono",
  "dirs",
  "fs-err 3.2.2",
+ "libc",
  "md5",
  "rusqlite",
  "serde",

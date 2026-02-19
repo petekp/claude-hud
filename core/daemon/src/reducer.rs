@@ -3,6 +3,8 @@ use serde::Serialize;
 
 use crate::project_identity::resolve_project_identity;
 
+const STALE_EVENT_GRACE_SECS: i64 = 5;
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum SessionState {
@@ -227,7 +229,7 @@ fn is_event_stale(current: Option<&SessionRecord>, event: &EventEnvelope) -> boo
         return false;
     };
 
-    event_time < current_time
+    current_time.signed_duration_since(event_time).num_seconds() > STALE_EVENT_GRACE_SECS
 }
 
 fn upsert_session(
@@ -1131,6 +1133,29 @@ mod tests {
 
         let update = reduce_session(Some(&current), &event);
         assert_eq!(update, SessionUpdate::Skip);
+    }
+
+    #[test]
+    fn slightly_skewed_event_within_grace_window_is_not_skipped() {
+        let mut event = event_base(EventType::UserPromptSubmit);
+        event.recorded_at = "2026-01-31T00:00:09Z".to_string();
+        let current = SessionRecord {
+            session_id: "session-1".to_string(),
+            pid: 1234,
+            state: SessionState::Ready,
+            cwd: "/repo".to_string(),
+            project_id: "/repo/.git".to_string(),
+            project_path: "/repo".to_string(),
+            updated_at: "2026-01-31T00:00:10Z".to_string(),
+            state_changed_at: "2026-01-31T00:00:10Z".to_string(),
+            last_event: Some("session_start".to_string()),
+            last_activity_at: None,
+            tools_in_flight: 0,
+            ready_reason: None,
+        };
+
+        let update = reduce_session(Some(&current), &event);
+        assert!(matches!(update, SessionUpdate::Upsert(_)));
     }
 
     #[test]
