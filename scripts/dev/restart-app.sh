@@ -287,7 +287,19 @@ DAEMON_PLIST_SOURCE="$PROJECT_ROOT/apps/swift/Resources/LaunchAgents/com.capacit
 DAEMON_PLIST_DEST_DIR="$DEBUG_APP/Contents/Library/LaunchAgents"
 if [ -f "$DAEMON_PLIST_SOURCE" ]; then
     mkdir -p "$DAEMON_PLIST_DEST_DIR"
-    cp "$DAEMON_PLIST_SOURCE" "$DAEMON_PLIST_DEST_DIR/com.capacitor.daemon.plist"
+    DAEMON_PLIST_DEST="$DAEMON_PLIST_DEST_DIR/com.capacitor.daemon.plist"
+    cp "$DAEMON_PLIST_SOURCE" "$DAEMON_PLIST_DEST"
+
+    # Keep SMAppService associated bundle identifiers aligned with the debug bundle id.
+    DEBUG_BUNDLE_ID=$(/usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" "$DEBUG_APP/Contents/Info.plist" 2>/dev/null || true)
+    if [ -n "$DEBUG_BUNDLE_ID" ]; then
+        /usr/libexec/PlistBuddy -c "Delete :AssociatedBundleIdentifiers" "$DAEMON_PLIST_DEST" >/dev/null 2>&1 || true
+        /usr/libexec/PlistBuddy -c "Add :AssociatedBundleIdentifiers array" "$DAEMON_PLIST_DEST"
+        /usr/libexec/PlistBuddy -c "Add :AssociatedBundleIdentifiers:0 string com.capacitor.app" "$DAEMON_PLIST_DEST"
+        if [ "$DEBUG_BUNDLE_ID" != "com.capacitor.app" ]; then
+            /usr/libexec/PlistBuddy -c "Add :AssociatedBundleIdentifiers:1 string $DEBUG_BUNDLE_ID" "$DAEMON_PLIST_DEST"
+        fi
+    fi
 else
     echo "Error: LaunchAgent plist not found at $DAEMON_PLIST_SOURCE" >&2
     exit 1
