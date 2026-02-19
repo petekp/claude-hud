@@ -98,6 +98,8 @@ enum DaemonService {
     }
 
     enum LaunchAgentManager {
+        private static let canonicalBundleIdentifier = "com.capacitor.app"
+
         static func installAndKickstart(
             binaryPath: String,
             homeDir: URL = FileManager.default.homeDirectoryForCurrentUser,
@@ -195,6 +197,11 @@ enum DaemonService {
                 "StandardErrorPath": logsDir.appendingPathComponent("daemon.stderr.log").path,
             ]
 
+            let associatedBundleIdentifiers = preferredAssociatedBundleIdentifiers()
+            if !associatedBundleIdentifiers.isEmpty {
+                plist["AssociatedBundleIdentifiers"] = associatedBundleIdentifiers
+            }
+
             if !environment.isEmpty {
                 plist["EnvironmentVariables"] = environment
             }
@@ -207,6 +214,17 @@ enum DaemonService {
                 try data.write(to: plistURL, options: .atomic)
             }
             return (plistURL, didChange)
+        }
+
+        private static func preferredAssociatedBundleIdentifiers() -> [String] {
+            var identifiers = [canonicalBundleIdentifier]
+            if let activeBundleIdentifier = Bundle.main.bundleIdentifier?.trimmingCharacters(in: .whitespacesAndNewlines),
+               !activeBundleIdentifier.isEmpty,
+               !identifiers.contains(activeBundleIdentifier)
+            {
+                identifiers.append(activeBundleIdentifier)
+            }
+            return identifiers
         }
 
         private static func systemLaunchctl(_ arguments: [String]) -> (exitCode: Int32, output: String) {

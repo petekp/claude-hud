@@ -109,4 +109,24 @@ final class DaemonServiceTests: XCTestCase {
             ["kickstart", "gui/501/com.capacitor.daemon"],
         ])
     }
+
+    func testWriteLaunchAgentPlistAssociatesCapacitorBundleIdentifier() throws {
+        let homeDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: homeDir, withIntermediateDirectories: true)
+
+        let (plistURL, _) = try DaemonService.LaunchAgentManager.writeLaunchAgentPlist(
+            binaryPath: "/bin/true",
+            homeDir: homeDir,
+        )
+
+        let data = try Data(contentsOf: plistURL)
+        let plist = try XCTUnwrap(
+            PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any],
+        )
+        let associatedBundleIdentifiers = try XCTUnwrap(
+            plist["AssociatedBundleIdentifiers"] as? [String],
+        )
+
+        XCTAssertTrue(associatedBundleIdentifiers.contains("com.capacitor.app"))
+    }
 }

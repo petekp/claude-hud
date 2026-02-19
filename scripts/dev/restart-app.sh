@@ -26,6 +26,26 @@ for _var in "${DEMO_ENV_VARS[@]}"; do
 done
 unset _var
 
+# Prefer a real Apple signing identity so launchd background-item attribution
+# can associate the daemon with the app bundle in Login Items.
+SIGNING_IDENTITY="${CAPACITOR_SIGNING_IDENTITY:-}"
+if [ -z "$SIGNING_IDENTITY" ]; then
+    CERT_LINE=$(security find-identity -v -p codesigning 2>/dev/null | grep "Developer ID Application" | head -1 || true)
+    if [ -n "$CERT_LINE" ]; then
+        SIGNING_IDENTITY=$(echo "$CERT_LINE" | awk '{print $2}')
+    fi
+fi
+if [ -z "$SIGNING_IDENTITY" ]; then
+    CERT_LINE=$(security find-identity -v -p codesigning 2>/dev/null | grep "Apple Development" | head -1 || true)
+    if [ -n "$CERT_LINE" ]; then
+        SIGNING_IDENTITY=$(echo "$CERT_LINE" | awk '{print $2}')
+    fi
+fi
+if [ -z "$SIGNING_IDENTITY" ]; then
+    SIGNING_IDENTITY="-"
+    echo "Warning: No Apple signing identity found. Falling back to ad-hoc signing." >&2
+fi
+
 # Parse flags
 FORCE_REBUILD=false
 SWIFT_ONLY=false
@@ -120,6 +140,7 @@ fi
 
 # Keep ~/.local/bin/capacitor-daemon synced to the repo build to avoid stale daemons.
 if [ -f "$PROJECT_ROOT/target/release/capacitor-daemon" ]; then
+    codesign --force --sign "$SIGNING_IDENTITY" --identifier com.capacitor.daemon "$PROJECT_ROOT/target/release/capacitor-daemon"
     mkdir -p "$HOME/.local/bin"
     ln -sf "$PROJECT_ROOT/target/release/capacitor-daemon" "$HOME/.local/bin/capacitor-daemon"
 fi
@@ -243,8 +264,10 @@ rsync -a "$TEMPLATE_APP/" "$DEBUG_APP/"
 
 # Ensure the debug bundle is distinct from the release app.
 /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier com.capacitor.app.debug" "$DEBUG_APP/Contents/Info.plist"
-/usr/libexec/PlistBuddy -c "Set :CFBundleName Capacitor Debug" "$DEBUG_APP/Contents/Info.plist"
-/usr/libexec/PlistBuddy -c "Add :CFBundleDisplayName string Capacitor Debug" "$DEBUG_APP/Contents/Info.plist" 2>/dev/null || true
+/usr/libexec/PlistBuddy -c "Set :CFBundleName Capacitor" "$DEBUG_APP/Contents/Info.plist"
+if ! /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName Capacitor" "$DEBUG_APP/Contents/Info.plist" 2>/dev/null; then
+    /usr/libexec/PlistBuddy -c "Add :CFBundleDisplayName string Capacitor" "$DEBUG_APP/Contents/Info.plist" 2>/dev/null || true
+fi
 if ! /usr/libexec/PlistBuddy -c "Set :CapacitorChannel $CHANNEL" "$DEBUG_APP/Contents/Info.plist" 2>/dev/null; then
     /usr/libexec/PlistBuddy -c "Add :CapacitorChannel string $CHANNEL" "$DEBUG_APP/Contents/Info.plist" 2>/dev/null || true
 fi
@@ -284,8 +307,19 @@ if ! otool -l "$DEBUG_APP_BIN" | grep -q "@loader_path/../Frameworks"; then
     install_name_tool -add_rpath "@loader_path/../Frameworks" "$DEBUG_APP_BIN"
 fi
 
+# Give helper binaries stable ad-hoc identifiers instead of hash-based defaults.
+if [ -f "$DEBUG_APP/Contents/Resources/capacitor-daemon" ]; then
+    codesign --force --sign "$SIGNING_IDENTITY" --identifier com.capacitor.daemon "$DEBUG_APP/Contents/Resources/capacitor-daemon"
+fi
+if [ -f "$DEBUG_APP/Contents/MacOS/capacitor-daemon" ]; then
+    codesign --force --sign "$SIGNING_IDENTITY" --identifier com.capacitor.daemon "$DEBUG_APP/Contents/MacOS/capacitor-daemon"
+fi
+if [ -f "$DEBUG_APP/Contents/Resources/hud-hook" ]; then
+    codesign --force --sign "$SIGNING_IDENTITY" --identifier com.capacitor.hud-hook "$DEBUG_APP/Contents/Resources/hud-hook"
+fi
+
 # Ad-hoc sign the debug bundle so LaunchServices will open it reliably.
-if ! codesign --force --deep --sign - "$DEBUG_APP" >/dev/null 2>&1; then
+if ! codesign --force --deep --sign "$SIGNING_IDENTITY" --identifier com.capacitor.app.debug "$DEBUG_APP" >/dev/null 2>&1; then
     echo "Error: Failed to codesign debug app bundle at $DEBUG_APP" >&2
     exit 1
 fi
