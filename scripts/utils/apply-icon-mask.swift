@@ -4,6 +4,15 @@ import AppKit
 import Foundation
 
 let cornerRadiusRatio: CGFloat = 0.22544  // Apple's macOS icon corner radius ratio
+let defaultContentScale: CGFloat = 0.82     // Matches common Dock icon optical footprint
+
+func resolvedContentScale() -> CGFloat {
+    guard let raw = ProcessInfo.processInfo.environment["ICON_CONTENT_SCALE"],
+          let value = Double(raw) else {
+        return defaultContentScale
+    }
+    return max(0.6, min(1.0, CGFloat(value)))
+}
 
 func createSuperellipsePath(in rect: CGRect) -> CGPath {
     let width = rect.width
@@ -69,28 +78,65 @@ func createSuperellipsePath(in rect: CGRect) -> CGPath {
 }
 
 func applyMacOSIconMask(to image: NSImage, size: CGSize) -> NSImage? {
-    let outputImage = NSImage(size: size)
-
-    outputImage.lockFocus()
-
-    guard let context = NSGraphicsContext.current?.cgContext else {
-        outputImage.unlockFocus()
+    guard let rep = NSBitmapImageRep(
+        bitmapDataPlanes: nil,
+        pixelsWide: Int(size.width),
+        pixelsHigh: Int(size.height),
+        bitsPerSample: 8,
+        samplesPerPixel: 4,
+        hasAlpha: true,
+        isPlanar: false,
+        colorSpaceName: .deviceRGB,
+        bytesPerRow: 0,
+        bitsPerPixel: 0
+    ) else {
         return nil
     }
 
-    // Create the superellipse mask path
-    let rect = CGRect(origin: .zero, size: size)
-    let maskPath = createSuperellipsePath(in: rect)
+    guard let context = NSGraphicsContext(bitmapImageRep: rep)?.cgContext else {
+        return nil
+    }
 
-    // Apply the mask
+    let rect = CGRect(origin: .zero, size: size)
+
+    // Render into a transparent target so corner pixels stay alpha=0.
+    context.setFillColor(NSColor.clear.cgColor)
+    context.fill(rect)
+    context.setShouldAntialias(true)
+    context.interpolationQuality = .high
+
+    let maskPath = createSuperellipsePath(in: rect)
     context.addPath(maskPath)
     context.clip()
 
-    // Draw the original image
-    image.draw(in: rect, from: .zero, operation: .sourceOver, fraction: 1.0)
+    let contentScale = resolvedContentScale()
+    let drawWidth = rect.width * contentScale
+    let drawHeight = rect.height * contentScale
+    let drawRect = CGRect(
+        x: (rect.width - drawWidth) / 2,
+        y: (rect.height - drawHeight) / 2,
+        width: drawWidth,
+        height: drawHeight
+    )
 
-    outputImage.unlockFocus()
+    guard let cgImage = image.cgImage(
+        forProposedRect: nil,
+        context: nil,
+        hints: [NSImageRep.HintKey.interpolation: NSImageInterpolation.high]
+    ) else {
+        return nil
+    }
 
+    // Apply a rounded inset enclosure so scaling down stays rounded (not square).
+    context.saveGState()
+    let insetMaskPath = createSuperellipsePath(in: drawRect)
+    context.addPath(insetMaskPath)
+    context.clip()
+    context.draw(cgImage, in: drawRect)
+    context.restoreGState()
+
+    let outputImage = NSImage(size: size)
+    outputImage.addRepresentation(rep)
     return outputImage
 }
 
@@ -137,10 +183,13 @@ let iconSizes: [(name: String, size: Int, scale: Int)] = [
     ("icon_512x512@2x", 1024, 2)
 ]
 
-// Get script directory
-let scriptPath = CommandLine.arguments[0]
-let scriptDir = (scriptPath as NSString).deletingLastPathComponent
-let projectRoot = (scriptDir as NSString).deletingLastPathComponent
+// Get project root from this script location (works when run via `swift script.swift`).
+let scriptURL = URL(fileURLWithPath: #filePath).resolvingSymlinksInPath()
+let projectRoot = scriptURL
+    .deletingLastPathComponent() // utils
+    .deletingLastPathComponent() // scripts
+    .deletingLastPathComponent() // project root
+    .path
 
 let inputDir = "\(projectRoot)/assets/Mac"
 let outputDir = "\(projectRoot)/assets/AppIcon.iconset"
@@ -154,35 +203,43 @@ if !fileManager.fileExists(atPath: outputDir) {
 print("Applying macOS icon mask to images...")
 print("Input: \(inputDir)")
 print("Output: \(outputDir)")
+print("Content scale: \(String(format: "%.2f", resolvedContentScale()))")
 print("")
 
-// Map input files to their sizes (based on actual pixel dimensions)
-let inputMapping: [Int: String] = [
-    16: "16.png",           // 16x16
-    32: "16@2x.png",        // 32x32 (or use 32.png)
-    64: "32@2x.png",        // 64x64
-    128: "128.png",         // 128x128
-    256: "128@2x.png",      // 256x256 (or use 256.png)
-    512: "256@2x.png",      // 512x512 (or use 512.png)
-    1024: "512@2x.png"      // 1024x1024
+// Map target size to candidate source files (first match wins).
+let inputMapping: [Int: [String]] = [
+    16: ["16.png", "MacOS-16.png"],
+    32: ["16@2x.png", "32.png", "MacOS-32.png"],
+    64: ["32@2x.png", "64.png", "MacOS-64.png"],
+    128: ["128.png", "MacOS-128.png"],
+    256: ["128@2x.png", "256.png", "MacOS-256.png"],
+    512: ["256@2x.png", "512.png", "MacOS-512.png"],
+    1024: ["512@2x.png", "1024.png", "MacOS-1024.png"]
 ]
 
 for (name, size, _) in iconSizes {
-    // Find the best source image (prefer exact match, then larger)
+    // Find the best source image (prefer exact match names above, then largest available)
     var sourceFile: String?
 
-    if let exactMatch = inputMapping[size] {
-        let path = "\(inputDir)/\(exactMatch)"
-        if fileManager.fileExists(atPath: path) {
-            sourceFile = path
+    if let candidates = inputMapping[size] {
+        for candidate in candidates {
+            let path = "\(inputDir)/\(candidate)"
+            if fileManager.fileExists(atPath: path) {
+                sourceFile = path
+                break
+            }
         }
     }
 
     // Fall back to the largest available image
     if sourceFile == nil {
-        let largestPath = "\(inputDir)/512@2x.png"
-        if fileManager.fileExists(atPath: largestPath) {
-            sourceFile = largestPath
+        let fallbacks = ["512@2x.png", "1024.png", "MacOS-1024.png"]
+        for fallback in fallbacks {
+            let largestPath = "\(inputDir)/\(fallback)"
+            if fileManager.fileExists(atPath: largestPath) {
+                sourceFile = largestPath
+                break
+            }
         }
     }
 
