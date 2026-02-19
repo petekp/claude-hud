@@ -10,6 +10,8 @@ enum DaemonService {
         static let launchAgentPlistName = "\(label).plist"
         static let binaryName = "capacitor-daemon"
         static let enabledEnv = "CAPACITOR_DAEMON_ENABLED"
+        static let socketEnv = "CAPACITOR_DAEMON_SOCKET"
+        static let socketName = "daemon.sock"
         static let throttleInterval: Int = 10
     }
 
@@ -79,6 +81,9 @@ enum DaemonService {
             uid: uid_t = getuid(),
             runLaunchctl: ([String]) -> (exitCode: Int32, output: String) = systemLaunchctl,
             smAppServiceRegistration: () -> RegistrationResult = registerWithSMAppServiceIfAvailable,
+            daemonHealthCheck: () -> Bool = isDaemonHealthy,
+            healthCheckAttempts: Int = 6,
+            healthCheckRetryDelay: TimeInterval = 0.2,
         ) -> String? {
             switch smAppServiceRegistration() {
             case .success:
@@ -90,7 +95,31 @@ enum DaemonService {
                 ) {
                     return cleanupError
                 }
-                return nil
+                let attempts = max(1, healthCheckAttempts)
+                if daemonHealthCheckPasses(
+                    daemonHealthCheck: daemonHealthCheck,
+                    attempts: attempts,
+                    retryDelay: max(0, healthCheckRetryDelay),
+                ) {
+                    return nil
+                }
+
+                DebugLog.write(
+                    "DaemonService.installAndKickstart smAppServiceHealthyCheck=failed attempts=\(attempts) fallback=launchctl",
+                )
+                Telemetry.emit(
+                    "daemon_registration_error",
+                    "SMAppService registration succeeded but daemon health check failed; falling back to launchctl",
+                    payload: [
+                        "attempts": attempts,
+                    ],
+                )
+                return installAndKickstartLegacy(
+                    binaryPath: binaryPath,
+                    homeDir: homeDir,
+                    uid: uid,
+                    runLaunchctl: runLaunchctl,
+                )
             case let .requiresApproval(message):
                 DebugLog.write("DaemonService.installAndKickstart smAppService=requiresApproval")
                 Telemetry.emit("daemon_registration_error", "SMAppService registration requires user approval", payload: [
@@ -393,6 +422,173 @@ enum DaemonService {
             let fileSize = (attributes[.size] as? NSNumber)?.int64Value ?? -1
             let modifiedAt = (attributes[.modificationDate] as? Date)?.timeIntervalSince1970 ?? 0
             return "\(fileSize)-\(Int64(modifiedAt))"
+        }
+
+        private static func daemonHealthCheckPasses(
+            daemonHealthCheck: () -> Bool,
+            attempts: Int,
+            retryDelay: TimeInterval,
+        ) -> Bool {
+            for attempt in 1 ... attempts {
+                if daemonHealthCheck() {
+                    DebugLog.write(
+                        "DaemonService.installAndKickstart daemonHealthCheck=ok attempt=\(attempt)",
+                    )
+                    return true
+                }
+
+                if attempt < attempts, retryDelay > 0 {
+                    Thread.sleep(forTimeInterval: retryDelay)
+                }
+            }
+            return false
+        }
+
+        private static func isDaemonHealthy() -> Bool {
+            let socket = daemonSocketPath()
+            guard !socket.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                return false
+            }
+
+            do {
+                let requestData = try healthRequestPayload()
+                let fd = try openUnixSocket(path: socket, timeoutSeconds: 0.6)
+                defer { close(fd) }
+
+                try writeAll(fd: fd, data: requestData)
+                let response = try readUntilNewline(fd: fd, maxBytes: 512 * 1024)
+                guard !response.isEmpty else {
+                    return false
+                }
+
+                guard let root = try JSONSerialization.jsonObject(with: response, options: []) as? [String: Any],
+                      (root["ok"] as? Bool) == true,
+                      let payload = root["data"] as? [String: Any],
+                      (payload["status"] as? String) == "ok"
+                else {
+                    return false
+                }
+
+                return true
+            } catch {
+                DebugLog.write("DaemonService.installAndKickstart daemonHealthCheck error=\(error)")
+                return false
+            }
+        }
+
+        private static func daemonSocketPath() -> String {
+            if let override = getenv(Constants.socketEnv) {
+                return String(cString: override)
+            }
+            let home = FileManager.default.homeDirectoryForCurrentUser.path
+            return (home as NSString).appendingPathComponent(".capacitor/\(Constants.socketName)")
+        }
+
+        private static func healthRequestPayload() throws -> Data {
+            let request: [String: Any] = [
+                "protocol_version": 1,
+                "method": "get_health",
+                "id": "daemon-service-health",
+            ]
+            let data = try JSONSerialization.data(withJSONObject: request, options: [])
+            var payload = data
+            payload.append(0x0A)
+            return payload
+        }
+
+        private static func openUnixSocket(path: String, timeoutSeconds: TimeInterval) throws -> Int32 {
+            let fd = socket(AF_UNIX, SOCK_STREAM, 0)
+            if fd < 0 {
+                throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
+            }
+
+            var timeout = timeval(
+                tv_sec: Int(timeoutSeconds),
+                tv_usec: Int32((timeoutSeconds - floor(timeoutSeconds)) * 1_000_000),
+            )
+            let timeSize = socklen_t(MemoryLayout<timeval>.size)
+            _ = setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &timeout, timeSize)
+            _ = setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &timeout, timeSize)
+            var noSigpipe: Int32 = 1
+            _ = setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE, &noSigpipe, socklen_t(MemoryLayout<Int32>.size))
+
+            var addr = sockaddr_un()
+            addr.sun_family = sa_family_t(AF_UNIX)
+            let maxLen = MemoryLayout.size(ofValue: addr.sun_path)
+            guard path.utf8.count < maxLen else {
+                close(fd)
+                throw POSIXError(.ENAMETOOLONG)
+            }
+
+            path.withCString { cstr in
+                withUnsafeMutablePointer(to: &addr.sun_path) { ptr in
+                    ptr.withMemoryRebound(to: Int8.self, capacity: maxLen) { rebounded in
+                        _ = strncpy(rebounded, cstr, maxLen - 1)
+                    }
+                }
+            }
+
+            let result = withUnsafePointer(to: &addr) { ptr in
+                ptr.withMemoryRebound(to: sockaddr.self, capacity: 1) {
+                    connect(fd, $0, socklen_t(MemoryLayout<sockaddr_un>.size))
+                }
+            }
+            if result != 0 {
+                let err = POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
+                close(fd)
+                throw err
+            }
+
+            return fd
+        }
+
+        private static func writeAll(fd: Int32, data: Data) throws {
+            try data.withUnsafeBytes { buffer in
+                guard let base = buffer.baseAddress else { return }
+                var sent = 0
+                while sent < data.count {
+                    let n = write(fd, base.advanced(by: sent), data.count - sent)
+                    if n > 0 {
+                        sent += n
+                    } else if n == 0 {
+                        break
+                    } else if errno == EINTR {
+                        continue
+                    } else if errno == EAGAIN || errno == EWOULDBLOCK {
+                        throw POSIXError(.ETIMEDOUT)
+                    } else {
+                        throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
+                    }
+                }
+            }
+        }
+
+        private static func readUntilNewline(fd: Int32, maxBytes: Int) throws -> Data {
+            var buffer = Data()
+            var chunk = [UInt8](repeating: 0, count: 4096)
+            while true {
+                let n = read(fd, &chunk, chunk.count)
+                if n > 0 {
+                    buffer.append(contentsOf: chunk.prefix(n))
+                    if buffer.count > maxBytes {
+                        throw POSIXError(.EOVERFLOW)
+                    }
+                    if let newlineIndex = buffer.firstIndex(of: 0x0A) {
+                        return Data(buffer.prefix(upTo: newlineIndex))
+                    }
+                    continue
+                }
+                if n == 0 {
+                    return buffer
+                }
+                if errno == EINTR {
+                    continue
+                }
+                if errno == EAGAIN || errno == EWOULDBLOCK {
+                    throw POSIXError(.ETIMEDOUT)
+                }
+                throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
+            }
         }
 
         private static func systemLaunchctl(_ arguments: [String]) -> (exitCode: Int32, output: String) {

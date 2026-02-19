@@ -188,6 +188,7 @@ final class DaemonServiceTests: XCTestCase {
                 uid: 501,
                 runLaunchctl: runLaunchctl,
                 smAppServiceRegistration: { .success },
+                daemonHealthCheck: { true },
             )
         XCTAssertNil(error)
         XCTAssertTrue(calls.isEmpty)
@@ -301,6 +302,7 @@ final class DaemonServiceTests: XCTestCase {
                 uid: 501,
                 runLaunchctl: runLaunchctl,
                 smAppServiceRegistration: { .success },
+                daemonHealthCheck: { true },
             )
 
         XCTAssertNil(error)
@@ -338,6 +340,89 @@ final class DaemonServiceTests: XCTestCase {
         XCTAssertNotNil(error)
         XCTAssertTrue(error?.contains("bootstrap") == true)
         XCTAssertFalse(calls.contains { $0.first == "kickstart" })
+    }
+
+    func testLaunchAgentInstallFallsBackWhenSMAppServiceSucceedsButDaemonUnhealthy() throws {
+        let homeDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: homeDir, withIntermediateDirectories: true)
+
+        var calls: [[String]] = []
+        let runLaunchctl: ([String]) -> (exitCode: Int32, output: String) = { args in
+            calls.append(args)
+            switch args.first {
+            case "print":
+                return (1, "not loaded")
+            case "bootstrap", "kickstart":
+                return (0, "")
+            default:
+                XCTFail("Unexpected launchctl call: \(args)")
+                return (1, "unexpected")
+            }
+        }
+
+        var healthChecks = 0
+        let error = DaemonService
+            .LaunchAgentManager
+            .installAndKickstart(
+                binaryPath: "/bin/true",
+                homeDir: homeDir,
+                uid: 501,
+                runLaunchctl: runLaunchctl,
+                smAppServiceRegistration: { .success },
+                daemonHealthCheck: {
+                    healthChecks += 1
+                    return false
+                },
+                healthCheckAttempts: 2,
+                healthCheckRetryDelay: 0,
+            )
+
+        XCTAssertNil(error)
+        XCTAssertEqual(healthChecks, 2)
+
+        let plistPath = homeDir
+            .appendingPathComponent("Library/LaunchAgents/com.capacitor.daemon.plist")
+            .path
+        XCTAssertEqual(calls, [
+            ["print", "gui/501/com.capacitor.daemon"],
+            ["bootstrap", "gui/501", plistPath],
+            ["kickstart", "gui/501/com.capacitor.daemon"],
+        ])
+    }
+
+    func testLaunchAgentInstallSurfacesErrorWhenSMAppServiceSucceedsButFallbackFails() throws {
+        let homeDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: homeDir, withIntermediateDirectories: true)
+
+        var calls: [[String]] = []
+        let runLaunchctl: ([String]) -> (exitCode: Int32, output: String) = { args in
+            calls.append(args)
+            switch args.first {
+            case "print":
+                return (1, "not loaded")
+            case "bootstrap":
+                return (1, "bootstrap failed")
+            default:
+                return (0, "")
+            }
+        }
+
+        let error = DaemonService
+            .LaunchAgentManager
+            .installAndKickstart(
+                binaryPath: "/bin/true",
+                homeDir: homeDir,
+                uid: 501,
+                runLaunchctl: runLaunchctl,
+                smAppServiceRegistration: { .success },
+                daemonHealthCheck: { false },
+                healthCheckAttempts: 1,
+                healthCheckRetryDelay: 0,
+            )
+
+        XCTAssertNotNil(error)
+        XCTAssertTrue(error?.contains("bootstrap") == true)
+        XCTAssertEqual(calls.count(where: { $0.first == "kickstart" }), 0)
     }
 
     func testWriteLaunchAgentPlistIncludesBinaryRevisionEnvironment() throws {
