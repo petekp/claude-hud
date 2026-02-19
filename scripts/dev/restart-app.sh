@@ -8,6 +8,24 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 # shellcheck source=/dev/null
 source "$SCRIPT_DIR/load-runtime-env.sh"
 
+# Strip stale demo-mode environment variables.
+# The demo recording script (run-vertical-slice.sh) sets these via launchctl,
+# but if it exits uncleanly the values persist and silently activate demo mode
+# on every subsequent restart. Clear them here unless the caller explicitly
+# re-exports them (run-vertical-slice.sh does this before invoking us).
+DEMO_ENV_VARS=(
+    CAPACITOR_DEMO_MODE
+    CAPACITOR_DEMO_SCENARIO
+    CAPACITOR_DEMO_DISABLE_SIDE_EFFECTS
+    CAPACITOR_DEMO_PROJECTS_FILE
+)
+for _var in "${DEMO_ENV_VARS[@]}"; do
+    if [[ -z "${!_var-}" ]]; then
+        launchctl unsetenv "$_var" 2>/dev/null || true
+    fi
+done
+unset _var
+
 # Parse flags
 FORCE_REBUILD=false
 SWIFT_ONLY=false
