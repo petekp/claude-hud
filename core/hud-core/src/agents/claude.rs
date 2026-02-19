@@ -39,7 +39,7 @@ impl ClaudeAdapter {
     fn state_detail(state: SessionState) -> Option<String> {
         match state {
             SessionState::Compacting => Some("compacting context".to_string()),
-            SessionState::Waiting => Some("waiting for permission".to_string()),
+            SessionState::Waiting => Some("waiting for input or permission".to_string()),
             _ => None,
         }
     }
@@ -135,7 +135,7 @@ mod tests {
     fn test_state_mapping_waiting_detail() {
         assert_eq!(
             ClaudeAdapter::state_detail(SessionState::Waiting),
-            Some("waiting for permission".to_string())
+            Some("waiting for input or permission".to_string())
         );
     }
 }

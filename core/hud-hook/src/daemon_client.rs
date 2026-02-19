@@ -7,7 +7,7 @@ use capacitor_daemon_protocol::{
     EventEnvelope, EventType, Method, Request, Response, MAX_REQUEST_BYTES, PROTOCOL_VERSION,
 };
 use chrono::Utc;
-use hud_core::state::HookEvent;
+use hud_core::state::{HookEvent, HookInput};
 use hud_core::ParentApp;
 use rand::RngCore;
 use std::env;
@@ -26,10 +26,10 @@ const CAPABILITY_TOOL_USE_ID_CONSISTENCY: &str = "partial";
 
 pub fn send_handle_event(
     event: &HookEvent,
+    hook_input: &HookInput,
     session_id: &str,
     pid: Option<u32>,
     cwd: &str,
-    agent_id: Option<&str>,
 ) -> bool {
     if !daemon_enabled() {
         return false;
@@ -39,6 +39,11 @@ pub fn send_handle_event(
         Some(event_type) => event_type,
         None => return false,
     };
+
+    let hook_input_file_path = hook_input
+        .tool_input
+        .as_ref()
+        .and_then(|input| input.file_path.clone().or_else(|| input.path.clone()));
 
     let (tool, file_path, notification_type, stop_hook_active) = match event {
         HookEvent::PreToolUse {
@@ -53,6 +58,12 @@ pub fn send_handle_event(
             tool_name,
             file_path,
         } => (tool_name.clone(), file_path.clone(), None, None),
+        HookEvent::PermissionRequest => (
+            hook_input.tool_name.clone(),
+            hook_input_file_path,
+            None,
+            None,
+        ),
         HookEvent::Notification { notification_type } => {
             (None, None, Some(notification_type.clone()), None)
         }
@@ -62,7 +73,7 @@ pub fn send_handle_event(
 
     let event_id = make_event_id(pid.unwrap_or(0));
     let recorded_at = Utc::now().to_rfc3339();
-    let metadata = build_runtime_capability_metadata(agent_id);
+    let metadata = build_runtime_capability_metadata(Some(hook_input));
     let build_envelope = || EventEnvelope {
         event_id: event_id.clone(),
         recorded_at: recorded_at.clone(),
@@ -142,7 +153,7 @@ fn build_shell_cwd_metadata(
     Some(metadata)
 }
 
-fn build_runtime_capability_metadata(agent_id: Option<&str>) -> Option<serde_json::Value> {
+fn build_runtime_capability_metadata(hook_input: Option<&HookInput>) -> Option<serde_json::Value> {
     let mut metadata = serde_json::json!({
         "capabilities": {
             "hook_snapshot_introspection": false,
@@ -154,12 +165,11 @@ fn build_runtime_capability_metadata(agent_id: Option<&str>) -> Option<serde_jso
         }
     });
 
-    if let Some(trimmed) = agent_id.map(str::trim).filter(|value| !value.is_empty()) {
-        if let Some(object) = metadata.as_object_mut() {
-            object.insert(
-                "agent_id".to_string(),
-                serde_json::Value::String(trimmed.to_string()),
-            );
+    if let Some(object) = metadata.as_object_mut() {
+        if let Some(hook_input) = hook_input {
+            for (key, value) in hook_input.to_metadata_map() {
+                object.insert(key, value);
+            }
         }
     }
 
@@ -583,7 +593,7 @@ mod tests {
     }
 
     #[test]
-    fn send_handle_event_includes_runtime_capability_handshake_and_agent_id() {
+    fn send_handle_event_includes_runtime_capability_handshake_and_hook_metadata() {
         let _guard = env_lock();
 
         let socket_dir = std::path::Path::new("/tmp").join(format!(
@@ -617,12 +627,33 @@ mod tests {
             tool_name: Some("Read".to_string()),
             file_path: Some("src/main.rs".to_string()),
         };
+        let hook_input: HookInput = serde_json::from_value(serde_json::json!({
+            "hook_event_name": "PostToolUse",
+            "session_id": "session-1",
+            "transcript_path": "/tmp/transcript.jsonl",
+            "cwd": "/repo",
+            "permission_mode": "acceptEdits",
+            "tool_name": "Read",
+            "tool_use_id": "toolu_01ABC",
+            "tool_input": {
+                "path": "src/main.rs",
+                "command": "cat src/main.rs"
+            },
+            "tool_response": {
+                "filePath": "src/main.rs"
+            },
+            "agent_id": "agent-123",
+            "agent_type": "Explore",
+            "task_id": "task-001",
+            "future_field": "future-value"
+        }))
+        .expect("hook input");
         assert!(send_handle_event(
             &event,
+            &hook_input,
             "session-1",
             Some(4242),
             "/repo",
-            Some("agent-123"),
         ));
         server.join().unwrap();
 
@@ -651,6 +682,98 @@ mod tests {
             metadata.get("agent_id").and_then(|value| value.as_str()),
             Some("agent-123")
         );
+        assert_eq!(
+            metadata
+                .get("transcript_path")
+                .and_then(|value| value.as_str()),
+            Some("/tmp/transcript.jsonl")
+        );
+        assert_eq!(
+            metadata
+                .get("permission_mode")
+                .and_then(|value| value.as_str()),
+            Some("acceptEdits")
+        );
+        assert_eq!(
+            metadata.get("agent_type").and_then(|value| value.as_str()),
+            Some("Explore")
+        );
+        assert_eq!(
+            metadata.get("task_id").and_then(|value| value.as_str()),
+            Some("task-001")
+        );
+        assert_eq!(
+            metadata
+                .get("future_field")
+                .and_then(|value| value.as_str()),
+            Some("future-value")
+        );
+        assert_eq!(
+            metadata
+                .get("tool_input")
+                .and_then(|value| value.get("command"))
+                .and_then(|value| value.as_str()),
+            Some("cat src/main.rs")
+        );
+    }
+
+    #[test]
+    fn send_permission_request_event_includes_tool_and_file_path() {
+        let _guard = env_lock();
+
+        let socket_dir = std::path::Path::new("/tmp").join(format!(
+            "hh-permission-request-{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or(Duration::from_millis(0))
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&socket_dir).unwrap();
+        let socket_path = socket_dir.join("daemon.sock");
+        let _ = std::fs::remove_file(&socket_path);
+        let listener = std::os::unix::net::UnixListener::bind(&socket_path).unwrap();
+
+        let captured = Arc::new(Mutex::new(None::<EventEnvelope>));
+        let captured_clone = Arc::clone(&captured);
+        let server = std::thread::spawn(move || {
+            if let Ok((mut stream, _)) = listener.accept() {
+                let event = read_request_event(&mut stream);
+                *captured_clone.lock().unwrap() = event;
+                let response = Response::ok(None, serde_json::json!({"status": "ok"}));
+                let mut payload = serde_json::to_vec(&response).unwrap();
+                payload.push(b'\n');
+                let _ = stream.write_all(&payload);
+            }
+        });
+
+        let _socket_guard = EnvGuard::set(SOCKET_ENV, socket_path.to_str().unwrap());
+        let _enabled_guard = EnvGuard::set(ENABLE_ENV, "1");
+
+        let event = HookEvent::PermissionRequest;
+        let hook_input: HookInput = serde_json::from_value(serde_json::json!({
+            "hook_event_name": "PermissionRequest",
+            "session_id": "session-1",
+            "cwd": "/repo",
+            "tool_name": "Edit",
+            "tool_input": {
+                "file_path": "src/main.rs"
+            }
+        }))
+        .expect("hook input");
+
+        assert!(send_handle_event(
+            &event,
+            &hook_input,
+            "session-1",
+            Some(4242),
+            "/repo",
+        ));
+        server.join().unwrap();
+
+        let event = captured.lock().unwrap().take().expect("captured event");
+        assert_eq!(event.event_type, EventType::PermissionRequest);
+        assert_eq!(event.tool.as_deref(), Some("Edit"));
+        assert_eq!(event.file_path.as_deref(), Some("src/main.rs"));
     }
 
     #[test]

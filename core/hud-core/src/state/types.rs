@@ -4,6 +4,8 @@
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use serde_json::{Map, Value};
+use std::collections::BTreeMap;
 
 use crate::types::SessionState;
 
@@ -19,10 +21,24 @@ use crate::types::SessionState;
 pub struct HookInput {
     pub hook_event_name: Option<String>,
     pub session_id: Option<String>,
+    #[serde(default)]
+    pub transcript_path: Option<String>,
     pub cwd: Option<String>,
+    #[serde(default)]
+    pub permission_mode: Option<String>,
     pub trigger: Option<String>,
+    #[serde(default)]
+    pub prompt: Option<String>,
+    #[serde(default)]
+    pub custom_instructions: Option<String>,
     pub notification_type: Option<String>,
+    #[serde(default)]
+    pub message: Option<String>,
+    #[serde(default)]
+    pub title: Option<String>,
     pub stop_hook_active: Option<bool>,
+    #[serde(default)]
+    pub last_assistant_message: Option<String>,
     pub tool_name: Option<String>,
     pub tool_use_id: Option<String>,
     #[serde(default)]
@@ -30,25 +46,51 @@ pub struct HookInput {
     #[serde(default)]
     pub tool_response: Option<ToolResponse>,
     #[serde(default)]
-    pub source: Option<serde_json::Value>,
+    pub error: Option<String>,
     #[serde(default)]
-    pub reason: Option<serde_json::Value>,
+    pub is_interrupt: Option<bool>,
+    #[serde(default)]
+    pub permission_suggestions: Option<Value>,
+    #[serde(default)]
+    pub source: Option<Value>,
+    #[serde(default)]
+    pub reason: Option<Value>,
+    #[serde(default)]
+    pub model: Option<String>,
     pub agent_id: Option<String>,
+    #[serde(default)]
+    pub agent_type: Option<String>,
     pub agent_transcript_path: Option<String>,
+    #[serde(default)]
+    pub teammate_name: Option<String>,
+    #[serde(default)]
+    pub team_name: Option<String>,
+    #[serde(default)]
+    pub task_id: Option<String>,
+    #[serde(default)]
+    pub task_subject: Option<String>,
+    #[serde(default)]
+    pub task_description: Option<String>,
+    #[serde(default, flatten)]
+    pub extra: BTreeMap<String, Value>,
 }
 
 /// Tool input fields (file paths from Edit, Write, Read, etc.)
-#[derive(Debug, Clone, Default, Deserialize)]
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
 pub struct ToolInput {
     pub file_path: Option<String>,
     pub path: Option<String>,
+    #[serde(default, flatten)]
+    pub extra: BTreeMap<String, Value>,
 }
 
 /// Tool response fields
-#[derive(Debug, Clone, Default, Deserialize)]
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
 pub struct ToolResponse {
     #[serde(rename = "filePath")]
     pub file_path: Option<String>,
+    #[serde(default, flatten)]
+    pub extra: BTreeMap<String, Value>,
 }
 
 /// Parsed hook event with associated data.
@@ -157,6 +199,121 @@ impl HookInput {
             .or_else(|| std::env::var("PWD").ok())
             .map(|cwd| normalize_path(&cwd))
     }
+
+    /// Build event metadata from documented hook fields and unknown passthrough fields.
+    pub fn to_metadata_map(&self) -> Map<String, Value> {
+        let mut metadata = Map::new();
+
+        insert_trimmed_str(
+            &mut metadata,
+            "transcript_path",
+            self.transcript_path.as_deref(),
+        );
+        insert_trimmed_str(
+            &mut metadata,
+            "permission_mode",
+            self.permission_mode.as_deref(),
+        );
+        insert_trimmed_str(&mut metadata, "trigger", self.trigger.as_deref());
+        insert_trimmed_str(&mut metadata, "prompt", self.prompt.as_deref());
+        insert_trimmed_str(
+            &mut metadata,
+            "custom_instructions",
+            self.custom_instructions.as_deref(),
+        );
+        insert_trimmed_str(
+            &mut metadata,
+            "notification_type",
+            self.notification_type.as_deref(),
+        );
+        insert_trimmed_str(&mut metadata, "message", self.message.as_deref());
+        insert_trimmed_str(&mut metadata, "title", self.title.as_deref());
+        if let Some(stop_hook_active) = self.stop_hook_active {
+            metadata.insert(
+                "stop_hook_active".to_string(),
+                Value::Bool(stop_hook_active),
+            );
+        }
+        insert_trimmed_str(
+            &mut metadata,
+            "last_assistant_message",
+            self.last_assistant_message.as_deref(),
+        );
+        insert_trimmed_str(&mut metadata, "tool_name", self.tool_name.as_deref());
+        insert_trimmed_str(&mut metadata, "tool_use_id", self.tool_use_id.as_deref());
+        insert_trimmed_str(&mut metadata, "error", self.error.as_deref());
+        if let Some(is_interrupt) = self.is_interrupt {
+            metadata.insert("is_interrupt".to_string(), Value::Bool(is_interrupt));
+        }
+        insert_trimmed_str(&mut metadata, "model", self.model.as_deref());
+        insert_trimmed_str(&mut metadata, "agent_id", self.agent_id.as_deref());
+        insert_trimmed_str(&mut metadata, "agent_type", self.agent_type.as_deref());
+        insert_trimmed_str(
+            &mut metadata,
+            "agent_transcript_path",
+            self.agent_transcript_path.as_deref(),
+        );
+        insert_trimmed_str(
+            &mut metadata,
+            "teammate_name",
+            self.teammate_name.as_deref(),
+        );
+        insert_trimmed_str(&mut metadata, "team_name", self.team_name.as_deref());
+        insert_trimmed_str(&mut metadata, "task_id", self.task_id.as_deref());
+        insert_trimmed_str(&mut metadata, "task_subject", self.task_subject.as_deref());
+        insert_trimmed_str(
+            &mut metadata,
+            "task_description",
+            self.task_description.as_deref(),
+        );
+
+        if let Some(source) = &self.source {
+            metadata.insert("source".to_string(), source.clone());
+        }
+        if let Some(reason) = &self.reason {
+            metadata.insert("reason".to_string(), reason.clone());
+        }
+        if let Some(permission_suggestions) = &self.permission_suggestions {
+            metadata.insert(
+                "permission_suggestions".to_string(),
+                permission_suggestions.clone(),
+            );
+        }
+
+        if let Some(tool_input) = &self.tool_input {
+            if let Ok(value) = serde_json::to_value(tool_input) {
+                if !value_is_empty_object(&value) {
+                    metadata.insert("tool_input".to_string(), value);
+                }
+            }
+        }
+        if let Some(tool_response) = &self.tool_response {
+            if let Ok(value) = serde_json::to_value(tool_response) {
+                if !value_is_empty_object(&value) {
+                    metadata.insert("tool_response".to_string(), value);
+                }
+            }
+        }
+
+        for (key, value) in &self.extra {
+            metadata.entry(key.clone()).or_insert_with(|| value.clone());
+        }
+
+        metadata
+    }
+}
+
+fn insert_trimmed_str(map: &mut Map<String, Value>, key: &str, value: Option<&str>) {
+    if let Some(value) = value.map(str::trim).filter(|value| !value.is_empty()) {
+        map.insert(key.to_string(), Value::String(value.to_string()));
+    }
+}
+
+fn value_is_empty_object(value: &Value) -> bool {
+    match value {
+        Value::Object(object) => object.is_empty(),
+        _ => false,
+    }
 }
 
 /// Normalize a path: strip trailing slashes (except for root "/").
@@ -177,18 +334,36 @@ mod tests {
         HookInput {
             hook_event_name: None,
             session_id: None,
+            transcript_path: None,
             cwd: None,
+            permission_mode: None,
             trigger: None,
+            prompt: None,
+            custom_instructions: None,
             notification_type: None,
+            message: None,
+            title: None,
             stop_hook_active: None,
+            last_assistant_message: None,
             tool_name: None,
             tool_use_id: None,
             tool_input: None,
             tool_response: None,
+            error: None,
+            is_interrupt: None,
+            permission_suggestions: None,
             source: None,
             reason: None,
+            model: None,
             agent_id: None,
+            agent_type: None,
             agent_transcript_path: None,
+            teammate_name: None,
+            team_name: None,
+            task_id: None,
+            task_subject: None,
+            task_description: None,
+            extra: BTreeMap::new(),
         }
     }
 
@@ -200,6 +375,7 @@ mod tests {
         input.tool_input = Some(ToolInput {
             file_path: Some("apps/docs/src/index.md".to_string()),
             path: None,
+            ..ToolInput::default()
         });
 
         let event = input.to_event().expect("event");
@@ -224,6 +400,7 @@ mod tests {
         input.tool_input = Some(ToolInput {
             file_path: None,
             path: Some("apps/docs/src/path.md".to_string()),
+            ..ToolInput::default()
         });
 
         let event = input.to_event().expect("event");
@@ -248,6 +425,7 @@ mod tests {
         input.tool_input = Some(ToolInput {
             file_path: Some("apps/docs/src/error.md".to_string()),
             path: None,
+            ..ToolInput::default()
         });
 
         let event = input.to_event().expect("event");
@@ -293,6 +471,87 @@ mod tests {
 
         assert_eq!(input.to_event(), Some(HookEvent::SessionStart));
     }
+
+    #[test]
+    fn hook_metadata_map_captures_documented_and_unknown_fields() {
+        let input: HookInput = serde_json::from_str(
+            r#"{
+                "hook_event_name":"TaskCompleted",
+                "session_id":"sess-3",
+                "transcript_path":"/tmp/transcript.jsonl",
+                "cwd":"/Users/petepetrash/Code/capacitor",
+                "permission_mode":"acceptEdits",
+                "tool_name":"Edit",
+                "tool_use_id":"toolu_123",
+                "prompt":"Please fix flaky CI tests",
+                "trigger":"manual",
+                "source":{"type":"startup"},
+                "reason":{"kind":"resume"},
+                "agent_id":"agent-42",
+                "agent_type":"Explore",
+                "agent_transcript_path":"/tmp/subagent.jsonl",
+                "message":"Claude needs your permission to use Bash",
+                "title":"Permission needed",
+                "notification_type":"permission_prompt",
+                "last_assistant_message":"Done",
+                "teammate_name":"implementer",
+                "team_name":"my-project",
+                "task_id":"task-001",
+                "task_subject":"Fix flaky tests",
+                "task_description":"Stabilize integration tests in CI",
+                "custom_instructions":"compact this",
+                "error":"Command exited with non-zero status code 1",
+                "is_interrupt":false,
+                "permission_suggestions":[{"type":"toolAlwaysAllow","tool":"Bash"}],
+                "tool_input":{"path":"src/main.rs","command":"npm test"},
+                "tool_response":{"filePath":"src/main.rs"},
+                "future_field":"future-value"
+            }"#,
+        )
+        .expect("HookInput should deserialize richer documented payload");
+
+        let metadata = input.to_metadata_map();
+
+        assert_eq!(
+            metadata.get("transcript_path").and_then(|v| v.as_str()),
+            Some("/tmp/transcript.jsonl")
+        );
+        assert_eq!(
+            metadata.get("permission_mode").and_then(|v| v.as_str()),
+            Some("acceptEdits")
+        );
+        assert_eq!(
+            metadata.get("prompt").and_then(|v| v.as_str()),
+            Some("Please fix flaky CI tests")
+        );
+        assert_eq!(
+            metadata.get("agent_type").and_then(|v| v.as_str()),
+            Some("Explore")
+        );
+        assert_eq!(
+            metadata.get("error").and_then(|v| v.as_str()),
+            Some("Command exited with non-zero status code 1")
+        );
+        assert_eq!(
+            metadata.get("is_interrupt").and_then(|v| v.as_bool()),
+            Some(false)
+        );
+        assert_eq!(
+            metadata.get("task_subject").and_then(|v| v.as_str()),
+            Some("Fix flaky tests")
+        );
+        assert_eq!(
+            metadata
+                .get("tool_input")
+                .and_then(|v| v.get("command"))
+                .and_then(|v| v.as_str()),
+            Some("npm test")
+        );
+        assert_eq!(
+            metadata.get("future_field").and_then(|v| v.as_str()),
+            Some("future-value")
+        );
+    }
 }
 
 // -----------------------------------------------------------------------------
@@ -304,9 +563,10 @@ mod tests {
 // PostToolUse            → working  (+ tracks file activity)
 // PostToolUseFailure     → working  (no file activity entry)
 // PermissionRequest      → waiting
-// Notification           → ready    (only idle_prompt type; others ignored)
+// Notification           → ready/waiting (idle_prompt|auth_success => ready, permission_prompt|elicitation_dialog => waiting)
 // PreCompact             → compacting
 // Stop                   → ready    (ignored if stop_hook_active=true)
+// TaskCompleted          → ready    (main agent only; teammate/subagent completions ignored)
 // SessionEnd             → removes session record
 // SubagentStop           → ignored  (implemented via agent_id metadata filtering)
 // -----------------------------------------------------------------------------
@@ -329,15 +589,49 @@ pub struct LastEvent {
     #[serde(default)]
     pub trigger: Option<String>,
     #[serde(default)]
+    pub prompt: Option<String>,
+    #[serde(default)]
     pub source: Option<serde_json::Value>,
     #[serde(default)]
     pub reason: Option<serde_json::Value>,
     #[serde(default)]
+    pub transcript_path: Option<String>,
+    #[serde(default)]
+    pub permission_mode: Option<String>,
+    #[serde(default)]
+    pub custom_instructions: Option<String>,
+    #[serde(default)]
+    pub error: Option<String>,
+    #[serde(default)]
+    pub is_interrupt: Option<bool>,
+    #[serde(default)]
     pub stop_hook_active: Option<bool>,
+    #[serde(default)]
+    pub message: Option<String>,
+    #[serde(default)]
+    pub title: Option<String>,
+    #[serde(default)]
+    pub last_assistant_message: Option<String>,
+    #[serde(default)]
+    pub model: Option<String>,
     #[serde(default)]
     pub agent_id: Option<String>,
     #[serde(default)]
+    pub agent_type: Option<String>,
+    #[serde(default)]
     pub agent_transcript_path: Option<String>,
+    #[serde(default)]
+    pub teammate_name: Option<String>,
+    #[serde(default)]
+    pub team_name: Option<String>,
+    #[serde(default)]
+    pub task_id: Option<String>,
+    #[serde(default)]
+    pub task_subject: Option<String>,
+    #[serde(default)]
+    pub task_description: Option<String>,
+    #[serde(default)]
+    pub permission_suggestions: Option<serde_json::Value>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

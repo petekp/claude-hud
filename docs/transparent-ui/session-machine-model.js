@@ -31,7 +31,15 @@
       id: "permission_to_waiting",
       from: "working",
       to: "waiting",
-      trigger: "permission_request/notification.permission_prompt",
+      trigger: "permission_request/notification.permission_prompt|notification.elicitation_dialog",
+      guardKey: null,
+      guardDescription: null
+    },
+    {
+      id: "auth_success_to_ready",
+      from: "waiting",
+      to: "ready",
+      trigger: "notification.auth_success",
       guardKey: null,
       guardDescription: null
     },
@@ -64,8 +72,8 @@
       from: "working",
       to: "ready",
       trigger: "task_completed",
-      guardKey: null,
-      guardDescription: null
+      guardKey: "task_completed_main_agent",
+      guardDescription: "Skip task_completed when metadata.agent_id or metadata.teammate_name exists."
     },
     {
       id: "session_end_to_idle",
@@ -255,9 +263,15 @@
       },
       {
         key: "agent_id",
-        label: "agent_id skip",
+        label: "agent_id skip (stop/task)",
         status: "unknown",
-        detail: "Only visible on raw stop event metadata; not persisted in sessions snapshot."
+        detail: "Only visible on raw stop/task metadata; not persisted in sessions snapshot."
+      },
+      {
+        key: "task_completed_main_agent",
+        label: "task_completed main-agent",
+        status: "unknown",
+        detail: "Reducer skips task_completed when metadata.agent_id or metadata.teammate_name exists."
       }
     ];
   }
