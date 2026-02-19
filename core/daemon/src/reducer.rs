@@ -132,6 +132,13 @@ pub fn reduce_session(current: Option<&SessionRecord>, event: &EventEnvelope) ->
                     )
                 }
             }
+            Some("auth_success") => upsert_session(
+                current,
+                event,
+                session_id,
+                SessionState::Ready,
+                Some("auth_success".to_string()),
+            ),
             Some("permission_prompt") => upsert_session(
                 current,
                 event,
@@ -139,6 +146,9 @@ pub fn reduce_session(current: Option<&SessionRecord>, event: &EventEnvelope) ->
                 SessionState::Waiting,
                 Some("permission_prompt".to_string()),
             ),
+            Some("elicitation_dialog") => {
+                upsert_session(current, event, session_id, SessionState::Waiting, None)
+            }
             _ => SessionUpdate::Skip,
         },
         EventType::SubagentStart | EventType::SubagentStop | EventType::TeammateIdle => {
@@ -157,26 +167,40 @@ pub fn reduce_session(current: Option<&SessionRecord>, event: &EventEnvelope) ->
                 )
             }
         }
-        EventType::TaskCompleted => upsert_session(
-            current,
-            event,
-            session_id,
-            SessionState::Ready,
-            Some("task_completed".to_string()),
-        ),
+        EventType::TaskCompleted => {
+            if has_auxiliary_task_metadata(event) {
+                SessionUpdate::Skip
+            } else {
+                upsert_session(
+                    current,
+                    event,
+                    session_id,
+                    SessionState::Ready,
+                    Some("task_completed".to_string()),
+                )
+            }
+        }
         EventType::SessionEnd => SessionUpdate::Delete { session_id },
         EventType::ShellCwd => SessionUpdate::Skip,
     }
 }
 
-fn has_agent_id_metadata(event: &EventEnvelope) -> bool {
+fn has_non_empty_metadata_string(event: &EventEnvelope, key: &str) -> bool {
     event
         .metadata
         .as_ref()
-        .and_then(|value| value.get("agent_id"))
+        .and_then(|value| value.get(key))
         .and_then(|value| value.as_str())
         .map(|value| !value.is_empty())
         .unwrap_or(false)
+}
+
+fn has_agent_id_metadata(event: &EventEnvelope) -> bool {
+    has_non_empty_metadata_string(event, "agent_id")
+}
+
+fn has_auxiliary_task_metadata(event: &EventEnvelope) -> bool {
+    has_agent_id_metadata(event) || has_non_empty_metadata_string(event, "teammate_name")
 }
 
 fn should_skip_stop(current: Option<&SessionRecord>, event: &EventEnvelope) -> bool {
@@ -796,9 +820,39 @@ mod tests {
     }
 
     #[test]
+    fn notification_auth_success_sets_ready() {
+        let mut event = event_base(EventType::Notification);
+        event.notification_type = Some("auth_success".to_string());
+        let update = reduce_session(None, &event);
+
+        match update {
+            SessionUpdate::Upsert(record) => {
+                assert_eq!(record.state, SessionState::Ready);
+                assert_eq!(record.ready_reason, Some("auth_success".to_string()));
+            }
+            _ => panic!("expected upsert"),
+        }
+    }
+
+    #[test]
     fn notification_permission_prompt_sets_waiting() {
         let mut event = event_base(EventType::Notification);
         event.notification_type = Some("permission_prompt".to_string());
+        let update = reduce_session(None, &event);
+
+        match update {
+            SessionUpdate::Upsert(record) => {
+                assert_eq!(record.state, SessionState::Waiting);
+                assert_eq!(record.ready_reason, None);
+            }
+            _ => panic!("expected upsert"),
+        }
+    }
+
+    #[test]
+    fn notification_elicitation_dialog_sets_waiting() {
+        let mut event = event_base(EventType::Notification);
+        event.notification_type = Some("elicitation_dialog".to_string());
         let update = reduce_session(None, &event);
 
         match update {
@@ -965,6 +1019,40 @@ mod tests {
             SessionUpdate::Upsert(record) => {
                 assert_eq!(record.state, SessionState::Ready);
                 assert_eq!(record.tools_in_flight, 0);
+            }
+            _ => panic!("expected upsert"),
+        }
+    }
+
+    #[test]
+    fn task_completed_with_agent_id_metadata_skips() {
+        let mut event = event_base(EventType::TaskCompleted);
+        event.metadata = Some(serde_json::json!({ "agent_id": "agent-1" }));
+        let update = reduce_session(None, &event);
+        assert_eq!(update, SessionUpdate::Skip);
+    }
+
+    #[test]
+    fn task_completed_with_teammate_name_metadata_skips() {
+        let mut event = event_base(EventType::TaskCompleted);
+        event.metadata = Some(serde_json::json!({
+            "teammate_name": "implementer",
+            "team_name": "my-project"
+        }));
+        let update = reduce_session(None, &event);
+        assert_eq!(update, SessionUpdate::Skip);
+    }
+
+    #[test]
+    fn task_completed_with_team_name_only_sets_ready() {
+        let mut event = event_base(EventType::TaskCompleted);
+        event.metadata = Some(serde_json::json!({ "team_name": "my-project" }));
+
+        let update = reduce_session(None, &event);
+        match update {
+            SessionUpdate::Upsert(record) => {
+                assert_eq!(record.state, SessionState::Ready);
+                assert_eq!(record.ready_reason, Some("task_completed".to_string()));
             }
             _ => panic!("expected upsert"),
         }

@@ -94,3 +94,29 @@ test("normalizeState maps unknown state to idle", function() {
   assert.equal(model.normalizeState("compacting"), "compacting");
   assert.equal(model.normalizeState("unknown"), "idle");
 });
+
+test("graph includes auth_success transition back to ready", function() {
+  const transition = model.GRAPH_TRANSITIONS.find(function(t) {
+    return t.id === "auth_success_to_ready";
+  });
+  assert.ok(transition);
+  assert.equal(transition.from, "waiting");
+  assert.equal(transition.to, "ready");
+  assert.equal(transition.trigger, "notification.auth_success");
+});
+
+test("task_completed transition encodes main-agent guard", function() {
+  const transition = model.GRAPH_TRANSITIONS.find(function(t) {
+    return t.id === "task_completed_to_ready";
+  });
+  assert.ok(transition);
+  assert.equal(transition.guardKey, "task_completed_main_agent");
+});
+
+test("permission waiting transition includes elicitation_dialog", function() {
+  const transition = model.GRAPH_TRANSITIONS.find(function(t) {
+    return t.id === "permission_to_waiting";
+  });
+  assert.ok(transition);
+  assert.ok(transition.trigger.includes("notification.elicitation_dialog"));
+});

@@ -9,8 +9,8 @@
 //! UserPromptSubmit       → working
 //! PreToolUse/PostToolUse/PostToolUseFailure → working  (heartbeat if already working)
 //! PermissionRequest      → waiting
-//! Notification           → ready    (only idle_prompt type)
-//! TaskCompleted          → ready
+//! Notification           → ready/waiting (idle_prompt|auth_success => ready, permission_prompt|elicitation_dialog => waiting)
+//! TaskCompleted          → ready    (main agent only)
 //! PreCompact             → compacting
 //! Stop                   → ready    (unless stop_hook_active=true)
 //! SessionEnd             → removes session record
@@ -111,10 +111,10 @@ fn handle_hook_input_with_home(hook_input: HookInput, home: &Path) -> Result<(),
 
     let daemon_sent = crate::daemon_client::send_handle_event(
         &event,
+        &hook_input,
         &session_id,
         session_pid,
         &cwd,
-        hook_input.agent_id.as_deref(),
     );
     if daemon_sent {
         touch_heartbeat(home);
@@ -148,7 +148,7 @@ fn is_active_state(state: Option<SessionState>) -> bool {
 fn process_event(
     event: &HookEvent,
     current_state: Option<SessionState>,
-    _input: &HookInput,
+    input: &HookInput,
 ) -> (Action, Option<SessionState>, Option<(String, String)>) {
     match event {
         HookEvent::SessionStart => {
@@ -190,9 +190,11 @@ fn process_event(
         HookEvent::PreCompact => (Action::Upsert, Some(SessionState::Compacting), None),
 
         HookEvent::Notification { notification_type } => {
-            if notification_type == "idle_prompt" {
+            if notification_type == "idle_prompt" || notification_type == "auth_success" {
                 (Action::Upsert, Some(SessionState::Ready), None)
-            } else if notification_type == "permission_prompt" {
+            } else if notification_type == "permission_prompt"
+                || notification_type == "elicitation_dialog"
+            {
                 (Action::Upsert, Some(SessionState::Waiting), None)
             } else {
                 (Action::Skip, None, None)
@@ -211,7 +213,13 @@ fn process_event(
             }
         }
 
-        HookEvent::TaskCompleted => (Action::Upsert, Some(SessionState::Ready), None),
+        HookEvent::TaskCompleted => {
+            if input.agent_id.is_some() || input.teammate_name.is_some() {
+                (Action::Skip, None, None)
+            } else {
+                (Action::Upsert, Some(SessionState::Ready), None)
+            }
+        }
 
         HookEvent::SessionEnd => (Action::Delete, None, None),
 
@@ -269,6 +277,7 @@ fn touch_heartbeat(home: &Path) {
 mod tests {
     use super::*;
     use crate::test_support::env_lock;
+    use std::collections::BTreeMap;
 
     struct EnvGuard {
         key: &'static str,
@@ -314,18 +323,36 @@ mod tests {
         let hook_input = HookInput {
             hook_event_name: Some("Stop".to_string()),
             session_id: Some("session-1".to_string()),
+            transcript_path: None,
             cwd: Some("/repo".to_string()),
+            permission_mode: None,
             trigger: None,
+            prompt: None,
+            custom_instructions: None,
             notification_type: None,
+            message: None,
+            title: None,
             stop_hook_active: Some(false),
+            last_assistant_message: None,
             tool_name: None,
             tool_use_id: None,
             tool_input: None,
             tool_response: None,
+            error: None,
+            is_interrupt: None,
+            permission_suggestions: None,
             source: None,
             reason: None,
+            model: None,
             agent_id: Some("agent-123".to_string()),
+            agent_type: None,
             agent_transcript_path: None,
+            teammate_name: None,
+            team_name: None,
+            task_id: None,
+            task_subject: None,
+            task_description: None,
+            extra: BTreeMap::new(),
         };
 
         let result = handle_hook_input_with_home(hook_input, &temp_dir);
@@ -353,18 +380,36 @@ mod tests {
         let hook_input = HookInput {
             hook_event_name: Some("SomeFutureHookEvent".to_string()),
             session_id: Some("session-1".to_string()),
+            transcript_path: None,
             cwd: Some("/repo".to_string()),
+            permission_mode: None,
             trigger: None,
+            prompt: None,
+            custom_instructions: None,
             notification_type: None,
+            message: None,
+            title: None,
             stop_hook_active: None,
+            last_assistant_message: None,
             tool_name: None,
             tool_use_id: None,
             tool_input: None,
             tool_response: None,
+            error: None,
+            is_interrupt: None,
+            permission_suggestions: None,
             source: None,
             reason: None,
+            model: None,
             agent_id: None,
+            agent_type: None,
             agent_transcript_path: None,
+            teammate_name: None,
+            team_name: None,
+            task_id: None,
+            task_subject: None,
+            task_description: None,
+            extra: BTreeMap::new(),
         };
 
         let result = handle_hook_input_with_home(hook_input, &temp_dir);
