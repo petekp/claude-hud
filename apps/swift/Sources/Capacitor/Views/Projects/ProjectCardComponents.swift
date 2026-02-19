@@ -334,11 +334,12 @@ struct ClickableProjectTitle: View {
     let action: () -> Void
 
     var font: Font = AppTypography.cardTitle.monospaced()
+    var accessibilityIdentifier: String?
 
     @State private var isHovered = false
     @Environment(\.prefersReducedMotion) private var reduceMotion
 
-    var body: some View {
+    private var button: some View {
         Button(action: action) {
             HStack(spacing: 4) {
                 Text(name)
@@ -365,6 +366,14 @@ struct ClickableProjectTitle: View {
         .help("View project details")
         .accessibilityLabel("View \(name) details")
         .accessibilityHint("Shows description, ideas, and other project information")
+    }
+
+    var body: some View {
+        if let accessibilityIdentifier {
+            button.accessibilityIdentifier(accessibilityIdentifier)
+        } else {
+            button
+        }
     }
 }
 

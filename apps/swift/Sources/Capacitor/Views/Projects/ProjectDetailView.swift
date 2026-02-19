@@ -21,6 +21,7 @@ struct ProjectDetailView: View {
                         BackButton(title: "Projects") {
                             appState.showProjectList()
                         }
+                        .accessibilityIdentifier(DemoAccessibility.backProjectsIdentifier)
 
                         Spacer()
                     }
@@ -128,6 +129,7 @@ struct ProjectDetailView: View {
         .onExitCommand {
             appState.showProjectList()
         }
+        .accessibilityIdentifier(DemoAccessibility.projectDetailsIdentifier(for: project))
     }
 }
 

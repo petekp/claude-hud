@@ -376,7 +376,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         // Re-validate hook setup on every launch
         // If hooks aren't configured, reset setupComplete to show WelcomeView
-        validateHookSetup()
+        if DemoConfig.current.isEnabled {
+            DebugLog.write("[Startup] Demo mode enabled, skipping hook validation")
+        } else {
+            validateHookSetup()
+        }
 
         // Lift subsidiary windows (Settings, About, Sparkle) above the main window
         // when always-on-top is active, so they aren't hidden behind it

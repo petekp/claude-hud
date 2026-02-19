@@ -210,7 +210,8 @@ struct ProjectCardView: View {
                 glassConfig: glassConfigForHandlers,
             )
             .contextMenu { cardContextMenu }
-            .accessibilityElement(children: .combine)
+            .accessibilityElement(children: .contain)
+            .accessibilityIdentifier(DemoAccessibility.projectCardIdentifier(for: project))
             .accessibilityLabel(project.name)
             .accessibilityValue(accessibilityStatusDescription)
             .accessibilityHint("Double-tap to open in terminal. Use actions menu for more options.")
@@ -262,6 +263,7 @@ struct ProjectCardView: View {
                     project: project,
                     nameColor: nameColor,
                     onInfoTap: onInfoTap,
+                    detailsAccessibilityIdentifier: DemoAccessibility.projectDetailsIdentifier(for: project),
                 )
 
                 ProjectCardContent(
@@ -377,6 +379,7 @@ private struct ProjectCardHeader: View {
     let project: Project
     let nameColor: Color
     let onInfoTap: (() -> Void)?
+    let detailsAccessibilityIdentifier: String
 
     var body: some View {
         HStack {
@@ -392,6 +395,7 @@ private struct ProjectCardHeader: View {
                     nameColor: nameColor,
                     isMissing: project.isMissing,
                     action: onInfoTap,
+                    accessibilityIdentifier: detailsAccessibilityIdentifier,
                 )
             } else {
                 Text(project.name)

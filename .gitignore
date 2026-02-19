@@ -13,6 +13,7 @@ logs
 *.log
 npm-debug.log*
 dist/
+artifacts/demo/
 
 # Rust
 target/

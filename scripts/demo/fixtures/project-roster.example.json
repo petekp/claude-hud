@@ -1,0 +1,32 @@
+{
+  "projects": [
+    {
+      "name": "Capacitor",
+      "path": "/Users/petepetrash/Code/capacitor",
+      "taskCount": 12,
+      "initialState": "working"
+    },
+    {
+      "name": "Agent Skills",
+      "path": "/Users/petepetrash/Code/agent-skills",
+      "taskCount": 8,
+      "initialState": "ready"
+    },
+    {
+      "name": "Telemetry",
+      "path": "/Users/petepetrash/Code/telemetry",
+      "taskCount": 4,
+      "initialState": "waiting"
+    },
+    {
+      "name": "Onboarding",
+      "path": "/Users/petepetrash/Code/onboarding",
+      "taskCount": 3,
+      "hidden": true,
+      "initialState": "compacting"
+    }
+  ],
+  "hiddenProjectPaths": [
+    "/Users/petepetrash/Code/telemetry"
+  ]
+}

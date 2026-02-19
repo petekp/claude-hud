@@ -1,0 +1,17 @@
+{
+  "steps": [
+    { "type": "wait", "duration": 1.5 },
+    { "type": "click", "identifier": "demo.project-card.tool-ui", "timeout": 12.0, "visible": true },
+    { "type": "wait", "duration": 1.8 },
+    { "type": "click", "identifier": "demo.project-card.assistant-ui", "timeout": 12.0, "visible": true },
+    { "type": "wait", "duration": 1.4 },
+    { "type": "click", "identifier": "demo.project-card.agentic-canvas", "timeout": 12.0, "visible": true },
+    { "type": "wait", "duration": 1.4 },
+    { "type": "click", "identifier": "demo.project-card.mcp-app-studio-starter", "timeout": 12.0, "visible": true },
+    { "type": "wait", "duration": 1.4 },
+    { "type": "click", "identifier": "demo.project-card.zui", "timeout": 12.0, "visible": true },
+    { "type": "wait", "duration": 1.4 },
+    { "type": "click", "identifier": "demo.project-card.writing", "timeout": 12.0, "visible": true },
+    { "type": "wait", "duration": 10.0 }
+  ]
+}

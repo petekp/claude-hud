@@ -160,12 +160,20 @@ class AppState {
 
     // MARK: - Private State
 
+    private let demoConfig: DemoConfig
     private let layoutModeKey = "layoutMode"
     private var engine: HudEngine?
     private var stalenessTimer: Timer?
+    @ObservationIgnored private var demoStateTimelineTask: _Concurrency.Task<Void, Never>?
     private var daemonStatusEvaluator = DaemonStatusEvaluator()
     private var daemonRecoveryDecider = DaemonRecoveryDecider()
     private(set) var sessionStateRevision = 0
+    private(set) var didScheduleRuntimeBootstrapForTesting = false
+    private(set) var didAttemptDaemonStartupForTesting = false
+    private(set) var didStartStalenessTimerForTesting = false
+    private(set) var didStartShellTrackingForTesting = false
+    private(set) var didStartDemoStateTimelineForTesting = false
+    private(set) var appliedDemoStateTimelineFramesForTesting = 0
 
     // MARK: - Computed Properties (bridging to managers)
 
@@ -177,21 +185,38 @@ class AppState {
         activeProjectResolver?.activeSource ?? .none
     }
 
+    var demoConfigForTesting: DemoConfig {
+        demoConfig
+    }
+
+    var isDemoModeEnabled: Bool {
+        demoConfig.isEnabled
+    }
+
+    var isQuickFeedbackEnabled: Bool {
+        !demoConfig.isEnabled
+    }
+
+    private var shouldDisableDemoSideEffects: Bool {
+        demoConfig.isEnabled && demoConfig.disableSideEffects
+    }
+
     // MARK: - Initialization
 
     init() {
-        DebugLog.write("AppState.init start daemonEnabled=\(DaemonClient.shared.isEnabled) home=\(FileManager.default.homeDirectoryForCurrentUser.path)")
+        demoConfig = DemoConfig.current
+        DebugLog.write(
+            "AppState.init start daemonEnabled=\(DaemonClient.shared.isEnabled) demoMode=\(demoConfig.isEnabled) home=\(FileManager.default.homeDirectoryForCurrentUser.path)",
+        )
         let config = AppConfig.current()
         channel = config.channel
+        DebugLog.write("AppState.init config channel=\(channel.rawValue)")
         featureFlags = config.featureFlags
         refreshAERoutingRuntimeFlags(with: nil)
         loadLayoutMode()
         loadDormantOverrides()
         ProjectOrderStore.migrateIfNeeded()
         loadProjectOrder()
-        if isIdeaCaptureEnabled {
-            loadCreations()
-        }
 
         activeProjectResolver = ActiveProjectResolver(
             sessionStateManager: sessionStateManager,
@@ -216,6 +241,20 @@ class AppState {
                 )
             }
         }
+
+        if applyDemoFixtureIfNeeded() {
+            return
+        }
+
+        if isIdeaCaptureEnabled {
+            loadCreations()
+        }
+
+        scheduleRuntimeBootstrap()
+    }
+
+    private func scheduleRuntimeBootstrap() {
+        didScheduleRuntimeBootstrapForTesting = true
 
         // Phase 2: Defer FFI work past first SwiftUI render
         _Concurrency.Task { @MainActor [weak self] in
@@ -242,6 +281,101 @@ class AppState {
         }
     }
 
+    private func applyDemoFixtureIfNeeded() -> Bool {
+        guard demoConfig.isEnabled else { return false }
+
+        let fixture: DemoFixture
+        do {
+            guard
+                let loadedFixture = try DemoFixtures.fixture(
+                    for: demoConfig.scenario,
+                    projectOverrideFilePath: demoConfig.projectsFilePath,
+                )
+            else {
+                error = "Unknown demo scenario: \(demoConfig.scenario ?? "nil")"
+                isLoading = false
+                DebugLog.write("AppState.demo unknown scenario=\(demoConfig.scenario ?? "nil")")
+                return true
+            }
+            fixture = loadedFixture
+        } catch {
+            self.error = error.localizedDescription
+            isLoading = false
+            DebugLog.write("AppState.demo fixture load failed error=\(error.localizedDescription)")
+            return true
+        }
+
+        channel = .alpha
+        featureFlags = fixture.featureFlags
+        layoutMode = .vertical
+        projectView = .list
+        dashboard = nil
+        projects = fixture.projects
+        manuallyDormant = Set(fixture.hiddenProjectPaths).intersection(Set(fixture.projects.map(\.path)))
+        projectOrder = fixture.projects.map(\.path)
+        suggestedProjects = []
+        selectedSuggestedPaths = []
+        projectStatuses = fixture.projectStatuses
+        sessionStateManager.applyFixtureSessionStates(fixture.sessionStates)
+        activeProjectResolver.updateProjects(projects)
+        activeProjectResolver.resolve()
+        startDemoStateTimelineIfNeeded(fixture: fixture)
+        shellStateStore.setRoutingProjectPath(nil)
+        daemonStatus = DaemonStatus(
+            isEnabled: false,
+            isHealthy: true,
+            message: "Demo mode",
+            pid: nil,
+            version: nil,
+        )
+        isLoading = false
+        error = nil
+
+        DebugLog.write(
+            "AppState.demo applied scenario=\(fixture.scenario) projects=\(projects.count) disableSideEffects=\(demoConfig.disableSideEffects) channel=\(channel.rawValue)",
+        )
+
+        return true
+    }
+
+    private func startDemoStateTimelineIfNeeded(fixture: DemoFixture) {
+        demoStateTimelineTask?.cancel()
+        didStartDemoStateTimelineForTesting = false
+        appliedDemoStateTimelineFramesForTesting = 0
+
+        guard !fixture.stateTimeline.isEmpty else { return }
+        let timeline = fixture.stateTimeline.sorted(by: { $0.atSeconds < $1.atSeconds })
+        didStartDemoStateTimelineForTesting = true
+
+        demoStateTimelineTask = _Concurrency.Task { @MainActor [weak self] in
+            guard let self else { return }
+            let start = Date()
+
+            for frame in timeline {
+                if _Concurrency.Task.isCancelled { return }
+
+                let elapsed = Date().timeIntervalSince(start)
+                let remaining = frame.atSeconds - elapsed
+                if remaining > 0 {
+                    let nanoseconds = UInt64(remaining * 1_000_000_000)
+                    try? await _Concurrency.Task.sleep(nanoseconds: nanoseconds)
+                }
+
+                if _Concurrency.Task.isCancelled { return }
+
+                sessionStateManager.applyFixtureSessionStates(frame.sessionStates)
+                if let frameStatuses = frame.projectStatuses {
+                    projectStatuses = frameStatuses
+                }
+                activeProjectResolver.resolve()
+                appliedDemoStateTimelineFramesForTesting += 1
+                DebugLog.write(
+                    "AppState.demo timeline frameApplied scenario=\(fixture.scenario) atSeconds=\(frame.atSeconds) frameIndex=\(appliedDemoStateTimelineFramesForTesting)",
+                )
+            }
+        }
+    }
+
     // MARK: - Setup
 
     private var hookHealthCheckCounter = 0
@@ -249,6 +383,7 @@ class AppState {
     private var daemonHealthCheckCounter = 0
 
     private func setupStalenessTimer() {
+        didStartStalenessTimerForTesting = true
         stalenessTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak self] _ in
             guard let self else { return }
             DispatchQueue.main.async {
@@ -282,6 +417,7 @@ class AppState {
     }
 
     private func startShellTracking() {
+        didStartShellTrackingForTesting = true
         shellStateStore.startPolling()
         activeProjectResolver.updateProjects(projects)
     }
@@ -393,6 +529,7 @@ class AppState {
     // MARK: - Daemon Diagnostic
 
     func ensureDaemonRunning() {
+        didAttemptDaemonStartupForTesting = true
         // Ensure daemon-backed reads are enabled before the first session refresh.
         DaemonService.enableForCurrentProcess()
         daemonStatus = daemonStatusEvaluator.beginStartup(currentStatus: daemonStatus)
@@ -953,6 +1090,11 @@ class AppState {
     func launchTerminal(for project: Project) {
         activeProjectResolver.setManualOverride(project)
         activeProjectResolver.resolve()
+        if shouldDisableDemoSideEffects {
+            toast = ToastMessage("Demo mode: Simulated activation for \(project.name)")
+            DebugLog.write("AppState.demo launchTerminal simulated project=\(project.path)")
+            return
+        }
         terminalLauncher.launchTerminal(for: project)
     }
 
@@ -997,6 +1139,7 @@ class AppState {
     }
 
     private func saveLayoutMode() {
+        guard !shouldDisableDemoSideEffects else { return }
         UserDefaults.standard.set(layoutMode.rawValue, forKey: layoutModeKey)
     }
 
@@ -1007,6 +1150,7 @@ class AppState {
     }
 
     private func saveDormantOverrides() {
+        guard !shouldDisableDemoSideEffects else { return }
         DormantOverrideStore.save(manuallyDormant)
     }
 
@@ -1015,6 +1159,7 @@ class AppState {
     }
 
     private func saveProjectOrder() {
+        guard !shouldDisableDemoSideEffects else { return }
         ProjectOrderStore.save(projectOrder)
     }
 
@@ -1252,6 +1397,7 @@ class AppState {
 
     private func saveCreations() {
         guard isIdeaCaptureEnabled else { return }
+        guard !shouldDisableDemoSideEffects else { return }
         let creationsPath = FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent(".capacitor/creations.json")
 

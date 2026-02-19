@@ -1,0 +1,74 @@
+{
+  "projects": [
+    {
+      "name": "tool-ui",
+      "path": "/Users/petepetrash/Code/aui/tool-ui",
+      "taskCount": 12,
+      "initialState": "working"
+    },
+    {
+      "name": "assistant-ui",
+      "path": "/Users/petepetrash/Code/aui/assistant-ui",
+      "taskCount": 10,
+      "initialState": "ready"
+    },
+    {
+      "name": "agentic canvas",
+      "path": "/Users/petepetrash/Code/agentic-canvas",
+      "taskCount": 8,
+      "initialState": "waiting"
+    },
+    {
+      "name": "mcp-app-studio-starter",
+      "path": "/Users/petepetrash/Code/aui/mcp-app-studio-starter",
+      "taskCount": 6,
+      "initialState": "compacting"
+    },
+    {
+      "name": "zui",
+      "path": "/Users/petepetrash/Code/zui",
+      "taskCount": 5,
+      "initialState": "ready"
+    },
+    {
+      "name": "writing",
+      "path": "/Users/petepetrash/Code/writing",
+      "taskCount": 4,
+      "initialState": "working"
+    },
+    {
+      "name": "claude-code-setup",
+      "path": "/Users/petepetrash/Code/claude-code-setup",
+      "taskCount": 4,
+      "hidden": true,
+      "initialState": "waiting"
+    },
+    {
+      "name": "agent-skills",
+      "path": "/Users/petepetrash/Code/agent-skills",
+      "taskCount": 7,
+      "hidden": true,
+      "initialState": "compacting"
+    },
+    {
+      "name": "hapax",
+      "path": "/Users/petepetrash/Code/hapax",
+      "taskCount": 3,
+      "hidden": true,
+      "initialState": "ready"
+    },
+    {
+      "name": "plink",
+      "path": "/Users/petepetrash/Code/plink",
+      "taskCount": 9,
+      "hidden": true,
+      "initialState": "working"
+    }
+  ],
+  "hiddenProjectPaths": [
+    "/Users/petepetrash/Code/claude-code-setup",
+    "/Users/petepetrash/Code/agent-skills",
+    "/Users/petepetrash/Code/hapax",
+    "/Users/petepetrash/Code/plink"
+  ]
+}

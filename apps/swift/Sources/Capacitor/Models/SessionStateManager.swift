@@ -500,6 +500,17 @@ final class SessionStateManager {
         }
     }
 
+    /// Applies deterministic session states without daemon I/O.
+    /// Used by demo-mode fixtures.
+    func applyFixtureSessionStates(_ states: [String: ProjectSessionState]) {
+        daemonRefreshTask?.cancel()
+        refreshGeneration &+= 1
+        consecutiveEmptySnapshotCount = 0
+        sessionStates = states
+        pruneCachedStates()
+        checkForStateChanges()
+    }
+
     #if DEBUG
         /// Test-only helper for deterministic session resolution.
         func setSessionStatesForTesting(_ states: [String: ProjectSessionState]) {

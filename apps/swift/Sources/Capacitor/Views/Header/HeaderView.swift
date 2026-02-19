@@ -26,8 +26,10 @@ struct HeaderView: View {
 
                 Spacer()
 
-                HeaderFeedbackButton {
-                    isQuickFeedbackPresented = true
+                if appState.isQuickFeedbackEnabled {
+                    HeaderFeedbackButton {
+                        isQuickFeedbackPresented = true
+                    }
                 }
             }
             .padding(.horizontal, 12)

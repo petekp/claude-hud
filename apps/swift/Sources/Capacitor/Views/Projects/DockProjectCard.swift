@@ -244,7 +244,8 @@ struct DockProjectCard: View {
                     onRemove: onRemove,
                 )
             }
-            .accessibilityElement(children: .combine)
+            .accessibilityElement(children: .contain)
+            .accessibilityIdentifier(DemoAccessibility.projectCardIdentifier(for: project))
             .accessibilityLabel(project.name)
             .accessibilityValue(statusDescription)
     }
@@ -260,6 +261,7 @@ struct DockProjectCard: View {
                             isMissing: project.isMissing,
                             action: onInfoTap,
                             font: AppTypography.sectionTitle.monospaced(),
+                            accessibilityIdentifier: DemoAccessibility.projectDetailsIdentifier(for: project),
                         )
                         .lineLimit(1)
                     } else {
