@@ -17,6 +17,7 @@
 use chrono::{DateTime, Local, NaiveDateTime, TimeZone, Utc};
 use hud_core::ParentApp;
 use serde::{Deserialize, Serialize};
+use std::path::{Component, Path};
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -90,11 +91,57 @@ pub fn run(path: &str, pid: u32, tty: &str) -> Result<(), CwdError> {
 }
 
 fn normalize_path(path: &str) -> String {
-    if path == "/" {
+    let normalized = if path == "/" {
         "/".to_string()
     } else {
         path.trim_end_matches('/').to_string()
+    };
+
+    let normalized_path = Path::new(&normalized);
+    if !normalized_path.is_absolute() {
+        return normalized;
     }
+
+    let canonical = match std::fs::canonicalize(normalized_path) {
+        Ok(path) => path,
+        Err(_) => return normalized,
+    };
+
+    merge_canonical_case(normalized_path, &canonical)
+}
+
+fn merge_canonical_case(original: &Path, canonical: &Path) -> String {
+    let original_parts = path_components(original);
+    let canonical_parts = path_components(canonical);
+    let mut merged_reversed = Vec::with_capacity(original_parts.len());
+    let mut canonical_index = canonical_parts.len();
+
+    for original_part in original_parts.iter().rev() {
+        if canonical_index > 0
+            && original_part.eq_ignore_ascii_case(&canonical_parts[canonical_index - 1])
+        {
+            merged_reversed.push(canonical_parts[canonical_index - 1].clone());
+            canonical_index -= 1;
+        } else {
+            merged_reversed.push(original_part.clone());
+        }
+    }
+
+    merged_reversed.reverse();
+    if merged_reversed.is_empty() {
+        "/".to_string()
+    } else {
+        format!("/{}", merged_reversed.join("/"))
+    }
+}
+
+fn path_components(path: &Path) -> Vec<String> {
+    path.components()
+        .filter_map(|component| match component {
+            Component::Normal(part) => Some(part.to_string_lossy().to_string()),
+            _ => None,
+        })
+        .collect()
 }
 
 fn resolve_tty(tty: &str) -> Result<String, CwdError> {
@@ -228,7 +275,10 @@ fn detect_proc_start(pid: u32) -> Option<u64> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fs;
+    use std::path::PathBuf;
     use std::sync::{Mutex, MutexGuard};
+    use std::time::{SystemTime, UNIX_EPOCH};
 
     static ENV_LOCK: Mutex<()> = Mutex::new(());
 
@@ -280,5 +330,39 @@ mod tests {
 
         let app = detect_parent_app(12345);
         assert_eq!(app, ParentApp::Cursor);
+    }
+
+    fn unique_temp_path(suffix: &str) -> PathBuf {
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("current time should be after epoch")
+            .as_nanos();
+        std::env::temp_dir().join(format!("hud-hook-cwd-{suffix}-{nanos}"))
+    }
+
+    #[test]
+    fn test_normalize_path_canonicalizes_existing_case_variants() {
+        let root = unique_temp_path("canonicalize");
+        let actual = root.join("CoDe").join("openclaw");
+        fs::create_dir_all(&actual).expect("create mixed-case directory tree");
+
+        let alias = root.join("code").join("openclaw");
+        let alias_string = alias.to_string_lossy().to_string();
+        let normalized = normalize_path(&alias_string);
+
+        if alias.exists() {
+            assert_eq!(
+                normalized,
+                actual.to_string_lossy().to_string(),
+                "existing case variants should canonicalize to a stable path identity",
+            );
+        } else {
+            assert_eq!(
+                normalized, alias_string,
+                "on case-sensitive filesystems, unknown-case aliases must fall back to raw path",
+            );
+        }
+
+        fs::remove_dir_all(&root).expect("cleanup mixed-case directory tree");
     }
 }
