@@ -167,6 +167,7 @@ class AppState {
     @ObservationIgnored private var demoStateTimelineTask: _Concurrency.Task<Void, Never>?
     private var daemonStatusEvaluator = DaemonStatusEvaluator()
     private var daemonRecoveryDecider = DaemonRecoveryDecider()
+    private var daemonStartupTask: _Concurrency.Task<Void, Never>?
     private(set) var sessionStateRevision = 0
     private(set) var didScheduleRuntimeBootstrapForTesting = false
     private(set) var didAttemptDaemonStartupForTesting = false
@@ -271,7 +272,6 @@ class AppState {
                 projectDetailsManager.configure(engine: engine)
                 loadDashboard()
                 checkHookDiagnostic()
-                checkDaemonHealth()
                 setupStalenessTimer()
                 startShellTracking()
             } catch {
@@ -530,10 +530,16 @@ class AppState {
 
     func ensureDaemonRunning() {
         didAttemptDaemonStartupForTesting = true
+        guard daemonStartupTask == nil else {
+            return
+        }
         // Ensure daemon-backed reads are enabled before the first session refresh.
         DaemonService.enableForCurrentProcess()
         daemonStatus = daemonStatusEvaluator.beginStartup(currentStatus: daemonStatus)
-        _Concurrency.Task { @MainActor [weak self] in
+        daemonStartupTask = _Concurrency.Task { @MainActor [weak self] in
+            defer {
+                self?.daemonStartupTask = nil
+            }
             let errorMessage = await _Concurrency.Task.detached {
                 DaemonService.ensureRunning()
             }.value

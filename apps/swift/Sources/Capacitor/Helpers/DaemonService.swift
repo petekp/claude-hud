@@ -72,6 +72,10 @@ enum DaemonService {
 
     enum LaunchAgentManager {
         private static let canonicalBundleIdentifier = "com.capacitor.app"
+        private static let defaultHealthCheckAttempts = 6
+        // SMAppService registration can report success before the agent accepts socket requests.
+        // Keep this limited to default-attempt call sites so explicit tests/callers stay deterministic.
+        private static let postInstallWarmupAttempts = 6
         typealias TelemetryEmitter = (_ type: String, _ message: String, _ payload: [String: Any]) -> Void
 
         enum RegistrationResult: Equatable {
@@ -88,7 +92,7 @@ enum DaemonService {
             runLaunchctl: ([String]) -> (exitCode: Int32, output: String) = systemLaunchctl,
             smAppServiceRegistration: () -> RegistrationResult = registerWithSMAppServiceIfAvailable,
             daemonHealthCheck: () -> Bool = isDaemonHealthy,
-            healthCheckAttempts: Int = 6,
+            healthCheckAttempts: Int = defaultHealthCheckAttempts,
             healthCheckRetryDelay: TimeInterval = 0.2,
             emitTelemetry: TelemetryEmitter = defaultTelemetryEmitter,
         ) -> String? {
@@ -105,22 +109,42 @@ enum DaemonService {
                     return cleanupError
                 }
                 let attempts = max(1, healthCheckAttempts)
+                let useDefaultHealthWindow = healthCheckAttempts == defaultHealthCheckAttempts
+                let warmupAttempts = useDefaultHealthWindow ? postInstallWarmupAttempts : 0
+                let initialAttempts = attempts + warmupAttempts
+                var totalAttempts = initialAttempts
                 if daemonHealthCheckPasses(
                     daemonHealthCheck: daemonHealthCheck,
-                    attempts: attempts,
+                    attempts: initialAttempts,
                     retryDelay: max(0, healthCheckRetryDelay),
                 ) {
                     return nil
                 }
 
+                if useDefaultHealthWindow {
+                    DebugLog.write(
+                        "DaemonService.installAndKickstart smAppServiceHealthyCheck=failed attempts=\(initialAttempts) retry=smAppService",
+                    )
+                    if case .success = smAppServiceRegistration() {
+                        totalAttempts += attempts
+                        if daemonHealthCheckPasses(
+                            daemonHealthCheck: daemonHealthCheck,
+                            attempts: attempts,
+                            retryDelay: max(0, healthCheckRetryDelay),
+                        ) {
+                            return nil
+                        }
+                    }
+                }
+
                 DebugLog.write(
-                    "DaemonService.installAndKickstart smAppServiceHealthyCheck=failed attempts=\(attempts) fallback=launchctl",
+                    "DaemonService.installAndKickstart smAppServiceHealthyCheck=failed attempts=\(totalAttempts) fallback=launchctl",
                 )
                 emitTelemetry(
                     "daemon_registration_error",
                     "SMAppService registration succeeded but daemon health check failed; falling back to launchctl",
                     [
-                        "attempts": attempts,
+                        "attempts": totalAttempts,
                     ],
                 )
                 return installAndKickstartLegacy(

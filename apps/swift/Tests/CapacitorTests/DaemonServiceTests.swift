@@ -450,6 +450,151 @@ final class DaemonServiceTests: XCTestCase {
         ])
     }
 
+    func testLaunchAgentInstallDoesNotFallbackWhenSMAppServiceHealthTurnsReadyAfterInitialGrace() throws {
+        let homeDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: homeDir, withIntermediateDirectories: true)
+
+        var calls: [[String]] = []
+        var telemetryEvents: [(type: String, message: String, payload: [String: Any])] = []
+        let runLaunchctl: ([String]) -> (exitCode: Int32, output: String) = { args in
+            calls.append(args)
+            switch args.first {
+            case "print":
+                return (1, "not loaded")
+            case "bootstrap", "kickstart":
+                return (0, "")
+            default:
+                XCTFail("Unexpected launchctl call: \(args)")
+                return (1, "unexpected")
+            }
+        }
+
+        var healthChecks = 0
+        let error = DaemonService
+            .LaunchAgentManager
+            .installAndKickstart(
+                binaryPath: "/bin/true",
+                homeDir: homeDir,
+                uid: 501,
+                runLaunchctl: runLaunchctl,
+                smAppServiceRegistration: { .success },
+                daemonHealthCheck: {
+                    healthChecks += 1
+                    return healthChecks >= 7
+                },
+                healthCheckRetryDelay: 0,
+                emitTelemetry: { type, message, payload in
+                    telemetryEvents.append((type, message, payload))
+                },
+            )
+
+        XCTAssertNil(error)
+        XCTAssertEqual(
+            healthChecks,
+            7,
+            "SMAppService startup should tolerate a short warmup window and avoid immediate fallback thrash.",
+        )
+        XCTAssertTrue(calls.isEmpty, "launchctl fallback should not run when health eventually turns ready.")
+        XCTAssertTrue(telemetryEvents.isEmpty, "no registration error telemetry expected when health becomes ready.")
+    }
+
+    func testLaunchAgentInstallDoesNotFallbackWhenSMAppServiceHealthTurnsReadyAfterExtendedWarmup() throws {
+        let homeDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: homeDir, withIntermediateDirectories: true)
+
+        var calls: [[String]] = []
+        var telemetryEvents: [(type: String, message: String, payload: [String: Any])] = []
+        let runLaunchctl: ([String]) -> (exitCode: Int32, output: String) = { args in
+            calls.append(args)
+            switch args.first {
+            case "print":
+                return (1, "not loaded")
+            case "bootstrap", "kickstart":
+                return (0, "")
+            default:
+                XCTFail("Unexpected launchctl call: \(args)")
+                return (1, "unexpected")
+            }
+        }
+
+        var healthChecks = 0
+        let error = DaemonService
+            .LaunchAgentManager
+            .installAndKickstart(
+                binaryPath: "/bin/true",
+                homeDir: homeDir,
+                uid: 501,
+                runLaunchctl: runLaunchctl,
+                smAppServiceRegistration: { .success },
+                daemonHealthCheck: {
+                    healthChecks += 1
+                    return healthChecks >= 10
+                },
+                healthCheckRetryDelay: 0,
+                emitTelemetry: { type, message, payload in
+                    telemetryEvents.append((type, message, payload))
+                },
+            )
+
+        XCTAssertNil(error)
+        XCTAssertEqual(
+            healthChecks,
+            10,
+            "SMAppService startup should tolerate delayed socket readiness without falling back to launchctl.",
+        )
+        XCTAssertTrue(calls.isEmpty, "launchctl fallback should not run when SMAppService becomes healthy.")
+        XCTAssertTrue(telemetryEvents.isEmpty, "no registration error telemetry expected when health eventually turns ready.")
+    }
+
+    func testLaunchAgentInstallRetriesSMAppServiceBeforeLegacyFallbackWhenDefaultHealthWindowFails() throws {
+        let homeDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: homeDir, withIntermediateDirectories: true)
+
+        var calls: [[String]] = []
+        var telemetryEvents: [(type: String, message: String, payload: [String: Any])] = []
+        var smRegistrationCalls = 0
+        let runLaunchctl: ([String]) -> (exitCode: Int32, output: String) = { args in
+            calls.append(args)
+            switch args.first {
+            case "print":
+                return (1, "not loaded")
+            case "bootstrap", "kickstart":
+                return (0, "")
+            default:
+                XCTFail("Unexpected launchctl call: \(args)")
+                return (1, "unexpected")
+            }
+        }
+
+        var healthChecks = 0
+        let error = DaemonService
+            .LaunchAgentManager
+            .installAndKickstart(
+                binaryPath: "/bin/true",
+                homeDir: homeDir,
+                uid: 501,
+                runLaunchctl: runLaunchctl,
+                smAppServiceRegistration: {
+                    smRegistrationCalls += 1
+                    return .success
+                },
+                daemonHealthCheck: {
+                    healthChecks += 1
+                    return smRegistrationCalls >= 2
+                },
+                healthCheckRetryDelay: 0,
+                emitTelemetry: { type, message, payload in
+                    telemetryEvents.append((type, message, payload))
+                },
+            )
+
+        XCTAssertNil(error)
+        XCTAssertEqual(smRegistrationCalls, 2, "SMAppService should be re-registered once before legacy fallback in default startup mode.")
+        XCTAssertTrue(healthChecks >= 13, "expected the first health window to fully exhaust before second registration attempt")
+        XCTAssertTrue(calls.isEmpty, "launchctl fallback should not run when second SMAppService registration enables health")
+        XCTAssertTrue(telemetryEvents.isEmpty, "registration retry path should not emit fallback telemetry when health recovers")
+    }
+
     func testLaunchAgentInstallSurfacesErrorWhenSMAppServiceSucceedsButFallbackFails() throws {
         let homeDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: homeDir, withIntermediateDirectories: true)
