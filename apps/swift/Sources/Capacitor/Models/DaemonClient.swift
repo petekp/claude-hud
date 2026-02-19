@@ -6,11 +6,53 @@ struct DaemonHealth: Decodable {
     let pid: Int
     let version: String
     let protocolVersion: Int
+    let security: DaemonSecurityHealth?
+    let runtime: DaemonRuntimeHealth?
     let routing: DaemonRoutingHealth?
 
+    init(
+        status: String,
+        pid: Int,
+        version: String,
+        protocolVersion: Int,
+        security: DaemonSecurityHealth? = nil,
+        runtime: DaemonRuntimeHealth? = nil,
+        routing: DaemonRoutingHealth? = nil,
+    ) {
+        self.status = status
+        self.pid = pid
+        self.version = version
+        self.protocolVersion = protocolVersion
+        self.security = security
+        self.runtime = runtime
+        self.routing = routing
+    }
+
     enum CodingKeys: String, CodingKey {
-        case status, pid, version, routing
+        case status, pid, version, security, runtime, routing
         case protocolVersion = "protocol_version"
+    }
+}
+
+struct DaemonSecurityHealth: Decodable {
+    let peerAuthMode: String
+    let rejectedConnections: UInt64
+
+    enum CodingKeys: String, CodingKey {
+        case peerAuthMode = "peer_auth_mode"
+        case rejectedConnections = "rejected_connections"
+    }
+}
+
+struct DaemonRuntimeHealth: Decodable {
+    let activeConnections: UInt64
+    let maxActiveConnections: UInt64
+    let buildHash: String
+
+    enum CodingKeys: String, CodingKey {
+        case activeConnections = "active_connections"
+        case maxActiveConnections = "max_active_connections"
+        case buildHash = "build_hash"
     }
 }
 
@@ -279,7 +321,7 @@ final class DaemonClient {
             return isEnabledOverride
         }
         guard let raw = getenv(Constants.enabledEnv) else {
-            return false
+            return true
         }
         let value = String(cString: raw)
         return ["1", "true", "TRUE", "yes", "YES"].contains(value)

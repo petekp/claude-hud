@@ -34,6 +34,11 @@ enum DaemonService {
         return LaunchAgentManager.installAndKickstart(binaryPath: binaryPath)
     }
 
+    static func disable() -> String? {
+        unsetenv(Constants.enabledEnv)
+        return LaunchAgentManager.unregister()
+    }
+
     private enum DaemonInstaller {
         static func resolveBundledBinaryPath() -> String? {
             if let bundledBinary = Bundle.main.url(forResource: Constants.binaryName, withExtension: nil) {
@@ -78,6 +83,13 @@ enum DaemonService {
             switch smAppServiceRegistration() {
             case .success:
                 DebugLog.write("DaemonService.installAndKickstart smAppService=success")
+                if let cleanupError = cleanupLegacyLaunchAgent(
+                    homeDir: homeDir,
+                    uid: uid,
+                    runLaunchctl: runLaunchctl,
+                ) {
+                    return cleanupError
+                }
                 return nil
             case let .requiresApproval(message):
                 DebugLog.write("DaemonService.installAndKickstart smAppService=requiresApproval")
@@ -100,6 +112,57 @@ enum DaemonService {
                 uid: uid,
                 runLaunchctl: runLaunchctl,
             )
+        }
+
+        static func unregister(
+            homeDir: URL = FileManager.default.homeDirectoryForCurrentUser,
+            uid: uid_t = getuid(),
+            runLaunchctl: ([String]) -> (exitCode: Int32, output: String) = systemLaunchctl,
+            smAppServiceUnregister: () -> RegistrationResult = unregisterWithSMAppServiceIfAvailable,
+        ) -> String? {
+            switch smAppServiceUnregister() {
+            case let .requiresApproval(message):
+                return message
+            case let .failed(error):
+                DebugLog.write("DaemonService.unregister smAppServiceUnregister failed error=\(error)")
+            case .success, .unavailable:
+                break
+            }
+
+            return cleanupLegacyLaunchAgent(homeDir: homeDir, uid: uid, runLaunchctl: runLaunchctl)
+        }
+
+        private static func legacyPlistURL(homeDir: URL) -> URL {
+            homeDir
+                .appendingPathComponent("Library")
+                .appendingPathComponent("LaunchAgents")
+                .appendingPathComponent(Constants.launchAgentPlistName)
+        }
+
+        @discardableResult
+        private static func cleanupLegacyLaunchAgent(
+            homeDir: URL,
+            uid: uid_t,
+            runLaunchctl: ([String]) -> (exitCode: Int32, output: String),
+        ) -> String? {
+            let plistURL = legacyPlistURL(homeDir: homeDir)
+            guard FileManager.default.fileExists(atPath: plistURL.path) else {
+                return nil
+            }
+
+            let domain = "gui/\(uid)"
+            let bootout = runLaunchctl(["bootout", domain, plistURL.path])
+            if bootout.exitCode != 0 {
+                let output = bootout.output.trimmingCharacters(in: .whitespacesAndNewlines)
+                return "Failed to bootout legacy daemon launch agent: \(output)"
+            }
+
+            do {
+                try FileManager.default.removeItem(at: plistURL)
+            } catch {
+                return "Failed to remove legacy daemon launch agent plist: \(error.localizedDescription)"
+            }
+            return nil
         }
 
         private static func installAndKickstartLegacy(
@@ -133,11 +196,27 @@ enum DaemonService {
             var jobRunning = jobLoaded && printResult.output.contains("state = running")
 
             if !jobLoaded {
-                _ = runLaunchctl(["bootstrap", domain, plistURL.path])
+                let bootstrap = runLaunchctl(["bootstrap", domain, plistURL.path])
+                if bootstrap.exitCode != 0 {
+                    let output = bootstrap.output.trimmingCharacters(in: .whitespacesAndNewlines)
+                    DebugLog.write("DaemonService.bootstrap failed output=\(output)")
+                    return "Failed to bootstrap daemon launch agent: \(output)"
+                }
             } else if didChange {
                 // Ensure launchd picks up plist changes, even if the daemon is currently running.
-                _ = runLaunchctl(["bootout", domain, plistURL.path])
-                _ = runLaunchctl(["bootstrap", domain, plistURL.path])
+                let bootout = runLaunchctl(["bootout", domain, plistURL.path])
+                if bootout.exitCode != 0 {
+                    let output = bootout.output.trimmingCharacters(in: .whitespacesAndNewlines)
+                    DebugLog.write("DaemonService.bootout failed output=\(output)")
+                    return "Failed to reload daemon launch agent (bootout): \(output)"
+                }
+
+                let bootstrap = runLaunchctl(["bootstrap", domain, plistURL.path])
+                if bootstrap.exitCode != 0 {
+                    let output = bootstrap.output.trimmingCharacters(in: .whitespacesAndNewlines)
+                    DebugLog.write("DaemonService.bootstrap reload failed output=\(output)")
+                    return "Failed to reload daemon launch agent (bootstrap): \(output)"
+                }
                 jobRunning = false
             }
 
@@ -211,6 +290,39 @@ enum DaemonService {
             return .unavailable
         }
 
+        private static func unregisterWithSMAppServiceIfAvailable() -> RegistrationResult {
+            #if canImport(ServiceManagement)
+                if #available(macOS 13.0, *) {
+                    let plistName = Constants.launchAgentPlistName
+                    guard hasBundledLaunchAgentPlist(named: plistName) else {
+                        return .unavailable
+                    }
+
+                    let service = SMAppService.agent(plistName: plistName)
+                    if service.status == .notFound {
+                        return .unavailable
+                    }
+                    if service.status == .requiresApproval {
+                        return .requiresApproval(
+                            "Daemon requires approval in System Settings > General > Login Items & Extensions.",
+                        )
+                    }
+
+                    do {
+                        try service.unregister()
+                        return .success
+                    } catch {
+                        if service.status == .notRegistered || service.status == .notFound {
+                            return .success
+                        }
+                        return .failed(error.localizedDescription)
+                    }
+                }
+            #endif
+
+            return .unavailable
+        }
+
         private static func hasBundledLaunchAgentPlist(named plistName: String) -> Bool {
             let bundleURL = Bundle.main.bundleURL
             let candidates = [
@@ -227,16 +339,13 @@ enum DaemonService {
             try FileManager.default.createDirectory(at: launchAgentsDir, withIntermediateDirectories: true, attributes: nil)
             try FileManager.default.createDirectory(at: logsDir, withIntermediateDirectories: true, attributes: nil)
 
-            let environment: [String: String] = {
-                #if DEBUG
-                    return [
-                        "CAPACITOR_DEBUG_LOG": "1",
-                        "RUST_LOG": "debug",
-                    ]
-                #else
-                    return [:]
-                #endif
-            }()
+            var environment: [String: String] = [
+                "CAPACITOR_DAEMON_BINARY_REVISION": binaryRevisionToken(for: binaryPath),
+            ]
+            #if DEBUG
+                environment["CAPACITOR_DEBUG_LOG"] = "1"
+                environment["RUST_LOG"] = "debug"
+            #endif
 
             var plist: [String: Any] = [
                 "Label": Constants.label,
@@ -255,9 +364,7 @@ enum DaemonService {
                 plist["AssociatedBundleIdentifiers"] = associatedBundleIdentifiers
             }
 
-            if !environment.isEmpty {
-                plist["EnvironmentVariables"] = environment
-            }
+            plist["EnvironmentVariables"] = environment
 
             let data = try PropertyListSerialization.data(fromPropertyList: plist, format: .xml, options: 0)
             let plistURL = launchAgentsDir.appendingPathComponent("\(Constants.label).plist")
@@ -278,6 +385,14 @@ enum DaemonService {
                 identifiers.append(activeBundleIdentifier)
             }
             return identifiers
+        }
+
+        private static func binaryRevisionToken(for binaryPath: String) -> String {
+            let url = URL(fileURLWithPath: binaryPath)
+            let attributes = (try? FileManager.default.attributesOfItem(atPath: url.path)) ?? [:]
+            let fileSize = (attributes[.size] as? NSNumber)?.int64Value ?? -1
+            let modifiedAt = (attributes[.modificationDate] as? Date)?.timeIntervalSince1970 ?? 0
+            return "\(fileSize)-\(Int64(modifiedAt))"
         }
 
         private static func systemLaunchctl(_ arguments: [String]) -> (exitCode: Int32, output: String) {
