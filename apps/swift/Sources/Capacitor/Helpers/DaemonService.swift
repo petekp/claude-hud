@@ -1,9 +1,13 @@
 import Darwin
 import Foundation
+#if canImport(ServiceManagement)
+    import ServiceManagement
+#endif
 
 enum DaemonService {
     private enum Constants {
         static let label = "com.capacitor.daemon"
+        static let launchAgentPlistName = "\(label).plist"
         static let binaryName = "capacitor-daemon"
         static let enabledEnv = "CAPACITOR_DAEMON_ENABLED"
         static let throttleInterval: Int = 10
@@ -17,43 +21,21 @@ enum DaemonService {
         enableForCurrentProcess()
         DebugLog.write("DaemonService.ensureRunning start enabled=1")
 
-        if let installError = DaemonInstaller.installBundledBinary() {
-            DebugLog.write("DaemonService.ensureRunning install error=\(installError)")
-            Telemetry.emit("daemon_install_error", "Failed to install daemon binary", payload: [
-                "error": installError,
+        guard let binaryPath = DaemonInstaller.resolveBundledBinaryPath() else {
+            let error = "Daemon binary not bundled with this app. Build capacitor-daemon or reinstall the app."
+            DebugLog.write("DaemonService.ensureRunning binary resolution error=\(error)")
+            Telemetry.emit("daemon_install_error", "Failed to resolve bundled daemon binary", payload: [
+                "error": error,
             ])
-            return installError
+            return error
         }
 
-        let binaryPath = DaemonInstaller.targetPath
         DebugLog.write("DaemonService.ensureRunning binaryPath=\(binaryPath)")
         return LaunchAgentManager.installAndKickstart(binaryPath: binaryPath)
     }
 
     private enum DaemonInstaller {
-        static let targetPath = FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent(".local/bin/\(Constants.binaryName)")
-            .path
-
-        static func installBundledBinary() -> String? {
-            if let sourcePath = findBundledBinary() {
-                return symlinkBinary(from: sourcePath, to: targetPath)
-            }
-
-            if isTargetBinaryInstalled() {
-                return nil
-            }
-
-            return "Daemon binary not bundled with this app. Build capacitor-daemon or reinstall the app."
-        }
-
-        private static func isTargetBinaryInstalled() -> Bool {
-            let fileManager = FileManager.default
-            guard fileManager.fileExists(atPath: targetPath) else { return false }
-            return fileManager.isExecutableFile(atPath: targetPath)
-        }
-
-        private static func findBundledBinary() -> String? {
+        static func resolveBundledBinaryPath() -> String? {
             if let bundledBinary = Bundle.main.url(forResource: Constants.binaryName, withExtension: nil) {
                 return bundledBinary.path
             }
@@ -74,37 +56,57 @@ enum DaemonService {
 
             return nil
         }
-
-        private static func symlinkBinary(from sourcePath: String, to destinationPath: String) -> String? {
-            let fileManager = FileManager.default
-            let sourceURL = URL(fileURLWithPath: sourcePath)
-            let destURL = URL(fileURLWithPath: destinationPath)
-            let destDir = destURL.deletingLastPathComponent()
-
-            do {
-                try fileManager.createDirectory(at: destDir, withIntermediateDirectories: true, attributes: nil)
-
-                if fileManager.fileExists(atPath: destURL.path) {
-                    try fileManager.removeItem(at: destURL)
-                }
-
-                try fileManager.createSymbolicLink(at: destURL, withDestinationURL: sourceURL)
-                DebugLog.write("DaemonService.symlinkBinary src=\(sourcePath) dest=\(destinationPath)")
-                return nil
-            } catch {
-                return "Failed to install daemon binary: \(error.localizedDescription)"
-            }
-        }
     }
 
     enum LaunchAgentManager {
         private static let canonicalBundleIdentifier = "com.capacitor.app"
+
+        enum RegistrationResult: Equatable {
+            case success
+            case unavailable
+            case requiresApproval(String)
+            case failed(String)
+        }
 
         static func installAndKickstart(
             binaryPath: String,
             homeDir: URL = FileManager.default.homeDirectoryForCurrentUser,
             uid: uid_t = getuid(),
             runLaunchctl: ([String]) -> (exitCode: Int32, output: String) = systemLaunchctl,
+            smAppServiceRegistration: () -> RegistrationResult = registerWithSMAppServiceIfAvailable,
+        ) -> String? {
+            switch smAppServiceRegistration() {
+            case .success:
+                DebugLog.write("DaemonService.installAndKickstart smAppService=success")
+                return nil
+            case let .requiresApproval(message):
+                DebugLog.write("DaemonService.installAndKickstart smAppService=requiresApproval")
+                Telemetry.emit("daemon_registration_error", "SMAppService registration requires user approval", payload: [
+                    "error": message,
+                ])
+                return message
+            case let .failed(error):
+                DebugLog.write("DaemonService.installAndKickstart smAppService=failed error=\(error)")
+                Telemetry.emit("daemon_registration_error", "SMAppService registration failed; falling back to launchctl", payload: [
+                    "error": error,
+                ])
+            case .unavailable:
+                DebugLog.write("DaemonService.installAndKickstart smAppService=unavailable fallback=launchctl")
+            }
+
+            return installAndKickstartLegacy(
+                binaryPath: binaryPath,
+                homeDir: homeDir,
+                uid: uid,
+                runLaunchctl: runLaunchctl,
+            )
+        }
+
+        private static func installAndKickstartLegacy(
+            binaryPath: String,
+            homeDir: URL,
+            uid: uid_t,
+            runLaunchctl: ([String]) -> (exitCode: Int32, output: String),
         ) -> String? {
             let plistURL: URL
             let didChange: Bool
@@ -128,14 +130,15 @@ enum DaemonService {
 
             let printResult = runLaunchctl(["print", serviceTarget])
             let jobLoaded = printResult.exitCode == 0
-            let jobRunning = jobLoaded && printResult.output.contains("state = running")
+            var jobRunning = jobLoaded && printResult.output.contains("state = running")
 
             if !jobLoaded {
                 _ = runLaunchctl(["bootstrap", domain, plistURL.path])
-            } else if didChange, !jobRunning {
-                // Only reload the job if it isn't running, to avoid disrupting a healthy daemon.
+            } else if didChange {
+                // Ensure launchd picks up plist changes, even if the daemon is currently running.
                 _ = runLaunchctl(["bootout", domain, plistURL.path])
                 _ = runLaunchctl(["bootstrap", domain, plistURL.path])
+                jobRunning = false
             }
 
             if jobRunning {
@@ -165,6 +168,56 @@ enum DaemonService {
             }
             DebugLog.write("DaemonService.kickstart -k ok")
             return nil
+        }
+
+        private static func registerWithSMAppServiceIfAvailable() -> RegistrationResult {
+            #if canImport(ServiceManagement)
+                if #available(macOS 13.0, *) {
+                    let plistName = Constants.launchAgentPlistName
+                    guard hasBundledLaunchAgentPlist(named: plistName) else {
+                        return .unavailable
+                    }
+
+                    let service = SMAppService.agent(plistName: plistName)
+                    if service.status == .enabled {
+                        return .success
+                    }
+                    if service.status == .requiresApproval {
+                        return .requiresApproval(
+                            "Daemon requires approval in System Settings > General > Login Items & Extensions.",
+                        )
+                    }
+                    if service.status == .notFound {
+                        return .unavailable
+                    }
+
+                    do {
+                        try service.register()
+                        return .success
+                    } catch {
+                        if service.status == .enabled {
+                            return .success
+                        }
+                        if service.status == .requiresApproval {
+                            return .requiresApproval(
+                                "Daemon requires approval in System Settings > General > Login Items & Extensions.",
+                            )
+                        }
+                        return .failed(error.localizedDescription)
+                    }
+                }
+            #endif
+
+            return .unavailable
+        }
+
+        private static func hasBundledLaunchAgentPlist(named plistName: String) -> Bool {
+            let bundleURL = Bundle.main.bundleURL
+            let candidates = [
+                bundleURL.appendingPathComponent("Contents/Library/LaunchAgents/\(plistName)"),
+                bundleURL.appendingPathComponent("Library/LaunchAgents/\(plistName)"),
+            ]
+            return candidates.contains { FileManager.default.fileExists(atPath: $0.path) }
         }
 
         static func writeLaunchAgentPlist(binaryPath: String, homeDir: URL) throws -> (URL, Bool) {

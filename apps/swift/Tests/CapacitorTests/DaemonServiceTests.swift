@@ -31,10 +31,16 @@ final class DaemonServiceTests: XCTestCase {
             return (1, "unexpected")
         }
 
-        // First run: plist is created (didChange=true), but job is already running so we should avoid restart.
+        // Plist is unchanged, so a running daemon should not be restarted.
         let error = DaemonService
             .LaunchAgentManager
-            .installAndKickstart(binaryPath: "/bin/true", homeDir: homeDir, uid: 501, runLaunchctl: runLaunchctl)
+            .installAndKickstart(
+                binaryPath: "/bin/true",
+                homeDir: homeDir,
+                uid: 501,
+                runLaunchctl: runLaunchctl,
+                smAppServiceRegistration: { .unavailable },
+            )
         XCTAssertNil(error)
 
         XCTAssertEqual(calls.count, 1)
@@ -63,7 +69,13 @@ final class DaemonServiceTests: XCTestCase {
 
         let error = DaemonService
             .LaunchAgentManager
-            .installAndKickstart(binaryPath: "/bin/true", homeDir: homeDir, uid: 501, runLaunchctl: runLaunchctl)
+            .installAndKickstart(
+                binaryPath: "/bin/true",
+                homeDir: homeDir,
+                uid: 501,
+                runLaunchctl: runLaunchctl,
+                smAppServiceRegistration: { .unavailable },
+            )
         XCTAssertNil(error)
 
         XCTAssertEqual(calls, [
@@ -96,7 +108,142 @@ final class DaemonServiceTests: XCTestCase {
 
         let error = DaemonService
             .LaunchAgentManager
-            .installAndKickstart(binaryPath: "/bin/true", homeDir: homeDir, uid: 501, runLaunchctl: runLaunchctl)
+            .installAndKickstart(
+                binaryPath: "/bin/true",
+                homeDir: homeDir,
+                uid: 501,
+                runLaunchctl: runLaunchctl,
+                smAppServiceRegistration: { .unavailable },
+            )
+        XCTAssertNil(error)
+
+        let plistPath = homeDir
+            .appendingPathComponent("Library/LaunchAgents/com.capacitor.daemon.plist")
+            .path
+
+        XCTAssertEqual(calls, [
+            ["print", "gui/501/com.capacitor.daemon"],
+            ["bootstrap", "gui/501", plistPath],
+            ["kickstart", "gui/501/com.capacitor.daemon"],
+        ])
+    }
+
+    func testLaunchAgentInstallReloadsWhenPlistChangesEvenIfAlreadyRunning() throws {
+        let homeDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: homeDir, withIntermediateDirectories: true)
+
+        _ = try DaemonService.LaunchAgentManager.writeLaunchAgentPlist(binaryPath: "/bin/false", homeDir: homeDir)
+
+        var calls: [[String]] = []
+        let runLaunchctl: ([String]) -> (exitCode: Int32, output: String) = { args in
+            calls.append(args)
+            switch args.first {
+            case "print":
+                return (0, "state = running\n")
+            case "bootout", "bootstrap", "kickstart":
+                return (0, "")
+            default:
+                XCTFail("Unexpected launchctl call: \(args)")
+                return (1, "unexpected")
+            }
+        }
+
+        let error = DaemonService
+            .LaunchAgentManager
+            .installAndKickstart(
+                binaryPath: "/bin/true",
+                homeDir: homeDir,
+                uid: 501,
+                runLaunchctl: runLaunchctl,
+                smAppServiceRegistration: { .unavailable },
+            )
+        XCTAssertNil(error)
+
+        let plistPath = homeDir
+            .appendingPathComponent("Library/LaunchAgents/com.capacitor.daemon.plist")
+            .path
+        XCTAssertEqual(calls, [
+            ["print", "gui/501/com.capacitor.daemon"],
+            ["bootout", "gui/501", plistPath],
+            ["bootstrap", "gui/501", plistPath],
+            ["kickstart", "gui/501/com.capacitor.daemon"],
+        ])
+    }
+
+    func testLaunchAgentInstallPrefersSMAppServiceRegistrationWhenAvailable() throws {
+        let homeDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: homeDir, withIntermediateDirectories: true)
+
+        var calls: [[String]] = []
+        let runLaunchctl: ([String]) -> (exitCode: Int32, output: String) = { args in
+            calls.append(args)
+            return (1, "launchctl should not be called when SMAppService succeeds")
+        }
+
+        let error = DaemonService
+            .LaunchAgentManager
+            .installAndKickstart(
+                binaryPath: "/bin/true",
+                homeDir: homeDir,
+                uid: 501,
+                runLaunchctl: runLaunchctl,
+                smAppServiceRegistration: { .success },
+            )
+        XCTAssertNil(error)
+        XCTAssertTrue(calls.isEmpty)
+    }
+
+    func testLaunchAgentInstallReturnsApprovalErrorWithoutLegacyFallback() throws {
+        let homeDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: homeDir, withIntermediateDirectories: true)
+
+        var calls: [[String]] = []
+        let runLaunchctl: ([String]) -> (exitCode: Int32, output: String) = { args in
+            calls.append(args)
+            return (1, "launchctl should not be called when approval is required")
+        }
+
+        let message = "Daemon requires approval in System Settings > General > Login Items & Extensions."
+        let error = DaemonService
+            .LaunchAgentManager
+            .installAndKickstart(
+                binaryPath: "/bin/true",
+                homeDir: homeDir,
+                uid: 501,
+                runLaunchctl: runLaunchctl,
+                smAppServiceRegistration: { .requiresApproval(message) },
+            )
+        XCTAssertEqual(error, message)
+        XCTAssertTrue(calls.isEmpty)
+    }
+
+    func testLaunchAgentInstallFallsBackToLaunchctlWhenSMAppServiceFails() throws {
+        let homeDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: homeDir, withIntermediateDirectories: true)
+
+        var calls: [[String]] = []
+        let runLaunchctl: ([String]) -> (exitCode: Int32, output: String) = { args in
+            calls.append(args)
+            switch args.first {
+            case "print":
+                return (1, "not loaded")
+            case "bootstrap", "kickstart":
+                return (0, "")
+            default:
+                XCTFail("Unexpected launchctl call: \(args)")
+                return (1, "unexpected")
+            }
+        }
+
+        let error = DaemonService
+            .LaunchAgentManager
+            .installAndKickstart(
+                binaryPath: "/bin/true",
+                homeDir: homeDir,
+                uid: 501,
+                runLaunchctl: runLaunchctl,
+                smAppServiceRegistration: { .failed("SMAppService registration failed") },
+            )
         XCTAssertNil(error)
 
         let plistPath = homeDir

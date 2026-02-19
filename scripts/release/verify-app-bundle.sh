@@ -60,6 +60,7 @@ echo -e "${YELLOW}[1/6] Checking bundle structure...${NC}"
 [ -f "$APP_BUNDLE/Contents/Info.plist" ] && pass "Info.plist exists" || fail "Info.plist missing"
 [ -d "$APP_BUNDLE/Contents/Frameworks" ] && pass "Frameworks directory exists" || fail "Frameworks directory missing"
 [ -d "$APP_BUNDLE/Contents/Resources" ] && pass "Resources directory exists" || fail "Resources directory missing"
+[ -f "$APP_BUNDLE/Contents/Library/LaunchAgents/com.capacitor.daemon.plist" ] && pass "LaunchAgent plist exists" || fail "LaunchAgent plist missing"
 
 echo ""
 

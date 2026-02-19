@@ -137,13 +137,6 @@ else
     cargo build -p hud-core -p capacitor-daemon -p hud-hook --release || { echo "Rust build failed"; exit 1; }
 fi
 
-# Keep ~/.local/bin/capacitor-daemon synced to the repo build to avoid stale daemons.
-if [ -f "$PROJECT_ROOT/target/release/capacitor-daemon" ]; then
-    codesign --force --sign "$SIGNING_IDENTITY" --identifier com.capacitor.daemon "$PROJECT_ROOT/target/release/capacitor-daemon"
-    mkdir -p "$HOME/.local/bin"
-    ln -sf "$PROJECT_ROOT/target/release/capacitor-daemon" "$HOME/.local/bin/capacitor-daemon"
-fi
-
 # Rust post-build steps (skip if --swift-only)
 if [ "$SWIFT_ONLY" != true ]; then
     # Fix the dylib's install name so Swift can find it at runtime.
@@ -287,6 +280,17 @@ fi
 RESOURCE_BUNDLE="$SWIFT_DEBUG_DIR/Capacitor_Capacitor.bundle"
 if [ -d "$RESOURCE_BUNDLE" ]; then
     cp -R "$RESOURCE_BUNDLE" "$DEBUG_APP/Contents/Resources/"
+fi
+
+# Ensure LaunchAgent plist exists in the app bundle for SMAppService registration.
+DAEMON_PLIST_SOURCE="$PROJECT_ROOT/apps/swift/Resources/LaunchAgents/com.capacitor.daemon.plist"
+DAEMON_PLIST_DEST_DIR="$DEBUG_APP/Contents/Library/LaunchAgents"
+if [ -f "$DAEMON_PLIST_SOURCE" ]; then
+    mkdir -p "$DAEMON_PLIST_DEST_DIR"
+    cp "$DAEMON_PLIST_SOURCE" "$DAEMON_PLIST_DEST_DIR/com.capacitor.daemon.plist"
+else
+    echo "Error: LaunchAgent plist not found at $DAEMON_PLIST_SOURCE" >&2
+    exit 1
 fi
 
 # Replace frameworks with the debug build outputs.
