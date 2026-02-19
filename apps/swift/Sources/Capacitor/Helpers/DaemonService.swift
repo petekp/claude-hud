@@ -67,6 +67,7 @@ enum DaemonService {
 
     enum LaunchAgentManager {
         private static let canonicalBundleIdentifier = "com.capacitor.app"
+        typealias TelemetryEmitter = (_ type: String, _ message: String, _ payload: [String: Any]) -> Void
 
         enum RegistrationResult: Equatable {
             case success
@@ -84,6 +85,7 @@ enum DaemonService {
             daemonHealthCheck: () -> Bool = isDaemonHealthy,
             healthCheckAttempts: Int = 6,
             healthCheckRetryDelay: TimeInterval = 0.2,
+            emitTelemetry: TelemetryEmitter = defaultTelemetryEmitter,
         ) -> String? {
             switch smAppServiceRegistration() {
             case .success:
@@ -107,10 +109,10 @@ enum DaemonService {
                 DebugLog.write(
                     "DaemonService.installAndKickstart smAppServiceHealthyCheck=failed attempts=\(attempts) fallback=launchctl",
                 )
-                Telemetry.emit(
+                emitTelemetry(
                     "daemon_registration_error",
                     "SMAppService registration succeeded but daemon health check failed; falling back to launchctl",
-                    payload: [
+                    [
                         "attempts": attempts,
                     ],
                 )
@@ -119,16 +121,17 @@ enum DaemonService {
                     homeDir: homeDir,
                     uid: uid,
                     runLaunchctl: runLaunchctl,
+                    emitTelemetry: emitTelemetry,
                 )
             case let .requiresApproval(message):
                 DebugLog.write("DaemonService.installAndKickstart smAppService=requiresApproval")
-                Telemetry.emit("daemon_registration_error", "SMAppService registration requires user approval", payload: [
+                emitTelemetry("daemon_registration_error", "SMAppService registration requires user approval", [
                     "error": message,
                 ])
                 return message
             case let .failed(error):
                 DebugLog.write("DaemonService.installAndKickstart smAppService=failed error=\(error)")
-                Telemetry.emit("daemon_registration_error", "SMAppService registration failed; falling back to launchctl", payload: [
+                emitTelemetry("daemon_registration_error", "SMAppService registration failed; falling back to launchctl", [
                     "error": error,
                 ])
             case .unavailable:
@@ -140,6 +143,7 @@ enum DaemonService {
                 homeDir: homeDir,
                 uid: uid,
                 runLaunchctl: runLaunchctl,
+                emitTelemetry: emitTelemetry,
             )
         }
 
@@ -199,6 +203,7 @@ enum DaemonService {
             homeDir: URL,
             uid: uid_t,
             runLaunchctl: ([String]) -> (exitCode: Int32, output: String),
+            emitTelemetry: TelemetryEmitter,
         ) -> String? {
             let plistURL: URL
             let didChange: Bool
@@ -262,20 +267,24 @@ enum DaemonService {
             }
 
             DebugLog.write("DaemonService.kickstart failed output=\(kickstart.output)")
-            Telemetry.emit("daemon_kickstart_error", "launchctl kickstart failed", payload: [
+            emitTelemetry("daemon_kickstart_error", "launchctl kickstart failed", [
                 "output": kickstart.output,
             ])
 
             let retryKickstart = runLaunchctl(["kickstart", "-k", serviceTarget])
             if retryKickstart.exitCode != 0 {
                 DebugLog.write("DaemonService.kickstart -k failed output=\(retryKickstart.output)")
-                Telemetry.emit("daemon_kickstart_error", "launchctl kickstart -k failed", payload: [
+                emitTelemetry("daemon_kickstart_error", "launchctl kickstart -k failed", [
                     "output": retryKickstart.output,
                 ])
                 return "Failed to start daemon: \(retryKickstart.output.trimmingCharacters(in: .whitespacesAndNewlines))"
             }
             DebugLog.write("DaemonService.kickstart -k ok")
             return nil
+        }
+
+        private static func defaultTelemetryEmitter(type: String, message: String, payload: [String: Any]) {
+            Telemetry.emit(type, message, payload: payload)
         }
 
         private static func registerWithSMAppServiceIfAvailable() -> RegistrationResult {

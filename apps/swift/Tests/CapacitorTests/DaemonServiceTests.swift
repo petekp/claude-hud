@@ -223,6 +223,7 @@ final class DaemonServiceTests: XCTestCase {
         try FileManager.default.createDirectory(at: homeDir, withIntermediateDirectories: true)
 
         var calls: [[String]] = []
+        var telemetryEvents: [(type: String, message: String, payload: [String: Any])] = []
         let runLaunchctl: ([String]) -> (exitCode: Int32, output: String) = { args in
             calls.append(args)
             switch args.first {
@@ -244,6 +245,9 @@ final class DaemonServiceTests: XCTestCase {
                 uid: 501,
                 runLaunchctl: runLaunchctl,
                 smAppServiceRegistration: { .failed("SMAppService registration failed") },
+                emitTelemetry: { type, message, payload in
+                    telemetryEvents.append((type, message, payload))
+                },
             )
         XCTAssertNil(error)
 
@@ -256,6 +260,10 @@ final class DaemonServiceTests: XCTestCase {
             ["bootstrap", "gui/501", plistPath],
             ["kickstart", "gui/501/com.capacitor.daemon"],
         ])
+        XCTAssertEqual(telemetryEvents.count, 1)
+        XCTAssertEqual(telemetryEvents[0].type, "daemon_registration_error")
+        XCTAssertTrue(telemetryEvents[0].message.contains("falling back to launchctl"))
+        XCTAssertEqual(telemetryEvents[0].payload["error"] as? String, "SMAppService registration failed")
     }
 
     func testWriteLaunchAgentPlistAssociatesCapacitorBundleIdentifier() throws {
@@ -347,6 +355,7 @@ final class DaemonServiceTests: XCTestCase {
         try FileManager.default.createDirectory(at: homeDir, withIntermediateDirectories: true)
 
         var calls: [[String]] = []
+        var telemetryEvents: [(type: String, message: String, payload: [String: Any])] = []
         let runLaunchctl: ([String]) -> (exitCode: Int32, output: String) = { args in
             calls.append(args)
             switch args.first {
@@ -375,10 +384,17 @@ final class DaemonServiceTests: XCTestCase {
                 },
                 healthCheckAttempts: 2,
                 healthCheckRetryDelay: 0,
+                emitTelemetry: { type, message, payload in
+                    telemetryEvents.append((type, message, payload))
+                },
             )
 
         XCTAssertNil(error)
         XCTAssertEqual(healthChecks, 2)
+        XCTAssertEqual(telemetryEvents.count, 1)
+        XCTAssertEqual(telemetryEvents[0].type, "daemon_registration_error")
+        XCTAssertTrue(telemetryEvents[0].message.contains("health check failed"))
+        XCTAssertEqual(telemetryEvents[0].payload["attempts"] as? Int, 2)
 
         let plistPath = homeDir
             .appendingPathComponent("Library/LaunchAgents/com.capacitor.daemon.plist")
@@ -423,6 +439,51 @@ final class DaemonServiceTests: XCTestCase {
         XCTAssertNotNil(error)
         XCTAssertTrue(error?.contains("bootstrap") == true)
         XCTAssertEqual(calls.count(where: { $0.first == "kickstart" }), 0)
+    }
+
+    func testLaunchAgentInstallEmitsTelemetryWhenKickstartAndRetryFail() throws {
+        let homeDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: homeDir, withIntermediateDirectories: true)
+
+        _ = try DaemonService.LaunchAgentManager.writeLaunchAgentPlist(binaryPath: "/bin/true", homeDir: homeDir)
+
+        var telemetryEvents: [(type: String, message: String, payload: [String: Any])] = []
+        let runLaunchctl: ([String]) -> (exitCode: Int32, output: String) = { args in
+            switch args.first {
+            case "print":
+                return (0, "state = spawn scheduled\n")
+            case "kickstart":
+                if args.count >= 2, args[1] == "-k" {
+                    return (1, "restart failed")
+                }
+                return (1, "kickstart failed")
+            default:
+                XCTFail("Unexpected launchctl call: \(args)")
+                return (1, "unexpected")
+            }
+        }
+
+        let error = DaemonService
+            .LaunchAgentManager
+            .installAndKickstart(
+                binaryPath: "/bin/true",
+                homeDir: homeDir,
+                uid: 501,
+                runLaunchctl: runLaunchctl,
+                smAppServiceRegistration: { .unavailable },
+                emitTelemetry: { type, message, payload in
+                    telemetryEvents.append((type, message, payload))
+                },
+            )
+
+        XCTAssertNotNil(error)
+        XCTAssertEqual(telemetryEvents.count, 2)
+        XCTAssertEqual(telemetryEvents[0].type, "daemon_kickstart_error")
+        XCTAssertTrue(telemetryEvents[0].message.contains("kickstart failed"))
+        XCTAssertEqual(telemetryEvents[0].payload["output"] as? String, "kickstart failed")
+        XCTAssertEqual(telemetryEvents[1].type, "daemon_kickstart_error")
+        XCTAssertTrue(telemetryEvents[1].message.contains("kickstart -k failed"))
+        XCTAssertEqual(telemetryEvents[1].payload["output"] as? String, "restart failed")
     }
 
     func testWriteLaunchAgentPlistIncludesBinaryRevisionEnvironment() throws {
