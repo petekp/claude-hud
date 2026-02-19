@@ -286,6 +286,50 @@ final class DaemonServiceTests: XCTestCase {
         XCTAssertTrue(associatedBundleIdentifiers.contains("com.capacitor.app"))
     }
 
+    func testBundledLaunchAgentPlistMatchesLegacyLaunchAgentDefaultsForSharedKeys() throws {
+        let sourceRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent() // CapacitorTests
+            .deletingLastPathComponent() // Tests
+            .deletingLastPathComponent() // swift
+        let bundledPlistURL = sourceRoot
+            .appendingPathComponent("Resources/LaunchAgents/com.capacitor.daemon.plist")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: bundledPlistURL.path))
+
+        let bundledData = try Data(contentsOf: bundledPlistURL)
+        let bundled = try XCTUnwrap(
+            PropertyListSerialization.propertyList(from: bundledData, format: nil) as? [String: Any],
+        )
+
+        let homeDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: homeDir, withIntermediateDirectories: true)
+        let (legacyPlistURL, _) = try DaemonService.LaunchAgentManager.writeLaunchAgentPlist(
+            binaryPath: "/bin/true",
+            homeDir: homeDir,
+        )
+        let legacyData = try Data(contentsOf: legacyPlistURL)
+        let legacy = try XCTUnwrap(
+            PropertyListSerialization.propertyList(from: legacyData, format: nil) as? [String: Any],
+        )
+
+        XCTAssertEqual(bundled["Label"] as? String, legacy["Label"] as? String)
+        XCTAssertEqual(bundled["RunAtLoad"] as? Bool, legacy["RunAtLoad"] as? Bool)
+        XCTAssertEqual(bundled["KeepAlive"] as? Bool, legacy["KeepAlive"] as? Bool)
+        XCTAssertEqual(
+            bundled["ThrottleInterval"] as? Int,
+            legacy["ThrottleInterval"] as? Int,
+        )
+        XCTAssertEqual(bundled["ProcessType"] as? String, legacy["ProcessType"] as? String)
+
+        let bundledAssociated = try XCTUnwrap(
+            bundled["AssociatedBundleIdentifiers"] as? [String],
+        )
+        let legacyAssociated = try XCTUnwrap(
+            legacy["AssociatedBundleIdentifiers"] as? [String],
+        )
+        XCTAssertTrue(bundledAssociated.contains("com.capacitor.app"))
+        XCTAssertTrue(legacyAssociated.contains("com.capacitor.app"))
+    }
+
     func testLaunchAgentInstallCleansLegacyPlistWhenSMAppServiceSucceeds() throws {
         let homeDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         let launchAgentsDir = homeDir.appendingPathComponent("Library/LaunchAgents")

@@ -100,20 +100,47 @@ fn read_response(stream: &mut UnixStream) -> Response {
     serde_json::from_slice(response_bytes).expect("failed to parse response JSON")
 }
 
+fn try_send_request(socket: &Path, request: &Request) -> Option<Response> {
+    let mut stream = UnixStream::connect(socket).ok()?;
+    serde_json::to_writer(&mut stream, request).ok()?;
+    stream.write_all(b"\n").ok()?;
+    stream.flush().ok()?;
+    let mut buffer = Vec::new();
+    let mut chunk = [0u8; 4096];
+    loop {
+        let n = stream.read(&mut chunk).ok()?;
+        if n == 0 {
+            break;
+        }
+        buffer.extend_from_slice(&chunk[..n]);
+        if chunk[..n].contains(&b'\n') {
+            break;
+        }
+    }
+    if buffer.is_empty() {
+        return None;
+    }
+    let newline_index = buffer.iter().position(|b| *b == b'\n');
+    let response_bytes = match newline_index {
+        Some(index) => &buffer[..index],
+        None => buffer.as_slice(),
+    };
+    serde_json::from_slice(response_bytes).ok()
+}
+
 fn wait_for_health_ok(socket: &Path, timeout: Duration) -> Option<Response> {
     let deadline = Instant::now() + timeout;
     while Instant::now() < deadline {
-        let response = send_request(
-            socket,
-            Request {
-                protocol_version: PROTOCOL_VERSION,
-                method: Method::GetHealth,
-                id: Some("health-retry".to_string()),
-                params: None,
-            },
-        );
-        if response.ok {
-            return Some(response);
+        let request = Request {
+            protocol_version: PROTOCOL_VERSION,
+            method: Method::GetHealth,
+            id: Some("health-retry".to_string()),
+            params: None,
+        };
+        if let Some(response) = try_send_request(socket, &request) {
+            if response.ok {
+                return Some(response);
+            }
         }
         sleep(Duration::from_millis(25));
     }
