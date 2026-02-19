@@ -68,7 +68,7 @@ Response shape:
   "pid": 12345,
   "version": "0.1.27",
   "protocol_version": 1,
-  "dead_session_reconcile_interval_secs": 60,
+  "dead_session_reconcile_interval_secs": 15,
   "security": {
     "peer_auth_mode": "same_user",
     "rejected_connections": 4
@@ -244,8 +244,6 @@ Response:
 }
 ```
 
-Uses the same `project_path` validation and `invalid_project_path` error semantics as `get_routing_snapshot`.
-
 ### `get_routing_diagnostics`
 
 Request:
@@ -259,6 +257,8 @@ Request:
   }
 }
 ```
+
+Uses the same `project_path` validation and `invalid_project_path` error semantics as `get_routing_snapshot`.
 
 Response:
 
@@ -337,6 +337,23 @@ Validation rules:
 - `notification` requires `notification_type`
 - `stop` requires `stop_hook_active`
 
+## Operational Notes
+
+- Connection flood behavior:
+  - Hard in-flight cap is `64` handlers.
+  - Excess connections are rejected immediately with `too_many_connections`.
+  - Daemon remains responsive after overload once capacity is available.
+- Read timeout behavior:
+  - Requests must arrive promptly after connect.
+  - Idle clients receive `read_timeout`.
+- Replay behavior:
+  - Catch-up cursor is durable (`daemon_meta.last_applied_event_rowid`).
+  - Replay selection is rowid-ordered, not timestamp-window ordered.
+  - New rowids are processed exactly once after restart, including slight out-of-order timestamps.
+- Local daemon log policy:
+  - LaunchAgent stdout/stderr logs live under `~/.capacitor/daemon/`.
+  - App-side startup now trims oversized daemon stdout/stderr logs before registration/kickstart.
+
 ## Error Codes
 
 - `empty_request`
@@ -358,3 +375,6 @@ Validation rules:
 - `serialization_error`
 - `liveness_error`
 - `sessions_error`
+- `project_states_error`
+- `activity_error`
+- `tombstone_error`
