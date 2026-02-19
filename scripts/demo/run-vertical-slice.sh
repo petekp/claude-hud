@@ -877,7 +877,8 @@ apply_demo_env
 capture_app_log_offset
 
 echo "[demo] Restarting app"
-"$PROJECT_ROOT/scripts/dev/restart-app.sh" --alpha
+# Signal restart script to preserve the demo env vars we just applied.
+CAPACITOR_DEMO_ENV_PRESERVE=1 "$PROJECT_ROOT/scripts/dev/restart-app.sh" --alpha
 
 APP_PID="$(wait_for_pid "$APP_BINARY$")" || {
     echo "[demo] Unable to find app process for $APP_BINARY" >&2

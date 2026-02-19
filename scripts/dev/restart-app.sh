@@ -8,23 +8,22 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 # shellcheck source=/dev/null
 source "$SCRIPT_DIR/load-runtime-env.sh"
 
-# Strip stale demo-mode environment variables.
-# The demo recording script (run-vertical-slice.sh) sets these via launchctl,
-# but if it exits uncleanly the values persist and silently activate demo mode
-# on every subsequent restart. Clear them here unless the caller explicitly
-# re-exports them (run-vertical-slice.sh does this before invoking us).
+# Strip any lingering demo-mode env vars unless the caller explicitly asked us to keep them.
+# run-vertical-slice.sh demands preservation by exporting CAPACITOR_DEMO_ENV_PRESERVE=1 before calling this script.
 DEMO_ENV_VARS=(
     CAPACITOR_DEMO_MODE
     CAPACITOR_DEMO_SCENARIO
     CAPACITOR_DEMO_DISABLE_SIDE_EFFECTS
     CAPACITOR_DEMO_PROJECTS_FILE
 )
-for _var in "${DEMO_ENV_VARS[@]}"; do
-    if [[ -z "${!_var-}" ]]; then
+if [[ -z "${CAPACITOR_DEMO_ENV_PRESERVE:-}" ]]; then
+    for _var in "${DEMO_ENV_VARS[@]}"; do
+        unset "$_var" 2>/dev/null || true
         launchctl unsetenv "$_var" 2>/dev/null || true
-    fi
-done
-unset _var
+    done
+else
+    unset CAPACITOR_DEMO_ENV_PRESERVE
+fi
 
 # Prefer a real Apple signing identity so launchd background-item attribution
 # can associate the daemon with the app bundle in Login Items.
