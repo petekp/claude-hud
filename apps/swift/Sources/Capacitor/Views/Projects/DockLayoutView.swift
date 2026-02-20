@@ -7,6 +7,8 @@ struct DockLayoutView: View {
     private let glassConfig = GlassConfig.shared
     @State private var scrolledID: String?
     @State private var draggedProject: Project?
+    @State private var showPageIndicator = false
+    @State private var pageIndicatorHideTask: _Concurrency.Task<Void, Never>?
 
     private var cardWidth: CGFloat {
         glassConfig.dockCardWidthRounded
@@ -78,9 +80,24 @@ struct DockLayoutView: View {
                     .scrollClipDisabled()
                     .scrollTargetBehavior(.viewAligned)
                     .scrollPosition(id: $scrolledID)
+                    .onChange(of: scrolledID) {
+                        // Cancel any pending hide — show instantly
+                        pageIndicatorHideTask?.cancel()
+                        showPageIndicator = true
+
+                        // Schedule hide after 3 seconds of inactivity
+                        pageIndicatorHideTask = _Concurrency.Task { @MainActor in
+                            try? await _Concurrency.Task.sleep(for: .seconds(3))
+                            guard !_Concurrency.Task.isCancelled else { return }
+                            withAnimation(.easeOut(duration: 0.4)) {
+                                showPageIndicator = false
+                            }
+                        }
+                    }
 
                     if totalPages > 1 {
                         PageIndicator(currentPage: currentPage, totalPages: totalPages)
+                            .opacity(showPageIndicator ? 1 : 0)
                             .padding(.bottom, pageIndicatorSpacing)
                     }
                 }
