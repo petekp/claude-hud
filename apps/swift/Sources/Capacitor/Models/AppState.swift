@@ -53,7 +53,8 @@ class AppState {
     // MARK: - Build Channel + Feature Flags
 
     private(set) var channel: AppChannel = AppConfig.defaultChannel
-    private(set) var featureFlags: FeatureFlags = .defaults(for: AppConfig.defaultChannel)
+    private(set) var profile: AppProfile = .stable
+    private(set) var featureFlags: FeatureFlags = .defaults(for: .stable)
     private(set) var routingRollout: DaemonRoutingRollout?
 
     var isIdeaCaptureEnabled: Bool {
@@ -210,8 +211,12 @@ class AppState {
             "AppState.init start daemonEnabled=\(DaemonClient.shared.isEnabled) demoMode=\(demoConfig.isEnabled) home=\(FileManager.default.homeDirectoryForCurrentUser.path)",
         )
         let config = AppConfig.current()
+        #if DEBUG
+            AlphaChannelGuardrail.enforceOrExit(channel: config.channel)
+        #endif
         channel = config.channel
-        DebugLog.write("AppState.init config channel=\(channel.rawValue)")
+        profile = config.profile
+        DebugLog.write("AppState.init config channel=\(channel.rawValue) profile=\(profile.rawValue)")
         featureFlags = config.featureFlags
         refreshAERoutingRuntimeFlags(with: nil)
         loadLayoutMode()

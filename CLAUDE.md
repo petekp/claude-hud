@@ -12,8 +12,9 @@ A fun, glanceable, bring-your-own terminal UI for navigating multiple coding age
 
 ```bash
 # Quick iteration (most common)
-./scripts/dev/restart-app.sh              # Rebuild Rust + Swift, relaunch debug bundle
-./scripts/dev/restart-app.sh --channel alpha  # Launch with runtime alpha gating
+./scripts/dev/restart-current.sh          # Rebuild + relaunch using current channel/profile context
+./scripts/dev/restart-alpha-stable.sh     # Switch context to alpha+stable, then relaunch
+./scripts/dev/restart-alpha-frontier.sh   # Switch context to alpha+frontier, then relaunch
 
 # Rust (when changing core/)
 cargo fmt                         # Format (required before commits)
@@ -22,8 +23,8 @@ cargo test                        # Test
 
 # Full rebuild (after Rust changes)
 cargo build -p hud-core --release && cd apps/swift && swift build
-# If using swift run directly (no bundle/Info.plist), set channel explicitly:
-CAPACITOR_CHANNEL=dev swift run
+# Advanced launch control:
+./scripts/dev/restart-app.sh --channel alpha --profile stable
 ```
 
 **First-time setup:** `./scripts/dev/setup.sh`

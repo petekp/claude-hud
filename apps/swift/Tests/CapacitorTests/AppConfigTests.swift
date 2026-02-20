@@ -2,6 +2,39 @@
 import XCTest
 
 final class AppConfigTests: XCTestCase {
+    func testProfileDefaultsToStable() {
+        let config = AppConfig.resolve(
+            environment: [:],
+            info: [:],
+            configFile: nil,
+            defaultChannel: .prod,
+        )
+
+        XCTAssertEqual(config.profile, .stable)
+    }
+
+    func testProfileEnvironmentOverridesInfo() {
+        let config = AppConfig.resolve(
+            environment: ["CAPACITOR_PROFILE": "frontier"],
+            info: ["CapacitorProfile": "stable"],
+            configFile: nil,
+            defaultChannel: .prod,
+        )
+
+        XCTAssertEqual(config.profile, .frontier)
+    }
+
+    func testProfileInfoOverridesDefaultWhenEnvironmentMissing() {
+        let config = AppConfig.resolve(
+            environment: [:],
+            info: ["CapacitorProfile": "frontier"],
+            configFile: nil,
+            defaultChannel: .alpha,
+        )
+
+        XCTAssertEqual(config.profile, .frontier)
+    }
+
     func testAlphaChannelDefaultsDisableOutOfScopeFeatures() {
         let config = AppConfig.resolve(
             environment: ["CAPACITOR_CHANNEL": "alpha"],
@@ -11,6 +44,46 @@ final class AppConfigTests: XCTestCase {
         )
 
         XCTAssertEqual(config.channel, .alpha)
+        XCTAssertFalse(config.featureFlags.ideaCapture)
+        XCTAssertFalse(config.featureFlags.projectDetails)
+        XCTAssertFalse(config.featureFlags.workstreams)
+        XCTAssertFalse(config.featureFlags.projectCreation)
+        XCTAssertFalse(config.featureFlags.llmFeatures)
+    }
+
+    func testFrontierProfileEnablesAllFeatureFlagsOnAlphaChannel() {
+        let config = AppConfig.resolve(
+            environment: [
+                "CAPACITOR_CHANNEL": "alpha",
+                "CAPACITOR_PROFILE": "frontier",
+            ],
+            info: [:],
+            configFile: nil,
+            defaultChannel: .prod,
+        )
+
+        XCTAssertEqual(config.channel, .alpha)
+        XCTAssertEqual(config.profile, .frontier)
+        XCTAssertTrue(config.featureFlags.ideaCapture)
+        XCTAssertTrue(config.featureFlags.projectDetails)
+        XCTAssertTrue(config.featureFlags.workstreams)
+        XCTAssertTrue(config.featureFlags.projectCreation)
+        XCTAssertTrue(config.featureFlags.llmFeatures)
+    }
+
+    func testStableProfileKeepsAlphaSafeDefaultsEvenOnNonAlphaChannel() {
+        let config = AppConfig.resolve(
+            environment: [
+                "CAPACITOR_CHANNEL": "prod",
+                "CAPACITOR_PROFILE": "stable",
+            ],
+            info: [:],
+            configFile: nil,
+            defaultChannel: .prod,
+        )
+
+        XCTAssertEqual(config.channel, .prod)
+        XCTAssertEqual(config.profile, .stable)
         XCTAssertFalse(config.featureFlags.ideaCapture)
         XCTAssertFalse(config.featureFlags.projectDetails)
         XCTAssertFalse(config.featureFlags.workstreams)
@@ -47,6 +120,23 @@ final class AppConfigTests: XCTestCase {
         XCTAssertFalse(config.featureFlags.workstreams)
     }
 
+    func testEnvironmentFeatureOverridesApplyAfterFrontierDefaults() {
+        let config = AppConfig.resolve(
+            environment: [
+                "CAPACITOR_PROFILE": "frontier",
+                "CAPACITOR_FEATURES_DISABLED": "ideaCapture",
+            ],
+            info: [:],
+            configFile: nil,
+            defaultChannel: .prod,
+        )
+
+        XCTAssertEqual(config.profile, .frontier)
+        XCTAssertFalse(config.featureFlags.ideaCapture)
+        XCTAssertTrue(config.featureFlags.projectDetails)
+        XCTAssertTrue(config.featureFlags.workstreams)
+    }
+
     func testConfigFileFeatureFlagsOverrideDefaults() {
         let configFile = AppConfig.ConfigFile(
             channel: nil,
@@ -75,7 +165,7 @@ final class AppConfigTests: XCTestCase {
 
     func testUnknownFeatureFlagsAreIgnored() {
         let baseline = AppConfig.resolve(
-            environment: [:],
+            environment: ["CAPACITOR_PROFILE": "frontier"],
             info: [:],
             configFile: nil,
             defaultChannel: .prod,
@@ -85,6 +175,7 @@ final class AppConfigTests: XCTestCase {
 
         let overridden = AppConfig.resolve(
             environment: [
+                "CAPACITOR_PROFILE": "frontier",
                 "CAPACITOR_FEATURES_ENABLED": "legacyFlagOne,legacyFlagTwo",
             ],
             info: [:],

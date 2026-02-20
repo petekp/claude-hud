@@ -32,6 +32,24 @@ enum AppChannel: String, CaseIterable, Codable {
     }
 }
 
+enum AppProfile: String, CaseIterable, Codable {
+    case stable
+    case frontier
+
+    static func parse(_ rawValue: String?) -> AppProfile? {
+        guard let rawValue else { return nil }
+        let normalized = rawValue.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        switch normalized {
+        case "stable":
+            return .stable
+        case "frontier":
+            return .frontier
+        default:
+            return nil
+        }
+    }
+}
+
 struct FeatureFlags: Equatable, Codable {
     var ideaCapture: Bool
     var projectDetails: Bool
@@ -39,9 +57,9 @@ struct FeatureFlags: Equatable, Codable {
     var projectCreation: Bool
     var llmFeatures: Bool
 
-    static func defaults(for channel: AppChannel) -> FeatureFlags {
-        switch channel {
-        case .alpha:
+    static func defaults(for profile: AppProfile) -> FeatureFlags {
+        switch profile {
+        case .stable:
             FeatureFlags(
                 ideaCapture: false,
                 projectDetails: false,
@@ -49,7 +67,7 @@ struct FeatureFlags: Equatable, Codable {
                 projectCreation: false,
                 llmFeatures: false,
             )
-        case .dev, .beta, .prod:
+        case .frontier:
             FeatureFlags(
                 ideaCapture: true,
                 projectDetails: true,
@@ -57,6 +75,15 @@ struct FeatureFlags: Equatable, Codable {
                 projectCreation: true,
                 llmFeatures: true,
             )
+        }
+    }
+
+    static func defaults(for channel: AppChannel) -> FeatureFlags {
+        switch channel {
+        case .alpha:
+            defaults(for: .stable)
+        case .dev, .beta, .prod:
+            defaults(for: .frontier)
         }
     }
 
@@ -87,6 +114,7 @@ struct FeatureFlags: Equatable, Codable {
 
 struct AppConfig: Equatable {
     let channel: AppChannel
+    let profile: AppProfile
     let featureFlags: FeatureFlags
 
     struct ConfigFile: Codable, Equatable {
@@ -129,6 +157,7 @@ struct AppConfig: Equatable {
             info: info,
             configFile: configFile,
             defaultChannel: defaultChannel,
+            defaultProfile: .stable,
         )
     }
 
@@ -137,6 +166,7 @@ struct AppConfig: Equatable {
         info: [String: Any],
         configFile: ConfigFile?,
         defaultChannel: AppChannel,
+        defaultProfile: AppProfile = .stable,
     ) -> AppConfig {
         let channel = resolveChannel(
             environment: environment,
@@ -144,13 +174,18 @@ struct AppConfig: Equatable {
             configFile: configFile,
             defaultChannel: defaultChannel,
         )
+        let profile = resolveProfile(
+            environment: environment,
+            info: info,
+            defaultProfile: defaultProfile,
+        )
 
-        var flags = FeatureFlags.defaults(for: channel)
+        var flags = FeatureFlags.defaults(for: profile)
         flags.apply(overrides(from: configFile))
         flags.apply(overrides(fromInfo: info))
         flags.apply(overrides(fromEnvironment: environment))
 
-        return AppConfig(channel: channel, featureFlags: flags)
+        return AppConfig(channel: channel, profile: profile, featureFlags: flags)
     }
 
     private static func resolveChannel(
@@ -169,6 +204,20 @@ struct AppConfig: Equatable {
             return fileChannel
         }
         return defaultChannel
+    }
+
+    private static func resolveProfile(
+        environment: [String: String],
+        info: [String: Any],
+        defaultProfile: AppProfile,
+    ) -> AppProfile {
+        if let envProfile = AppProfile.parse(environment["CAPACITOR_PROFILE"]) {
+            return envProfile
+        }
+        if let infoProfile = AppProfile.parse(info["CapacitorProfile"] as? String) {
+            return infoProfile
+        }
+        return defaultProfile
     }
 
     private static func overrides(from configFile: ConfigFile?) -> FeatureOverrides {

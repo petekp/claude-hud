@@ -20,18 +20,34 @@ This handles the full setup: environment checks, dependencies, building, hooks.
 Once that's done:
 
 ```bash
-./scripts/dev/restart-app.sh
+./scripts/dev/restart-current.sh
 ```
 
-This rebuilds everything and launches a debug build. You'll run it a lot.
+This rebuilds everything and launches a debug build using the current runtime context.
 
 ## Development workflow
 
-`restart-app.sh` is the main loop. Some useful flags:
+Canonical launchers:
+
+- `./scripts/dev/restart-current.sh`: reuse current channel/profile context
+- `./scripts/dev/restart-alpha-stable.sh`: alpha channel + stable profile (daily polish)
+- `./scripts/dev/restart-alpha-frontier.sh`: alpha channel + frontier profile (new feature planning)
+
+`restart-app.sh` remains available for explicit control. Useful flags:
 
 - `--swift-only` / `-s`: skip the Rust build when you're only changing Swift
 - `--force` / `-f`: force a full rebuild
 - `--channel <name>`: set runtime channel (`dev`, `alpha`, `beta`, `prod`)
+- `--profile <stable|frontier>`: set runtime feature profile
+- `--frontier`: alias for `--profile frontier`
+
+During the public alpha cycle, dev/debug launches are alpha-only by default.  
+Runtime context is persisted in `~/.capacitor/runtime-context.env` after each restart.
+If you intentionally need non-alpha in debug, use:
+
+```bash
+CAPACITOR_ALLOW_NON_ALPHA=1 ./scripts/dev/restart-app.sh --channel prod --profile stable
+```
 
 For Rust-only work, cargo works fine:
 
