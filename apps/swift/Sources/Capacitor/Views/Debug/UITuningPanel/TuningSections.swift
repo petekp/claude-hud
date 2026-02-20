@@ -395,12 +395,28 @@ import SwiftUI
                 }
 
                 StickySection(title: "Dock Layout", onReset: resetDock) {
+                    Text("Window")
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundColor(.white.opacity(0.5))
+
+                    TuningRow(label: "Window Min Height", value: $config.dockWindowMinHeight, range: 80 ... 300, step: 1, format: "%.0f")
+                    TuningRow(label: "Window Max Height", value: $config.dockWindowMaxHeight, range: 120 ... 500, step: 1, format: "%.0f")
+
+                    SectionDivider()
+
+                    Text("Cards")
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundColor(.white.opacity(0.5))
+
                     TuningRow(label: "Card Width", value: $config.dockCardWidth, range: 140 ... 400, step: 1, format: "%.0f")
                     TuningRow(label: "Card Min Height", value: $config.dockCardMinHeight, range: 0 ... 200, step: 1, format: "%.0f")
+                    TuningRow(label: "Card Max Height", value: $config.dockCardMaxHeight, range: 0 ... 300, step: 1, format: "%.0f")
+                    TuningRow(label: "Card Corner Radius", value: $config.dockCardCornerRadius, range: 0 ... 24, step: 1, format: "%.0f")
                     TuningRow(label: "Card Spacing", value: $config.dockCardSpacing, range: 0 ... 32, step: 1, format: "%.0f")
                     TuningRow(label: "Card Padding H", value: $config.dockCardPaddingHorizontal, range: 4 ... 24, step: 1, format: "%.0f")
                     TuningRow(label: "Card Padding V", value: $config.dockCardPaddingVertical, range: 4 ... 24, step: 1, format: "%.0f")
                     TuningRow(label: "Dock Padding H", value: $config.dockHorizontalPadding, range: 0 ... 32, step: 1, format: "%.0f")
+                    TuningRow(label: "Dock Padding V", value: $config.dockVerticalPadding, range: 0 ... 24, step: 1, format: "%.0f")
 
                     SectionDivider()
 
@@ -410,6 +426,7 @@ import SwiftUI
 
                     TuningRow(label: "Content Spacing", value: $config.dockCardContentSpacing, range: 0 ... 20, step: 1, format: "%.0f")
                     TuningRow(label: "Chip Top Padding", value: $config.dockChipTopPadding, range: 0 ... 16, step: 1, format: "%.0f")
+                    TuningRow(label: "Page Dot Spacing", value: $config.dockPageIndicatorSpacing, range: 0 ... 20, step: 1, format: "%.0f")
                 }
             })
         }
@@ -422,12 +439,18 @@ import SwiftUI
         }
 
         private func resetDock() {
-            config.dockCardWidth = 262.0
-            config.dockCardMinHeight = 0.0
-            config.dockCardSpacing = 9.25
-            config.dockCardPaddingHorizontal = 10.74
-            config.dockCardPaddingVertical = 13.53
-            config.dockHorizontalPadding = 13.98
+            config.dockWindowMinHeight = 110.50
+            config.dockWindowMaxHeight = 187.25
+            config.dockCardWidth = 231.03
+            config.dockCardMinHeight = 43.20
+            config.dockCardMaxHeight = 141.23
+            config.dockCardCornerRadius = 8.61
+            config.dockCardSpacing = 12.41
+            config.dockCardPaddingHorizontal = 14.85
+            config.dockCardPaddingVertical = 13.79
+            config.dockHorizontalPadding = 10.25
+            config.dockVerticalPadding = 9.80
+            config.dockPageIndicatorSpacing = 8.0
             config.dockCardContentSpacing = 10.0
             config.dockChipTopPadding = 4.0
         }

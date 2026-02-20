@@ -25,6 +25,8 @@ struct DockLayoutView: View {
         // Capture layout values once at body evaluation to avoid constraint loops
         let cardSpacing = glassConfig.dockCardSpacingRounded
         let horizontalPadding = glassConfig.dockHorizontalPaddingRounded
+        let verticalPadding = glassConfig.dockVerticalPaddingRounded
+        let pageIndicatorSpacing = glassConfig.dockPageIndicatorSpacingRounded
         let grouped = ProjectOrdering.orderedGroupedProjects(
             nonPausedProjects,
             order: appState.projectOrder,
@@ -45,7 +47,7 @@ struct DockLayoutView: View {
             let totalPages = max(1, Int(ceil(Double(allProjects.count) / Double(cardsPerPage))))
             let currentPage = calculateCurrentPage(cardsPerPage: cardsPerPage, in: allProjects)
 
-            VStack(spacing: 8) {
+            ZStack(alignment: .bottom) {
                 if allProjects.isEmpty {
                     emptyState
                 } else {
@@ -73,14 +75,17 @@ struct DockLayoutView: View {
                         .padding(.horizontal, horizontalPadding)
                         .scrollTargetLayout()
                     }
+                    .scrollClipDisabled()
                     .scrollTargetBehavior(.viewAligned)
                     .scrollPosition(id: $scrolledID)
 
                     if totalPages > 1 {
                         PageIndicator(currentPage: currentPage, totalPages: totalPages)
+                            .padding(.bottom, pageIndicatorSpacing)
                     }
                 }
             }
+            .padding(.vertical, verticalPadding > 0 ? verticalPadding : 0)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .background(floatingMode ? Color.clear : Color.hudBackground)
@@ -243,7 +248,17 @@ private struct PageIndicator: View {
                     .animation(reduceMotion ? nil : .spring(response: 0.25, dampingFraction: 0.7), value: currentPage)
             }
         }
+        .padding(.horizontal, 10)
         .padding(.vertical, 4)
+        .background(
+            Capsule()
+                .fill(.black.opacity(0.35))
+                .background(
+                    Capsule()
+                        .fill(.ultraThinMaterial),
+                )
+                .clipShape(Capsule()),
+        )
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Page \(currentPage + 1) of \(totalPages)")
     }

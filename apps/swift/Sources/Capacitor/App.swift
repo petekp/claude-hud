@@ -643,6 +643,7 @@ struct FloatingWindowConfigurator: NSViewRepresentable {
 
 struct LayoutModeFrameModifier: ViewModifier {
     let layoutMode: LayoutMode
+    private let glassConfig = GlassConfig.shared
 
     func body(content: Content) -> some View {
         switch layoutMode {
@@ -653,7 +654,8 @@ struct LayoutModeFrameModifier: ViewModifier {
         case .dock:
             content
                 .frame(minWidth: 500, maxWidth: 1600,
-                       minHeight: 158, maxHeight: 195)
+                       minHeight: glassConfig.dockWindowMinHeightRounded,
+                       maxHeight: glassConfig.dockWindowMaxHeightRounded)
         }
     }
 }
@@ -699,9 +701,32 @@ struct WindowFrameConfigurator: NSViewRepresentable {
         var currentLayoutMode: LayoutMode?
         var lastKnownFrame: NSRect?
         weak var currentWindow: NSWindow?
+        private var terminationObserver: NSObjectProtocol?
+
+        init() {
+            terminationObserver = NotificationCenter.default.addObserver(
+                forName: NSApplication.willTerminateNotification,
+                object: nil,
+                queue: .main,
+            ) { [weak self] _ in
+                self?.persistCurrentFrame()
+            }
+        }
+
+        deinit {
+            if let observer = terminationObserver {
+                NotificationCenter.default.removeObserver(observer)
+            }
+        }
 
         func updateFrame(_ frame: NSRect) {
             lastKnownFrame = frame
+            persistCurrentFrame()
+        }
+
+        private func persistCurrentFrame() {
+            guard let mode = currentLayoutMode, let frame = lastKnownFrame else { return }
+            WindowFrameStore.shared.saveFrame(frame, for: mode)
         }
     }
 
@@ -741,9 +766,10 @@ struct WindowFrameConfigurator: NSViewRepresentable {
     private func clampFrame(_ frame: NSRect, to screenFrame: NSRect, for mode: LayoutMode) -> NSRect {
         var result = frame
 
+        let glassConfig = GlassConfig.shared
         let (minW, maxW, minH, maxH): (CGFloat, CGFloat, CGFloat, CGFloat) = switch mode {
         case .vertical: (280, 500, 400, screenFrame.height)
-        case .dock: (400, 1200, 120, 180)
+        case .dock: (400, 1200, glassConfig.dockWindowMinHeightRounded, glassConfig.dockWindowMaxHeightRounded)
         }
 
         result.size.width = min(max(result.size.width, minW), maxW)

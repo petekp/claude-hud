@@ -126,12 +126,16 @@ struct DockProjectCard: View {
 
         let dockWidth = glassConfig.dockCardWidthRounded
         let dockMinHeight = glassConfig.dockCardMinHeightRounded
+        let dockMaxHeight = glassConfig.dockCardMaxHeightRounded
 
         let styledCard = cardContent
             .padding(.horizontal, dockPaddingH)
             .padding(.vertical, dockPaddingV)
             .frame(width: dockWidth)
-            .frame(minHeight: dockMinHeight > 0 ? dockMinHeight : nil)
+            .frame(
+                minHeight: dockMinHeight > 0 ? dockMinHeight : nil,
+                maxHeight: dockMaxHeight > 0 ? dockMaxHeight : nil,
+            )
             .cardStyling(
                 isHovered: isHovered,
                 currentState: currentState,

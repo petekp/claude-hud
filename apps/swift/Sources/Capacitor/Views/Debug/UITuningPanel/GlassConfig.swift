@@ -316,12 +316,18 @@ class GlassConfig {
 
     // MARK: - Layout Settings (Dock)
 
-    var dockCardSpacing: Double = 10.00 // Gap between cards in horizontal dock
-    var dockCardPaddingHorizontal: Double = 15.82 // Horizontal internal padding for dock cards
-    var dockCardPaddingVertical: Double = 13.53 // Vertical internal padding for dock cards
-    var dockHorizontalPadding: Double = 19.96 // Horizontal padding for dock container
-    var dockCardWidth: Double = 262.0 // Fixed width of each dock card
-    var dockCardMinHeight: Double = 0.0 // Minimum height (0 = auto)
+    var dockCardSpacing: Double = 12.41 // Gap between cards in horizontal dock
+    var dockCardPaddingHorizontal: Double = 14.85 // Horizontal internal padding for dock cards
+    var dockCardPaddingVertical: Double = 13.79 // Vertical internal padding for dock cards
+    var dockHorizontalPadding: Double = 10.25 // Horizontal padding for dock container
+    var dockCardWidth: Double = 231.03 // Fixed width of each dock card
+    var dockCardMinHeight: Double = 43.20 // Minimum height (0 = auto)
+    var dockCardMaxHeight: Double = 141.23 // Maximum height (0 = no limit)
+    var dockCardCornerRadius: Double = 8.61 // Independent corner radius (0 = derive from card)
+    var dockVerticalPadding: Double = 9.80 // Vertical padding for dock container
+    var dockWindowMinHeight: Double = 110.50 // Minimum window height in dock mode
+    var dockWindowMaxHeight: Double = 187.25 // Maximum window height in dock mode
+    var dockPageIndicatorSpacing: Double = 8.0 // Spacing between cards and page dots
     var dockCardContentSpacing: Double = 10.0 // HStack spacing inside card
     var dockChipTopPadding: Double = 4.0 // Padding above status chips row
 
@@ -365,6 +371,30 @@ class GlassConfig {
 
     var dockCardMinHeightRounded: CGFloat {
         round(dockCardMinHeight)
+    }
+
+    var dockCardMaxHeightRounded: CGFloat {
+        round(dockCardMaxHeight)
+    }
+
+    var dockCardCornerRadiusRounded: CGFloat {
+        round(dockCardCornerRadius)
+    }
+
+    var dockVerticalPaddingRounded: CGFloat {
+        round(dockVerticalPadding)
+    }
+
+    var dockWindowMinHeightRounded: CGFloat {
+        round(dockWindowMinHeight)
+    }
+
+    var dockWindowMaxHeightRounded: CGFloat {
+        round(dockWindowMaxHeight)
+    }
+
+    var dockPageIndicatorSpacingRounded: CGFloat {
+        round(dockPageIndicatorSpacing)
     }
 
     var dockCardContentSpacingRounded: CGFloat {
@@ -643,8 +673,12 @@ class GlassConfig {
         case .vertical:
             cardCornerRadius
         case .dock:
-            // Dock cards are smaller, so we scale down proportionally
-            max(8, cardCornerRadius * 0.58)
+            // Use independent dock radius when set, otherwise derive proportionally
+            if dockCardCornerRadius > 0 {
+                dockCardCornerRadius
+            } else {
+                max(8, cardCornerRadius * 0.58)
+            }
         }
     }
 
@@ -833,12 +867,18 @@ class GlassConfig {
         cardPaddingHorizontal = 15.07
         cardPaddingVertical = 11.40
         listHorizontalPadding = 11.60
-        dockCardSpacing = 10.00
-        dockCardPaddingHorizontal = 15.82
-        dockCardPaddingVertical = 13.53
-        dockHorizontalPadding = 19.96
-        dockCardWidth = 262.0
-        dockCardMinHeight = 0.0
+        dockCardSpacing = 12.41
+        dockCardPaddingHorizontal = 14.85
+        dockCardPaddingVertical = 13.79
+        dockHorizontalPadding = 10.25
+        dockCardWidth = 231.03
+        dockCardMinHeight = 43.20
+        dockCardMaxHeight = 141.23
+        dockCardCornerRadius = 8.61
+        dockVerticalPadding = 9.80
+        dockWindowMinHeight = 110.50
+        dockWindowMaxHeight = 187.25
+        dockPageIndicatorSpacing = 8.0
         dockCardContentSpacing = 10.0
         dockChipTopPadding = 4.0
 
@@ -1037,12 +1077,18 @@ class GlassConfig {
             ("Layout List", "cardPaddingVertical", 11.40, cardPaddingVertical),
             ("Layout List", "listHorizontalPadding", 11.60, listHorizontalPadding),
             // Layout - Dock
-            ("Layout Dock", "dockCardSpacing", 10.00, dockCardSpacing),
-            ("Layout Dock", "dockCardPaddingHorizontal", 15.82, dockCardPaddingHorizontal),
-            ("Layout Dock", "dockCardPaddingVertical", 13.53, dockCardPaddingVertical),
-            ("Layout Dock", "dockHorizontalPadding", 19.96, dockHorizontalPadding),
-            ("Layout Dock", "dockCardWidth", 262.0, dockCardWidth),
-            ("Layout Dock", "dockCardMinHeight", 0.0, dockCardMinHeight),
+            ("Layout Dock", "dockCardSpacing", 12.41, dockCardSpacing),
+            ("Layout Dock", "dockCardPaddingHorizontal", 14.85, dockCardPaddingHorizontal),
+            ("Layout Dock", "dockCardPaddingVertical", 13.79, dockCardPaddingVertical),
+            ("Layout Dock", "dockHorizontalPadding", 10.25, dockHorizontalPadding),
+            ("Layout Dock", "dockCardWidth", 231.03, dockCardWidth),
+            ("Layout Dock", "dockCardMinHeight", 43.20, dockCardMinHeight),
+            ("Layout Dock", "dockCardMaxHeight", 141.23, dockCardMaxHeight),
+            ("Layout Dock", "dockCardCornerRadius", 8.61, dockCardCornerRadius),
+            ("Layout Dock", "dockVerticalPadding", 9.80, dockVerticalPadding),
+            ("Layout Dock", "dockWindowMinHeight", 110.50, dockWindowMinHeight),
+            ("Layout Dock", "dockWindowMaxHeight", 187.25, dockWindowMaxHeight),
+            ("Layout Dock", "dockPageIndicatorSpacing", 8.0, dockPageIndicatorSpacing),
             ("Layout Dock", "dockCardContentSpacing", 10.0, dockCardContentSpacing),
             ("Layout Dock", "dockChipTopPadding", 4.0, dockChipTopPadding),
         ]
