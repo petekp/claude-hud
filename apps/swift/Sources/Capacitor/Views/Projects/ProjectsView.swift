@@ -67,9 +67,9 @@ struct ProjectsView: View {
         // (same pattern as DockLayoutView crash fix)
         let cardListSpacing = glassConfig.cardListSpacingRounded
         let listHorizontalPadding = glassConfig.listHorizontalPaddingRounded
-        let contentTopPadding: CGFloat = floatingMode ? 56 : 12
+        let contentTopPadding: CGFloat = floatingMode ? 44 : 12
         let contentBottomPadding: CGFloat = floatingMode ? 64 : 8
-        let edgeFadeHeight: CGFloat = floatingMode ? 30 : 0
+        let edgeFadeHeight: CGFloat = floatingMode ? 24 : 0
         let topFade = contentTopPadding + edgeFadeHeight
         let bottomFade = contentBottomPadding + edgeFadeHeight
 
