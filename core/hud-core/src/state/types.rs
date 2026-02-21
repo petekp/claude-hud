@@ -123,6 +123,9 @@ pub enum HookEvent {
     },
     TeammateIdle,
     TaskCompleted,
+    WorktreeCreate,
+    WorktreeRemove,
+    ConfigChange,
     Unknown {
         event_name: String,
     },
@@ -183,6 +186,9 @@ impl HookInput {
             },
             "TeammateIdle" => HookEvent::TeammateIdle,
             "TaskCompleted" => HookEvent::TaskCompleted,
+            "WorktreeCreate" => HookEvent::WorktreeCreate,
+            "WorktreeRemove" => HookEvent::WorktreeRemove,
+            "ConfigChange" => HookEvent::ConfigChange,
             _ => HookEvent::Unknown {
                 event_name: event_name.to_string(),
             },

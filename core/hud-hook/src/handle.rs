@@ -201,10 +201,6 @@ fn process_event(
             }
         }
 
-        HookEvent::SubagentStart | HookEvent::SubagentStop => (Action::Skip, None, None),
-
-        HookEvent::TeammateIdle => (Action::Skip, None, None),
-
         HookEvent::Stop { stop_hook_active } => {
             if *stop_hook_active {
                 (Action::Skip, None, None)
@@ -223,10 +219,9 @@ fn process_event(
 
         HookEvent::SessionEnd => (Action::Delete, None, None),
 
-        HookEvent::Unknown { event_name } => {
-            tracing::debug!(event_name = %event_name, "Unhandled event");
-            (Action::Skip, None, None)
-        }
+        // Informational events (SubagentStart, TeammateIdle, WorktreeCreate, etc.)
+        // and unknown future events are recognized but don't affect session state.
+        _ => (Action::Skip, None, None),
     }
 }
 

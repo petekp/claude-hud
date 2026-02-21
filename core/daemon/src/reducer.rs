@@ -153,9 +153,6 @@ pub fn reduce_session(current: Option<&SessionRecord>, event: &EventEnvelope) ->
             }
             _ => SessionUpdate::Skip,
         },
-        EventType::SubagentStart | EventType::SubagentStop | EventType::TeammateIdle => {
-            SessionUpdate::Skip
-        }
         EventType::Stop => {
             if should_skip_stop(current, event) {
                 SessionUpdate::Skip
@@ -183,7 +180,9 @@ pub fn reduce_session(current: Option<&SessionRecord>, event: &EventEnvelope) ->
             }
         }
         EventType::SessionEnd => SessionUpdate::Delete { session_id },
-        EventType::ShellCwd => SessionUpdate::Skip,
+        // Informational events (SubagentStart, TeammateIdle, WorktreeCreate, etc.)
+        // are recognized but don't affect session state.
+        _ => SessionUpdate::Skip,
     }
 }
 

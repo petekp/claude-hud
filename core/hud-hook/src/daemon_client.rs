@@ -331,6 +331,9 @@ fn event_type_for_hook(event: &HookEvent) -> Option<EventType> {
         HookEvent::Stop { .. } => Some(EventType::Stop),
         HookEvent::TeammateIdle => Some(EventType::TeammateIdle),
         HookEvent::TaskCompleted => Some(EventType::TaskCompleted),
+        HookEvent::WorktreeCreate => Some(EventType::WorktreeCreate),
+        HookEvent::WorktreeRemove => Some(EventType::WorktreeRemove),
+        HookEvent::ConfigChange => Some(EventType::ConfigChange),
         HookEvent::SessionEnd => Some(EventType::SessionEnd),
         HookEvent::Unknown { .. } => None,
     }

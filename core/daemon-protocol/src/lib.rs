@@ -210,6 +210,9 @@ pub enum EventType {
     Stop,
     TeammateIdle,
     TaskCompleted,
+    WorktreeCreate,
+    WorktreeRemove,
+    ConfigChange,
     SessionEnd,
     ShellCwd,
 }
@@ -285,17 +288,8 @@ impl EventEnvelope {
             EventType::SessionEnd => {
                 require_string(&self.session_id, "session_id")?;
             }
-            EventType::SessionStart
-            | EventType::UserPromptSubmit
-            | EventType::PreToolUse
-            | EventType::PostToolUse
-            | EventType::PostToolUseFailure
-            | EventType::PermissionRequest
-            | EventType::SubagentStart
-            | EventType::SubagentStop
-            | EventType::TeammateIdle
-            | EventType::TaskCompleted
-            | EventType::PreCompact => {
+            // All other event types require standard session fields.
+            _ => {
                 require_session_fields(self)?;
             }
         }
