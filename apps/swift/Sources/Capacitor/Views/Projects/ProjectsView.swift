@@ -213,7 +213,7 @@ struct ProjectsView: View {
                                             title: "Idle",
                                             count: grouped.idle.count,
                                         )
-                                        .padding(.top, grouped.active.isEmpty ? 4 : 8)
+                                        .padding(.top, grouped.active.isEmpty ? 4 : 10)
                                         .id("idle-section-header")
                                         .transition(.opacity)
                                     }
@@ -546,7 +546,8 @@ struct SectionHeader: View {
 
             Spacer()
         }
-        .padding(.horizontal, 4)
+        .padding(.leading, 6)
+        .padding(.trailing, 4)
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(title) section, \(count) \(count == 1 ? "project" : "projects")")
     }
