@@ -20,6 +20,7 @@ use crate::hem::{
 };
 use crate::process::get_process_start_time;
 use crate::project_identity::workspace_id;
+use crate::project_state_policy::{reduce_project_sessions, SessionProjection};
 use crate::reducer::{SessionRecord, SessionUpdate};
 use crate::replay::catch_up_sessions_from_events;
 use crate::session_store::handle_session_event;
@@ -314,6 +315,11 @@ impl SharedState {
 
         self.evaluate_hem_shadow(event);
 
+        if let Err(err) = self.prune_expired_sessions_locked(Utc::now()) {
+            tracing::warn!(error = %err, "Failed to prune expired sessions after event apply");
+            had_error = true;
+        }
+
         if had_error {
             tracing::warn!(
                 event_id = %event.event_id,
@@ -424,7 +430,6 @@ impl SharedState {
 
         for record in sessions {
             if self.is_session_expired(&record, now) {
-                self.prune_session(&record.session_id)?;
                 continue;
             }
 
@@ -491,6 +496,7 @@ impl SharedState {
             );
         }
 
+        self.prune_expired_sessions_locked(Utc::now())?;
         self.record_dead_session_reconcile(source, repaired as u64, &now);
 
         Ok(repaired)
@@ -694,7 +700,7 @@ impl SharedState {
 
         let sessions = self.db.list_sessions()?;
         let now = Utc::now();
-        let mut aggregates: HashMap<String, ProjectAggregate> = HashMap::new();
+        let mut sessions_by_project: HashMap<String, Vec<SessionProjection>> = HashMap::new();
 
         for record in sessions {
             if record.project_path.trim().is_empty() {
@@ -702,55 +708,30 @@ impl SharedState {
             }
 
             if self.is_session_expired(&record, now) {
-                self.prune_session(&record.session_id)?;
                 continue;
             }
 
             let is_alive = self.session_is_alive(record.pid);
             let effective_state = effective_session_state(&record, now, is_alive);
             let session_time = session_timestamp(&record).unwrap_or(now);
-            let priority = session_state_priority(&effective_state);
-            let is_active = session_state_is_active(&effective_state);
-
-            let entry = aggregates
+            sessions_by_project
                 .entry(record.project_path.clone())
-                .or_insert_with(|| {
-                    ProjectAggregate::from_record(
-                        &record,
-                        effective_state.clone(),
-                        session_time,
-                        priority,
-                        is_active,
-                    )
+                .or_default()
+                .push(SessionProjection {
+                    session_id: record.session_id.clone(),
+                    project_id: record.project_id.clone(),
+                    state: effective_state,
+                    session_time,
+                    updated_at: record.updated_at.clone(),
+                    state_changed_at: record.state_changed_at.clone(),
                 });
-
-            if entry.project_id.is_empty() && !record.project_id.is_empty() {
-                entry.project_id = record.project_id.clone();
-            }
-
-            entry.session_count += 1;
-            if is_active {
-                entry.active_count += 1;
-            }
-
-            if session_time > entry.latest_time {
-                entry.latest_time = session_time;
-                entry.updated_at = record.updated_at.clone();
-                entry.session_id = Some(record.session_id.clone());
-            }
-
-            if priority > entry.state_priority
-                || (priority == entry.state_priority && session_time > entry.state_time)
-            {
-                entry.state_priority = priority;
-                entry.state_time = session_time;
-                entry.state = effective_state;
-                entry.state_changed_at = record.state_changed_at.clone();
-            }
         }
 
         let mut results = Vec::new();
-        for (project_path, aggregate) in aggregates {
+        for (project_path, projections) in sessions_by_project {
+            let Some(aggregate) = reduce_project_sessions(&projections) else {
+                continue;
+            };
             let has_session = aggregate.state != crate::reducer::SessionState::Idle;
             let computed_workspace_id = workspace_id(&aggregate.project_id, &project_path);
             results.push(ProjectState {
@@ -760,7 +741,8 @@ impl SharedState {
                 state: aggregate.state.clone(),
                 state_changed_at: aggregate.state_changed_at,
                 updated_at: aggregate.updated_at,
-                session_id: aggregate.session_id,
+                session_id: aggregate.representative_session_id,
+                latest_session_id: aggregate.latest_session_id,
                 session_count: aggregate.session_count,
                 active_count: aggregate.active_count,
                 has_session,
@@ -805,7 +787,6 @@ impl SharedState {
                 continue;
             }
             if self.is_session_expired(&record, now) {
-                self.prune_session(&record.session_id)?;
                 continue;
             }
             let is_alive = self.session_is_alive(record.pid);
@@ -827,47 +808,70 @@ impl SharedState {
                 })
                 .collect::<Vec<_>>();
 
-            let mut session_count = 0usize;
-            let mut active_count = 0usize;
-            let mut latest: Option<(&SessionRecord, DateTime<Utc>)> = None;
-            for record in &related_sessions {
-                session_count += 1;
-                if session_state_is_active(&record.state) {
-                    active_count += 1;
-                }
-                if let Some(ts) = session_timestamp(record) {
-                    match latest {
-                        Some((_, current_ts)) if ts <= current_ts => {}
-                        _ => latest = Some((record, ts)),
-                    }
-                }
-            }
+            let projections = related_sessions
+                .iter()
+                .map(|record| SessionProjection {
+                    session_id: record.session_id.clone(),
+                    project_id: record.project_id.clone(),
+                    state: record.state.clone(),
+                    session_time: session_timestamp(record).unwrap_or(now),
+                    updated_at: record.updated_at.clone(),
+                    state_changed_at: record.state_changed_at.clone(),
+                })
+                .collect::<Vec<_>>();
 
-            let (updated_at, state_changed_at, session_id) = match latest {
-                Some((record, _)) => (
-                    record.updated_at.clone(),
-                    record.state_changed_at.clone(),
-                    Some(record.session_id.clone()),
-                ),
-                None => {
-                    let now_rfc3339 = now.to_rfc3339();
-                    (now_rfc3339.clone(), now_rfc3339, None)
-                }
-            };
+            let reduced = reduce_project_sessions(&projections);
+            let project_id = reduced
+                .as_ref()
+                .map(|aggregate| aggregate.project_id.clone())
+                .filter(|value| !value.is_empty())
+                .unwrap_or_else(|| hem_state.project_id.clone());
 
-            let computed_workspace_id =
-                workspace_id(&hem_state.project_id, &hem_state.project_path);
-            results.push(ProjectState {
-                project_id: hem_state.project_id.clone(),
-                workspace_id: computed_workspace_id,
-                project_path: hem_state.project_path.clone(),
-                state: hem_state.state.clone(),
+            let computed_workspace_id = workspace_id(&project_id, &hem_state.project_path);
+            let (
+                state,
                 state_changed_at,
                 updated_at,
                 session_id,
-                session_count: session_count.max(hem_state.evidence_count),
+                latest_session_id,
+                session_count,
                 active_count,
-                has_session: hem_state.state != crate::reducer::SessionState::Idle,
+            ) = match reduced {
+                Some(aggregate) => (
+                    aggregate.state,
+                    aggregate.state_changed_at,
+                    aggregate.updated_at,
+                    aggregate.representative_session_id,
+                    aggregate.latest_session_id,
+                    aggregate.session_count.max(hem_state.evidence_count),
+                    aggregate.active_count,
+                ),
+                None => {
+                    let now_rfc3339 = now.to_rfc3339();
+                    (
+                        hem_state.state.clone(),
+                        now_rfc3339.clone(),
+                        now_rfc3339,
+                        None,
+                        None,
+                        hem_state.evidence_count,
+                        0,
+                    )
+                }
+            };
+
+            results.push(ProjectState {
+                project_id,
+                workspace_id: computed_workspace_id,
+                project_path: hem_state.project_path.clone(),
+                state: state.clone(),
+                state_changed_at,
+                updated_at,
+                session_id,
+                latest_session_id,
+                session_count,
+                active_count,
+                has_session: state != crate::reducer::SessionState::Idle,
             });
         }
 
@@ -929,6 +933,21 @@ impl SharedState {
         self.db.delete_session(session_id)?;
         self.db.delete_activity_for_session(session_id)?;
         Ok(())
+    }
+
+    fn prune_expired_sessions_locked(&self, now: DateTime<Utc>) -> Result<usize, String> {
+        let sessions = self.db.list_sessions()?;
+        let mut pruned = 0usize;
+        for record in sessions {
+            if self.is_session_expired(&record, now) {
+                self.prune_session(&record.session_id)?;
+                pruned += 1;
+            }
+        }
+        if pruned > 0 {
+            tracing::info!(count = pruned, "Pruned expired sessions");
+        }
+        Ok(pruned)
     }
 
     pub fn activity_snapshot(
@@ -1472,46 +1491,10 @@ pub struct ProjectState {
     pub state_changed_at: String,
     pub updated_at: String,
     pub session_id: Option<String>,
+    pub latest_session_id: Option<String>,
     pub session_count: usize,
     pub active_count: usize,
     pub has_session: bool,
-}
-
-#[derive(Debug, Clone)]
-struct ProjectAggregate {
-    project_id: String,
-    state: crate::reducer::SessionState,
-    state_changed_at: String,
-    updated_at: String,
-    session_id: Option<String>,
-    session_count: usize,
-    active_count: usize,
-    state_priority: u8,
-    state_time: DateTime<Utc>,
-    latest_time: DateTime<Utc>,
-}
-
-impl ProjectAggregate {
-    fn from_record(
-        record: &SessionRecord,
-        state: crate::reducer::SessionState,
-        session_time: DateTime<Utc>,
-        priority: u8,
-        _is_active: bool,
-    ) -> Self {
-        Self {
-            project_id: record.project_id.clone(),
-            state,
-            state_changed_at: record.state_changed_at.clone(),
-            updated_at: record.updated_at.clone(),
-            session_id: Some(record.session_id.clone()),
-            session_count: 0,
-            active_count: 0,
-            state_priority: priority,
-            state_time: session_time,
-            latest_time: session_time,
-        }
-    }
 }
 
 fn build_hem_shadow_mismatches(
@@ -1677,25 +1660,6 @@ fn select_mismatches_for_persistence(
     });
     selected.truncate(limit);
     selected
-}
-
-fn session_state_priority(state: &crate::reducer::SessionState) -> u8 {
-    match state {
-        crate::reducer::SessionState::Working => 4,
-        crate::reducer::SessionState::Waiting => 3,
-        crate::reducer::SessionState::Compacting => 2,
-        crate::reducer::SessionState::Ready => 1,
-        crate::reducer::SessionState::Idle => 0,
-    }
-}
-
-fn session_state_is_active(state: &crate::reducer::SessionState) -> bool {
-    matches!(
-        state,
-        crate::reducer::SessionState::Working
-            | crate::reducer::SessionState::Waiting
-            | crate::reducer::SessionState::Compacting
-    )
 }
 
 fn effective_session_state(
@@ -1954,6 +1918,7 @@ mod tests {
             state_changed_at: "2026-02-13T12:00:00Z".to_string(),
             updated_at: "2026-02-13T12:00:00Z".to_string(),
             session_id: Some(format!("session-{}", project_path)),
+            latest_session_id: Some(format!("session-{}", project_path)),
             session_count: 1,
             active_count: 0,
             has_session: true,
@@ -2261,7 +2226,7 @@ mod tests {
     }
 
     #[test]
-    fn ttl_expires_stale_sessions() {
+    fn ttl_expires_stale_sessions_from_snapshots_without_pruning() {
         let temp_dir = tempfile::tempdir().expect("temp dir");
         let db_path = temp_dir.path().join("state.db");
         let db = Db::new(db_path).expect("db init");
@@ -2274,7 +2239,8 @@ mod tests {
         let sessions = state.sessions_snapshot().expect("snapshot");
         assert!(sessions.is_empty());
         let remaining = state.db.list_sessions().expect("list sessions");
-        assert!(remaining.is_empty());
+        assert_eq!(remaining.len(), 1);
+        assert_eq!(remaining[0].session_id, "session-stale");
     }
 
     #[test]
@@ -2284,13 +2250,14 @@ mod tests {
         let db = Db::new(db_path).expect("db init");
         let state = SharedState::new(db);
 
-        let now = Utc::now().to_rfc3339();
-        let ready = make_record("session-ready", "/repo", SessionState::Ready, now.clone());
+        let ready_time = Utc::now().to_rfc3339();
+        let working_time = (Utc::now() - Duration::seconds(5)).to_rfc3339();
+        let ready = make_record("session-ready", "/repo", SessionState::Ready, ready_time);
         let working = make_record(
             "session-working",
             "/repo",
             SessionState::Working,
-            now.clone(),
+            working_time,
         );
         state.db.upsert_session(&ready).expect("insert ready");
         state.db.upsert_session(&working).expect("insert working");
@@ -2302,8 +2269,253 @@ mod tests {
         let expected_workspace = workspace_id(&aggregate.project_id, &aggregate.project_path);
         assert_eq!(aggregate.workspace_id, expected_workspace);
         assert_eq!(aggregate.state, SessionState::Working);
+        assert_eq!(aggregate.session_id.as_deref(), Some("session-working"));
+        assert_eq!(
+            aggregate.latest_session_id.as_deref(),
+            Some("session-ready")
+        );
         assert_eq!(aggregate.session_count, 2);
         assert_eq!(aggregate.active_count, 1);
+    }
+
+    #[test]
+    fn project_states_waiting_beats_working_even_when_waiting_is_older() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let db_path = temp_dir.path().join("state.db");
+        let db = Db::new(db_path).expect("db init");
+        let state = SharedState::new(db);
+
+        let waiting = make_record(
+            "session-waiting",
+            "/repo",
+            SessionState::Waiting,
+            (Utc::now() - Duration::seconds(20)).to_rfc3339(),
+        );
+        let working = make_record(
+            "session-working",
+            "/repo",
+            SessionState::Working,
+            (Utc::now() - Duration::seconds(10)).to_rfc3339(),
+        );
+        let ready = make_record(
+            "session-ready",
+            "/repo",
+            SessionState::Ready,
+            Utc::now().to_rfc3339(),
+        );
+        state.db.upsert_session(&waiting).expect("insert waiting");
+        state.db.upsert_session(&working).expect("insert working");
+        state.db.upsert_session(&ready).expect("insert ready");
+
+        let aggregates = state.project_states_snapshot().expect("project states");
+        assert_eq!(aggregates.len(), 1);
+        let aggregate = &aggregates[0];
+        assert_eq!(aggregate.state, SessionState::Waiting);
+        assert_eq!(aggregate.session_id.as_deref(), Some("session-waiting"));
+        assert_eq!(
+            aggregate.latest_session_id.as_deref(),
+            Some("session-ready")
+        );
+        assert_eq!(aggregate.session_count, 3);
+        assert_eq!(aggregate.active_count, 2);
+    }
+
+    #[test]
+    fn project_states_compacting_beats_working() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let db_path = temp_dir.path().join("state.db");
+        let db = Db::new(db_path).expect("db init");
+        let state = SharedState::new(db);
+
+        let compacting = make_record(
+            "session-compacting",
+            "/repo",
+            SessionState::Compacting,
+            (Utc::now() - Duration::seconds(20)).to_rfc3339(),
+        );
+        let working = make_record(
+            "session-working",
+            "/repo",
+            SessionState::Working,
+            Utc::now().to_rfc3339(),
+        );
+        state
+            .db
+            .upsert_session(&compacting)
+            .expect("insert compacting");
+        state.db.upsert_session(&working).expect("insert working");
+
+        let aggregates = state.project_states_snapshot().expect("project states");
+        assert_eq!(aggregates.len(), 1);
+        let aggregate = &aggregates[0];
+        assert_eq!(aggregate.state, SessionState::Compacting);
+        assert_eq!(aggregate.session_id.as_deref(), Some("session-compacting"));
+        assert_eq!(
+            aggregate.latest_session_id.as_deref(),
+            Some("session-working")
+        );
+    }
+
+    #[test]
+    fn project_states_use_most_recent_session_as_representative_when_states_are_equal() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let db_path = temp_dir.path().join("state.db");
+        let db = Db::new(db_path).expect("db init");
+        let state = SharedState::new(db);
+
+        let ready_old = make_record(
+            "session-ready-old",
+            "/repo",
+            SessionState::Ready,
+            (Utc::now() - Duration::seconds(20)).to_rfc3339(),
+        );
+        let ready_new = make_record(
+            "session-ready-new",
+            "/repo",
+            SessionState::Ready,
+            Utc::now().to_rfc3339(),
+        );
+        state.db.upsert_session(&ready_old).expect("insert old");
+        state.db.upsert_session(&ready_new).expect("insert new");
+
+        let aggregates = state.project_states_snapshot().expect("project states");
+        assert_eq!(aggregates.len(), 1);
+        let aggregate = &aggregates[0];
+        assert_eq!(aggregate.state, SessionState::Ready);
+        assert_eq!(aggregate.session_id.as_deref(), Some("session-ready-new"));
+        assert_eq!(
+            aggregate.latest_session_id.as_deref(),
+            Some("session-ready-new")
+        );
+    }
+
+    #[test]
+    fn project_states_snapshot_does_not_prune_expired_sessions() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let db_path = temp_dir.path().join("state.db");
+        let db = Db::new(db_path).expect("db init");
+        let state = SharedState::new(db);
+
+        let stale_time = (Utc::now() - Duration::seconds(SESSION_TTL_READY_SECS + 5)).to_rfc3339();
+        let record = make_record("session-stale", "/repo", SessionState::Ready, stale_time);
+        state.db.upsert_session(&record).expect("insert session");
+
+        let sessions = state.sessions_snapshot().expect("snapshot");
+        assert!(sessions.is_empty());
+        let remaining = state.db.list_sessions().expect("list sessions");
+        assert_eq!(remaining.len(), 1);
+        assert_eq!(remaining[0].session_id, "session-stale");
+    }
+
+    #[test]
+    fn update_from_event_prunes_expired_sessions_under_writer_lock() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let db_path = temp_dir.path().join("state.db");
+        let db = Db::new(db_path).expect("db init");
+        let state = SharedState::new(db);
+
+        let stale_time = (Utc::now() - Duration::seconds(SESSION_TTL_READY_SECS + 5)).to_rfc3339();
+        let stale = make_record("session-stale", "/repo", SessionState::Ready, stale_time);
+        state.db.upsert_session(&stale).expect("insert stale");
+
+        let now = Utc::now().to_rfc3339();
+        let event = event_base("evt-prune-1", EventType::SessionStart, &now);
+        state.update_from_event(&event);
+
+        let remaining = state.db.list_sessions().expect("list sessions");
+        assert!(remaining
+            .iter()
+            .all(|record| record.session_id != "session-stale"));
+    }
+
+    #[test]
+    fn concurrent_project_state_reads_do_not_delete_live_sessions() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let db_path = temp_dir.path().join("state.db");
+        let db = Db::new(db_path).expect("db init");
+        let state = std::sync::Arc::new(SharedState::new(db));
+
+        let record = make_record(
+            "session-live",
+            "/repo",
+            SessionState::Ready,
+            Utc::now().to_rfc3339(),
+        );
+        state.db.upsert_session(&record).expect("insert session");
+
+        let reader_state = std::sync::Arc::clone(&state);
+        let reader = std::thread::spawn(move || {
+            for _ in 0..200 {
+                let snapshot = reader_state
+                    .project_states_snapshot()
+                    .expect("project states snapshot");
+                assert!(
+                    snapshot.is_empty()
+                        || snapshot
+                            .iter()
+                            .any(|project| project.project_path == "/repo")
+                );
+            }
+        });
+
+        let writer_state = std::sync::Arc::clone(&state);
+        let writer = std::thread::spawn(move || {
+            for index in 0..200 {
+                let timestamp = Utc::now().to_rfc3339();
+                let event = event_base(
+                    &format!("evt-concurrent-{index}"),
+                    EventType::PreToolUse,
+                    &timestamp,
+                );
+                writer_state.update_from_event(&event);
+            }
+        });
+
+        reader.join().expect("reader thread");
+        writer.join().expect("writer thread");
+
+        let session = state.db.get_session("session-live").expect("query session");
+        assert!(
+            session.is_some(),
+            "live session should not be deleted by concurrent snapshots"
+        );
+    }
+
+    #[test]
+    fn project_states_snapshot_hem_primary_applies_waiting_precedence_and_tracks_latest_session() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let db_path = temp_dir.path().join("state.db");
+        let db = Db::new(db_path).expect("db init");
+
+        let mut hem_config = crate::hem::HemRuntimeConfig::default();
+        hem_config.engine.enabled = true;
+        hem_config.engine.mode = crate::hem::HemMode::Primary;
+        let state = SharedState::new_with_hem_config(db, hem_config);
+
+        let waiting = make_record(
+            "session-waiting",
+            "/repo",
+            SessionState::Waiting,
+            (Utc::now() - Duration::seconds(20)).to_rfc3339(),
+        );
+        let working = make_record(
+            "session-working",
+            "/repo",
+            SessionState::Working,
+            Utc::now().to_rfc3339(),
+        );
+        state.db.upsert_session(&waiting).expect("insert waiting");
+        state.db.upsert_session(&working).expect("insert working");
+
+        let projects = state.project_states_snapshot().expect("project states");
+        assert_eq!(projects.len(), 1);
+        let project = &projects[0];
+        assert_eq!(project.state, SessionState::Waiting);
+        assert_eq!(project.session_id.as_deref(), Some("session-waiting"));
+        assert_eq!(
+            project.latest_session_id.as_deref(),
+            Some("session-working")
+        );
     }
 
     #[test]
@@ -2312,7 +2524,7 @@ mod tests {
         let db_path = temp_dir.path().join("state.db");
         let db = Db::new(db_path).expect("db init");
 
-        let session_time = "2026-02-11T22:00:00Z".to_string();
+        let session_time = Utc::now().to_rfc3339();
         let session = make_record(
             "session-keep",
             "/Users/petepetrash/Code/writing",
@@ -2323,7 +2535,7 @@ mod tests {
 
         let shell_event = EventEnvelope {
             event_id: "evt-shell-newer".to_string(),
-            recorded_at: "2026-02-11T22:00:30Z".to_string(),
+            recorded_at: (Utc::now() + Duration::seconds(30)).to_rfc3339(),
             event_type: EventType::ShellCwd,
             session_id: Some("session-keep".to_string()),
             pid: Some(1234),
@@ -2355,7 +2567,7 @@ mod tests {
         let db = Db::new(db_path).expect("db init");
 
         let now = Utc::now();
-        let old_time = (now - Duration::days(9)).to_rfc3339();
+        let old_time = (now - Duration::minutes(10)).to_rfc3339();
         let newer_stop_at = (now - Duration::minutes(5)).to_rfc3339();
 
         let preserved = make_record(
@@ -2639,8 +2851,18 @@ mod tests {
         let db = Db::new(db_path).expect("db init");
         let state = SharedState::new(db);
 
-        let start = event_base("evt-start", EventType::SessionStart, "2026-02-13T12:00:00Z");
-        let pre_tool = event_base("evt-pretool", EventType::PreToolUse, "2026-02-13T12:00:01Z");
+        let start_time = Utc::now();
+        let pre_tool_time = start_time + Duration::seconds(1);
+        let start = event_base(
+            "evt-start",
+            EventType::SessionStart,
+            &start_time.to_rfc3339(),
+        );
+        let pre_tool = event_base(
+            "evt-pretool",
+            EventType::PreToolUse,
+            &pre_tool_time.to_rfc3339(),
+        );
 
         state.update_from_event(&start);
         state.update_from_event(&pre_tool);
@@ -3101,6 +3323,7 @@ mod tests {
                 state_changed_at: "2026-02-13T11:59:30Z".to_string(),
                 updated_at: "2026-02-13T11:59:30Z".to_string(),
                 session_id: Some("s-alpha".to_string()),
+                latest_session_id: Some("s-alpha".to_string()),
                 session_count: 1,
                 active_count: 0,
                 has_session: true,
@@ -3113,6 +3336,7 @@ mod tests {
                 state_changed_at: "2026-02-13T11:59:50Z".to_string(),
                 updated_at: "2026-02-13T11:59:50Z".to_string(),
                 session_id: Some("s-beta".to_string()),
+                latest_session_id: Some("s-beta".to_string()),
                 session_count: 1,
                 active_count: 0,
                 has_session: true,
@@ -3125,6 +3349,7 @@ mod tests {
                 state_changed_at: "2026-02-13T11:58:00Z".to_string(),
                 updated_at: "2026-02-13T11:58:00Z".to_string(),
                 session_id: Some("s-gamma".to_string()),
+                latest_session_id: Some("s-gamma".to_string()),
                 session_count: 1,
                 active_count: 1,
                 has_session: true,
@@ -3151,6 +3376,7 @@ mod tests {
             state_changed_at: "2026-02-13T11:59:00Z".to_string(),
             updated_at: "2026-02-13T11:59:00Z".to_string(),
             session_id: Some("s-alpha".to_string()),
+            latest_session_id: Some("s-alpha".to_string()),
             session_count: 1,
             active_count: 0,
             has_session: false,

@@ -26,6 +26,7 @@ final class SessionStateManager {
     private struct MergeResult {
         let states: [String: ProjectSessionState]
         let attributions: [String: SessionAttribution]
+        let latestSessionIds: [String: String]
     }
 
     private struct ProjectMatchInfo {
@@ -75,6 +76,7 @@ final class SessionStateManager {
     }
 
     private(set) var sessionAttributions: [String: SessionAttribution] = [:]
+    private(set) var latestSessionIds: [String: String] = [:]
 
     private var previousSessionStates: [String: SessionState] = [:]
     private var consecutiveEmptySnapshotCount = 0
@@ -99,6 +101,7 @@ final class SessionStateManager {
             DebugLog.write("SessionStateManager.refresh daemonEnabled=false clearingStates")
             consecutiveEmptySnapshotCount = 0
             sessionStates = [:]
+            latestSessionIds = [:]
             pruneCachedStates()
             return
         }
@@ -140,6 +143,12 @@ final class SessionStateManager {
                         }
                         return self.sessionAttributions
                     }()
+                    let nextLatestSessionIds: [String: String] = {
+                        if stabilized == merged {
+                            return mergeResult.latestSessionIds
+                        }
+                        return self.latestSessionIds
+                    }()
                     DebugLog.write("SessionStateManager.fetchProjectStates success count=\(daemonProjects.count)")
                     if !merged.isEmpty {
                         let summary = merged
@@ -157,6 +166,7 @@ final class SessionStateManager {
                         }
                     }
                     self.sessionAttributions = nextAttributions.filter { stabilized[$0.key] != nil }
+                    self.latestSessionIds = nextLatestSessionIds.filter { stabilized[$0.key] != nil }
                     self.pruneCachedStates()
                     #if DEBUG
                         DiagnosticsSnapshotLogger.maybeCaptureStuckSessions(sessionStates: stabilized)
@@ -268,6 +278,7 @@ final class SessionStateManager {
         previousSessionStates = previousSessionStates.filter { active.contains($0.key) }
         flashingProjects = flashingProjects.filter { active.contains($0.key) }
         sessionAttributions = sessionAttributions.filter { active.contains($0.key) }
+        latestSessionIds = latestSessionIds.filter { active.contains($0.key) }
     }
 
     private func triggerFlashIfNeeded(for path: String, state: SessionState) {
@@ -304,6 +315,19 @@ final class SessionStateManager {
 
         let normalizedPath = PathNormalizer.normalize(project.path)
         return sessionAttributions.first(where: { PathNormalizer.normalize($0.key) == normalizedPath })?.value
+    }
+
+    func getPreferredSessionId(for project: Project) -> String? {
+        if let direct = latestSessionIds[project.path] {
+            return direct
+        }
+
+        let normalizedPath = PathNormalizer.normalize(project.path)
+        if let fallback = latestSessionIds.first(where: { PathNormalizer.normalize($0.key) == normalizedPath })?.value {
+            return fallback
+        }
+
+        return getSessionState(for: project)?.sessionId
     }
 
     private nonisolated func mergeDaemonProjectStates(
@@ -416,6 +440,7 @@ final class SessionStateManager {
 
         var merged: [String: ProjectSessionState] = [:]
         var attributions: [String: SessionAttribution] = [:]
+        var latestSessionIds: [String: String] = [:]
         for (projectPath, best) in bestStates {
             let state = best.state
             let mappedState = mapDaemonState(state.state)
@@ -435,9 +460,12 @@ final class SessionStateManager {
                 sourceProjectPath: state.projectPath,
                 sourceSessionId: state.sessionId,
             )
+            if let latestId = state.latestSessionId ?? state.sessionId {
+                latestSessionIds[projectPath] = latestId
+            }
         }
 
-        return MergeResult(states: merged, attributions: attributions)
+        return MergeResult(states: merged, attributions: attributions, latestSessionIds: latestSessionIds)
     }
 
     private nonisolated func matchesProject(
@@ -550,6 +578,7 @@ final class SessionStateManager {
         consecutiveEmptySnapshotCount = 0
         sessionStates = states
         sessionAttributions = [:]
+        latestSessionIds = [:]
         pruneCachedStates()
         checkForStateChanges()
     }
@@ -559,6 +588,7 @@ final class SessionStateManager {
         func setSessionStatesForTesting(_ states: [String: ProjectSessionState]) {
             sessionStates = states
             sessionAttributions = [:]
+            latestSessionIds = states.compactMapValues(\.sessionId)
             pruneCachedStates()
             checkForStateChanges()
         }

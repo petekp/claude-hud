@@ -13,6 +13,14 @@ const BRIEFING_SHELL_LIMIT = Number(process.env.CAPACITOR_BRIEFING_SHELL_LIMIT |
 const telemetryClients = new Set();
 const telemetryEvents = [];
 
+function parseBoundedPositiveInt(rawValue, fallback, max) {
+  const parsed = Number(rawValue);
+  if (!Number.isFinite(parsed)) return fallback;
+  const floored = Math.floor(parsed);
+  if (floored <= 0) return fallback;
+  return Math.min(floored, max);
+}
+
 function jsonResponse(res, status, payload) {
   const body = JSON.stringify(payload);
   res.writeHead(status, {
@@ -241,9 +249,13 @@ async function buildSnapshot(options = {}) {
 }
 
 async function buildBriefing(options = {}) {
-  const limit = Number.isFinite(options.limit) ? options.limit : 200;
+  const limit = parseBoundedPositiveInt(options.limit, 200, TELEMETRY_LIMIT);
   const shellsMode = options.shellsMode === "all" ? "all" : "recent";
-  const shellLimit = Number.isFinite(options.shellLimit) ? options.shellLimit : BRIEFING_SHELL_LIMIT;
+  const shellLimit = parseBoundedPositiveInt(
+    options.shellLimit,
+    BRIEFING_SHELL_LIMIT,
+    Number.MAX_SAFE_INTEGER
+  );
 
   const snapshot = await buildSnapshot({
     shellsMode,
@@ -251,13 +263,6 @@ async function buildBriefing(options = {}) {
     projectPath: options.projectPath,
     workspaceId: options.workspaceId
   });
-
-  if (snapshot && snapshot.shell_state) {
-    snapshot.shell_state = normalizeShellState(snapshot.shell_state, {
-      mode: shellsMode,
-      limit: shellLimit
-    });
-  }
 
   const sessions = Array.isArray(snapshot.sessions) ? snapshot.sessions : [];
   const projects = Array.isArray(snapshot.project_states) ? snapshot.project_states : [];
@@ -270,9 +275,10 @@ async function buildBriefing(options = {}) {
   const telemetry = telemetryEvents.slice(0, limit);
 
   return {
-    ok: true,
+    ok: Boolean(snapshot && snapshot.ok),
     timestamp: new Date().toISOString(),
     snapshot,
+    error: snapshot && snapshot.ok ? null : snapshot && snapshot.error ? snapshot.error : "snapshot_unavailable",
     telemetry,
     summary: {
       sessions: { count: sessions.length },
@@ -371,7 +377,7 @@ const server = http.createServer(async (req, res) => {
 
   if (req.url.startsWith("/telemetry")) {
     const url = new URL(req.url, `http://localhost:${PORT}`);
-    const limit = Math.min(Number(url.searchParams.get("limit") || 50), TELEMETRY_LIMIT);
+    const limit = parseBoundedPositiveInt(url.searchParams.get("limit"), 50, TELEMETRY_LIMIT);
     jsonResponse(res, 200, {
       ok: true,
       timestamp: new Date().toISOString(),
@@ -468,13 +474,14 @@ const server = http.createServer(async (req, res) => {
 
   if (req.url.startsWith("/agent-briefing")) {
     const url = new URL(req.url, `http://localhost:${PORT}`);
-    const limit = Math.min(Number(url.searchParams.get("limit") || 200), TELEMETRY_LIMIT);
+    const limit = parseBoundedPositiveInt(url.searchParams.get("limit"), 200, TELEMETRY_LIMIT);
     const shellsParam = url.searchParams.get("shells");
     const shellsMode = shellsParam === "all" ? "all" : "recent";
-    const shellLimitParam = Number(url.searchParams.get("shell_limit"));
-    const shellLimit = Number.isFinite(shellLimitParam) && shellLimitParam > 0
-      ? shellLimitParam
-      : BRIEFING_SHELL_LIMIT;
+    const shellLimit = parseBoundedPositiveInt(
+      url.searchParams.get("shell_limit"),
+      BRIEFING_SHELL_LIMIT,
+      Number.MAX_SAFE_INTEGER
+    );
     const projectPath = (url.searchParams.get("project_path") || "").trim() || undefined;
     const workspaceId = (url.searchParams.get("workspace_id") || "").trim() || undefined;
     const briefing = await buildBriefing({ limit, shellsMode, shellLimit, projectPath, workspaceId });

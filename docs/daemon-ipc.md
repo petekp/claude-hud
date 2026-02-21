@@ -300,6 +300,10 @@ Returns current daemon session records.
 
 Returns project-level synthesized state records.
 
+Project state payload includes:
+- `session_id`: representative session that owns the resolved project state.
+- `latest_session_id`: most recently updated session for the project (used for recency-sensitive UX).
+
 ### `get_activity`
 
 Returns activity stream rows. Supports optional `session_id` and `limit`.

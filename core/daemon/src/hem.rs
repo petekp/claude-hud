@@ -1384,13 +1384,7 @@ struct SessionEvidence {
 }
 
 fn state_priority(state: &SessionState) -> u8 {
-    match state {
-        SessionState::Working => 4,
-        SessionState::Waiting => 3,
-        SessionState::Compacting => 2,
-        SessionState::Ready => 1,
-        SessionState::Idle => 0,
-    }
+    crate::project_state_policy::state_priority(state)
 }
 
 fn base_confidence(state: &SessionState, now: DateTime<Utc>, updated_at: DateTime<Utc>) -> f64 {

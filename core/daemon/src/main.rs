@@ -33,6 +33,7 @@ mod db;
 mod hem;
 mod process;
 mod project_identity;
+mod project_state_policy;
 mod reducer;
 mod replay;
 mod session_store;

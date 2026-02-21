@@ -296,6 +296,7 @@ HEM will live inside `core/daemon` (no new top-level crate required in initial r
 2. `reducer.rs` remains authoritative during shadow mode and continues publishing production snapshots.
 3. HEM shadow output is computed from the same ingested event stream and compared against reducer output through a divergence reporter.
 4. Existing IPC/data contracts (`DaemonProjectState`, `ProjectSessionState`) remain the published API during shadow mode; HEM internals adapt to these contracts until cutover.
+5. Canonical multi-session project-state precedence is owned by the daemon state layer (`project_state_policy`); HEM consumes that shared policy instead of defining a separate precedence table.
 
 ### Processing Flow
 

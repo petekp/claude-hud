@@ -104,6 +104,12 @@ Terminal switching uses AppleScript, so macOS will ask for Automation access the
 
 **Daemon issues?** The app starts the daemon automatically. If something seems off, check `~/.capacitor/daemon/` for logs: `tail -f ~/.capacitor/daemon/daemon.stderr.log`
 
+For coding-agent debugging in this repo, use:
+
+- `./scripts/dev/agent-observe.sh` (single observability helper)
+- `make observe-help` (`observe-*` shortcuts)
+- `.claude/docs/agent-observability-runbook.md` (canonical runtime-debug workflow)
+
 More help: [open a GitHub issue](https://github.com/petekp/capacitor/issues).
 
 ## Uninstall

@@ -98,11 +98,24 @@ Optional query params:
 
 Use Transparent UI as the local ARE observability hub:
 
+- Canonical runbook: `.claude/docs/agent-observability-runbook.md`
+- Canonical helper: `./scripts/dev/agent-observe.sh`
+
 - `GET /daemon-snapshot` for current daemon + routing state.
 - `GET /routing-rollout` for gate progression and readiness booleans.
 - `GET /routing-snapshot?project_path=...` for project-scoped routing decision evidence.
 - `GET /telemetry?limit=200` and `GET /telemetry-stream` for app-level events.
 - `GET /agent-briefing?...` for a single compact payload.
+
+Quick commands:
+
+```bash
+./scripts/dev/agent-observe.sh check
+./scripts/dev/agent-observe.sh snapshot
+./scripts/dev/agent-observe.sh briefing 200
+./scripts/dev/agent-observe.sh telemetry 200
+./scripts/dev/agent-observe.sh stream
+```
 
 The HTML dashboard defaults:
 - snapshot: `http://localhost:9133/daemon-snapshot`

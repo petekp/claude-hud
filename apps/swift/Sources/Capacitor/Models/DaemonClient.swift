@@ -154,6 +154,7 @@ struct DaemonProjectState: Decodable {
     let updatedAt: String
     let stateChangedAt: String
     let sessionId: String?
+    let latestSessionId: String?
     let sessionCount: Int
     let activeCount: Int
     let hasSession: Bool
@@ -166,6 +167,7 @@ struct DaemonProjectState: Decodable {
         case updatedAt = "updated_at"
         case stateChangedAt = "state_changed_at"
         case sessionId = "session_id"
+        case latestSessionId = "latest_session_id"
         case sessionCount = "session_count"
         case activeCount = "active_count"
         case hasSession = "has_session"

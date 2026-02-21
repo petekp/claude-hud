@@ -453,6 +453,44 @@ final class SessionStateManagerTests: XCTestCase {
         XCTAssertEqual(state?.sessionId, "session-new")
     }
 
+    func testPreservesRepresentativeSessionIdAndTracksLatestSessionId() async throws {
+        setenv("CAPACITOR_DAEMON_ENABLED", "1", 1)
+        defer { unsetenv("CAPACITOR_DAEMON_ENABLED") }
+
+        let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+        let socketPath = tempDir.appendingPathComponent("daemon.sock").path
+
+        let projectPath = "/Users/pete/Code/writing"
+        let fixtures: [ProjectStateFixture] = [
+            .init(
+                projectPath: projectPath,
+                state: "waiting",
+                updatedAt: "2026-02-11T20:19:03.204550+00:00",
+                stateChangedAt: "2026-02-11T20:19:03.104550+00:00",
+                sessionId: "session-representative",
+                latestSessionId: "session-latest",
+            ),
+        ]
+
+        let server = try UnixSocketServer(path: socketPath)
+        defer { server.stop() }
+        server.start(response: makeProjectStatesResponse(fixtures))
+
+        setenv("CAPACITOR_DAEMON_SOCKET", socketPath, 1)
+        defer { unsetenv("CAPACITOR_DAEMON_SOCKET") }
+
+        let manager = SessionStateManager()
+        let project = makeProject("writing", path: projectPath)
+
+        manager.refreshSessionStates(for: [project])
+        let state = await waitForSessionState(manager, project: project)
+
+        XCTAssertNotNil(state)
+        XCTAssertEqual(state?.sessionId, "session-representative")
+        XCTAssertEqual(manager.getPreferredSessionId(for: project), "session-latest")
+    }
+
     func testSingleEmptySnapshotDoesNotImmediatelyClearSessionStates() async throws {
         setenv("CAPACITOR_DAEMON_ENABLED", "1", 1)
         defer { unsetenv("CAPACITOR_DAEMON_ENABLED") }
@@ -885,6 +923,23 @@ final class SessionStateManagerTests: XCTestCase {
         let updatedAt: String
         let stateChangedAt: String
         let sessionId: String?
+        let latestSessionId: String?
+
+        init(
+            projectPath: String,
+            state: String,
+            updatedAt: String,
+            stateChangedAt: String,
+            sessionId: String?,
+            latestSessionId: String? = nil,
+        ) {
+            self.projectPath = projectPath
+            self.state = state
+            self.updatedAt = updatedAt
+            self.stateChangedAt = stateChangedAt
+            self.sessionId = sessionId
+            self.latestSessionId = latestSessionId
+        }
     }
 
     private func makeSessionState(state: SessionState, sessionId: String?) -> ProjectSessionState {
@@ -918,8 +973,9 @@ final class SessionStateManagerTests: XCTestCase {
     private func makeProjectStatesResponse(_ states: [ProjectStateFixture]) -> Data {
         let items = states.map { state in
             let sessionValue = state.sessionId.map { "\"\($0)\"" } ?? "null"
+            let latestSessionValue = state.latestSessionId.map { "\"\($0)\"" } ?? "null"
             return """
-            {"project_path":"\(state.projectPath)","state":"\(state.state)","updated_at":"\(state.updatedAt)","state_changed_at":"\(state.stateChangedAt)","session_id":\(sessionValue),"session_count":1,"active_count":1,"has_session":true}
+            {"project_path":"\(state.projectPath)","state":"\(state.state)","updated_at":"\(state.updatedAt)","state_changed_at":"\(state.stateChangedAt)","session_id":\(sessionValue),"latest_session_id":\(latestSessionValue),"session_count":1,"active_count":1,"has_session":true}
             """
         }
         let json = """

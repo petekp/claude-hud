@@ -3,6 +3,13 @@
 Procedures for debugging Capacitor components (daemon, hooks, app).
 
 For quick-reference gotchas (problem → fix patterns), see [gotchas.md](gotchas.md).
+For canonical coding-agent observability workflow and copy/paste commands, see [agent-observability-runbook.md](agent-observability-runbook.md).
+
+Single entry point:
+
+```bash
+./scripts/dev/agent-observe.sh help
+```
 
 ## General Debugging
 

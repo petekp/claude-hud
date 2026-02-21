@@ -97,7 +97,7 @@ final class ActiveProjectResolver {
         for project in projects {
             guard let sessionState = sessionStateManager.getSessionState(for: project),
                   sessionState.hasSession,
-                  let sessionId = sessionState.sessionId
+                  let sessionId = sessionStateManager.getPreferredSessionId(for: project)
             else {
                 continue
             }
