@@ -90,7 +90,7 @@ enum ReadyChimePolicy {
         chimeCooldown: TimeInterval,
     ) -> Bool {
         guard playReadyChime else { return false }
-        guard newState == .ready, oldState != .ready, oldState != nil else { return false }
+        guard newState == .ready, oldState != .ready else { return false }
         if let lastChimeTime {
             return now.timeIntervalSince(lastChimeTime) >= chimeCooldown
         }

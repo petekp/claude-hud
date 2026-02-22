@@ -118,4 +118,17 @@ final class ProjectCardAnimationPolicyTests: XCTestCase {
 
         XCTAssertTrue(shouldPlay)
     }
+
+    func testReadyChimePlaysWhenInitialStateIsReady() {
+        let shouldPlay = ReadyChimePolicy.shouldPlay(
+            playReadyChime: true,
+            oldState: nil,
+            newState: .ready,
+            lastChimeTime: nil,
+            now: Date(),
+            chimeCooldown: 3.0,
+        )
+
+        XCTAssertTrue(shouldPlay)
+    }
 }

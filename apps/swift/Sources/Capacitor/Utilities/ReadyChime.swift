@@ -2,44 +2,69 @@ import AVFoundation
 import Foundation
 
 final class ReadyChime {
-    static let shared = ReadyChime()
+    typealias AsyncRunner = (@escaping () -> Void) -> Void
 
-    private var audioEngine: AVAudioEngine?
-    private var mixer: AVAudioMixerNode?
-    private var isPlaying = false
-
-    private init() {
-        setupAudioEngine()
+    protocol AudioBackend: AnyObject {
+        func ensureEngineRunning() -> Bool
+        func playDualTone()
     }
 
-    private func setupAudioEngine() {
-        audioEngine = AVAudioEngine()
-        mixer = AVAudioMixerNode()
+    static let shared = ReadyChime()
 
-        guard let engine = audioEngine, let mixer else { return }
+    private let backend: AudioBackend
+    private let runAsync: AsyncRunner
+    private var isPlaying = false
 
-        engine.attach(mixer)
-        engine.connect(mixer, to: engine.mainMixerNode, format: nil)
-
-        do {
-            try engine.start()
-        } catch {
-            DebugLog.write("ReadyChime: Failed to start audio engine: \(error)")
-        }
+    init(
+        backend: AudioBackend = AVFoundationReadyChimeAudioBackend(),
+        runAsync: @escaping AsyncRunner = { work in
+            DispatchQueue.global(qos: .userInteractive).async(execute: work)
+        },
+    ) {
+        self.backend = backend
+        self.runAsync = runAsync
     }
 
     func play() {
         guard !isPlaying else { return }
         isPlaying = true
 
-        DispatchQueue.global(qos: .userInteractive).async { [weak self] in
-            self?.playDualTone()
+        runAsync { [weak self] in
+            guard let self else { return }
+            defer { self.isPlaying = false }
+
+            guard backend.ensureEngineRunning() else { return }
+            backend.playDualTone()
+        }
+    }
+}
+
+private final class AVFoundationReadyChimeAudioBackend: ReadyChime.AudioBackend {
+    private var audioEngine: AVAudioEngine?
+    private var mixer: AVAudioMixerNode?
+
+    init() {
+        setupAudioEngine()
+    }
+
+    func ensureEngineRunning() -> Bool {
+        guard let engine = audioEngine else { return false }
+
+        if engine.isRunning {
+            return true
+        }
+
+        do {
+            try engine.start()
+            return engine.isRunning
+        } catch {
+            DebugLog.write("ReadyChime: Failed to start audio engine: \(error)")
+            return false
         }
     }
 
-    private func playDualTone() {
+    func playDualTone() {
         guard let engine = audioEngine, let mixer else {
-            isPlaying = false
             return
         }
 
@@ -54,14 +79,12 @@ final class ReadyChime {
         guard let format = AVAudioFormat(standardFormatWithSampleRate: sampleRate, channels: 1),
               let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frameCount)
         else {
-            isPlaying = false
             return
         }
 
         buffer.frameLength = frameCount
 
         guard let floatData = buffer.floatChannelData?[0] else {
-            isPlaying = false
             return
         }
 
@@ -83,6 +106,11 @@ final class ReadyChime {
         engine.attach(playerNode)
         engine.connect(playerNode, to: mixer, format: format)
 
+        guard ensureEngineRunning() else {
+            engine.detach(playerNode)
+            return
+        }
+
         playerNode.scheduleBuffer(buffer, at: nil, options: .interrupts)
         playerNode.play()
 
@@ -90,7 +118,6 @@ final class ReadyChime {
 
         playerNode.stop()
         engine.detach(playerNode)
-        isPlaying = false
     }
 
     private func woodenKnock(t: Double, duration _: Double, pitch: Double) -> Double {
@@ -119,5 +146,16 @@ final class ReadyChime {
         let envelope = attackCurve * decay
 
         return (body + noise) * envelope
+    }
+
+    private func setupAudioEngine() {
+        audioEngine = AVAudioEngine()
+        mixer = AVAudioMixerNode()
+
+        guard let engine = audioEngine, let mixer else { return }
+
+        engine.attach(mixer)
+        engine.connect(mixer, to: engine.mainMixerNode, format: nil)
+        _ = ensureEngineRunning()
     }
 }

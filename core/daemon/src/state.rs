@@ -36,6 +36,7 @@ const SESSION_TTL_READY_SECS: i64 = 30 * 60; // Ready
 const SESSION_TTL_IDLE_SECS: i64 = 10 * 60; // Idle
                                             // Ready does not auto-idle; it remains until TTL or session end.
 const SESSION_AUTO_READY_SECS: i64 = 60; // Auto-ready eligible states -> Ready when inactive and no tools are in flight.
+const SESSION_POST_TOOL_USE_STALE_SECS: i64 = 5 * 60; // Long-stale post_tool_use can auto-ready even if tools leaked.
 const STOP_GATE_WORKING_GRACE_SECS: i64 = 20; // Short-lived guard for false Stop->Ready while session is still actively finishing.
 const HEM_SHADOW_MISMATCH_RETENTION_DAYS: i64 = 14;
 const HEM_SHADOW_MISMATCH_PERSIST_LIMIT_PER_EVENT: usize = 4;
@@ -273,9 +274,23 @@ impl SharedState {
                         pid = record.pid,
                         "Session upsert"
                     );
+                    let mut upserted = false;
                     if let Err(err) = self.db.upsert_session(&record) {
                         tracing::warn!(error = %err, "Failed to upsert session");
                         had_error = true;
+                    } else {
+                        upserted = true;
+                    }
+                    if upserted && event.event_type == EventType::SessionStart {
+                        if let Err(err) = self.prune_superseded_sessions_for_pid_locked(&record) {
+                            tracing::warn!(
+                                error = %err,
+                                session_id = %record.session_id,
+                                pid = record.pid,
+                                "Failed to prune superseded same-pid sessions"
+                            );
+                            had_error = true;
+                        }
                     }
                     if let Some(entry) = reduce_activity(event) {
                         if let Err(err) = self.db.insert_activity(&entry) {
@@ -932,6 +947,32 @@ impl SharedState {
         tracing::info!(session_id = %session_id, "Pruning session");
         self.db.delete_session(session_id)?;
         self.db.delete_activity_for_session(session_id)?;
+        Ok(())
+    }
+
+    fn prune_superseded_sessions_for_pid_locked(
+        &self,
+        current: &SessionRecord,
+    ) -> Result<(), String> {
+        if current.pid == 0 {
+            return Ok(());
+        }
+
+        let current_timestamp = session_timestamp(current);
+        let sessions = self.db.list_sessions()?;
+        for record in sessions {
+            if record.session_id == current.session_id || record.pid != current.pid {
+                continue;
+            }
+
+            let should_prune = match (session_timestamp(&record), current_timestamp) {
+                (Some(candidate), Some(current_time)) => candidate <= current_time,
+                _ => true,
+            };
+            if should_prune {
+                self.prune_session(&record.session_id)?;
+            }
+        }
         Ok(())
     }
 
@@ -1671,7 +1712,9 @@ fn effective_session_state(
         && record.ready_reason.as_deref() == Some("stop_gate")
         && is_alive == Some(true)
     {
-        if let Some(stop_time) = parse_rfc3339(&record.updated_at) {
+        let stop_time =
+            parse_rfc3339(&record.state_changed_at).or_else(|| parse_rfc3339(&record.updated_at));
+        if let Some(stop_time) = stop_time {
             if now.signed_duration_since(stop_time).num_seconds() <= STOP_GATE_WORKING_GRACE_SECS {
                 return crate::reducer::SessionState::Working;
             }
@@ -1737,30 +1780,37 @@ fn should_apply_inactivity_fallback(
 ) -> bool {
     let InactivityFallbackGuard::RequireLastEvent(expected_events) = fallback_guard;
     let last_event = record.last_event.as_deref().unwrap_or_default();
-    // Working auto-ready should only run after an explicit completion marker.
-    // PostToolUse can occur repeatedly during an active working session and
-    // causes false Ready transitions when activity is sparse.
-    if !expected_events.contains(&last_event) {
-        return false;
-    }
-
-    if record.tools_in_flight > 0 {
-        return false;
-    }
-
     let Some(last_activity) = record.last_activity_at.as_deref().and_then(parse_rfc3339) else {
         return false;
     };
-
-    if now.signed_duration_since(last_activity).num_seconds() < SESSION_AUTO_READY_SECS {
+    let activity_age_secs = now.signed_duration_since(last_activity).num_seconds();
+    if activity_age_secs < SESSION_AUTO_READY_SECS {
         return false;
     }
 
     let Some(last_session_update) = parse_rfc3339(&record.updated_at) else {
         return false;
     };
+    let update_age_secs = now.signed_duration_since(last_session_update).num_seconds();
+    if update_age_secs < SESSION_AUTO_READY_SECS {
+        return false;
+    }
 
-    now.signed_duration_since(last_session_update).num_seconds() >= SESSION_AUTO_READY_SECS
+    let long_stale_post_tool_use = last_event == "post_tool_use"
+        && activity_age_secs >= SESSION_POST_TOOL_USE_STALE_SECS
+        && update_age_secs >= SESSION_POST_TOOL_USE_STALE_SECS;
+
+    // Working auto-ready should run on explicit completion markers.
+    // A long-stale post_tool_use also qualifies to recover leaked tool counters.
+    if !expected_events.contains(&last_event) && !long_stale_post_tool_use {
+        return false;
+    }
+
+    if record.tools_in_flight > 0 && !long_stale_post_tool_use {
+        return false;
+    }
+
+    true
 }
 
 fn parse_rfc3339(value: &str) -> Option<DateTime<Utc>> {
@@ -2118,6 +2168,25 @@ mod tests {
     }
 
     #[test]
+    fn project_states_auto_ready_after_stale_post_tool_use_with_leaked_tools() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let db_path = temp_dir.path().join("state.db");
+        let db = Db::new(db_path).expect("db init");
+        let state = SharedState::new(db);
+
+        let stale_time = (Utc::now() - Duration::seconds(5 * 60 + 5)).to_rfc3339();
+        let mut record = make_record("session-stale", "/repo", SessionState::Working, stale_time);
+        record.last_activity_at = Some(record.updated_at.clone());
+        record.last_event = Some("post_tool_use".to_string());
+        record.tools_in_flight = 3;
+        state.db.upsert_session(&record).expect("insert session");
+
+        let aggregates = state.project_states_snapshot().expect("project states");
+        assert_eq!(aggregates.len(), 1);
+        assert_eq!(aggregates[0].state, SessionState::Ready);
+    }
+
+    #[test]
     fn project_states_auto_ready_after_inactive_task_completed() {
         let temp_dir = tempfile::tempdir().expect("temp dir");
         let db_path = temp_dir.path().join("state.db");
@@ -2218,6 +2287,33 @@ mod tests {
         record.pid = std::process::id();
         record.last_event = Some("stop".to_string());
         record.ready_reason = Some("stop_gate".to_string());
+        state.db.upsert_session(&record).expect("insert session");
+
+        let aggregates = state.project_states_snapshot().expect("project states");
+        assert_eq!(aggregates.len(), 1);
+        assert_eq!(aggregates[0].state, SessionState::Ready);
+    }
+
+    #[test]
+    fn stop_gate_uses_state_changed_at_so_repeated_stop_updates_do_not_extend_grace() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let db_path = temp_dir.path().join("state.db");
+        let db = Db::new(db_path).expect("db init");
+        let state = SharedState::new(db);
+
+        let state_changed_at =
+            (Utc::now() - Duration::seconds(STOP_GATE_WORKING_GRACE_SECS + 5)).to_rfc3339();
+        let updated_at = Utc::now().to_rfc3339();
+        let mut record = make_record(
+            "session-stop-gate-repeat",
+            "/repo",
+            SessionState::Ready,
+            updated_at,
+        );
+        record.pid = std::process::id();
+        record.last_event = Some("stop".to_string());
+        record.ready_reason = Some("stop_gate".to_string());
+        record.state_changed_at = state_changed_at;
         state.db.upsert_session(&record).expect("insert session");
 
         let aggregates = state.project_states_snapshot().expect("project states");
@@ -2877,6 +2973,40 @@ mod tests {
 
         let events = state.db.list_events().expect("list events");
         assert_eq!(events.len(), 2);
+    }
+
+    #[test]
+    fn session_start_prunes_older_sessions_with_same_pid() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let db_path = temp_dir.path().join("state.db");
+        let db = Db::new(db_path).expect("db init");
+        let state = SharedState::new(db);
+
+        let mut stale = make_record(
+            "session-stale",
+            "/Users/petepetrash/Code/aui/assistant-ui/apps/docs",
+            SessionState::Working,
+            (Utc::now() - Duration::minutes(10)).to_rfc3339(),
+        );
+        stale.pid = 48875;
+        stale.last_event = Some("post_tool_use".to_string());
+        stale.last_activity_at = Some(stale.updated_at.clone());
+        state.db.upsert_session(&stale).expect("insert stale");
+
+        let mut fresh_start = event_base(
+            "evt-fresh-start",
+            EventType::SessionStart,
+            &Utc::now().to_rfc3339(),
+        );
+        fresh_start.session_id = Some("session-fresh".to_string());
+        fresh_start.pid = Some(48875);
+        fresh_start.cwd = Some("/Users/petepetrash/Code/aui/assistant-ui/apps/docs".to_string());
+        state.update_from_event(&fresh_start);
+
+        let sessions = state.db.list_sessions().expect("list sessions");
+        assert_eq!(sessions.len(), 1);
+        assert_eq!(sessions[0].session_id, "session-fresh");
+        assert_eq!(sessions[0].pid, 48875);
     }
 
     #[test]
